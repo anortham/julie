@@ -66,11 +66,9 @@ impl SingletonLock {
                 file,
                 path: path.to_path_buf(),
             }),
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                Err(SingletonLockError::AlreadyHeld {
-                    path: path.to_path_buf(),
-                })
-            }
+            Err(e) if is_lock_already_held(&e) => Err(SingletonLockError::AlreadyHeld {
+                path: path.to_path_buf(),
+            }),
             Err(source) => Err(SingletonLockError::Io {
                 path: path.to_path_buf(),
                 source,
@@ -96,6 +94,24 @@ impl Drop for SingletonLock {
                 "Failed to release singleton lock cleanly; file close will still release",
             );
         }
+    }
+}
+
+fn is_lock_already_held(error: &io::Error) -> bool {
+    if error.kind() == io::ErrorKind::WouldBlock {
+        return true;
+    }
+
+    #[cfg(windows)]
+    {
+        // Windows reports LockFileEx conflicts as ERROR_LOCK_VIOLATION (33),
+        // which Rust currently classifies as Uncategorized instead of WouldBlock.
+        error.raw_os_error() == Some(33)
+    }
+
+    #[cfg(not(windows))]
+    {
+        false
     }
 }
 

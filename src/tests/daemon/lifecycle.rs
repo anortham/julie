@@ -167,6 +167,8 @@ fn test_transition_draining_to_stopping_after_sessions_drain() {
 
 #[test]
 fn test_version_gate_action_reports_lifecycle_restart_outcomes() {
+    // Adapter NEWER than the daemon: the daemon binary is stale, so restart so
+    // the newer adapter respawns a matching daemon (converges upward).
     assert_eq!(
         version_gate_action(Some("6.8.0"), "6.7.0", 0),
         IncomingSessionAction::ShutdownForRestart(RestartReason::VersionMismatch)
@@ -174,6 +176,38 @@ fn test_version_gate_action_reports_lifecycle_restart_outcomes() {
     assert_eq!(
         version_gate_action(Some("6.8.0"), "6.7.0", 3),
         IncomingSessionAction::RejectForRestart(RestartReason::VersionMismatch)
+    );
+}
+
+#[test]
+fn test_version_gate_action_does_not_restart_for_older_adapter() {
+    // Adapter OLDER than the daemon (the v7.12.1-adapter-vs-v7.12.2-daemon flap):
+    // the daemon is already newer. Restarting would let the stale adapter
+    // respawn an older daemon and the two would flap forever. The gate must
+    // reject the stale adapter WITHOUT triggering a restart, regardless of how
+    // many sessions are active.
+    assert_eq!(
+        version_gate_action(Some("7.12.1"), "7.12.2", 0),
+        IncomingSessionAction::RejectStaleAdapter(RestartReason::VersionMismatch),
+        "older adapter with no active sessions must not shut down the newer daemon"
+    );
+    assert_eq!(
+        version_gate_action(Some("7.12.1"), "7.12.2", 3),
+        IncomingSessionAction::RejectStaleAdapter(RestartReason::VersionMismatch),
+        "older adapter must not flap a daemon serving live sessions"
+    );
+}
+
+#[test]
+fn test_version_gate_action_accepts_matching_and_missing_versions() {
+    assert_eq!(
+        version_gate_action(Some("7.12.2"), "7.12.2", 2),
+        IncomingSessionAction::Accept
+    );
+    assert_eq!(
+        version_gate_action(None, "7.12.2", 2),
+        IncomingSessionAction::Accept,
+        "an adapter that sends no version header is accepted (legacy/unknown)"
     );
 }
 
@@ -206,6 +240,15 @@ fn test_stale_binary_disconnect_action_triggers_shutdown_for_last_session() {
     assert_eq!(
         stale_binary_disconnect_action(true, true, 0),
         DisconnectLifecycleAction::TriggerShutdown(ShutdownCause::RestartRequired)
+    );
+}
+
+#[test]
+fn test_disconnect_action_triggers_shutdown_for_pending_version_restart_after_last_session() {
+    assert_eq!(
+        stale_binary_disconnect_action(false, true, 0),
+        DisconnectLifecycleAction::TriggerShutdown(ShutdownCause::RestartRequired),
+        "a version-mismatch restart pending latch must fire once the last session disconnects, even when the binary mtime is not stale"
     );
 }
 

@@ -128,6 +128,13 @@ pub enum IncomingSessionAction {
     AcceptWithRestartPending(RestartReason),
     RejectForRestart(RestartReason),
     ShutdownForRestart(RestartReason),
+    /// Reject this session WITHOUT triggering a daemon restart. Used when the
+    /// connecting adapter is older than the running daemon: restarting would let
+    /// the stale adapter respawn an older daemon, and two adapters at different
+    /// versions would flap the shared daemon forever. The daemon keeps running
+    /// at its (newer) version; the stale client must be relaunched to upgrade
+    /// its adapter binary.
+    RejectStaleAdapter(RestartReason),
 }
 
 /// Disconnect-time action when stale-binary checks run after a session ends.
@@ -278,7 +285,37 @@ pub fn transition(current: LifecyclePhase, event: LifecycleEvent) -> LifecyclePh
     }
 }
 
+/// Parse a semantic version string into a comparable `(major, minor, patch)`
+/// tuple, ignoring any pre-release/build suffix (`-rc1`, `+meta`). Returns
+/// `None` if the core triple is not numeric.
+fn parse_version_triple(version: &str) -> Option<(u64, u64, u64)> {
+    let core = version.split(['-', '+']).next().unwrap_or(version).trim();
+    let mut parts = core.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    // A missing patch component is treated as 0 (e.g. "7.12" == "7.12.0").
+    let patch = match parts.next() {
+        Some(value) => value.parse().ok()?,
+        None => 0,
+    };
+    Some((major, minor, patch))
+}
+
 /// Decide how the version gate should affect the lifecycle.
+///
+/// The daemon is shared across all MCP sessions, so it can only run one binary
+/// version at a time. When a connecting adapter reports a different version, the
+/// gate must converge on a single winner instead of letting each adapter restart
+/// the daemon into its own version (the v7.12.1-adapter ↔ v7.12.2-daemon flap):
+///
+/// * Adapter **newer** than the daemon → the daemon binary is stale; restart so
+///   the newer adapter respawns a matching daemon. Converges upward.
+/// * Adapter **older** than the daemon → the daemon is already newer; reject the
+///   stale adapter WITHOUT restarting (`RejectStaleAdapter`). Restarting here
+///   would respawn an older daemon and flap forever. The stale client must be
+///   relaunched to pick up the upgraded adapter binary.
+/// * Equal (or unparseable-but-different, treated conservatively as stale) →
+///   handled at the top / bottom respectively.
 pub fn version_gate_action(
     adapter_version: Option<&str>,
     daemon_version: &str,
@@ -290,6 +327,20 @@ pub fn version_gate_action(
 
     if adapter_version == daemon_version {
         return IncomingSessionAction::Accept;
+    }
+
+    let adapter_is_newer = match (
+        parse_version_triple(adapter_version),
+        parse_version_triple(daemon_version),
+    ) {
+        (Some(adapter), Some(daemon)) => adapter > daemon,
+        // Versions differ but at least one is unparseable: we cannot prove the
+        // adapter is newer, so never restart (never flap). Treat as stale.
+        _ => false,
+    };
+
+    if !adapter_is_newer {
+        return IncomingSessionAction::RejectStaleAdapter(RestartReason::VersionMismatch);
     }
 
     if active_sessions == 0 {
@@ -316,16 +367,20 @@ pub fn stale_binary_accept_action(
     }
 }
 
-/// Decide what stale-binary detection should do after a session disconnects.
+/// Decide what restart handling should do after a session disconnects.
+///
+/// `binary_is_stale` can flip false for restart causes unrelated to mtime
+/// staleness, such as a newer adapter requesting a version-mismatch restart.
+/// Once any restart is pending, the last disconnect must still signal shutdown.
 pub fn stale_binary_disconnect_action(
     binary_is_stale: bool,
     restart_pending: bool,
     remaining_sessions: usize,
 ) -> DisconnectLifecycleAction {
-    if !binary_is_stale {
-        DisconnectLifecycleAction::None
-    } else if remaining_sessions == 0 {
+    if remaining_sessions == 0 && (binary_is_stale || restart_pending) {
         DisconnectLifecycleAction::TriggerShutdown(ShutdownCause::RestartRequired)
+    } else if !binary_is_stale {
+        DisconnectLifecycleAction::None
     } else if restart_pending {
         DisconnectLifecycleAction::None
     } else {

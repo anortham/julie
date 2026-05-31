@@ -111,14 +111,15 @@ where
             if let Err((error, lost_line)) =
                 send_client_line(&mut transport, line, &mut in_flight_requests).await
             {
-                if !wrote_any_output {
-                    requeue_in_flight(pending_lines, &mut in_flight_requests);
-                }
-                return Err(AdapterError::Transport {
+                return Err(handle_send_failure(
                     error,
+                    lost_line,
                     wrote_any_output,
-                    lost_line: Some(lost_line),
-                });
+                    stdout,
+                    pending_lines,
+                    &mut in_flight_requests,
+                )
+                .await);
             }
             continue;
         }
@@ -143,14 +144,15 @@ where
                 match line {
                     Some(Ok(line)) => {
                         if let Err((error, lost_line)) = send_client_line(&mut transport, line, &mut in_flight_requests).await {
-                            if !wrote_any_output {
-                                requeue_in_flight(pending_lines, &mut in_flight_requests);
-                            }
-                            return Err(AdapterError::Transport {
+                            return Err(handle_send_failure(
                                 error,
+                                lost_line,
                                 wrote_any_output,
-                                lost_line: Some(lost_line),
-                            });
+                                stdout,
+                                pending_lines,
+                                &mut in_flight_requests,
+                            )
+                            .await);
                         }
                     }
                     Some(Err(error)) => {
@@ -167,6 +169,12 @@ where
                         requeue_in_flight(pending_lines, &mut in_flight_requests);
                         return Ok(ForwardOutcome::ImmediateDaemonDisconnect);
                     }
+                    // Output was already written this session, so it cannot be
+                    // safely replayed against a fresh daemon. Answer every
+                    // still-in-flight request with an error so the MCP client
+                    // fails those calls instead of hanging forever waiting for
+                    // a reply that will never arrive.
+                    answer_orphaned_in_flight(stdout, &in_flight_requests).await;
                     return Err(AdapterError::Transport {
                         error: anyhow::anyhow!(
                             "HTTP MCP daemon closed with {} request(s) still in flight after output was written",
@@ -242,6 +250,96 @@ where
     }
 
     Ok(())
+}
+
+/// Resolve a transport `send` failure into an `AdapterError`, answering the
+/// client where the session can no longer be safely retried.
+///
+/// * Before any output (`wrote_any_output == false`): the whole session can be
+///   replayed against a fresh daemon, so requeue the in-flight requests and let
+///   the retry loop resend them. The `lost_line` is returned in the error and
+///   pushed back onto `pending_lines` by the retry path.
+/// * After output (`wrote_any_output == true`): replay could double-apply
+///   non-idempotent tools, so the adapter will exit instead. Answer every
+///   request the client is still waiting on — the already-sent in-flight ones
+///   plus the request whose send just failed — with a synthesized error so the
+///   client fails those calls rather than hanging forever.
+async fn handle_send_failure<Out>(
+    error: anyhow::Error,
+    lost_line: Vec<u8>,
+    wrote_any_output: bool,
+    stdout: &mut Out,
+    pending_lines: &mut VecDeque<Vec<u8>>,
+    in_flight_requests: &mut VecDeque<(RequestId, Vec<u8>)>,
+) -> AdapterError
+where
+    Out: AsyncWrite + Unpin,
+{
+    if !wrote_any_output {
+        requeue_in_flight(pending_lines, in_flight_requests);
+    } else {
+        answer_orphaned_in_flight(stdout, in_flight_requests).await;
+        if let Some(id) = request_id_from_line(&lost_line) {
+            write_lost_connection_error(stdout, &id).await;
+        }
+    }
+    AdapterError::Transport {
+        error,
+        wrote_any_output,
+        lost_line: Some(lost_line),
+    }
+}
+
+/// Synthesize a JSON-RPC error response for every request that was still in
+/// flight when the daemon connection was lost, and write each to the MCP
+/// client's stdout.
+///
+/// Without this, the MCP client (e.g. Claude Code) stays blocked forever on the
+/// pending tool call — the all-night hang. Writing an error response for each
+/// orphaned request id lets the client fail the call cleanly instead.
+pub(super) async fn answer_orphaned_in_flight<Out>(
+    stdout: &mut Out,
+    in_flight_requests: &VecDeque<(RequestId, Vec<u8>)>,
+) where
+    Out: AsyncWrite + Unpin,
+{
+    for (request_id, _) in in_flight_requests {
+        write_lost_connection_error(stdout, request_id).await;
+    }
+}
+
+/// Write a single synthesized "daemon connection lost" JSON-RPC error response
+/// for `request_id`. Best-effort: if the client's stdout is already gone there
+/// is nothing more to do, so write/flush errors are ignored.
+pub(super) async fn write_lost_connection_error<Out>(stdout: &mut Out, request_id: &RequestId)
+where
+    Out: AsyncWrite + Unpin,
+{
+    let Ok(id) = serde_json::to_value(request_id) else {
+        return;
+    };
+    let message = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": -32603,
+            "message": "Julie daemon connection lost before the request completed (the daemon may be restarting); please retry."
+        }
+    });
+    let Ok(mut bytes) = serde_json::to_vec(&message) else {
+        return;
+    };
+    bytes.push(b'\n');
+    let _ = stdout.write_all(&bytes).await;
+    let _ = stdout.flush().await;
+}
+
+/// Extract the JSON-RPC request id from a raw client line, if it carries one.
+/// Used to answer un-replayed requests still sitting in `pending_lines` when the
+/// adapter exhausts its retry budget.
+pub(super) fn request_id_from_line(line: &[u8]) -> Option<RequestId> {
+    let message: ClientJsonRpcMessage = serde_json::from_slice(line).ok()?;
+    client_request_id(&message)
 }
 
 fn requeue_in_flight(

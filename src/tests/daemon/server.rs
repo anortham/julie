@@ -148,9 +148,24 @@ async fn test_daemon_starts_and_publishes_live_discovery() {
         other => panic!("expected live discovery.json, got {other:?}"),
     }
 
-    // We abort the task since we can't easily send SIGTERM to ourselves in a test.
-    handle.abort();
-    let _ = handle.await;
+    #[cfg(windows)]
+    {
+        let event_name = paths.daemon_shutdown_event();
+        crate::daemon::shutdown_event::signal_shutdown(&event_name)
+            .expect("shutdown event signal should not fail");
+        let daemon_result = tokio::time::timeout(Duration::from_secs(15), handle)
+            .await
+            .expect("daemon should stop after shutdown event")
+            .expect("daemon task should not panic");
+        daemon_result.expect("daemon should shut down cleanly");
+    }
+
+    #[cfg(not(windows))]
+    {
+        // We abort the task since we can't easily send SIGTERM to ourselves in a test.
+        handle.abort();
+        let _ = handle.await;
+    }
 }
 
 #[tokio::test]

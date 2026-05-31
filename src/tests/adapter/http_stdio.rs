@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
     use axum::http::HeaderName;
@@ -146,6 +147,57 @@ mod tests {
                 *closed.lock().unwrap() = true;
                 Ok(())
             }
+        }
+    }
+
+    /// Succeeds on the first `send` and delivers one queued response (so
+    /// `wrote_any_output` becomes true), then fails every subsequent `send`.
+    /// Models the daemon dropping the connection mid-session on an outbound
+    /// request after earlier responses were already forwarded.
+    struct SendFailsAfterResponseTransport {
+        response: Mutex<Option<ServerJsonRpcMessage>>,
+        response_delivered: Arc<AtomicBool>,
+    }
+
+    impl SendFailsAfterResponseTransport {
+        fn new(response: ServerJsonRpcMessage) -> Self {
+            Self {
+                response: Mutex::new(Some(response)),
+                response_delivered: Arc::new(AtomicBool::new(false)),
+            }
+        }
+    }
+
+    impl Transport<RoleClient> for SendFailsAfterResponseTransport {
+        type Error = FakeTransportError;
+
+        fn send(
+            &mut self,
+            _item: ClientJsonRpcMessage,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'static {
+            let delivered = Arc::clone(&self.response_delivered);
+            async move {
+                if delivered.load(Ordering::SeqCst) {
+                    Err(FakeTransportError)
+                } else {
+                    Ok(())
+                }
+            }
+        }
+
+        async fn receive(&mut self) -> Option<ServerJsonRpcMessage> {
+            if let Some(response) = self.response.lock().unwrap().take() {
+                self.response_delivered.store(true, Ordering::SeqCst);
+                Some(response)
+            } else {
+                // Never end the stream: the next failure must come from `send`,
+                // not from a daemon EOF on `receive`.
+                std::future::pending().await
+            }
+        }
+
+        fn close(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move { Ok(()) }
         }
     }
 
@@ -375,6 +427,100 @@ mod tests {
             "restart handoff errors should be retried instead of written to client stdout"
         );
         assert_eq!(sent.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_in_flight_request_gets_error_response_when_daemon_disconnects_after_output() {
+        // Reproduces the all-night hang: the daemon answers id=1 (output is
+        // written, so the session can no longer be safely replayed), then the
+        // connection drops with id=2 still in flight. The bridge MUST synthesize
+        // a JSON-RPC error response for id=2 so the MCP client fails that tool
+        // call instead of waiting forever for a reply that will never come.
+        let transport = FakeHttpTransport::new(vec![initialize_response(1)]);
+        let (stdin, mut stdin_writer) = tokio::io::duplex(4096);
+        let mut stdout = Vec::new();
+
+        stdin_writer
+            .write_all(br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"0.0.0"}}}"#)
+            .await
+            .unwrap();
+        stdin_writer.write_all(b"\n").await.unwrap();
+        stdin_writer
+            .write_all(br#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_symbols","arguments":{}}}"#)
+            .await
+            .unwrap();
+        stdin_writer.write_all(b"\n").await.unwrap();
+        stdin_writer.shutdown().await.unwrap();
+
+        // The bridge gives up (daemon vanished after output), but before doing
+        // so it must answer every request the client is still waiting on.
+        let _ = forward_http_stdio_transport(transport, stdin, &mut stdout).await;
+
+        let messages = stdout_messages(&stdout);
+        assert!(
+            messages
+                .iter()
+                .any(|m| matches!(m, JsonRpcMessage::Response(r) if r.id == RequestId::Number(1))),
+            "id=1 should still receive its real response; stdout={messages:?}"
+        );
+        let error_for_2 = messages
+            .iter()
+            .find(|m| matches!(m, JsonRpcMessage::Error(e) if e.id == RequestId::Number(2)));
+        assert!(
+            error_for_2.is_some(),
+            "in-flight id=2 must get a synthesized JSON-RPC error so the client does not hang; stdout={messages:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_in_flight_request_gets_error_response_when_send_fails_after_output() {
+        // id=1 is answered and its response is forwarded (wrote_any_output=true).
+        // Then the daemon connection breaks on the *send* of id=2. Because the
+        // session can no longer be safely replayed, id=2 must still receive a
+        // synthesized JSON-RPC error instead of being dropped (which would hang
+        // the client).
+        let transport = SendFailsAfterResponseTransport::new(initialize_response(1));
+        let (stdin, mut stdin_writer) = tokio::io::duplex(4096);
+        let mut stdout = Vec::new();
+
+        stdin_writer
+            .write_all(br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"0.0.0"}}}"#)
+            .await
+            .unwrap();
+        stdin_writer.write_all(b"\n").await.unwrap();
+
+        // Delay id=2 until id=1's response has been forwarded, so the failing
+        // send happens after output was written.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            stdin_writer
+                .write_all(br#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_symbols","arguments":{}}}"#)
+                .await
+                .unwrap();
+            stdin_writer.write_all(b"\n").await.unwrap();
+            stdin_writer.shutdown().await.unwrap();
+        });
+
+        let _ = timeout(
+            Duration::from_secs(5),
+            forward_http_stdio_transport(transport, stdin, &mut stdout),
+        )
+        .await
+        .expect("bridge must not hang when a send fails after output");
+
+        let messages = stdout_messages(&stdout);
+        assert!(
+            messages
+                .iter()
+                .any(|m| matches!(m, JsonRpcMessage::Response(r) if r.id == RequestId::Number(1))),
+            "id=1 should receive its real response; stdout={messages:?}"
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|m| matches!(m, JsonRpcMessage::Error(e) if e.id == RequestId::Number(2))),
+            "id=2 must get a synthesized JSON-RPC error when its send fails after output; stdout={messages:?}"
+        );
     }
 
     #[test]

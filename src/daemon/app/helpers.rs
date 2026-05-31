@@ -250,8 +250,9 @@ pub(crate) fn spawn_cleanup_sweep(
 /// mechanism. Returns the `Notify` the caller should `.notified()` on.
 /// On Unix this is a no-op that just returns an unused `Notify`.
 #[allow(unused_variables)]
-pub(crate) fn setup_stop_notify(paths: &DaemonPaths) -> Arc<Notify> {
+pub(crate) fn setup_stop_notify(paths: &DaemonPaths) -> (Arc<Notify>, Option<String>) {
     let stop_notify = Arc::new(Notify::new());
+    let mut shutdown_event_name = None;
     #[cfg(windows)]
     {
         let event_name = paths.daemon_shutdown_event();
@@ -264,6 +265,7 @@ pub(crate) fn setup_stop_notify(paths: &DaemonPaths) -> Arc<Notify> {
                     event.wait();
                     notify.notify_one();
                 });
+                shutdown_event_name = Some(event_name);
             }
             Err(e) => {
                 warn!(
@@ -274,7 +276,20 @@ pub(crate) fn setup_stop_notify(paths: &DaemonPaths) -> Arc<Notify> {
             }
         }
     }
-    stop_notify
+    (stop_notify, shutdown_event_name)
+}
+
+pub(crate) fn signal_shutdown_event_waiter(event_name: Option<&str>) {
+    #[cfg(windows)]
+    if let Some(event_name) = event_name {
+        if let Err(error) = crate::daemon::shutdown_event::signal_shutdown(event_name) {
+            warn!(
+                event_name,
+                error = %error,
+                "Failed to wake daemon shutdown-event waiter during cleanup",
+            );
+        }
+    }
 }
 
 /// Spawn the one-shot bridge task that funnels a `restart_notify` signal

@@ -9,7 +9,8 @@ use tracing::{error, info};
 
 use crate::adapter::ForwardOutcome;
 use crate::adapter::forwarder::{
-    AdapterError, forward_http_stdio_transport_with_pending, spawn_stdin_line_reader,
+    AdapterError, forward_http_stdio_transport_with_pending, request_id_from_line,
+    spawn_stdin_line_reader, write_lost_connection_error,
 };
 use crate::adapter::launcher::DaemonLauncher;
 use crate::daemon::http_client::http_client_config_for_endpoint;
@@ -106,7 +107,7 @@ pub(crate) async fn run_http_adapter_inner<C, F, T, In, Out>(
     launcher: &C,
     stdin: In,
     stdout: &mut Out,
-    mut make_transport: F,
+    make_transport: F,
 ) -> Result<()>
 where
     C: DaemonAdapterControl,
@@ -115,18 +116,47 @@ where
     In: AsyncRead + Send + Unpin + 'static,
     Out: AsyncWrite + Unpin,
 {
+    run_http_adapter_inner_with_backoff(
+        startup_hint,
+        launcher,
+        stdin,
+        stdout,
+        make_transport,
+        retry_backoff,
+    )
+    .await
+}
+
+/// Backoff-injectable core of the retry loop. Production uses [`retry_backoff`];
+/// tests pass a zero-delay closure so the full retry budget elapses instantly.
+pub(crate) async fn run_http_adapter_inner_with_backoff<C, F, T, In, Out, B>(
+    startup_hint: WorkspaceStartupHint,
+    launcher: &C,
+    stdin: In,
+    stdout: &mut Out,
+    mut make_transport: F,
+    backoff: B,
+) -> Result<()>
+where
+    C: DaemonAdapterControl,
+    F: FnMut(&TransportEndpoint, &WorkspaceStartupHint) -> Result<T>,
+    T: Transport<RoleClient>,
+    In: AsyncRead + Send + Unpin + 'static,
+    Out: AsyncWrite + Unpin,
+    B: Fn(u32) -> Duration,
+{
     let mut stdin_lines = spawn_stdin_line_reader(stdin);
     let mut pending_lines = VecDeque::new();
 
     for attempt in 0..=MAX_RETRIES {
         if attempt > 0 {
-            let backoff = retry_backoff(attempt);
+            let backoff_delay = backoff(attempt);
             info!(
                 attempt = attempt + 1,
-                backoff_secs = backoff.as_secs(),
+                backoff_secs = backoff_delay.as_secs(),
                 "HTTP adapter backing off before retry"
             );
-            tokio::time::sleep(backoff).await;
+            tokio::time::sleep(backoff_delay).await;
         }
 
         ensure_daemon_ready_blocking(launcher).context("Failed to ensure daemon is ready")?;
@@ -149,6 +179,7 @@ where
                         continue;
                     }
                     RestartHandoffAction::Exhausted { .. } => {
+                        answer_unanswered_pending(stdout, &pending_lines).await;
                         return Err(anyhow::Error::from(error))
                             .context("Failed to discover HTTP daemon transport after retries");
                     }
@@ -174,6 +205,7 @@ where
                         continue;
                     }
                     RestartHandoffAction::Exhausted { .. } => {
+                        answer_unanswered_pending(stdout, &pending_lines).await;
                         return Err(error)
                             .context("Failed to discover HTTP daemon transport after retries");
                     }
@@ -207,6 +239,7 @@ where
                         continue;
                     }
                     RestartHandoffAction::Exhausted { reason } => {
+                        answer_unanswered_pending(stdout, &pending_lines).await;
                         anyhow::bail!(
                             "HTTP daemon closed before a response after {} attempts ({:?})",
                             MAX_RETRIES + 1,
@@ -244,6 +277,11 @@ where
                                     "HTTP adapter transport error after output written, exiting: {}",
                                     error
                                 );
+                                // The forwarder already answered the in-flight
+                                // requests it knew about; answer any queued
+                                // requests it had not yet resent so none are
+                                // left hanging.
+                                answer_unanswered_pending(stdout, &pending_lines).await;
                                 ensure_daemon_ready_blocking(launcher).context(
                                     "Failed to recover daemon readiness before terminal adapter exit",
                                 )?;
@@ -255,7 +293,15 @@ where
                         return Ok(());
                     }
                     AdapterRetryDecision::Exhausted => match adapter_error {
-                        AdapterError::Transport { error, .. } => {
+                        AdapterError::Transport {
+                            error, lost_line, ..
+                        } => {
+                            // The request whose send last failed is not in
+                            // pending_lines; queue it so it is answered too.
+                            if let Some(line) = lost_line {
+                                pending_lines.push_back(line);
+                            }
+                            answer_unanswered_pending(stdout, &pending_lines).await;
                             return Err(error).context(format!(
                                 "HTTP adapter transport error before output after {} attempts",
                                 MAX_RETRIES + 1
@@ -274,6 +320,24 @@ where
     }
 
     unreachable!("retry loop either returns success or exits with an error")
+}
+
+/// Answer every client request still queued in `pending_lines` with a
+/// synthesized "connection lost" error before the adapter gives up.
+///
+/// In-flight requests (already on the wire) are answered by the forwarder when
+/// the transport dies after output; this covers requests that were requeued for
+/// replay but never made it back out because the retry budget was exhausted.
+/// Without it, those requests would leave the MCP client hanging forever.
+async fn answer_unanswered_pending<Out>(stdout: &mut Out, pending_lines: &VecDeque<Vec<u8>>)
+where
+    Out: AsyncWrite + Unpin,
+{
+    for line in pending_lines {
+        if let Some(id) = request_id_from_line(line) {
+            write_lost_connection_error(stdout, &id).await;
+        }
+    }
 }
 
 fn ensure_daemon_ready_blocking<C: DaemonAdapterControl>(launcher: &C) -> std::io::Result<()> {

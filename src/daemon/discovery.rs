@@ -36,8 +36,11 @@
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use fs2::FileExt;
+
+static HELD_DAEMON_LOCKS: OnceLock<Mutex<std::collections::HashSet<PathBuf>>> = OnceLock::new();
 
 /// Holds an exclusive OS-native advisory lock on the daemon lock file.
 ///
@@ -50,6 +53,7 @@ use fs2::FileExt;
 pub struct DaemonLockGuard {
     file: File,
     path: PathBuf,
+    lock_key: PathBuf,
 }
 
 /// Error returned when another holder already owns the daemon lock for
@@ -70,6 +74,16 @@ impl DaemonLockGuard {
     /// (e.g. EACCES, permission denied, parent dir missing) are
     /// reported via `io::Error`.
     pub fn try_acquire(path: &Path) -> Result<Self, AcquireError> {
+        let lock_key = normalize_lock_path(path);
+        let mut held_locks = held_daemon_locks()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if held_locks.contains(&lock_key) {
+            return Err(AcquireError::AlreadyHeld(LockAlreadyHeld {
+                path: path.to_path_buf(),
+            }));
+        }
+
         let file = OpenOptions::new()
             .create(true)
             .read(true)
@@ -82,15 +96,17 @@ impl DaemonLockGuard {
             })?;
 
         match FileExt::try_lock_exclusive(&file) {
-            Ok(()) => Ok(Self {
-                file,
-                path: path.to_path_buf(),
-            }),
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                Err(AcquireError::AlreadyHeld(LockAlreadyHeld {
+            Ok(()) => {
+                held_locks.insert(lock_key.clone());
+                Ok(Self {
+                    file,
                     path: path.to_path_buf(),
-                }))
+                    lock_key,
+                })
             }
+            Err(e) if is_lock_already_held(&e) => Err(AcquireError::AlreadyHeld(LockAlreadyHeld {
+                path: path.to_path_buf(),
+            })),
             Err(source) => Err(AcquireError::Io {
                 path: path.to_path_buf(),
                 source,
@@ -117,7 +133,23 @@ impl Drop for DaemonLockGuard {
                 "Failed to release daemon lock cleanly; file close will still release",
             );
         }
+        held_daemon_locks()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&self.lock_key);
     }
+}
+
+fn held_daemon_locks() -> &'static Mutex<std::collections::HashSet<PathBuf>> {
+    HELD_DAEMON_LOCKS.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+
+fn normalize_lock_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn is_lock_already_held(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::WouldBlock || cfg!(windows) && error.raw_os_error() == Some(33)
 }
 
 /// Full failure surface for `DaemonLockGuard::try_acquire`.

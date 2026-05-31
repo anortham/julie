@@ -273,14 +273,15 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
         }),
     )
     .await?;
-    handler.mark_workspace_active(&secondary_id).await;
-
     assert_eq!(
         handler.current_workspace_id(),
         None,
         "reference-scoped first request should start before any primary bind"
     );
-    assert!(handler.is_workspace_active(&secondary_id).await);
+    assert!(
+        !handler.is_workspace_active(&secondary_id).await,
+        "workspace-scoped request should activate the target through the normal resolver path"
+    );
 
     let search_result = tokio::time::timeout(Duration::from_secs(10), async {
         <JulieServerHandler as ServerHandler>::call_tool(
@@ -311,6 +312,10 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
         handler.current_workspace_id(),
         None,
         "reference-scoped definition search must not bind the primary workspace"
+    );
+    assert!(
+        handler.is_workspace_active(&secondary_id).await,
+        "workspace-scoped request should auto-activate the target workspace"
     );
 
     drop(write_half);

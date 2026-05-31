@@ -20,7 +20,7 @@ pub(crate) use forwarder::{AdapterError, forward_http_stdio_transport};
 #[cfg(test)]
 pub(crate) use http_stdio::{
     AdapterRetryDecision, DaemonAdapterControl, MAX_RETRIES, classify_adapter_error, retry_backoff,
-    run_http_adapter_inner,
+    run_http_adapter_inner, run_http_adapter_inner_with_backoff,
 };
 
 use self::http_stdio::run_http_adapter;

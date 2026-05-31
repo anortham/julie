@@ -309,9 +309,7 @@ impl HttpTransportServer {
     }
 
     pub async fn shutdown(self) -> Result<()> {
-        let force_after =
-            (self.shutdown_state.current() == TRANSPORT_ABORTED).then_some(Duration::from_secs(5));
-        self.shutdown_inner(force_after).await
+        self.shutdown_inner(Some(Duration::from_secs(1))).await
     }
 
     pub async fn shutdown_forced(self, force_after: Duration) -> Result<()> {

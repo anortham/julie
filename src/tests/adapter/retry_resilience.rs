@@ -17,7 +17,7 @@ mod tests {
     use crate::adapter::{
         AdapterError, AdapterRetryDecision, DaemonAdapterControl, ForwardOutcome, MAX_RETRIES,
         classify_adapter_error, forward_http_stdio_transport, retry_backoff,
-        run_http_adapter_inner,
+        run_http_adapter_inner, run_http_adapter_inner_with_backoff,
     };
     use crate::daemon::http_transport::{MCP_PATH, READINESS_PATH};
     use crate::daemon::transport::TransportEndpoint;
@@ -473,6 +473,57 @@ mod tests {
             control.ensure_calls(),
             2,
             "adapter must recover daemon readiness before terminal exit when daemon EOF leaves a request in flight"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exhausted_retries_answer_queued_request_with_error() {
+        // The daemon never accepts the request (every send fails before any
+        // output), so the adapter retries to exhaustion. The queued request
+        // must not be left unanswered: the MCP client receives a synthesized
+        // JSON-RPC error instead of hanging forever. Backoff is zeroed so the
+        // full retry budget elapses instantly.
+        let control = CountingDaemonControl::new();
+        let (stdin, mut stdin_writer) = tokio::io::duplex(2048);
+        let mut stdout = Vec::new();
+        let startup_hint = WorkspaceStartupHint {
+            path: std::env::current_dir().expect("current dir"),
+            source: Some(WorkspaceStartupSource::Cwd),
+        };
+
+        stdin_writer
+            .write_all(br#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_symbols","arguments":{}}}"#)
+            .await
+            .unwrap();
+        stdin_writer.write_all(b"\n").await.unwrap();
+        stdin_writer.shutdown().await.unwrap();
+
+        let result = run_http_adapter_inner_with_backoff(
+            startup_hint,
+            &control,
+            stdin,
+            &mut stdout,
+            |_endpoint, _startup_hint| Ok(AlwaysFailSendTransport::new()),
+            |_attempt| Duration::from_millis(0),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "exhausting the retry budget should surface an error: {result:?}"
+        );
+
+        let messages: Vec<serde_json::Value> = stdout
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_slice(line).expect("valid JSON-RPC stdout line"))
+            .collect();
+        let answered_id_7 = messages
+            .iter()
+            .any(|m| m.get("id") == Some(&serde_json::json!(7)) && m.get("error").is_some());
+        assert!(
+            answered_id_7,
+            "queued id=7 must receive a synthesized error when retries are exhausted; stdout={messages:?}"
         );
     }
 

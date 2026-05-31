@@ -18,6 +18,7 @@ use super::super::shutdown::{DrainOutcome, drain_with_markers, publish_discovery
 use super::super::watcher_pool::WatcherPool;
 use super::super::workspace_pool::WorkspacePool;
 use super::super::{ShutdownArtifacts, drain_timeout, perform_shutdown_sequence};
+use super::helpers::signal_shutdown_event_waiter;
 
 /// Handle to a running `DaemonApp`. Query the bound MCP HTTP address and
 /// trigger graceful shutdown via `shutdown`. Option-wrapped fields get moved
@@ -49,6 +50,7 @@ pub struct DaemonHandle {
     pub(super) embedding_init_handle: Option<JoinHandle<()>>,
     // Shared with the Windows shutdown-event waker task.
     pub(super) stop_notify: Arc<Notify>,
+    pub(super) shutdown_event_name: Option<String>,
 }
 
 impl DaemonHandle {
@@ -71,6 +73,7 @@ impl DaemonHandle {
     /// lock. See `perform_shutdown_sequence` in `daemon/mod.rs` for steps
     /// 3-5.
     pub async fn shutdown(mut self) -> Result<()> {
+        signal_shutdown_event_waiter(self.shutdown_event_name.as_deref());
         // Step 0: announce that we're shutting down.
         // (a) Flip HTTP transport into the draining state so any NEW request
         //     after this point bounces with 503 Retry-After. In-flight
@@ -181,6 +184,7 @@ impl Drop for DaemonHandle {
     /// transport shutdown can't run here; its cancellation token + JoinHandle
     /// abort handle the unclean path.
     fn drop(&mut self) {
+        signal_shutdown_event_waiter(self.shutdown_event_name.as_deref());
         let _ = self.daemon_lock.take();
         let _ = std::fs::remove_file(self.paths.daemon_port());
         let _ = std::fs::remove_file(self.paths.discovery_file());

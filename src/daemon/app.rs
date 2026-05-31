@@ -255,7 +255,7 @@ impl DaemonApp {
             Arc::clone(&self.workspace_pool),
             Arc::clone(&self.watcher_pool),
         );
-        let stop_notify = setup_stop_notify(&self.paths);
+        let (stop_notify, shutdown_event_name) = setup_stop_notify(&self.paths);
 
         // Dashboard server: own auto-assigned port; MCP uses `listener`.
         let dashboard_state = crate::dashboard::state::DashboardState::new_with_watcher_pool(
@@ -381,6 +381,7 @@ impl DaemonApp {
                     "Failed to shut down HTTP transport after discovery publish failure"
                 );
             }
+            helpers::signal_shutdown_event_waiter(shutdown_event_name.as_deref());
             return Err(error).with_context(|| {
                 format!(
                     "Failed to publish initial discovery.json at {}",
@@ -478,6 +479,7 @@ impl DaemonApp {
             dashboard_task: Some(dashboard_task),
             embedding_init_handle: Some(embedding_init_handle),
             stop_notify: stop_notify_for_shutdown,
+            shutdown_event_name,
         })
     }
 }

@@ -211,11 +211,13 @@ mod tests {
         .await
         .unwrap();
 
-        // Send a mismatched version so the version gate fires (ShutdownForRestart).
+        // Send a NEWER version so the version gate fires ShutdownForRestart
+        // (an older version would be rejected without restart and not exercise
+        // the restart-pending path this test asserts).
         let response = post_initialize(
             server.local_addr(),
             fixture.workspace_root.path(),
-            "0.0.0-mismatched",
+            "999.999.999",
         );
 
         assert!(

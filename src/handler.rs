@@ -1260,6 +1260,15 @@ impl JulieServerHandler {
             .is_some_and(|watcher| watcher.is_running_for_test())
     }
 
+    #[cfg(test)]
+    pub async fn stop_loaded_workspace_file_watching_for_test(&self) -> Result<()> {
+        let mut workspace_guard = self.workspace.write().await;
+        if let Some(workspace) = workspace_guard.as_mut() {
+            workspace.stop_file_watching().await?;
+        }
+        Ok(())
+    }
+
     /// Get the workspace root path for workspace operations.
     ///
     /// Returns the resolved workspace root that was passed to `new()`.

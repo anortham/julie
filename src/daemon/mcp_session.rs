@@ -83,6 +83,18 @@ fn restart_required_error() -> McpError {
     )
 }
 
+/// Error returned to a stale (older-than-daemon) adapter. Deliberately avoids
+/// the word "restart" and uses `invalid_request` (not -32603) so the adapter's
+/// forwarder surfaces it immediately to the client instead of treating it as a
+/// restart handoff and retrying — retrying would never succeed because the
+/// adapter binary cannot change while its process is running.
+fn stale_adapter_error() -> McpError {
+    McpError::invalid_request(
+        "Julie daemon is newer than this client's adapter; exit and relaunch your MCP client to upgrade its adapter binary",
+        None,
+    )
+}
+
 struct HttpSessionRegistration {
     session_id: String,
     session_lifecycle: Option<SessionLifecycleHandle>,
@@ -473,6 +485,21 @@ impl HttpJulieService {
                     "Rejecting HTTP session while daemon waits to restart"
                 );
                 Err(restart_required_error())
+            }
+            IncomingSessionAction::RejectStaleAdapter(reason) => {
+                // Do NOT mark restart pending: the daemon is already newer than
+                // this adapter, so restarting would only let the stale adapter
+                // respawn an older daemon and flap the shared daemon between
+                // versions. Reject this client terminally and leave the daemon
+                // running for the up-to-date sessions.
+                warn!(
+                    adapter_version = adapter_version.unwrap_or("<none>"),
+                    daemon_version = env!("CARGO_PKG_VERSION"),
+                    ?reason,
+                    gate,
+                    "Rejecting stale adapter without restarting daemon; daemon is newer, relaunch the MCP client to upgrade its adapter"
+                );
+                Err(stale_adapter_error())
             }
         }
     }

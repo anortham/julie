@@ -557,7 +557,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_http_julie_session_rejects_version_mismatch_before_workspace_start() {
+    async fn test_http_julie_session_restarts_when_adapter_is_newer() {
+        // A NEWER adapter than the running daemon means the daemon binary is
+        // stale: restart so the newer adapter respawns a matching daemon. "999"
+        // is reliably newer than any real release version.
         let fixture = RealServiceFixture::new();
         let workspace_id = fixture.workspace_id();
         let dependencies = Arc::clone(&fixture.dependencies);
@@ -574,7 +577,7 @@ mod tests {
             InitializeRequestOptions {
                 workspace: Some(fixture.workspace_root.path()),
                 workspace_source: Some(WorkspaceStartupSource::Cli),
-                version: Some("0.0.0-mismatch"),
+                version: Some("999.999.999"),
                 ..InitializeRequestOptions::default()
             },
         );
@@ -582,15 +585,15 @@ mod tests {
         assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
         assert!(
             response.contains(r#""code":-32603"#),
-            "version mismatch must be reported as a JSON-RPC internal error: {response}"
+            "newer-adapter mismatch must be reported as a JSON-RPC internal error: {response}"
         );
         assert!(
             response.contains("restart"),
-            "version mismatch should tell the adapter to reconnect after restart: {response}"
+            "newer-adapter mismatch should tell the adapter to reconnect after restart: {response}"
         );
         assert!(
             fixture.lifecycle.restart_pending(),
-            "version mismatch should mark the daemon for restart"
+            "a newer adapter should mark the stale daemon for restart"
         );
         let workspace_row = fixture.daemon_db.get_workspace(&workspace_id).unwrap();
         assert!(
@@ -614,6 +617,68 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_julie_session_rejects_older_adapter_without_restart() {
+        // The all-night-hang flap: an OLDER adapter (v7.12.1) connects to a
+        // NEWER daemon (v7.12.2). Restarting here would respawn an older daemon
+        // and the two versions would flap forever. The daemon must reject the
+        // stale adapter WITHOUT marking itself for restart, staying up for the
+        // current-version sessions. "0.0.0" is reliably older than any release.
+        let fixture = RealServiceFixture::new();
+        let workspace_id = fixture.workspace_id();
+        let dependencies = Arc::clone(&fixture.dependencies);
+        let server = HttpTransportServer::bind(
+            fixture.paths.clone(),
+            HttpTransportConfig::default(),
+            move || Ok(HttpJulieService::new(Arc::clone(&dependencies))),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                workspace: Some(fixture.workspace_root.path()),
+                workspace_source: Some(WorkspaceStartupSource::Cli),
+                version: Some("0.0.0"),
+                ..InitializeRequestOptions::default()
+            },
+        );
+
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+        assert!(
+            response.contains(r#""code":-32600"#),
+            "stale-adapter rejection must use invalid_request (not the -32603 restart-handoff code): {response}"
+        );
+        assert!(
+            !response.contains("restart"),
+            "stale-adapter rejection must NOT say 'restart' (that triggers the adapter retry/flap loop): {response}"
+        );
+        assert!(
+            !fixture.lifecycle.restart_pending(),
+            "an older adapter must NOT mark the newer daemon for restart — that is the flap"
+        );
+        let workspace_row = fixture.daemon_db.get_workspace(&workspace_id).unwrap();
+        assert!(
+            workspace_row
+                .as_ref()
+                .map(|row| row.session_count == 0)
+                .unwrap_or(true),
+            "rejected stale adapter must not start a workspace session, row={workspace_row:?}"
+        );
+        for _ in 0..100 {
+            if fixture.sessions.active_count() == 0 {
+                server.shutdown().await.unwrap();
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!(
+            "rejected stale-adapter initialize should remove its daemon session tracker entry, active={}",
+            fixture.sessions.active_count()
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_http_julie_session_version_mismatch_does_not_emit_dashboard_session_change() {
         let (fixture, mut dashboard_rx) = RealServiceFixture::new_with_dashboard();
         let dependencies = Arc::clone(&fixture.dependencies);
@@ -630,7 +695,7 @@ mod tests {
             InitializeRequestOptions {
                 workspace: Some(fixture.workspace_root.path()),
                 workspace_source: Some(WorkspaceStartupSource::Cli),
-                version: Some("0.0.0-mismatch"),
+                version: Some("999.999.999"),
                 ..InitializeRequestOptions::default()
             },
         );
