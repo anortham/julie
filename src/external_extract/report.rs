@@ -4,6 +4,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::cli_tools::OutputFormat;
+use crate::external_extract::metadata::EXTRACT_HASH_ALGORITHM;
 use crate::external_extract::{ExternalExtractArgs, ExternalInfoSchemaState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,6 +56,7 @@ pub struct ExternalExtractReport {
     pub schema_version: Option<i32>,
     pub schema_state: Option<ExternalInfoSchemaState>,
     pub extract_contract_version: Option<i32>,
+    pub hash_algorithm: Option<String>,
     pub revision: Option<i64>,
     pub analyzed_revision: Option<i64>,
     pub analysis_state: Option<String>,
@@ -98,6 +100,7 @@ pub fn failed_external_extract_report(
         schema_version: None,
         schema_state: None,
         extract_contract_version: None,
+        hash_algorithm: Some(EXTRACT_HASH_ALGORITHM.to_string()),
         revision: None,
         analyzed_revision: None,
         analysis_state: None,
@@ -153,6 +156,9 @@ fn format_external_extract_text(report: &ExternalExtractReport) -> String {
     }
     if let Some(contract_version) = report.extract_contract_version {
         fields.push(format!("extract_contract_version={contract_version}"));
+    }
+    if let Some(hash_algorithm) = &report.hash_algorithm {
+        fields.push(format!("hash_algorithm={hash_algorithm}"));
     }
     if let Some(revision) = report.revision {
         fields.push(format!("revision={revision}"));
@@ -223,6 +229,7 @@ fn format_external_extract_markdown(report: &ExternalExtractReport) -> String {
             .extract_contract_version
             .map(|value| value.to_string()),
     );
+    push_optional_markdown_row(&mut output, "Hash Algorithm", report.hash_algorithm.clone());
     push_optional_markdown_row(
         &mut output,
         "Revision",

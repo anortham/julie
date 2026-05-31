@@ -19,12 +19,17 @@ use crate::external_extract::lock::ExternalExtractOperationLock;
 /// - v2 (Phase 3b): adds carrier-gated string-literal records (`literals` table,
 ///   migration 028 → schema 28) — URL/SQL/route literals passed to HTTP/DB-client
 ///   calls across all applicable languages, with interpolation normalized to `{}`.
-pub const EXTRACT_CONTRACT_VERSION: i32 = 2;
+/// - v3: adds required `hash_algorithm=blake3` metadata/reporting while keeping
+///   schema 28 unchanged.
+pub const EXTRACT_CONTRACT_VERSION: i32 = 3;
 
-pub const REQUIRED_METADATA_KEYS: [&str; 9] = [
+pub const EXTRACT_HASH_ALGORITHM: &str = "blake3";
+
+pub const REQUIRED_METADATA_KEYS: [&str; 10] = [
     "julie_version",
     "sqlite_schema_version",
     "extract_contract_version",
+    "hash_algorithm",
     "workspace_id",
     "root_path",
     "created_at",
@@ -38,6 +43,7 @@ pub struct ExternalExtractMetadata {
     pub julie_version: String,
     pub sqlite_schema_version: i32,
     pub extract_contract_version: i32,
+    pub hash_algorithm: String,
     pub workspace_id: String,
     pub root_path: String,
     pub created_at: i64,
@@ -120,11 +126,12 @@ pub fn ensure_external_extract_metadata_with_root_policy(
     let existing = load_metadata_map(db)?;
     let normalized_root_path = normalized_root_path(root_path);
     let workspace_id = match (existing.get("workspace_id"), requested_workspace_id) {
-        (Some(existing), Some(requested)) if existing != requested => {
+        (Some(existing), Some(requested)) if existing != requested && !allow_root_rebuild => {
             return Err(anyhow!(
-                "workspace id mismatch: database has '{existing}', requested '{requested}'"
+                "workspace id mismatch: database has '{existing}', requested '{requested}'; rerun extract scan --force to rebuild for the requested workspace id"
             ));
         }
+        (Some(_), Some(requested)) => requested.to_string(),
         (Some(existing), _) => existing.clone(),
         (None, Some(requested)) => requested.to_string(),
         (None, None) => Uuid::new_v4().to_string(),
@@ -151,6 +158,7 @@ pub fn ensure_external_extract_metadata_with_root_policy(
         julie_version: env!("CARGO_PKG_VERSION").to_string(),
         sqlite_schema_version: db.get_schema_version()?,
         extract_contract_version: EXTRACT_CONTRACT_VERSION,
+        hash_algorithm: EXTRACT_HASH_ALGORITHM.to_string(),
         workspace_id,
         root_path: normalized_root_path,
         created_at,
@@ -241,6 +249,7 @@ pub(crate) fn metadata_from_map(
         julie_version: values["julie_version"].clone(),
         sqlite_schema_version: parse_required_i32(values, "sqlite_schema_version")?,
         extract_contract_version: parse_required_i32(values, "extract_contract_version")?,
+        hash_algorithm: values["hash_algorithm"].clone(),
         workspace_id: values["workspace_id"].clone(),
         root_path: values["root_path"].clone(),
         created_at: parse_required_i64(values, "created_at")?,
@@ -281,6 +290,7 @@ fn write_metadata(db: &SymbolDatabase, metadata: &ExternalExtractMetadata) -> Re
             "extract_contract_version",
             metadata.extract_contract_version.to_string(),
         ),
+        ("hash_algorithm", metadata.hash_algorithm.clone()),
         ("workspace_id", metadata.workspace_id.clone()),
         ("root_path", metadata.root_path.clone()),
         ("created_at", metadata.created_at.to_string()),

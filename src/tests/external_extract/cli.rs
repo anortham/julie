@@ -6,7 +6,8 @@ use serde_json::json;
 use crate::cli_tools::OutputFormat;
 use crate::external_extract::{
     ExternalExtractArgs, ExternalExtractCommand, ExternalExtractError, ExternalExtractReport,
-    ExternalExtractStatus, ExternalInfoSchemaState, format_external_extract_report,
+    ExternalExtractStatus, ExternalInfoSchemaState, failed_external_extract_report,
+    format_external_extract_report,
 };
 
 #[test]
@@ -185,6 +186,7 @@ fn external_extract_report_json_is_deterministic() {
         schema_version: Some(26),
         schema_state: Some(ExternalInfoSchemaState::Current),
         extract_contract_version: Some(1),
+        hash_algorithm: Some("blake3".to_string()),
         revision: Some(42),
         analyzed_revision: Some(41),
         analysis_state: Some("stale".to_string()),
@@ -221,6 +223,7 @@ fn external_extract_report_json_is_deterministic() {
             "schema_version": 26,
             "schema_state": "current",
             "extract_contract_version": 1,
+            "hash_algorithm": "blake3",
             "revision": 42,
             "analyzed_revision": 41,
             "analysis_state": "stale",
@@ -259,6 +262,7 @@ fn external_extract_report_formats_text_json_and_markdown() {
         schema_version: Some(26),
         schema_state: Some(ExternalInfoSchemaState::Current),
         extract_contract_version: Some(1),
+        hash_algorithm: Some("blake3".to_string()),
         revision: Some(42),
         analyzed_revision: Some(41),
         analysis_state: Some("stale".to_string()),
@@ -283,6 +287,7 @@ fn external_extract_report_formats_text_json_and_markdown() {
     assert!(text.contains("db_path=external.sqlite"));
     assert!(text.contains("revision=42"));
     assert!(text.contains("extract_contract_version=1"));
+    assert!(text.contains("hash_algorithm=blake3"));
     assert!(text.contains("files_updated=1"));
     assert!(text.contains("type_arguments_total=20"));
     assert!(text.contains("literals_total=22"));
@@ -297,6 +302,34 @@ fn external_extract_report_formats_text_json_and_markdown() {
     assert!(markdown.starts_with("# External Extract\n"));
     assert!(markdown.contains("| Operation | update |"));
     assert!(markdown.contains("| Status | changed |"));
+    assert!(markdown.contains("| Hash Algorithm | blake3 |"));
     assert!(markdown.contains("| Type Arguments Total | 20 |"));
     assert!(markdown.contains("| Literals Total | 22 |"));
+}
+
+#[test]
+fn external_extract_failed_report_includes_hash_algorithm_in_all_formats() {
+    let args = ExternalExtractArgs {
+        db: PathBuf::from("external.sqlite"),
+        root: Some(PathBuf::from("/repo")),
+        strict_schema: false,
+        ignore_files: Vec::new(),
+        workspace_id: Some("ws_1".to_string()),
+        analyze: false,
+        command: ExternalExtractCommand::Scan { force: false },
+    };
+
+    let error = anyhow::anyhow!("scan failed");
+    let report = failed_external_extract_report(&args, &error);
+
+    assert_eq!(
+        serde_json::to_value(&report).expect("failed report json")["hash_algorithm"],
+        "blake3"
+    );
+    let text =
+        format_external_extract_report(&report, OutputFormat::Text).expect("text report formats");
+    assert!(text.contains("hash_algorithm=blake3"));
+    let markdown = format_external_extract_report(&report, OutputFormat::Markdown)
+        .expect("markdown report formats");
+    assert!(markdown.contains("| Hash Algorithm | blake3 |"));
 }

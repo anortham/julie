@@ -5,6 +5,7 @@ use anyhow::{Context, Result, anyhow};
 
 use crate::database::{SymbolDatabase, calculate_file_hash};
 use crate::external_extract::data_loss_guard::ensure_batch_preserves_known_good_symbols;
+use crate::external_extract::metadata::EXTRACT_HASH_ALGORITHM;
 use crate::external_extract::{
     EXTRACT_CONTRACT_VERSION, ExternalExtractArgs, ExternalExtractCommand, ExternalExtractReport,
     ExternalExtractStatus, ExternalInfoSchemaState, ensure_external_extract_metadata,
@@ -47,12 +48,16 @@ pub async fn run_external_scan(args: &ExternalExtractArgs) -> Result<ExternalExt
     let files_scanned = discovered_files.len() as u64;
 
     let mut operation = open_external_extract_database_for_operation(&args.db, args.strict_schema)?;
-    let metadata = ensure_external_extract_metadata_with_root_policy(
-        operation.db(),
-        &root,
-        args.workspace_id.as_deref(),
-        force,
-    )?;
+    let metadata = if force {
+        None
+    } else {
+        Some(ensure_external_extract_metadata_with_root_policy(
+            operation.db(),
+            &root,
+            args.workspace_id.as_deref(),
+            false,
+        )?)
+    };
 
     let (files_to_extract, orphaned_files) = if force {
         (discovered_files, Vec::new())
@@ -67,21 +72,40 @@ pub async fn run_external_scan(args: &ExternalExtractArgs) -> Result<ExternalExt
     let symbols_extracted = batch.all_symbols.len() as u64;
     let files_updated = batch.files_processed as u64;
     let files_deleted = orphaned_files.len() as u64;
+    let (workspace_id, metadata) = match metadata {
+        Some(metadata) => (metadata.workspace_id.clone(), Some(metadata)),
+        None if let Some(requested_workspace_id) = args.workspace_id.clone() => {
+            (requested_workspace_id, None)
+        }
+        None => {
+            let metadata = ensure_external_extract_metadata_with_root_policy(
+                operation.db(),
+                &root,
+                None,
+                true,
+            )?;
+            (metadata.workspace_id.clone(), Some(metadata))
+        }
+    };
 
     let revision = if force {
-        persist_force_rebuild(operation.db_mut(), &metadata.workspace_id, &batch)?
+        persist_force_rebuild(operation.db_mut(), &workspace_id, &batch)?
     } else if batch.files_to_clean.is_empty() && orphaned_files.is_empty() {
         None
     } else {
-        persist_incremental_scan(
-            operation.db_mut(),
-            &metadata.workspace_id,
-            &batch,
-            &orphaned_files,
-        )?
+        persist_incremental_scan(operation.db_mut(), &workspace_id, &batch, &orphaned_files)?
     };
 
-    maybe_run_analysis(operation.db_mut(), &metadata.workspace_id, args.analyze)?;
+    if metadata.is_none() {
+        ensure_external_extract_metadata_with_root_policy(
+            operation.db(),
+            &root,
+            Some(&workspace_id),
+            true,
+        )?;
+    }
+
+    maybe_run_analysis(operation.db_mut(), &workspace_id, args.analyze)?;
 
     Ok(success_report(
         args,
@@ -94,7 +118,7 @@ pub async fn run_external_scan(args: &ExternalExtractArgs) -> Result<ExternalExt
         },
         "scan",
         Some(root),
-        Some(metadata.workspace_id),
+        Some(workspace_id),
         ReportCounts {
             files_scanned,
             files_updated,
@@ -289,6 +313,10 @@ pub fn run_external_info(args: &ExternalExtractArgs) -> Result<ExternalExtractRe
             .metadata
             .as_ref()
             .map(|metadata| metadata.extract_contract_version),
+        hash_algorithm: info
+            .metadata
+            .as_ref()
+            .map(|metadata| metadata.hash_algorithm.clone()),
         revision: info.latest_revision,
         analyzed_revision: info
             .metadata
@@ -399,6 +427,7 @@ fn success_report(
         schema_version: context.schema_version,
         schema_state: context.schema_state,
         extract_contract_version: context.extract_contract_version,
+        hash_algorithm: context.hash_algorithm,
         revision: context.revision,
         analyzed_revision: context.analyzed_revision,
         analysis_state: context.analysis_state,
@@ -424,6 +453,7 @@ struct ReportDbContext {
     julie_version: Option<String>,
     schema_state: Option<ExternalInfoSchemaState>,
     extract_contract_version: Option<i32>,
+    hash_algorithm: Option<String>,
     revision: Option<i64>,
     analyzed_revision: Option<i64>,
     analysis_state: Option<String>,
@@ -469,6 +499,10 @@ fn report_context(
             .as_ref()
             .map(|metadata| metadata.extract_contract_version)
             .or(Some(EXTRACT_CONTRACT_VERSION)),
+        hash_algorithm: metadata
+            .as_ref()
+            .map(|metadata| metadata.hash_algorithm.clone())
+            .or_else(|| Some(EXTRACT_HASH_ALGORITHM.to_string())),
         revision: workspace_id
             .map(|workspace_id| db.get_current_canonical_revision(workspace_id))
             .transpose()?

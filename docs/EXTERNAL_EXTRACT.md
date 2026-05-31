@@ -79,7 +79,9 @@ are rejected.
 One DB represents one logical codebase. If a later `scan`, `update`, or `delete`
 points the same DB at a different canonical root, Julie returns a root mismatch
 error. `scan --force` is the explicit rebuild path for a moved project root and
-updates the stored root metadata after the rebuild commits.
+updates the stored root metadata after extraction succeeds. A requested
+`--workspace-id` mismatch is also strict unless `scan --force --workspace-id`
+is used, which rebuilds the DB contents and rewrites the stored workspace id.
 
 ## Output
 
@@ -92,10 +94,11 @@ Successful JSON reports use this shape:
   "workspace_id": "external:...",
   "db_path": "/var/lib/code.sqlite",
   "root": "/repo",
-  "julie_version": "7.12.0",
-  "schema_version": 26,
+  "julie_version": "7.13.1",
+  "schema_version": 28,
   "schema_state": "current",
-  "extract_contract_version": 1,
+  "extract_contract_version": 3,
+  "hash_algorithm": "blake3",
   "revision": 42,
   "analyzed_revision": null,
   "analysis_state": "stale",
@@ -109,6 +112,8 @@ Successful JSON reports use this shape:
   "relationships_total": 900,
   "identifiers_total": 12000,
   "types_total": 14,
+  "type_arguments_total": 8,
+  "literals_total": 6,
   "errors": []
 }
 ```
@@ -120,8 +125,8 @@ Successful JSON reports use this shape:
 `extract info --json` uses the same report shape with `operation: "info"` and
 zero per-command counters (`files_scanned`, `files_updated`, `files_deleted`,
 `symbols_extracted`). It is the canonical way to read `julie_version`,
-`schema_state`, `extract_contract_version`, `missing_metadata_keys`, totals, and
-analysis state without mutating the DB.
+`schema_state`, `extract_contract_version`, `hash_algorithm`,
+`missing_metadata_keys`, totals, and analysis state without mutating the DB.
 
 Status values:
 

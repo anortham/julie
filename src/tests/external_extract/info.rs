@@ -61,7 +61,12 @@ fn extract_info_is_read_only_and_does_not_migrate() {
     assert_eq!(info.schema_version, Some(old_version));
     assert_eq!(info.schema_state, ExternalInfoSchemaState::Older);
     assert!(info.metadata.is_none());
-    assert!(info.missing_metadata_keys.len() >= 9);
+    assert!(info.missing_metadata_keys.len() >= 10);
+    assert!(
+        info.missing_metadata_keys
+            .iter()
+            .any(|key| key == "hash_algorithm")
+    );
     assert_eq!(info.counts.files, 0);
     assert_eq!(info.counts.symbols, 0);
 
@@ -87,6 +92,15 @@ fn extract_metadata_generates_stable_workspace_id() {
         let db = open_external_extract_database(&db_path, false).expect("open external db");
         let metadata = ensure_external_extract_metadata(&db, &root, None).expect("create metadata");
         uuid::Uuid::parse_str(&metadata.workspace_id).expect("generated workspace id is uuid");
+        let hash_algorithm: String = db
+            .conn
+            .query_row(
+                "SELECT value FROM external_extract_metadata WHERE key = 'hash_algorithm'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("hash algorithm metadata exists");
+        assert_eq!(hash_algorithm, "blake3");
         metadata.workspace_id
     };
 
@@ -224,12 +238,12 @@ fn extract_contract_version_and_schema_are_at_phase3b_coordinated_values() {
     // bridge. If you bump one of these, update the other (when applicable), update
     // Miller's gate, and record the new version triple in the Phase 3b plan docs.
     assert_eq!(
-        EXTRACT_CONTRACT_VERSION, 2,
-        "extract contract is v2 since Phase 3b (string-literal records); \
+        EXTRACT_CONTRACT_VERSION, 3,
+        "extract contract is v3 since workspace registry freshness (BLAKE3 hash metadata); \
          update the Miller gate in ~/source/codesearch if you change this"
     );
     assert_eq!(
         LATEST_SCHEMA_VERSION, 28,
-        "the literals table landed in migration 028; contract v2 ships with schema 28"
+        "the literals table landed in migration 028; contract v3 still ships with schema 28"
     );
 }
