@@ -91,10 +91,28 @@ impl ManageWorkspaceTool {
         // 🔥 CRITICAL FIX: Check if this targets a non-primary workspace FIRST before calling find_workspace_root.
         // Those workspaces do not have .julie/ directories, so find_workspace_root will walk up
         // to the primary workspace and return the wrong path!
-        let is_non_primary_target = if let Some(ref db) = handler.daemon_db {
+        let original_workspace_candidate = if original_path.is_file() {
+            original_path
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Cannot determine parent directory"))?
+                .to_path_buf()
+        } else {
+            original_path.clone()
+        };
+        let primary_canonical = current_primary_root
+            .canonicalize()
+            .unwrap_or_else(|_| current_primary_root.clone());
+        let request_canonical = original_workspace_candidate
+            .canonicalize()
+            .unwrap_or_else(|_| original_workspace_candidate.clone());
+        let explicit_path_outside_primary = explicit_path_requested
+            && request_canonical != primary_canonical
+            && !request_canonical.starts_with(&primary_canonical);
+
+        let registered_secondary = if let Some(ref db) = handler.daemon_db {
             // Daemon mode: registered but not the primary workspace.
             if let Some(ref primary_id) = bound_primary_id {
-                db.get_workspace_by_path(original_path.to_string_lossy().as_ref())
+                db.get_workspace_by_path(request_canonical.to_string_lossy().as_ref())
                     .ok()
                     .flatten()
                     .map(|row| row.workspace_id != *primary_id)
@@ -103,25 +121,30 @@ impl ManageWorkspaceTool {
                 false
             }
         } else {
-            // Stdio mode: if workspace is already loaded and the requested path
-            // is outside the current primary root, treat it as non-primary. Without this,
-            // resolve_workspace_path walks up to the primary's markers (e.g. .git)
-            // and conflates the target path with the primary workspace.
-            let primary_canonical = current_primary_root
-                .canonicalize()
-                .unwrap_or_else(|_| current_primary_root.clone());
-            let request_canonical = original_path
-                .canonicalize()
-                .unwrap_or_else(|_| original_path.clone());
-            request_canonical != primary_canonical
-                && !request_canonical.starts_with(&primary_canonical)
+            false
         };
 
-        // For non-primary targets, use the original path directly (no workspace root resolution)
-        // For primary workspaces, resolve to workspace root using markers
-        let workspace_path = if is_non_primary_target {
-            debug!("Non-primary workspace target detected, using original path directly");
-            original_path.clone()
+        let is_non_primary_target =
+            registered_secondary || (handler.daemon_db.is_none() && explicit_path_outside_primary);
+        let explicit_current_root_requested =
+            explicit_path_requested && request_canonical == primary_canonical;
+        let use_requested_root_directly = explicit_current_root_requested
+            || explicit_path_outside_primary
+            || is_non_primary_target;
+
+        // For an explicit current root, explicit paths outside the current root, and
+        // registered non-primary targets, use the requested root directly. The IMPLICIT
+        // case (path=None) deliberately does NOT short-circuit here: it must fall through
+        // to `resolve_workspace_path` -> `find_workspace_root` so a daemon/handler rooted at
+        // a project SUBDIR resolves up to the marked project root via workspace markers
+        // instead of indexing the subdir. Over-walking is bounded by the VCS_ROOT_MARKERS
+        // boundary stop, so marker discovery no longer climbs into a parent checkout or the
+        // Windows user profile (see `find_workspace_root`).
+        let workspace_path = if use_requested_root_directly {
+            debug!(
+                "Using requested/current workspace root directly without ancestor marker discovery"
+            );
+            original_workspace_candidate.clone()
         } else {
             self.resolve_workspace_path(path, Some(&current_primary_root))?
         };
@@ -132,7 +155,7 @@ impl ManageWorkspaceTool {
         crate::workspace::root_safety::reject_sensitive_workspace_root(&canonical_path)?;
 
         // Derive workspace_id for the gate — same logic used later when registering stats.
-        let gate_workspace_id = if is_non_primary_target {
+        let gate_workspace_id = if explicit_path_requested || is_non_primary_target {
             crate::workspace::registry::generate_workspace_id(&canonical_path.to_string_lossy())
                 .unwrap_or_else(|_| canonical_path.to_string_lossy().to_string())
         } else {

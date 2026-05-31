@@ -155,8 +155,11 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
 
     handler.set_current_primary_binding(rebound_primary_id.clone(), rebound_primary_path);
 
-    let renamed_original_root = temp_dir.path().join("original-primary-renamed");
-    fs::rename(&original_primary_root, &renamed_original_root).unwrap();
+    #[cfg(not(windows))]
+    {
+        let renamed_original_root = temp_dir.path().join("original-primary-renamed");
+        fs::rename(&original_primary_root, &renamed_original_root).unwrap();
+    }
 
     let result = ManageWorkspaceTool {
         operation: "refresh".to_string(),
@@ -674,6 +677,91 @@ async fn test_manage_workspace_index_subdirectory_under_current_root_stays_prima
         handler.current_workspace_root().canonicalize().unwrap(),
         workspace_path,
         "current primary root should remain the workspace root after subdirectory indexing"
+    );
+}
+
+/// Regression (`codex/windows-daemon-fixes-v7.13`): an implicit `index`
+/// (path=None) run while the handler is rooted at a SUBDIR of a marked project
+/// must walk up to the project root via workspace markers — it must not index
+/// the subdir as if it were the workspace root.
+///
+/// The branch regressed this by adding `!explicit_path_requested` to the
+/// `use_requested_root_directly` short-circuit in
+/// `handle_index_command_internal`: the implicit case then used
+/// `current_workspace_root()` (the subdir) verbatim, skipping
+/// `resolve_workspace_path` -> `find_workspace_root` marker discovery. A daemon
+/// started from `<project>/src/...` would then index the subdir, fragmenting the
+/// index and breaking cross-file navigation for the rest of the project.
+#[tokio::test]
+async fn test_manage_workspace_implicit_index_from_subdir_resolves_to_project_root() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let workspace_root = temp_dir.path().join("workspace");
+    let subdir = workspace_root.join("src").join("nested");
+    fs::create_dir_all(&subdir).unwrap();
+    fs::create_dir_all(workspace_root.join(".git")).unwrap();
+    fs::write(
+        workspace_root.join("src").join("main.rs"),
+        "fn root_marker() {}\n",
+    )
+    .unwrap();
+    fs::write(subdir.join("child.rs"), "fn child_marker() {}\n").unwrap();
+
+    let workspace_path = workspace_root.canonicalize().unwrap();
+    let subdir_path = subdir.canonicalize().unwrap();
+
+    // Handler rooted at the SUBDIR with no workspace loaded yet — this mirrors a
+    // daemon started from a project subdirectory before its first index. With no
+    // loaded workspace, the implicit-index path reads `current_workspace_root()`
+    // (the subdir) as the primary-root candidate.
+    let handler = JulieServerHandler::new(subdir_path.clone())
+        .await
+        .expect("handler should initialize");
+    assert!(
+        handler
+            .get_workspace()
+            .await
+            .expect("workspace lookup should succeed")
+            .is_none(),
+        "precondition: no workspace loaded, so the implicit-index path uses current_workspace_root()"
+    );
+    assert_eq!(
+        handler.current_workspace_root(),
+        subdir_path,
+        "precondition: current root must be the subdir so marker discovery has to walk up"
+    );
+
+    let result = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .expect("implicit index from a project subdir should succeed");
+
+    let text = extract_text_from_result(&result);
+    assert!(
+        text.contains("Workspace indexing complete") || text.contains("Workspace already indexed"),
+        "implicit index should complete successfully: {text}"
+    );
+
+    let loaded_workspace = handler
+        .get_workspace()
+        .await
+        .expect("workspace lookup should succeed")
+        .expect("workspace should be loaded after implicit index");
+    assert_eq!(
+        loaded_workspace.root.canonicalize().unwrap(),
+        workspace_path,
+        "implicit index from a subdir must resolve up to the marked project root, not index the subdir as the workspace root"
+    );
+    assert_eq!(
+        handler.current_workspace_root().canonicalize().unwrap(),
+        workspace_path,
+        "current primary root should be the project root after implicit index from a subdir"
     );
 }
 
