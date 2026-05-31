@@ -83,18 +83,19 @@ pub fn normalize_file_path(file_path: &str, workspace_root: &Path) -> String {
         path_to_canonicalize.clone()
     });
 
-    if canonical_path.is_absolute() {
-        crate::utils::paths::to_relative_unix_style(&canonical_path, workspace_root).unwrap_or_else(
-            |e| {
+    match crate::utils::paths::to_relative_unix_style(&canonical_path, workspace_root) {
+        Ok(relative_path) => relative_path,
+        Err(e) => {
+            if canonical_path.is_absolute() {
                 warn!(
                     "⚠️  Failed to convert to relative path '{}': {} - using absolute as fallback",
                     canonical_path.display(),
                     e
                 );
                 canonical_path.to_string_lossy().replace('\\', "/")
-            },
-        )
-    } else {
-        canonical_path.to_string_lossy().replace('\\', "/")
+            } else {
+                canonical_path.to_string_lossy().replace('\\', "/")
+            }
+        }
     }
 }

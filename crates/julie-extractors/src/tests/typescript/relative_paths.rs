@@ -181,7 +181,7 @@ mod relative_path_tests {
     fn test_windows_unc_paths_converted_to_relative() {
         // Test Windows UNC path conversion
         // This will only run on Windows where UNC paths exist
-        use std::path::Path;
+        use std::path::PathBuf;
 
         let workspace_root = PathBuf::from(r"\\?\C:\Users\murphy\source\julie");
         let file_path = workspace_root.join("src\\main.rs");

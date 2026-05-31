@@ -12,7 +12,7 @@
 //! both extract_canonical and capability_snapshot.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[test]
@@ -31,7 +31,7 @@ fn julie_extractors_works_as_path_dependency_in_downstream_crate() {
     let extractors_abs = extractors_path
         .canonicalize()
         .expect("canonicalize extractors path");
-    let extractors_abs_str = extractors_abs.to_string_lossy().replace('\\', "/");
+    let extractors_abs_str = cargo_path_dependency(&extractors_abs);
 
     fs::write(
         consumer.join("Cargo.toml"),
@@ -119,4 +119,20 @@ fn main() -> anyhow::Result<()> {
         run_status.success(),
         "downstream consumer crate failed to run"
     );
+}
+
+fn cargo_path_dependency(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    let path = strip_windows_verbatim_prefix(&path);
+    path.replace('\\', "/")
+}
+
+#[cfg(windows)]
+fn strip_windows_verbatim_prefix(path: &str) -> &str {
+    path.strip_prefix(r"\\?\").unwrap_or(path)
+}
+
+#[cfg(not(windows))]
+fn strip_windows_verbatim_prefix(path: &str) -> &str {
+    path
 }

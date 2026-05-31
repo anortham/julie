@@ -3,13 +3,18 @@
 
 use crate::base::SymbolKind;
 use crate::extract_canonical;
-use std::path::Path;
+use std::path::PathBuf;
+
+fn fixture_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/extraction/bash/cross_file")
+}
 
 #[test]
 fn test_bash_emits_structured_pending_for_cross_script_call() {
     let source = include_str!("../../../../../fixtures/extraction/bash/cross_file/source.sh");
-    let workspace_root = Path::new("/tmp/test");
-    let result = extract_canonical("source.sh", source, workspace_root)
+    let workspace_root = fixture_root();
+    let file_path = workspace_root.join("source.sh");
+    let result = extract_canonical(&file_path.to_string_lossy(), source, &workspace_root)
         .expect("canonical Bash extraction must succeed");
 
     let other = result
@@ -39,8 +44,9 @@ fn test_bash_emits_structured_pending_for_cross_script_call() {
 #[test]
 fn test_bash_negative_local_helper_not_emitted_as_pending() {
     let source = include_str!("../../../../../fixtures/extraction/bash/cross_file/source.sh");
-    let workspace_root = Path::new("/tmp/test");
-    let result = extract_canonical("source.sh", source, workspace_root)
+    let workspace_root = fixture_root();
+    let file_path = workspace_root.join("source.sh");
+    let result = extract_canonical(&file_path.to_string_lossy(), source, &workspace_root)
         .expect("canonical Bash extraction must succeed");
 
     let id = result

@@ -184,6 +184,7 @@ fn golden_fixtures_match_canonical_extraction() {
                     err
                 )
             });
+            let source = normalize_fixture_line_endings(source);
             let detected = detect_language_for_path(&fixture.source)
                 .unwrap_or_else(|err| panic!("failed to detect language for {case_key}: {err}"));
             assert_eq!(
@@ -231,6 +232,10 @@ fn golden_fixtures_match_canonical_extraction() {
             );
         }
     }
+}
+
+fn normalize_fixture_line_endings(source: String) -> String {
+    source.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 fn workspace_root() -> PathBuf {

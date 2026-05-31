@@ -36,15 +36,24 @@ pub fn to_relative_unix_style(absolute: &Path, workspace_root: &Path) -> Result<
     let normalized_root = strip_unc_prefix(&root_to_use);
 
     // Strip workspace prefix
-    let relative = normalized_path
-        .strip_prefix(&normalized_root)
-        .with_context(|| {
-            format!(
-                "File path '{}' is not within workspace root '{}'",
-                normalized_path.display(),
-                normalized_root.display()
-            )
-        })?;
+    let relative = match normalized_path.strip_prefix(&normalized_root) {
+        Ok(relative) => relative,
+        Err(error) => {
+            if let Some(relative) =
+                relative_by_normalized_string(&normalized_path, &normalized_root)
+            {
+                return Ok(relative);
+            }
+
+            return Err(error).with_context(|| {
+                format!(
+                    "File path '{}' is not within workspace root '{}'",
+                    normalized_path.display(),
+                    normalized_root.display()
+                )
+            });
+        }
+    };
 
     // Convert to string and normalize separators to Unix-style
     let path_str = relative.to_str().context("Path contains invalid UTF-8")?;
@@ -57,4 +66,83 @@ pub fn to_relative_unix_style(absolute: &Path, workspace_root: &Path) -> Result<
     };
 
     Ok(unix_style)
+}
+
+fn relative_by_normalized_string(path: &Path, root: &Path) -> Option<String> {
+    let path = path.to_string_lossy().replace('\\', "/");
+    let root = root.to_string_lossy().replace('\\', "/");
+    let root = root.trim_end_matches('/');
+
+    if root.is_empty() {
+        return None;
+    }
+
+    strip_normalized_prefix(&path, root).map(ToOwned::to_owned)
+}
+
+#[cfg(windows)]
+fn strip_normalized_prefix<'a>(path: &'a str, root: &str) -> Option<&'a str> {
+    let path_lower = path.to_ascii_lowercase();
+    let root_lower = root.to_ascii_lowercase();
+
+    if path_lower == root_lower {
+        return Some("");
+    }
+
+    let prefix = format!("{root_lower}/");
+    path_lower
+        .starts_with(&prefix)
+        .then(|| &path[root.len() + 1..])
+}
+
+#[cfg(not(windows))]
+fn strip_normalized_prefix<'a>(path: &'a str, root: &str) -> Option<&'a str> {
+    if path == root {
+        return Some("");
+    }
+
+    path.strip_prefix(&format!("{root}/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // Mirrors src/utils/paths.rs: the normalized-string fallback is duplicated
+    // here, so it needs the same Windows coverage. Path::strip_prefix compares
+    // components case-sensitively, so a case-mismatched component forces the
+    // case-insensitive fallback (relative_by_normalized_string) to run.
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_windows_relative_fallback_handles_case_mismatch() {
+        let workspace = PathBuf::from(r"C:\Users\Me\proj");
+        let absolute = PathBuf::from(r"C:\Users\me\proj\src\main.rs");
+
+        assert!(
+            absolute.strip_prefix(&workspace).is_err(),
+            "expected native strip_prefix to fail on case mismatch, forcing the fallback"
+        );
+
+        let result = to_relative_unix_style(&absolute, &workspace).unwrap();
+
+        assert_eq!(result, "src/main.rs");
+        assert!(!result.contains('\\'), "Should have no backslashes");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_windows_relative_fallback_path_equals_root_modulo_case() {
+        let workspace = PathBuf::from(r"C:\Users\Me\proj");
+        let absolute = PathBuf::from(r"C:\Users\me\proj");
+
+        assert!(
+            absolute.strip_prefix(&workspace).is_err(),
+            "expected native strip_prefix to fail on case mismatch, forcing the fallback"
+        );
+
+        let result = to_relative_unix_style(&absolute, &workspace).unwrap();
+
+        assert_eq!(result, "");
+    }
 }
