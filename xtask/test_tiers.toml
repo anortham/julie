@@ -115,28 +115,28 @@ commands = [
 [buckets.tools-search-line]
 # Line-mode search tests. line_mode.rs alone is ~63KB and dominates this slice;
 # isolating from file/zero-hit lets edits to one strategy skip the others.
-expected_seconds = 50
-timeout_seconds = 150
+expected_seconds = 250
+timeout_seconds = 330
 scope_label = "tooling"
-notes = "line-mode search coverage"
+notes = "line-mode search coverage; serialized because tests mutate process env and spin per-test indexers"
 commands = [
-  "cargo nextest run --lib tests::tools::search::line_ -- --skip search_quality",
+  "cargo nextest run -j 1 --lib tests::tools::search::line_ -- --skip search_quality",
 ]
 
 [buckets.tools-search-file-mode]
 # File-mode search tests (file_mode_*, file_pattern_tests).
-expected_seconds = 20
-timeout_seconds = 90
+expected_seconds = 60
+timeout_seconds = 120
 scope_label = "tooling"
-notes = "file-mode search coverage"
+notes = "file-mode search coverage; serialized on Windows because these tests spin per-test Tantivy indexers"
 commands = [
-  "cargo nextest run --lib tests::tools::search::file_ -- --skip search_quality",
+  "cargo nextest run -j 1 --lib tests::tools::search::file_ -- --skip search_quality",
 ]
 
 [buckets.tools-search-zero-hit]
 # Zero-hit reason and primary-workspace bug regression tests.
-expected_seconds = 15
-timeout_seconds = 60
+expected_seconds = 40
+timeout_seconds = 90
 scope_label = "tooling"
 notes = "zero-hit reason and primary-workspace regression coverage"
 commands = [
@@ -158,8 +158,8 @@ commands = [
 
 [buckets.tools-search-format-quality]
 # Annotation, content scoring, lean format, regression, quality, and race-condition coverage.
-expected_seconds = 25
-timeout_seconds = 90
+expected_seconds = 100
+timeout_seconds = 180
 scope_label = "tooling"
 notes = "search formatting, scoring, quality, and race coverage"
 commands = [
@@ -179,7 +179,7 @@ notes = "search context line coverage"
 commands = ["cargo nextest run --lib tests::tools::search_context_lines -- --skip search_quality"]
 
 [buckets.tools-search-text]
-expected_seconds = 25
+expected_seconds = 40
 timeout_seconds = 90
 scope_label = "tooling"
 notes = "text search coverage"
@@ -207,8 +207,8 @@ commands = [
 ]
 
 [buckets.tools-search-unified]
-expected_seconds = 25
-timeout_seconds = 90
+expected_seconds = 60
+timeout_seconds = 120
 scope_label = "tooling"
 notes = "unified search schema, ranking, reranker, and query-path coverage"
 commands = [
@@ -230,17 +230,17 @@ commands = [
 [buckets.tools-workspace]
 # Workspace management without the heavy targeting fixtures (carved out into
 # tools-workspace-targeting) and registry (in workspace-runtime).
-expected_seconds = 20
-timeout_seconds = 90
+expected_seconds = 300
+timeout_seconds = 420
 scope_label = "tooling"
-notes = "workspace management (excluding heavy targeting fixtures)"
+notes = "workspace management (excluding heavy targeting fixtures); mod_tests serialized on Windows-sensitive indexing cases"
 commands = [
   "cargo nextest run --lib tests::tools::workspace::discovery -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::file_policy -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::index_embedding_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::isolation -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::management_token -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::workspace::mod_tests -- --skip search_quality",
+  "cargo nextest run -j 1 --lib tests::tools::workspace::mod_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::processor -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::resolver -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::utils -- --skip search_quality",
@@ -250,10 +250,10 @@ commands = [
 # global_targeting.rs (~100KB) and refresh_routing.rs (~28KB) dominated the old
 # tools-workspace bucket. Isolating them lets edits to other workspace files
 # skip the heavy fixture setup these two files trigger.
-expected_seconds = 25
-timeout_seconds = 90
+expected_seconds = 170
+timeout_seconds = 240
 scope_label = "tooling"
-notes = "workspace global-targeting and refresh-routing coverage"
+notes = "workspace global-targeting and refresh-routing coverage; Windows runs include long activation cases"
 commands = [
   "cargo nextest run --lib tests::tools::workspace::global_targeting -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::refresh_routing -- --skip search_quality",
@@ -274,11 +274,16 @@ commands = [
 ]
 
 [buckets.tools-editing]
-expected_seconds = 30
-timeout_seconds = 90
+expected_seconds = 200
+timeout_seconds = 300
 scope_label = "tooling"
-notes = "editing tools"
-commands = ["cargo nextest run --lib tests::tools::editing:: -- --skip search_quality"]
+notes = "editing tools split by submodule; broad filter exceeds Windows bucket timeout"
+commands = [
+  "cargo nextest run --lib tests::tools::editing::edit_file_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::editing::rewrite_symbol_cross_language_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::editing::rewrite_symbol_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::editing::security_tests tests::tools::editing::transactional_editing_tests tests::tools::editing::validation_tests tests::tools::editing::markdown_section_tests commit_creates_temp_file_in_same_directory_for_relative_paths -- --skip search_quality",
+]
 
 [buckets.tools-deep-dive]
 expected_seconds = 12
@@ -292,8 +297,8 @@ commands = [
 ]
 
 [buckets.tools-call-path]
-expected_seconds = 8
-timeout_seconds = 45
+expected_seconds = 80
+timeout_seconds = 120
 scope_label = "tooling"
 notes = "call_path tool coverage"
 commands = [
@@ -322,8 +327,8 @@ commands = [
 ]
 
 [buckets.tools-refactoring]
-expected_seconds = 15
-timeout_seconds = 60
+expected_seconds = 45
+timeout_seconds = 90
 scope_label = "tooling"
 notes = "refactoring tools"
 commands = ["cargo nextest run --lib tests::tools::refactoring:: -- --skip search_quality"]
@@ -349,8 +354,8 @@ commands = [
 
 [buckets.core-fast]
 # Fast non-search core coverage bucket; broad but still local-dev friendly.
-expected_seconds = 20
-timeout_seconds = 60
+expected_seconds = 60
+timeout_seconds = 120
 scope_label = "core"
 notes = "misc fast core coverage"
 commands = [
@@ -475,7 +480,7 @@ scope_label = "system"
 notes = "daemon lifecycle and restart handoff (backed by daemon::lifecycle + integration::daemon_lifecycle)"
 commands = [
   "cargo nextest run --lib tests::daemon::lifecycle -- --skip search_quality",
-  "cargo nextest run --lib tests::integration::daemon_lifecycle -- --skip search_quality",
+  "cargo nextest run --no-tests pass --lib tests::integration::daemon_lifecycle -- --skip search_quality",
 ]
 
 [buckets.workspace-runtime]

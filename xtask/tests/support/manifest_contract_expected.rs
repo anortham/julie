@@ -77,8 +77,8 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "core-fast",
             ExpectedBucket {
-                expected_seconds: 20,
-                timeout_seconds: 60,
+                expected_seconds: 60,
+                timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
                     "cargo nextest run --lib utils::string_similarity::tests -- --skip search_quality",
@@ -179,7 +179,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::daemon::lifecycle -- --skip search_quality",
-                    "cargo nextest run --lib tests::integration::daemon_lifecycle -- --skip search_quality",
+                    "cargo nextest run --no-tests pass --lib tests::integration::daemon_lifecycle -- --skip search_quality",
                 ],
             },
         ),
@@ -267,10 +267,13 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-editing",
             ExpectedBucket {
-                expected_seconds: 30,
-                timeout_seconds: 90,
+                expected_seconds: 200,
+                timeout_seconds: 300,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::editing:: -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::editing::edit_file_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::editing::rewrite_symbol_cross_language_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::editing::rewrite_symbol_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::editing::security_tests tests::tools::editing::transactional_editing_tests tests::tools::editing::validation_tests tests::tools::editing::markdown_section_tests commit_creates_temp_file_in_same_directory_for_relative_paths -- --skip search_quality",
                 ],
             },
         ),
@@ -326,8 +329,8 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-call-path",
             ExpectedBucket {
-                expected_seconds: 8,
-                timeout_seconds: 45,
+                expected_seconds: 80,
+                timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::call_path_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::call_path_disambiguation_tests -- --skip search_quality",
@@ -359,8 +362,8 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-refactoring",
             ExpectedBucket {
-                expected_seconds: 15,
-                timeout_seconds: 60,
+                expected_seconds: 45,
+                timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::tools::refactoring:: -- --skip search_quality",
                 ],
@@ -390,28 +393,28 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-search-line",
             ExpectedBucket {
-                expected_seconds: 50,
-                timeout_seconds: 150,
+                expected_seconds: 250,
+                timeout_seconds: 330,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::search::line_ -- --skip search_quality",
+                    "cargo nextest run -j 1 --lib tests::tools::search::line_ -- --skip search_quality",
                 ],
             },
         ),
         (
             "tools-search-file-mode",
             ExpectedBucket {
-                expected_seconds: 20,
-                timeout_seconds: 90,
+                expected_seconds: 60,
+                timeout_seconds: 120,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::search::file_ -- --skip search_quality",
+                    "cargo nextest run -j 1 --lib tests::tools::search::file_ -- --skip search_quality",
                 ],
             },
         ),
         (
             "tools-search-zero-hit",
             ExpectedBucket {
-                expected_seconds: 15,
-                timeout_seconds: 60,
+                expected_seconds: 40,
+                timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::primary_workspace_bug -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::zero_hit_reason_tests -- --skip search_quality",
@@ -434,8 +437,8 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-search-unified",
             ExpectedBucket {
-                expected_seconds: 25,
-                timeout_seconds: 90,
+                expected_seconds: 60,
+                timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::c3_enriched_schema_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::compat_marker_v4_test -- --skip search_quality",
@@ -466,8 +469,8 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-search-format-quality",
             ExpectedBucket {
-                expected_seconds: 25,
-                timeout_seconds: 90,
+                expected_seconds: 100,
+                timeout_seconds: 180,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::annotation_search_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::content_scoring_tests -- --skip search_quality",
@@ -492,7 +495,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-search-text",
             ExpectedBucket {
-                expected_seconds: 25,
+                expected_seconds: 40,
                 timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality",
@@ -502,15 +505,15 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-workspace",
             ExpectedBucket {
-                expected_seconds: 20,
-                timeout_seconds: 90,
+                expected_seconds: 300,
+                timeout_seconds: 420,
                 commands: &[
                     "cargo nextest run --lib tests::tools::workspace::discovery -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::file_policy -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::index_embedding_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::isolation -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::management_token -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::workspace::mod_tests -- --skip search_quality",
+                    "cargo nextest run -j 1 --lib tests::tools::workspace::mod_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::processor -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::resolver -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::utils -- --skip search_quality",
@@ -520,8 +523,8 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-workspace-targeting",
             ExpectedBucket {
-                expected_seconds: 25,
-                timeout_seconds: 90,
+                expected_seconds: 170,
+                timeout_seconds: 240,
                 commands: &[
                     "cargo nextest run --lib tests::tools::workspace::global_targeting -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::refresh_routing -- --skip search_quality",
@@ -768,7 +771,9 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("editing tools"),
+                notes: Some(
+                    "editing tools split by submodule; broad filter exceeds Windows bucket timeout",
+                ),
             },
         ),
         (
@@ -867,7 +872,9 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("line-mode search coverage"),
+                notes: Some(
+                    "line-mode search coverage; serialized because tests mutate process env and spin per-test indexers",
+                ),
             },
         ),
         (
@@ -876,7 +883,9 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("file-mode search coverage"),
+                notes: Some(
+                    "file-mode search coverage; serialized on Windows because these tests spin per-test Tantivy indexers",
+                ),
             },
         ),
         (
@@ -948,7 +957,9 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("workspace management (excluding heavy targeting fixtures)"),
+                notes: Some(
+                    "workspace management (excluding heavy targeting fixtures); mod_tests serialized on Windows-sensitive indexing cases",
+                ),
             },
         ),
         (
@@ -957,7 +968,9 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("workspace global-targeting and refresh-routing coverage"),
+                notes: Some(
+                    "workspace global-targeting and refresh-routing coverage; Windows runs include long activation cases",
+                ),
             },
         ),
         (

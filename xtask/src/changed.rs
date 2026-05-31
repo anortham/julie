@@ -85,6 +85,18 @@ pub struct ChangedSelection {
 }
 
 pub fn collect_changed_paths(workspace_root: &Path) -> Result<Vec<String>> {
+    if let Some(paths) = std::env::var_os("XTASK_CHANGED_PATHS") {
+        return Ok(normalize_paths(
+            paths
+                .to_string_lossy()
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(ToOwned::to_owned)
+                .collect(),
+        ));
+    }
+
     let tracked_paths = if has_head(workspace_root)? {
         git_lines(
             workspace_root,

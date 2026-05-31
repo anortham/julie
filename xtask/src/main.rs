@@ -1,5 +1,4 @@
 use std::io::{self, Write};
-use std::process::Command;
 
 use anyhow::anyhow;
 use xtask::changed::{
@@ -11,6 +10,7 @@ use xtask::cli::{
 };
 use xtask::inventory::{ProcessInventoryExecutor, render_inventory_report, run_inventory};
 use xtask::manifest::TestManifest;
+use xtask::process::cargo_status;
 use xtask::runner::{
     ProcessCommandExecutor, render_manifest_listing, render_summary, run_bucket, run_named_buckets,
     run_tier,
@@ -23,9 +23,7 @@ use xtask::workspace_root;
 
 fn clean_coverage_data(stdout: &mut dyn Write) -> anyhow::Result<()> {
     stdout.write_all(b"COVERAGE: cleaning previous profraw data\n")?;
-    let status = Command::new("cargo")
-        .args(["llvm-cov", "clean", "--workspace"])
-        .status()?;
+    let status = cargo_status(&["llvm-cov", "clean", "--workspace"])?;
     if !status.success() {
         return Err(anyhow!("cargo llvm-cov clean failed"));
     }
@@ -197,9 +195,7 @@ fn main() -> anyhow::Result<()> {
     if should_report_coverage {
         stdout.write_all(b"\nCOVERAGE: generating report\n")?;
         drop(stdout); // release lock so cargo llvm-cov can print to stdout
-        let status = Command::new("cargo")
-            .args(["llvm-cov", "report", "--html"])
-            .status()?;
+        let status = cargo_status(&["llvm-cov", "report", "--html"])?;
         if !status.success() {
             return Err(anyhow!("cargo llvm-cov report failed"));
         }

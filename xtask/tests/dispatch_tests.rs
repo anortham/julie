@@ -110,9 +110,19 @@ impl DispatchFixture {
     }
 
     fn run_xtask(&self, args: &[&str], changed_paths: &str) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_xtask"))
-            .args(args)
-            .env("PATH", self.fake_path())
+        let mut command = Command::new(env!("CARGO_BIN_EXE_xtask"));
+        command.args(args);
+        #[cfg(windows)]
+        {
+            command.env_remove("PATH");
+            command.env_remove("Path");
+            command.env_remove("PATHEXT");
+        }
+        #[cfg(windows)]
+        command.env("PATH", self.fake_path());
+        #[cfg(not(windows))]
+        command.env("PATH", self.fake_path());
+        command
             .env("XTASK_DISPATCH_LOG", &self.log_path)
             .env("XTASK_CHANGED_PATHS", changed_paths)
             .output()
@@ -120,7 +130,9 @@ impl DispatchFixture {
     }
 
     fn fake_path(&self) -> std::ffi::OsString {
-        let existing_path = env::var_os("PATH").unwrap_or_default();
+        let existing_path = env::var_os("Path")
+            .or_else(|| env::var_os("PATH"))
+            .unwrap_or_default();
         let paths = std::iter::once(self.bin_dir.clone()).chain(env::split_paths(&existing_path));
         env::join_paths(paths).expect("join fake PATH")
     }

@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Result, anyhow};
 
 use crate::manifest::TestManifest;
+use crate::process::manifest_command;
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -111,7 +112,7 @@ impl CommandExecutor for ProcessCommandExecutor {
     fn run(&self, _bucket: &str, command: &str, timeout: Duration) -> Result<CommandResult> {
         let start = Instant::now();
         let deadline = start + timeout;
-        let mut process = shell_command(command);
+        let mut process = manifest_command(command)?;
         process.stdout(Stdio::piped()).stderr(Stdio::piped());
         configure_command_for_termination(&mut process);
         let mut child = process.spawn()?;
@@ -822,20 +823,6 @@ fn special_bucket_plan(bucket_name: &str) -> Option<BucketPlan> {
                     .collect(),
             },
         )
-}
-
-#[cfg(unix)]
-fn shell_command(command: &str) -> Command {
-    let mut shell = Command::new("sh");
-    shell.arg("-c").arg(command);
-    shell
-}
-
-#[cfg(windows)]
-fn shell_command(command: &str) -> Command {
-    let mut shell = Command::new("cmd");
-    shell.arg("/C").arg(command);
-    shell
 }
 
 #[cfg(test)]

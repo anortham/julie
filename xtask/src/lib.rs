@@ -3,6 +3,7 @@ pub mod cli;
 pub mod dev_workflow;
 pub mod inventory;
 pub mod manifest;
+pub mod process;
 pub mod runner;
 pub mod search_ablation;
 pub mod search_matrix;
