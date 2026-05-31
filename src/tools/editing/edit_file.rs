@@ -233,17 +233,32 @@ fn apply_edit_with_metrics(
     };
 
     // Apply replacements in reverse order so character positions don't shift
-    let new_chars: Vec<char> = new_text.chars().collect();
     let mut result_chars: Vec<char> = content.chars().collect();
 
     for span in selected.iter().rev() {
-        result_chars.splice(span.start..span.end, new_chars.iter().copied());
+        let replacement_chars = replacement_chars_for_span(&result_chars, span, new_text);
+        result_chars.splice(span.start..span.end, replacement_chars);
     }
 
     Ok(EditApplication {
         modified_content: result_chars.into_iter().collect(),
         match_mode,
     })
+}
+
+fn replacement_chars_for_span(
+    content_chars: &[char],
+    span: &MatchSpan,
+    new_text: &str,
+) -> Vec<char> {
+    let matched_uses_crlf = content_chars[span.start..span.end]
+        .windows(2)
+        .any(|pair| pair == ['\r', '\n']);
+    if matched_uses_crlf && new_text.contains('\n') && !new_text.contains("\r\n") {
+        new_text.replace('\n', "\r\n").chars().collect()
+    } else {
+        new_text.chars().collect()
+    }
 }
 
 /// Find all match spans for old_text in content.

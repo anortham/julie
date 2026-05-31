@@ -18,7 +18,10 @@ use tempfile::TempDir;
 
 /// Returns the path to the debug binary. Panics if the binary does not exist.
 fn julie_binary() -> PathBuf {
-    let binary = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/julie-server");
+    let binary = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "target/debug/julie-server{}",
+        std::env::consts::EXE_SUFFIX
+    ));
     assert!(
         binary.exists(),
         "Debug binary not found at {:?}. Run `cargo build` first.",

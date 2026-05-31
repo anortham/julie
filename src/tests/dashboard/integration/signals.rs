@@ -1,5 +1,22 @@
 use super::*;
 
+fn assert_stat_card(html: &str, label: &str, value: &str) {
+    let label_marker = format!("<p class=\"stat-label\">{label}</p>");
+    let label_index = html
+        .find(&label_marker)
+        .unwrap_or_else(|| panic!("missing stat label {label:?}\n{html}"));
+    let card_start = html[..label_index]
+        .rfind("<div class=\"fingerprint-card\">")
+        .unwrap_or_else(|| panic!("missing stat card wrapper for {label:?}\n{html}"));
+    let card = &html[card_start..label_index + label_marker.len()];
+    let value_marker = format!("<p class=\"stat-value\">{value}</p>");
+
+    assert!(
+        card.contains(&value_marker),
+        "stat card {label:?} did not contain value {value:?}\n{card}"
+    );
+}
+
 #[tokio::test]
 async fn test_signals_page_returns_200_for_indexed_workspace() {
     let (state, _temp_dir, workspace_id) = state_with_signal_workspace().await;
@@ -60,24 +77,9 @@ async fn test_signals_summary_renders_counts_and_marker_evidence() {
     assert!(html.contains("Observed Entry Points"));
     assert!(html.contains("Auth Coverage"));
     assert!(html.contains("Review Markers"));
-    assert!(
-        html.contains(
-            "<p class=\"stat-value\">2</p>\n      <p class=\"stat-label\">Observed Entry Points</p>"
-        ),
-        "{html}"
-    );
-    assert!(
-        html.contains(
-            "<p class=\"stat-value\">1</p>\n      <p class=\"stat-label\">Auth Coverage Candidates</p>"
-        ),
-        "{html}"
-    );
-    assert!(
-        html.contains(
-            "<p class=\"stat-value\">1</p>\n      <p class=\"stat-label\">Review Markers</p>"
-        ),
-        "{html}"
-    );
+    assert_stat_card(&html, "Observed Entry Points", "2");
+    assert_stat_card(&html, "Auth Coverage Candidates", "1");
+    assert_stat_card(&html, "Review Markers", "1");
     assert!(html.contains("No auth marker observed on this symbol or owner"));
     assert!(
         html.contains("Framework or middleware-based auth that is not expressed via annotations is not visible here.")

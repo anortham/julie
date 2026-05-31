@@ -159,6 +159,14 @@ fn test_workspace_flag_global_with_subcommand() {
 // WORKSPACE RESOLUTION TESTS
 // ============================================================================
 
+fn nonexistent_absolute_path(path: &str) -> PathBuf {
+    if cfg!(windows) {
+        PathBuf::from(format!("C:/{path}"))
+    } else {
+        PathBuf::from(format!("/{path}"))
+    }
+}
+
 #[test]
 fn test_resolve_workspace_root_with_existing_path() {
     // Use a path that definitely exists
@@ -169,7 +177,7 @@ fn test_resolve_workspace_root_with_existing_path() {
 
 #[test]
 fn test_resolve_workspace_root_with_nonexistent_path_preserves_explicit_path() {
-    let raw = PathBuf::from("/nonexistent/path/that/does/not/exist");
+    let raw = nonexistent_absolute_path("nonexistent/path/that/does/not/exist");
 
     let result = resolve_workspace_root(Some(raw.clone()));
 
@@ -189,10 +197,16 @@ fn test_resolve_workspace_root_none_uses_cwd() {
 
 #[test]
 fn test_resolve_workspace_root_canonicalizes() {
-    // /tmp on macOS is a symlink to /private/tmp — verify canonicalization
-    let result = resolve_workspace_root(Some(PathBuf::from("/tmp")));
-    // The result should be the canonical form
-    let canonical = PathBuf::from("/tmp").canonicalize().unwrap();
+    // resolve_workspace_root must return the canonical form of an existing path
+    // (e.g. /tmp -> /private/tmp on macOS, and the \\?\ verbatim form on Windows).
+    // Use a real temp dir so the test is hermetic and cross-platform; the
+    // original hardcoded "/tmp" resolves to C:\tmp on Windows, which does not
+    // exist on a clean box/CI, so canonicalize().unwrap() panicked there.
+    let temp = tempfile::tempdir().unwrap();
+
+    let result = resolve_workspace_root(Some(temp.path().to_path_buf()));
+
+    let canonical = temp.path().canonicalize().unwrap();
     assert_eq!(result, canonical);
 }
 
@@ -210,7 +224,7 @@ fn test_resolve_workspace_startup_hint_prefers_cli_source() {
 
 #[test]
 fn test_resolve_workspace_startup_hint_preserves_nonexistent_cli_path() {
-    let raw = PathBuf::from("/nonexistent/path/that/does/not/exist");
+    let raw = nonexistent_absolute_path("nonexistent/path/that/does/not/exist");
 
     let hint = with_workspace_env_cleared(|| resolve_workspace_startup_hint(Some(raw.clone())));
 
@@ -241,7 +255,7 @@ fn test_resolve_workspace_startup_hint_falls_back_to_env_source() {
 
 #[test]
 fn test_resolve_workspace_startup_hint_preserves_nonexistent_env_path() {
-    let raw = PathBuf::from("/nonexistent/env/path/that/does/not/exist");
+    let raw = nonexistent_absolute_path("nonexistent/env/path/that/does/not/exist");
 
     let hint = with_workspace_env_set(&raw, || resolve_workspace_startup_hint(None));
 
