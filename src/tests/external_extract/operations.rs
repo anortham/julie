@@ -3,6 +3,7 @@ use std::fs;
 
 use tempfile::TempDir;
 
+use crate::cli_tools::OutputFormat;
 use crate::database::SymbolDatabase;
 use crate::database::types::FileInfo;
 use crate::external_extract::operations::{
@@ -11,7 +12,7 @@ use crate::external_extract::operations::{
 };
 use crate::external_extract::{
     EXTRACT_CONTRACT_VERSION, ExternalExtractArgs, ExternalExtractCommand, ExternalInfoSchemaState,
-    read_external_extract_info,
+    format_external_extract_report, read_external_extract_info,
 };
 use crate::extractors::{Identifier, IdentifierKind, Symbol, SymbolKind};
 use crate::indexing_core::batch::ExtractedBatch;
@@ -155,6 +156,37 @@ fn current_revision(db_path: &std::path::Path) -> Option<i64> {
     let db = SymbolDatabase::new(db_path).expect("open db");
     db.get_current_canonical_revision("external_ws")
         .expect("current revision")
+}
+
+fn current_revision_for(db_path: &std::path::Path, workspace_id: &str) -> Option<i64> {
+    let db = SymbolDatabase::new(db_path).expect("open db");
+    db.get_current_canonical_revision(workspace_id)
+        .expect("current revision")
+}
+
+fn metadata_value(db_path: &std::path::Path, key: &str) -> Option<String> {
+    let db = SymbolDatabase::new(db_path).expect("open db");
+    db.conn
+        .query_row(
+            "SELECT value FROM external_extract_metadata WHERE key = ?1",
+            [key],
+            |row| row.get(0),
+        )
+        .ok()
+}
+
+fn assert_report_hash_algorithm_in_all_formats(
+    report: &crate::external_extract::ExternalExtractReport,
+) {
+    assert_eq!(
+        serde_json::to_value(report).expect("report json")["hash_algorithm"],
+        "blake3"
+    );
+    let text = format_external_extract_report(report, OutputFormat::Text).expect("text report");
+    assert!(text.contains("hash_algorithm=blake3"));
+    let markdown =
+        format_external_extract_report(report, OutputFormat::Markdown).expect("markdown report");
+    assert!(markdown.contains("| Hash Algorithm | blake3 |"));
 }
 
 #[tokio::test]
@@ -419,6 +451,58 @@ async fn extract_scan_writes_caller_owned_sqlite_db() {
     );
 }
 
+#[tokio::test]
+async fn extract_scan_and_info_report_hash_algorithm_in_all_formats() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+    fs::write(root.join("lib.rs"), "pub fn hash_algorithm_report() {}\n").expect("write source");
+    let db_path = tmp.path().join("external.sqlite");
+
+    let scan_report = run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("scan succeeds");
+    assert_report_hash_algorithm_in_all_formats(&scan_report);
+
+    let info_report = run_external_info(&info_args(db_path)).expect("info report");
+    assert_report_hash_algorithm_in_all_formats(&info_report);
+}
+
+#[tokio::test]
+async fn extract_update_and_delete_report_hash_algorithm_in_all_formats() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+    fs::write(root.join("lib.rs"), "pub fn first_hash_algorithm() {}\n").expect("write source");
+    fs::write(
+        root.join("delete_me.rs"),
+        "pub fn delete_hash_algorithm() {}\n",
+    )
+    .expect("write delete source");
+    let db_path = tmp.path().join("external.sqlite");
+
+    run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("seed scan");
+    fs::write(root.join("lib.rs"), "pub fn second_hash_algorithm() {}\n").expect("modify source");
+
+    let update_report = run_external_update(&update_args(
+        db_path.clone(),
+        root.clone(),
+        "lib.rs".into(),
+        Vec::new(),
+    ))
+    .await
+    .expect("update report");
+    assert_report_hash_algorithm_in_all_formats(&update_report);
+
+    std::fs::remove_file(root.join("delete_me.rs")).expect("remove source");
+    let delete_report = run_external_delete(&delete_args(db_path, root, "delete_me.rs".into()))
+        .await
+        .expect("delete report");
+    assert_report_hash_algorithm_in_all_formats(&delete_report);
+}
+
 /// End-to-end: a real polyglot scan must run each language's type-argument
 /// reader, flatten the trees, and land rows in the `type_arguments` table —
 /// proving the full extractor → ExtractedBatch → CanonicalWriteSet → insert
@@ -527,6 +611,108 @@ async fn extract_scan_rejects_different_root_unless_force_rebuild() {
             .expect("canonical second root")
             .display()
             .to_string()
+    );
+}
+
+#[tokio::test]
+async fn extract_force_scan_rebinds_mismatched_workspace_id_after_non_force_rejects() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+    fs::write(root.join("lib.rs"), "pub fn first_workspace_id() {}\n").expect("write source");
+    let db_path = tmp.path().join("external.sqlite");
+
+    run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("initial scan");
+    let old_revision = current_revision_for(&db_path, "external_ws");
+    assert_eq!(old_revision, Some(1));
+
+    let mut stable_args = scan_args(db_path.clone(), root.clone(), false);
+    stable_args.workspace_id = Some("stable_workspace_id".to_string());
+    let mismatch = run_external_scan(&stable_args)
+        .await
+        .expect_err("non-force scan should reject workspace id mismatch");
+    assert!(
+        mismatch.to_string().contains("workspace id mismatch"),
+        "unexpected workspace mismatch error: {mismatch}"
+    );
+    let metadata_after_rejected_scan = read_external_extract_info(&db_path)
+        .expect("info")
+        .metadata
+        .expect("metadata");
+    assert_eq!(metadata_after_rejected_scan.workspace_id, "external_ws");
+    assert_eq!(current_revision_for(&db_path, "external_ws"), old_revision);
+
+    stable_args.command = ExternalExtractCommand::Scan { force: true };
+    let report = run_external_scan(&stable_args)
+        .await
+        .expect("force scan rebinds workspace id");
+    assert_eq!(report.workspace_id.as_deref(), Some("stable_workspace_id"));
+
+    let metadata = read_external_extract_info(&db_path)
+        .expect("info")
+        .metadata
+        .expect("metadata");
+    assert_eq!(metadata.workspace_id, "stable_workspace_id");
+    assert_eq!(
+        current_revision_for(&db_path, "stable_workspace_id"),
+        Some(2)
+    );
+    assert_eq!(current_revision_for(&db_path, "external_ws"), old_revision);
+}
+
+#[tokio::test]
+async fn extract_scan_backfills_hash_algorithm_without_new_revision() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+    fs::write(root.join("lib.rs"), "pub fn hash_backfill() {}\n").expect("write source");
+    let db_path = tmp.path().join("external.sqlite");
+
+    run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("seed scan");
+    let first_revision = current_revision(&db_path);
+    let db = SymbolDatabase::new(&db_path).expect("open db");
+    db.conn
+        .execute(
+            "DELETE FROM external_extract_metadata WHERE key = 'hash_algorithm'",
+            [],
+        )
+        .expect("delete hash metadata");
+    drop(db);
+    assert_eq!(metadata_value(&db_path, "hash_algorithm"), None);
+
+    let report = run_external_scan(&scan_args(db_path.clone(), root, false))
+        .await
+        .expect("backfill scan");
+
+    assert_eq!(report.revision, first_revision);
+    assert_eq!(current_revision(&db_path), first_revision);
+    assert_eq!(
+        metadata_value(&db_path, "hash_algorithm").as_deref(),
+        Some("blake3")
+    );
+}
+
+#[tokio::test]
+async fn extract_scan_stores_raw_byte_blake3_file_hash() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+    let source = b"pub fn raw_byte_blake3_hash() {}\r\n";
+    fs::write(root.join("lib.rs"), source).expect("write source");
+    let db_path = tmp.path().join("external.sqlite");
+
+    run_external_scan(&scan_args(db_path.clone(), root, false))
+        .await
+        .expect("scan succeeds");
+
+    let db = SymbolDatabase::new(&db_path).expect("open db");
+    assert_eq!(
+        db.get_file_hash("lib.rs").expect("file hash"),
+        Some(blake3::hash(source).to_hex().to_string())
     );
 }
 
