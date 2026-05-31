@@ -299,7 +299,7 @@ impl SearchProjection {
             files_to_clean,
             &symbol_contexts,
             &relationship_map,
-            true,
+            false,
         );
         info!(
             "⏱️  projection.apply_documents: {:.2}s ({} symbols, {} files, {} cleaned)",
@@ -421,7 +421,7 @@ impl SearchProjection {
                 files_to_clean,
                 &symbol_contexts,
                 &relationship_map,
-                true,
+                false,
             )
         };
         info!(
@@ -479,7 +479,7 @@ impl SearchProjection {
             &[],
             symbol_contexts,
             relationship_map,
-            true,
+            false,
         )
     }
 }

@@ -1,4 +1,4 @@
-use super::mark_index_ready;
+use super::{ensure_primary_projection_current, mark_index_ready};
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::tests::helpers::mcp::{
@@ -105,6 +105,7 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
 
     handler.set_current_primary_binding(rebound_id.clone(), rebound_path);
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     let search_tool = FastSearchTool {
         query: "rebound_only_marker".to_string(),

@@ -148,15 +148,9 @@ impl QueueRuntime {
     async fn run_cycle_with_retry_age(&self, min_repair_age: Duration) {
         self.retry_dirty_tantivy().await;
 
-        let processed_count = self.process_queue_batch().await;
-        if processed_count > 0 {
-            self.commit_search_index("batch").await;
-        }
+        self.process_queue_batch().await;
 
-        let replayed_repairs = self.retry_persisted_repairs(min_repair_age).await;
-        if replayed_repairs > 0 {
-            self.commit_search_index("repair replay").await;
-        }
+        self.retry_persisted_repairs(min_repair_age).await;
 
         self.run_repair_scan_if_needed().await;
     }
@@ -180,6 +174,7 @@ impl QueueRuntime {
                 let Some(guard) = self.acquire_gate_or_mark_rescan("shutdown drain").await else {
                     return;
                 };
+                let mut drained_any = false;
                 while let Some(event) = self.index_queue.lock().await.pop_front() {
                     let provider_snapshot = self
                         .embedding_provider
@@ -199,12 +194,15 @@ impl QueueRuntime {
                         &guard,
                     )
                     .await;
+                    drained_any = true;
+                }
+                if drained_any {
+                    self.commit_search_index("shutdown drain").await;
                 }
             } // guard dropped here, gate released
         }
 
         self.retry_dirty_tantivy().await;
-        self.commit_search_index("shutdown drain").await;
     }
 
     async fn retry_persisted_repairs(&self, min_repair_age: Duration) -> usize {
@@ -340,16 +338,22 @@ impl QueueRuntime {
                 .count()
         };
 
-        let mut runtime = self
-            .indexing_runtime
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if remaining_extractor_repairs == 0 {
-            runtime.clear_repair_reason(IndexingRepairReason::ExtractorFailure);
-        } else {
-            runtime.record_repair_reason(IndexingRepairReason::ExtractorFailure);
+        {
+            let mut runtime = self
+                .indexing_runtime
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if remaining_extractor_repairs == 0 {
+                runtime.clear_repair_reason(IndexingRepairReason::ExtractorFailure);
+            } else {
+                runtime.record_repair_reason(IndexingRepairReason::ExtractorFailure);
+            }
+            runtime.finish_operation();
         }
-        runtime.finish_operation();
+
+        if replayed > 0 {
+            self.commit_search_index("repair replay").await;
+        }
 
         replayed
     }
@@ -718,6 +722,10 @@ impl QueueRuntime {
                     .map(|elapsed| elapsed < Duration::from_secs(2))
                     .unwrap_or(false)
             });
+        }
+
+        if processed_count > 0 {
+            self.commit_search_index("batch").await;
         }
 
         processed_count

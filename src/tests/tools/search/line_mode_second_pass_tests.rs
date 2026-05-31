@@ -41,6 +41,24 @@ mod tests {
         *handler.is_indexed.write().await = true;
     }
 
+    async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
+        let snapshot = handler
+            .primary_workspace_snapshot()
+            .await
+            .expect("primary snapshot");
+        let search_index = snapshot.search_index.expect("primary search index");
+        let mut db = snapshot
+            .database
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let idx = search_index
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
+            .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
+            .expect("projection current");
+    }
+
     async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, JulieServerHandler) {
         unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
@@ -79,6 +97,7 @@ mod tests {
         index_tool.call_tool(&handler).await.expect("index");
         sleep(Duration::from_millis(500)).await;
         mark_index_ready(&handler).await;
+        ensure_primary_projection_current(&handler).await;
 
         (temp_dir, handler)
     }

@@ -1,4 +1,4 @@
-use super::mark_index_ready;
+use super::{ensure_primary_projection_current, mark_index_ready};
 use crate::handler::JulieServerHandler;
 use crate::tests::helpers::mcp::call_tool_result_text as extract_text_from_result;
 use crate::tools::search::FastSearchTool;
@@ -48,6 +48,7 @@ fn user_preferences_dashboard() {}
     index_tool.call_tool(&handler).await?;
     sleep(Duration::from_millis(500)).await;
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     // Search for the shared prefix `user`.  Unified search will return
     // all three symbol-row matches; this is the post-T8 contract for
@@ -98,29 +99,28 @@ async fn test_fast_search_line_mode_language_filter() -> Result<()> {
     let src_dir = workspace_path.join("src");
     fs::create_dir_all(&src_dir)?;
 
-    // Create files in different languages with common search term
+    // Create files in different languages with a common indexed symbol
+    // token. Plain comments outside symbol bodies are not guaranteed
+    // Tantivy candidates on the unified search path.
     let rust_file = src_dir.join("example.rs");
     fs::write(
         &rust_file,
-        r#"// TODO: implement feature
-fn rust_function() {}
+        r#"fn language_filter_marker_rs() {}
 "#,
     )?;
 
     let ts_file = src_dir.join("example.ts");
     fs::write(
         &ts_file,
-        r#"// TODO: implement feature
-function typescriptFunction() {}
+        r#"function language_filter_marker_ts() {}
 "#,
     )?;
 
     let py_file = src_dir.join("example.py");
     fs::write(
         &py_file,
-        r#"# TODO: implement feature
-def python_function():
-pass
+        r#"def language_filter_marker_py():
+    pass
 "#,
     )?;
 
@@ -140,10 +140,11 @@ pass
     index_tool.call_tool(&handler).await?;
     sleep(Duration::from_millis(500)).await;
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     // Test: Search with rust language filter
     let search_rust = FastSearchTool {
-        query: "TODO".to_string(),
+        query: "language_filter_marker".to_string(),
         language: Some("rust".to_string()),
         file_pattern: None,
         limit: 10,
@@ -158,7 +159,7 @@ pass
 
     assert!(
         response_text.contains("example.rs"),
-        "Should find TODO in Rust file"
+        "Should find indexed marker in Rust file: {response_text}"
     );
     assert!(
         !response_text.contains("example.ts"),
@@ -171,7 +172,7 @@ pass
 
     // Test: Search with typescript language filter
     let search_ts = FastSearchTool {
-        query: "TODO".to_string(),
+        query: "language_filter_marker".to_string(),
         language: Some("typescript".to_string()),
         file_pattern: None,
         limit: 10,
@@ -238,6 +239,7 @@ async fn test_fast_search_line_mode_file_pattern_filter() -> Result<()> {
     index_tool.call_tool(&handler).await?;
     sleep(Duration::from_secs(2)).await; // Increased wait for FTS content indexing
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     // Test: Search with src/** file pattern.  The shared prefix
     // `fixme_marker` matches both symbols; the file_pattern filter
@@ -353,6 +355,7 @@ assert!(authenticate_user("admin", "secret"));
     index_tool.call_tool(&handler).await?;
     sleep(Duration::from_secs(2)).await;
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     // Test 1: Search WITHOUT exclude_tests — should find results from BOTH files
     let search_all = FastSearchTool {
@@ -424,10 +427,12 @@ async fn test_fast_search_line_mode_combined_filters() -> Result<()> {
     // Create symbol-bearing files; the unified path won't index a
     // comment-only file.  Both files share the `combined_filter_marker`
     // token so the test can verify the language+file_pattern combo.
-    let rust_file = src_dir.join("main.rs");
+    let nested_src_dir = src_dir.join("bin");
+    fs::create_dir_all(&nested_src_dir)?;
+    let rust_file = nested_src_dir.join("main.rs");
     fs::write(&rust_file, "fn combined_filter_marker_rs() {}\n")?;
 
-    let ts_file = src_dir.join("index.ts");
+    let ts_file = nested_src_dir.join("index.ts");
     fs::write(
         &ts_file,
         "function combined_filter_marker_ts() { return 1; }\n",
@@ -449,6 +454,7 @@ async fn test_fast_search_line_mode_combined_filters() -> Result<()> {
     index_tool.call_tool(&handler).await?;
     sleep(Duration::from_secs(2)).await; // Increased wait for FTS content indexing
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     // Test: Search with BOTH language AND file_pattern filters
     let search_combined = FastSearchTool {

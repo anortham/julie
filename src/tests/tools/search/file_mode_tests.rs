@@ -11,6 +11,7 @@ use crate::tools::search::trace::{FilePatternDiagnostic, HintKind};
 use crate::{handler::JulieServerHandler, mcp_compat::CallToolResult};
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
@@ -33,6 +34,10 @@ async fn initialize_indexed_handler(workspace_path: &Path) -> JulieServerHandler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await
         .expect("initialize workspace");
+    handler
+        .stop_loaded_workspace_file_watching_for_test()
+        .await
+        .expect("stop file watcher for search-only test");
 
     ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -46,8 +51,32 @@ async fn initialize_indexed_handler(workspace_path: &Path) -> JulieServerHandler
     .await
     .expect("index workspace");
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    ensure_primary_projection_current(&handler).await;
     handler
+}
+
+async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
+    handler
+        .indexing_status
+        .search_ready
+        .store(true, Ordering::Relaxed);
+    *handler.is_indexed.write().await = true;
+
+    let snapshot = handler
+        .primary_workspace_snapshot()
+        .await
+        .expect("primary snapshot");
+    let search_index = snapshot.search_index.expect("primary search index");
+    let mut db = snapshot
+        .database
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let idx = search_index
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
+        .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
+        .expect("projection current");
 }
 
 fn seed_scoped_mod_rs_workspace(workspace_path: &Path) {

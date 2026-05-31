@@ -6,11 +6,59 @@
 use anyhow::Result;
 use serial_test::serial;
 use std::fs;
+use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::ManageWorkspaceTool;
+
+async fn mark_search_ready(handler: &JulieServerHandler) {
+    handler
+        .indexing_status
+        .search_ready
+        .store(true, Ordering::Relaxed);
+    *handler.is_indexed.write().await = true;
+}
+
+async fn ensure_primary_projection_current(handler: &JulieServerHandler) -> Result<()> {
+    mark_search_ready(handler).await;
+
+    let snapshot = handler.primary_workspace_snapshot().await?;
+    let search_index = snapshot.search_index.expect("primary search index");
+    let mut db = snapshot
+        .database
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let idx = search_index
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
+        .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)?;
+    Ok(())
+}
+
+async fn index_workspace_for_search(
+    handler: &JulieServerHandler,
+    workspace_path: &Path,
+) -> Result<()> {
+    handler
+        .stop_loaded_workspace_file_watching_for_test()
+        .await?;
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(handler)
+    .await?;
+    ensure_primary_projection_current(handler).await
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_text_search_definitions_basic() -> Result<()> {
@@ -37,18 +85,7 @@ pub fn get_user(id: u32) -> User {
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     // Now call text_search_impl directly
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -108,18 +145,7 @@ export function process_data(data: string): string {
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     // Search for Rust only
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -184,18 +210,7 @@ pub fn helper() {
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     // Search for files matching "src/**" pattern
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -246,18 +261,7 @@ pub fn get_user(id: u32) -> User {
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     // Search for something that doesn't exist
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -308,18 +312,7 @@ pub fn search_term_six() { }
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     // Search with limit of 2
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -374,18 +367,7 @@ pub fn example() {
         return Ok(());
     }
 
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     // Search for content
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -433,15 +415,7 @@ pub fn lookup_user_profile(id: u32) -> String {
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     {
         let mut workspace_guard = handler.workspace.write().await;
@@ -583,18 +557,7 @@ mod tests {
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    // Wait for background indexing to complete
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     Ok((workspace_path, temp_dir, handler))
 }
@@ -773,16 +736,7 @@ async fn test_exclude_tests_path_based_excludes_interface_from_test_file() -> Re
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    index_workspace_for_search(&handler, &workspace_path).await?;
 
     // Query "PaymentGateway" matches both MockPaymentGateway (test) and PaymentGateway (prod).
     // With exclude_tests=true: only the production symbol should appear.

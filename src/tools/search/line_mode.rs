@@ -39,6 +39,11 @@ struct LineModeFetchOutcome {
     file_pattern_diagnostic: Option<FilePatternDiagnostic>,
 }
 
+struct LineModeCandidateWindow {
+    file_results: Vec<crate::search::index::UnifiedHit>,
+    saturated: bool,
+}
+
 struct LineModeScopedOutcome {
     fetch: LineModeFetchOutcome,
     scope_relaxed: bool,
@@ -161,7 +166,10 @@ fn query_names_a_test(query: &str) -> bool {
 
 fn scoped_fetch_limits(base_limit: usize, has_file_filter: bool) -> (usize, usize) {
     if has_file_filter {
-        let hard_cap = base_limit.saturating_mul(100).max(1000).min(2000);
+        // Line mode fetches file rows only, but scoped filters may still need
+        // to walk past many high-scoring out-of-scope files before finding an
+        // in-scope candidate.
+        let hard_cap = 2000;
         let initial = base_limit.saturating_mul(20).max(100).min(hard_cap);
         (initial, hard_cap)
     } else {
@@ -183,9 +191,10 @@ fn diagnose_scoped_file_pattern_miss<S>(
     file_results: &[crate::search::index::UnifiedHit],
     fetch_limit: usize,
     hard_cap: usize,
+    candidate_window_saturated: bool,
 ) -> Result<Option<FilePatternDiagnostic>>
 where
-    S: FnMut(usize) -> Result<Vec<crate::search::index::UnifiedHit>>,
+    S: FnMut(usize) -> Result<LineModeCandidateWindow>,
 {
     let Some(pattern) = file_pattern else {
         return Ok(None);
@@ -199,7 +208,7 @@ where
     {
         return Ok(None);
     }
-    if file_results.len() < fetch_limit {
+    if !candidate_window_saturated {
         return Ok(Some(FilePatternDiagnostic::NoInScopeCandidates));
     }
 
@@ -208,7 +217,7 @@ where
         return Ok(Some(FilePatternDiagnostic::NoInScopeCandidates));
     }
 
-    let wider_results = search_once(probe_limit)?;
+    let wider_results = search_once(probe_limit)?.file_results;
     if wider_results
         .iter()
         .any(|result| matches_glob_pattern(&result.file_path, pattern))
@@ -295,7 +304,7 @@ fn run_line_mode_fetch_loop<S, C>(
     Option<FilePatternDiagnostic>,
 )>
 where
-    S: FnMut(usize) -> Result<Vec<crate::search::index::UnifiedHit>>,
+    S: FnMut(usize) -> Result<LineModeCandidateWindow>,
     C: FnMut(
         &[crate::search::index::UnifiedHit],
     ) -> Result<(Vec<LineMatch>, LineModeStageCounts, bool)>,
@@ -303,7 +312,8 @@ where
     let (mut fetch_limit, hard_cap) = scoped_fetch_limits(base_limit, has_file_filter);
 
     loop {
-        let file_results = search_once(fetch_limit)?;
+        let window = search_once(fetch_limit)?;
+        let file_results = window.file_results;
         let mut counts = LineModeStageCounts {
             and_candidates: 0,
             or_candidates: 0,
@@ -322,7 +332,7 @@ where
         } else {
             None
         };
-        let saturated_window = file_results.len() >= fetch_limit;
+        let saturated_window = window.saturated;
         let should_widen = has_file_filter
             && matches.is_empty()
             && zero_hit_reason == Some(ZeroHitReason::FilePatternFiltered)
@@ -345,6 +355,7 @@ where
                     &file_results,
                     fetch_limit,
                     hard_cap,
+                    saturated_window,
                 )?
             } else {
                 None
@@ -387,11 +398,16 @@ fn run_line_mode_workspace_fetch(
                     poisoned.into_inner()
                 }
             };
-            // Unified search returns both symbol and file hits; line mode only
-            // needs file hits. Reranking is already applied inside search_unified.
-            let all_hits = index.search_unified(&query, &filter, fetch_limit)?;
-            let file_hits: Vec<_> = all_hits.into_iter().filter(|h| h.kind == "file").collect();
-            Ok(file_hits)
+            // Ask Tantivy for file rows only. Filtering a mixed unified result
+            // after the fact lets symbol-heavy workspaces starve line mode of
+            // file candidates before scoped widening can do its job.
+            let (file_hits, _relaxed) =
+                index.search_unified_kind_filtered(&query, &filter, fetch_limit, true)?;
+            let saturated = file_hits.len() >= fetch_limit;
+            Ok(LineModeCandidateWindow {
+                file_results: file_hits,
+                saturated,
+            })
         },
         |file_results| {
             collect_matches_from_file_results(

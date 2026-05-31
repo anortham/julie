@@ -14,7 +14,6 @@
 use std::fs;
 use std::sync::atomic::Ordering;
 use tempfile::TempDir;
-use tokio::time::{Duration, sleep};
 
 use crate::handler::JulieServerHandler;
 use crate::tools::search::trace::{FilePatternDiagnostic, HintKind, ZeroHitReason};
@@ -26,6 +25,26 @@ async fn mark_index_ready(handler: &JulieServerHandler) {
         .search_ready
         .store(true, Ordering::Relaxed);
     *handler.is_indexed.write().await = true;
+}
+
+async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
+    mark_index_ready(handler).await;
+
+    let snapshot = handler
+        .primary_workspace_snapshot()
+        .await
+        .expect("primary snapshot");
+    let search_index = snapshot.search_index.expect("primary search index");
+    let mut db = snapshot
+        .database
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let idx = search_index
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
+        .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
+        .expect("projection current");
 }
 
 async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, JulieServerHandler) {
@@ -51,6 +70,10 @@ async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, JulieServerHandler)
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await
         .expect("workspace init");
+    handler
+        .stop_loaded_workspace_file_watching_for_test()
+        .await
+        .expect("stop file watcher for search-only test");
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -61,8 +84,7 @@ async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, JulieServerHandler)
         detailed: None,
     };
     index_tool.call_tool(&handler).await.expect("index");
-    sleep(Duration::from_millis(500)).await;
-    mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     (temp_dir, handler)
 }

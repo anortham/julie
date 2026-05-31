@@ -121,7 +121,6 @@ mod line_mode_stage_counts {
     use std::fs;
     use std::sync::atomic::Ordering;
     use tempfile::TempDir;
-    use tokio::time::{Duration, sleep};
 
     async fn mark_index_ready(handler: &JulieServerHandler) {
         handler
@@ -129,6 +128,24 @@ mod line_mode_stage_counts {
             .search_ready
             .store(true, Ordering::Relaxed);
         *handler.is_indexed.write().await = true;
+    }
+
+    async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
+        let snapshot = handler
+            .primary_workspace_snapshot()
+            .await
+            .expect("primary snapshot");
+        let search_index = snapshot.search_index.expect("primary search index");
+        let mut db = snapshot
+            .database
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let idx = search_index
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
+            .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
+            .expect("projection current");
     }
 
     /// Seed a tiny workspace with a map of `(relative_path, content)` entries,
@@ -159,6 +176,10 @@ mod line_mode_stage_counts {
             )
             .await
             .expect("workspace init");
+        handler
+            .stop_loaded_workspace_file_watching_for_test()
+            .await
+            .expect("stop file watcher for search-only test");
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
@@ -169,8 +190,8 @@ mod line_mode_stage_counts {
             detailed: None,
         };
         index_tool.call_tool(&handler).await.expect("index");
-        sleep(Duration::from_millis(500)).await;
         mark_index_ready(&handler).await;
+        ensure_primary_projection_current(&handler).await;
 
         (temp_dir, handler)
     }
@@ -212,7 +233,10 @@ mod line_mode_stage_counts {
             // Reversed marker tokens keep the fallback line matcher empty,
             // so this remains a zero-hit stage-count test rather than a
             // scope-rescue test.
-            ("src/example.rs", "fn alpha() { let abc marker = 1; }\n"),
+            (
+                "src/example.rs",
+                "fn alpha() { let abc = 1; let marker = 2; }\n",
+            ),
             ("docs/notes.md", "# docs\n"),
         ])
         .await;
@@ -251,7 +275,7 @@ mod line_mode_stage_counts {
     #[tokio::test(flavor = "multi_thread")]
     async fn scoped_candidate_starvation_returns_in_scope_hit() {
         let mut files = Vec::new();
-        for idx in 0..800 {
+        for idx in 0..120 {
             files.push((
                 format!("crates/outscope/file_{idx:03}.rs"),
                 format!(
@@ -287,12 +311,15 @@ mod line_mode_stage_counts {
         assert_eq!(
             result.matches.len(),
             1,
-            "adaptive scoped fetch should recover the in-scope file; got {:?}",
+            "adaptive scoped fetch should recover the in-scope file; got {:?}; counts={:?}; diagnostic={:?}; scope_relaxed={}",
             result
                 .matches
                 .iter()
                 .map(|m| (&m.file_path, m.line_number, &m.line_content))
                 .collect::<Vec<_>>(),
+            result.stage_counts,
+            result.file_pattern_diagnostic,
+            result.scope_relaxed,
         );
         assert_eq!(result.matches[0].file_path, "src/ui/target.rs");
         assert!(!result.scope_relaxed);

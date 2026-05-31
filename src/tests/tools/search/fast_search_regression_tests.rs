@@ -30,11 +30,35 @@ async fn mark_search_ready(handler: &JulieServerHandler) {
     *handler.is_indexed.write().await = true;
 }
 
+async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
+    mark_search_ready(handler).await;
+
+    let snapshot = handler
+        .primary_workspace_snapshot()
+        .await
+        .expect("primary snapshot");
+    let search_index = snapshot.search_index.expect("primary search index");
+    let mut db = snapshot
+        .database
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let idx = search_index
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
+        .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
+        .expect("projection current");
+}
+
 async fn index_workspace(workspace_path: &std::path::Path) -> Result<JulieServerHandler> {
     let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
+    handler
+        .stop_loaded_workspace_file_watching_for_test()
+        .await
+        .expect("stop file watcher for search-only test");
 
     ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -46,8 +70,7 @@ async fn index_workspace(workspace_path: &std::path::Path) -> Result<JulieServer
     }
     .call_tool(&handler)
     .await?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    mark_search_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
     Ok(handler)
 }
 

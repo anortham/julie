@@ -1,4 +1,4 @@
-use super::mark_index_ready;
+use super::{ensure_primary_projection_current, mark_index_ready};
 use crate::handler::JulieServerHandler;
 use crate::tests::helpers::mcp::call_tool_result_text as extract_text_from_result;
 use crate::tools::search::FastSearchTool;
@@ -55,6 +55,7 @@ println!("Processing payment");
 
     sleep(Duration::from_millis(500)).await;
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     // Post-T8: the unified path searches indexed symbol fields (name,
     // signature, doc_comment, code_body, etc.).  Plain "//" line
@@ -137,6 +138,7 @@ async fn test_fast_search_line_mode_respects_workspace_filter() -> Result<()> {
     index_tool.call_tool(&handler).await?;
     sleep(Duration::from_millis(500)).await;
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     // Test 1: Search primary workspace explicitly - should find results
     let search_primary = FastSearchTool {
@@ -243,6 +245,7 @@ User { name: "test" }
 
     sleep(Duration::from_millis(500)).await;
     mark_index_ready(&handler).await;
+    ensure_primary_projection_current(&handler).await;
 
     let search_tool = FastSearchTool {
         query: "getUserData".to_string(),
