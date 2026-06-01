@@ -74,18 +74,18 @@ pub async fn run_external_scan(args: &ExternalExtractArgs) -> Result<ExternalExt
     let files_deleted = orphaned_files.len() as u64;
     let (workspace_id, metadata) = match metadata {
         Some(metadata) => (metadata.workspace_id.clone(), Some(metadata)),
-        None if let Some(requested_workspace_id) = args.workspace_id.clone() => {
-            (requested_workspace_id, None)
-        }
-        None => {
-            let metadata = ensure_external_extract_metadata_with_root_policy(
-                operation.db(),
-                &root,
-                None,
-                true,
-            )?;
-            (metadata.workspace_id.clone(), Some(metadata))
-        }
+        None => match args.workspace_id.clone() {
+            Some(requested_workspace_id) => (requested_workspace_id, None),
+            None => {
+                let metadata = ensure_external_extract_metadata_with_root_policy(
+                    operation.db(),
+                    &root,
+                    None,
+                    true,
+                )?;
+                (metadata.workspace_id.clone(), Some(metadata))
+            }
+        },
     };
 
     let revision = if force {
