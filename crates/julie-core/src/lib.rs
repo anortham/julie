@@ -7,6 +7,7 @@
 pub mod connection_pool;
 pub mod database;
 pub mod embeddings_contract;
+pub mod glob;
 pub mod paths;
 
 #[cfg(any(test, feature = "test-support"))]

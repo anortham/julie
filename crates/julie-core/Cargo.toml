@@ -15,6 +15,9 @@ test-support = ["dep:tempfile"]
 # Julie Extractors — identical pin to the root crate so julie_extractors:: types unify
 julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.0.3" }
 
+# Glob matching — for glob pattern filtering (julie_core::glob)
+globset = "0.4.16"
+
 # Temp directories — for test_support::tempdir (optional; enabled by test-support feature)
 tempfile = { version = "3.13", optional = true }
 

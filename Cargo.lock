@@ -1738,6 +1738,7 @@ dependencies = [
  "blake3",
  "chrono",
  "fs2",
+ "globset",
  "julie-extractors",
  "md5",
  "rusqlite",
