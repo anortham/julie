@@ -458,7 +458,25 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["core-embeddings"];
     }
 
+    // julie-core leaf crate (Phase 0 crate split). Editing any leaf source compiles +
+    // runs the crate's own test binary via `core-database` (`cargo nextest run -p
+    // julie-core`, which holds the relocated DB/vector tests). The three leaf files
+    // whose *behavioral* tests still live in top-crate buckets ALSO pull that bucket,
+    // so a localized edit to moved leaf code keeps its original regression coverage
+    // (the pre-split mappings were src/daemon/* -> daemon, src/embeddings/* ->
+    // core-embeddings, src/utils/* -> core-fast) instead of silently running only the
+    // DB slice. Specific files must precede the catch-all prefix (first match wins).
+    if path == "crates/julie-core/src/connection_pool.rs" {
+        return &["core-database", "daemon"];
+    }
+    if path == "crates/julie-core/src/embeddings_contract.rs" {
+        return &["core-database", "core-embeddings"];
+    }
+    if path == "crates/julie-core/src/paths.rs" {
+        return &["core-database", "core-fast"];
+    }
     if matches_prefix(path, &["crates/julie-core/src/"]) {
+        // database/**, lib.rs, test_support/**, tests/** — covered by `-p julie-core`.
         return &["core-database"];
     }
 

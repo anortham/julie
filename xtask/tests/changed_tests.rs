@@ -137,6 +137,22 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
 
     for (path, expected_buckets) in [
         ("crates/julie-core/src/database/connection.rs", vec!["core-database"]),
+        // Moved leaf files keep their pre-split behavioral coverage in addition to the
+        // leaf crate's own `-p julie-core` test binary (regression guard for the
+        // ADR-0006 crate split — a localized edit must not silently run only the DB
+        // slice). Bucket order is the canonical sort order from sort_bucket_names.
+        (
+            "crates/julie-core/src/connection_pool.rs",
+            vec!["core-database", "daemon"],
+        ),
+        (
+            "crates/julie-core/src/embeddings_contract.rs",
+            vec!["core-database", "core-embeddings"],
+        ),
+        (
+            "crates/julie-core/src/paths.rs",
+            vec!["core-database", "core-fast"],
+        ),
         ("src/tools/editing/edit_file.rs", vec!["tools-editing"]),
         ("src/dashboard/mod.rs", vec!["dashboard"]),
         ("src/analysis/symbol_quality.rs", vec!["analysis"]),
