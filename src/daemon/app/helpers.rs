@@ -252,6 +252,7 @@ pub(crate) fn spawn_cleanup_sweep(
 #[allow(unused_variables)]
 pub(crate) fn setup_stop_notify(paths: &DaemonPaths) -> (Arc<Notify>, Option<String>) {
     let stop_notify = Arc::new(Notify::new());
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut shutdown_event_name = None;
     #[cfg(windows)]
     {
@@ -279,6 +280,7 @@ pub(crate) fn setup_stop_notify(paths: &DaemonPaths) -> (Arc<Notify>, Option<Str
     (stop_notify, shutdown_event_name)
 }
 
+#[cfg_attr(not(windows), allow(unused_variables))]
 pub(crate) fn signal_shutdown_event_waiter(event_name: Option<&str>) {
     #[cfg(windows)]
     if let Some(event_name) = event_name {
