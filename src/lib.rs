@@ -3,7 +3,7 @@
 //! Julie provides code intelligence across 34 programming languages using
 //! Tantivy search with code-aware tokenization (CamelCase/snake_case splitting).
 
-pub mod analysis;
+pub use julie_index::analysis;
 pub mod cli;
 pub mod cli_tools;
 pub use julie_core::database;
@@ -16,7 +16,7 @@ pub mod indexing_core;
 pub mod language;
 pub mod logging;
 pub mod mcp_compat;
-pub mod search;
+pub use julie_index::search;
 pub mod startup;
 pub mod tools;
 pub mod utils;

@@ -1,0 +1,42 @@
+[package]
+name = "julie-index"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Search + analysis layer above julie-core — Tantivy indexing, scoring, and post-indexing analysis"
+
+[dependencies]
+# Julie workspace crates
+julie-core = { path = "../julie-core" }
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.0.3" }
+
+# Full-text search engine with custom code tokenizer
+tantivy = "0.26.0"
+
+# Logging
+tracing = "0.1"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# TOML parsing (language configs)
+toml = "0.8"
+
+# Database (analysis queries)
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+
+# Regex (reranker pattern matching)
+regex = "1.11"
+
+# File locking (index on-disk safety)
+fs2 = "0.4"
+
+[dev-dependencies]
+# Temp dirs for unit tests inside search/similarity.rs
+tempfile = "3.13"

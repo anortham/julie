@@ -1693,6 +1693,7 @@ dependencies = [
  "include_dir",
  "julie-core",
  "julie-extractors",
+ "julie-index",
  "julie-test-support",
  "libc",
  "md5",
@@ -1798,6 +1799,25 @@ dependencies = [
  "tree-sitter-vb-dotnet",
  "tree-sitter-yaml",
  "tree-sitter-zig",
+]
+
+[[package]]
+name = "julie-index"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "julie-core",
+ "julie-extractors",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tantivy",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]

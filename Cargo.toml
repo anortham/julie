@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "xtask", "crates/julie-core", "crates/julie-test-support"]
+members = [".", "xtask", "crates/julie-core", "crates/julie-index", "crates/julie-test-support"]
 resolver = "2"
 
 [workspace.package]
@@ -45,6 +45,9 @@ julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag =
 
 # Julie leaf crate (bottom of the workspace DAG — no handler/tools/daemon deps)
 julie-core = { path = "crates/julie-core" }
+
+# Julie search+analysis layer (above julie-core, below the top-level tools/handler)
+julie-index = { path = "crates/julie-index" }
 
 # MCP Server SDK - Official Anthropic SDK
 rmcp = { version = "1.6", features = ["server", "client", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "macros"] }
