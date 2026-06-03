@@ -5,8 +5,8 @@
 
 use crate::database::SymbolDatabase;
 use crate::database::types::FileInfo;
-use crate::extractors::base::TypeInfo;
-use crate::extractors::{Symbol, SymbolKind};
+use julie_extractors::base::TypeInfo;
+use julie_extractors::{Symbol, SymbolKind};
 use std::collections::HashMap;
 use tempfile::TempDir;
 

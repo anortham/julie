@@ -32,7 +32,6 @@ pub mod external_extract;
 pub mod core {
     pub mod annotation_storage;
     pub mod batch_resolver;
-    pub mod bulk_store_types_tests;
     pub mod early_warning_report_cache;
     pub mod embedding_deps; // Embedding dependency smoke tests (sqlite-vec + zerocopy)
     pub mod embedding_metadata; // Symbol metadata formatting for embeddings
@@ -46,14 +45,12 @@ pub mod core {
     pub mod incremental_update_atomic; // incremental_update_atomic write path tests (TDD)
     pub mod language; // Language detection and support tests
     pub mod logging; // Local-time log formatting and rolling writer tests
-    pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
     pub mod paths; // Path utility tests (display_path, UNC handling)
     pub mod performance_indexes; // SQLite performance guardrail indexes
     pub mod revision_changes; // Canonical revision file-delta persistence tests
     pub mod serde_lenient_tests; // Lenient MCP param deserializers (u32, bool, Vec<String>)
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
-    pub mod vector_storage; // sqlite-vec vector storage CRUD tests
     pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests // bulk_store_types integration tests (TDD)
 }
 
