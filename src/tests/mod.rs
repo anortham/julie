@@ -365,7 +365,7 @@ pub mod daemon;
 pub mod migration;
 
 // ============================================================================
-// EXTRACTOR TESTS - Moved to julie-extractors crate
+// EXTRACTOR TESTS - Live in the external julie-extractors repo
 // ============================================================================
-// All 34 language extractor tests are now in crates/julie-extractors/src/tests/
-// Run with: cargo test -p julie-extractors
+// All 34 language extractor tests now live upstream in anortham/julie-extractors
+// (consumed here as a pinned git dependency). Run them in that repo's checkout.

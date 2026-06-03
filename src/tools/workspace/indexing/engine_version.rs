@@ -14,4 +14,4 @@ pub const SEMANTIC_INDEX_ENGINE_COMPONENT: &str = "semantic_index_engine";
 /// `julie_extractors::EXTRACTION_CONTRACT_VERSION`; the regression test in
 /// `src/tests/core/engine_version.rs` enforces the link.
 pub const SEMANTIC_INDEX_ENGINE_VERSION: &str =
-    "extractors=2026-05-29.bridge-anchors-v2+schema=2026-05-05.reference-identifier-v3";
+    "extractors=2026-06-03.ecmascript-swift-shape-v3+schema=2026-05-05.reference-identifier-v3";
