@@ -1738,6 +1738,7 @@ dependencies = [
  "chrono",
  "fs2",
  "julie-extractors",
+ "julie-test-support",
  "md5",
  "rusqlite",
  "serde",
@@ -1794,6 +1795,18 @@ dependencies = [
  "tree-sitter-vb-dotnet",
  "tree-sitter-yaml",
  "tree-sitter-zig",
+]
+
+[[package]]
+name = "julie-test-support"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "julie-core",
+ "julie-extractors",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

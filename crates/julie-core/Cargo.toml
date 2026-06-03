@@ -41,3 +41,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 
 # Date/time
 chrono = { version = "0.4.42", features = ["serde"] }
+
+[dev-dependencies]
+# Handler-free test helpers — dev-dep only to avoid cycle (julie-core → test-support → julie-core)
+julie-test-support = { path = "../julie-test-support" }
