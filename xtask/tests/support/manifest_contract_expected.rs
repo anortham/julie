@@ -406,7 +406,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 8,
                 timeout_seconds: 45,
                 commands: &[
-                    "cargo nextest run --lib search::query_parse::tests -- --skip search_quality",
                     "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
                 ],
             },

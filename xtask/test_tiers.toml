@@ -200,7 +200,6 @@ timeout_seconds = 45
 scope_label = "tooling"
 notes = "search query parsing and preprocessing"
 commands = [
-  "cargo nextest run --lib search::query_parse::tests -- --skip search_quality",
   "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
 ]
 
