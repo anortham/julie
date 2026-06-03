@@ -59,8 +59,30 @@ The glob cluster is self-contained — it depends only on the external `globset`
 `pub use julie_core::glob::matches_glob_pattern;` so the ~19 tools-side callers and
 `src/tests/integration/search_regression_tests.rs` keep resolving `crate::tools::search::matches_glob_pattern`.
 
-**Repoint:** the 3 julie-index internal call sites (`src/search/index.rs`,
-`src/analysis/early_warnings.rs`) switch to `julie_core::glob::matches_glob_pattern`.
+**Repoint (julie-index side):** 2 `use` imports (`src/search/index.rs:32`,
+`src/analysis/early_warnings.rs:9`) and 1 fully-qualified call (`src/search/index.rs:1246`) switch to
+`julie_core::glob::matches_glob_pattern`; the 3 short-name call sites (`src/search/index.rs:331,825`,
+`src/analysis/early_warnings.rs:512`) then resolve through the fixed imports. The cluster also uses
+`tracing::warn` — already a julie-core dependency, so the moved helper's only new third-party need is
+`globset`.
+
+## Embedded language-config assets — BUILD-BLOCKING (Codex spec-review finding)
+
+`src/search/language_config.rs` compiles ~36 language TOMLs into the binary via
+`include_str!("../../languages/*.toml")` (lines 183–225). `include_str!` resolves **relative to the
+source file's directory at compile time**, so moving the file into the new crate silently breaks every
+one of those paths — a clean-build failure that simple import-repointing does NOT catch.
+
+**Verified:** `languages/` (repo root) is embedded **only** by `language_config.rs` — the one other
+`grep` hit (`get_symbols_token.rs`) is a code comment, not a path. No build script, runtime read, or
+other crate consumes the directory.
+
+**Fix (required):** move the `languages/` directory into the new crate (`crates/julie-index/languages/`)
+so it is a julie-index-owned asset, and confirm the `include_str!` paths resolve from the file's final
+crate-internal location — if the module layout keeps `…/src/search/language_config.rs`, the existing
+`../../languages/` paths resolve unchanged; if the layout differs, adjust the relative depth. Gate the
+move on `cargo check -p julie-index` (a wrong path fails to compile, so this is self-verifying). A
+distribution check is unneeded: the TOMLs are compile-time embedded, not shipped as files.
 
 ## Architecture Quality (Gate Mode)
 
@@ -81,18 +103,24 @@ The glob cluster is self-contained — it depends only on the external `globset`
 
 ## Test decoupling (the relink payoff)
 
-The relink win is proportional to how many tests decouple from the handler (parent design R5):
+The relink win is proportional to how many tests decouple **from both handler and tools** (parent
+design R5). The decoupling metric is "tool-free AND handler-free", not just "handler-free" — a test
+that imports any `crate::tools::*` symbol cannot live below tools either (Codex spec-review finding,
+which corrected an earlier over-optimistic count):
 
-- **`analysis` tests:** ~10 files, **0** instantiate `JulieServerHandler`/`ManageWorkspaceTool` →
-  fully relocatable into julie-index's test binary.
-- **`search` tests:** 63 files; **45 show no direct handler use** → relocate (per-file verified during
-  the move — confirm none pull the handler transitively via `crate::tests::helpers` before moving);
-  **18 instantiate the handler** → stay in the top crate as integration tests (run at batch boundaries).
+- **`analysis` tests:** ~10 files, **0** import `crate::tools::*` and **0** instantiate the handler →
+  fully relocatable into julie-index's test binary (verified).
+- **`search` tests:** 63 files; **28 couple to handler or tools** (18 use `JulieServerHandler`/
+  `ManageWorkspaceTool`, and a further 10 import `crate::tools::*` helpers like
+  `crate::tools::search::query` / `crate::tools::shared`) → stay in the top crate. The relocatable
+  ceiling is therefore **≤35**, not 45 — and each must still be per-file verified for *transitive*
+  coupling via `crate::tests::helpers` / shared fixtures before it moves.
 - `julie-index` dev-depends on `julie-core` with the `test-support` feature for the db builders the
   relocated tests use (the ADR-0006 thin-re-export pattern), exactly as Phase 0's relocated DB tests do.
 
 **Rule (same as Phase 0):** low-crate tests must not depend on handler/tools. The dep-direction
 tripwire is extended to cover julie-index (no `crate::{handler,tools,daemon,...}` in julie-index src).
+When in doubt, leave a test up-stack — do not rewrite a tool-coupled test just to inflate the relink count.
 
 ## Crate wiring
 
@@ -100,6 +128,8 @@ tripwire is extended to cover julie-index (no `crate::{handler,tools,daemon,...}
   `tantivy`, `tracing`, `anyhow`, `serde`/`serde_json`, plus whatever search/analysis already use
   (audited during planning). `edition = "2024"`, workspace `resolver = "2"`.
 - `crates/julie-core/` — add `pub mod glob;` + `globset` dep.
+- `crates/julie-index/languages/` — move the repo-root `languages/` asset dir into the crate (see the
+  Embedded-assets section); it is julie-index-owned (only search embeds it).
 - Top crate — `src/search/mod.rs` and `src/analysis/mod.rs` become `pub use julie_index::{search,analysis}::*;`
   shims (or thin re-export modules) so `crate::search::*` / `crate::analysis::*` keep resolving.
 
@@ -107,10 +137,12 @@ tripwire is extended to cover julie-index (no `crate::{handler,tools,daemon,...}
 
 - [ ] `julie-index` crate exists; `search` + `analysis` code lives in it; merged-crate cycle resolves.
 - [ ] `julie_core::glob::matches_glob_pattern` is the single source; `crate::tools::search::matches_glob_pattern`
-      still resolves via shim; the 3 julie-index internal call sites repoint to `julie_core::glob`.
+      still resolves via shim; the julie-index-side imports/calls repoint to `julie_core::glob`.
+- [ ] `languages/` moved into `crates/julie-index/`; all `include_str!` language-TOML paths resolve
+      (`cargo check -p julie-index` green — self-verifying).
 - [ ] All `crate::search::*` / `crate::analysis::*` consumers in the top crate compile unchanged (shims).
-- [ ] Decoupled analysis (100%) + handler-free search tests relocate into julie-index's test binary;
-      handler-coupled search tests remain up-stack and pass.
+- [ ] Decoupled analysis (100%) + the tool-free/handler-free search subset (≤35, per-file verified)
+      relocate into julie-index's test binary; handler/tool-coupled search tests remain up-stack and pass.
 - [ ] Dep-direction tripwire extended to julie-index (fails on any upward `crate::` ref or cyclic manifest dep).
 - [ ] xtask buckets repointed: editing `crates/julie-index/src/**` routes to the right bucket(s), with
       the `manifest_contract_expected.rs` mirror + `changed.rs` mapping updated in lockstep (the exact
@@ -139,9 +171,13 @@ tripwire is extended to cover julie-index (no `crate::{handler,tools,daemon,...}
 
 ## Risks
 
-- **R1 — transitive test coupling.** A "handler-free" search test may pull the handler via shared
-  helpers. Mitigation: per-file verification before relocating; when in doubt, leave it up-stack.
-- **R2 — `globset` already in julie-core's tree?** Confirm during planning; if absent, add it (it's
-  already a transitive dep via tools today, so no new third-party surface).
+- **R1 — transitive test coupling.** A tool-free/handler-free search test may still pull the handler
+  via `crate::tests::helpers` / shared fixtures. Mitigation: per-file verification before relocating;
+  when in doubt, leave it up-stack. The ≤35 ceiling is an upper bound, not a target.
+- **R2 — embedded `languages/` assets** (Codex finding, now a first-class step above). The
+  `include_str!` paths break on the move unless `languages/` moves into the crate. Self-verifying via
+  `cargo check -p julie-index`. **Scan for any other `include_str!`/`include_bytes!` in search/analysis
+  during planning** — this one is the only one found, but the move-trap class is real.
 - **R3 — search's tantivy/dep surface.** julie-index inherits search's full dependency set; audit
-  Cargo.toml during planning so the crate builds standalone.
+  Cargo.toml during planning so the crate builds standalone. `globset` + `tracing` cover the moved glob
+  helper (tracing already in julie-core; globset is a new but already-transitive dep).
