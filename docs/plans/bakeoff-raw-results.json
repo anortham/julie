@@ -1,0 +1,1850 @@
+{
+  "corpus_path": "/Users/murphy/.eros-eval/phase0-corpus/20260603T153455Z-56f5b0bc7c23.json",
+  "limit": 5,
+  "total_queries": 135,
+  "eros_backend_note": "eros-sqlite (backend=sqlite). lancedb-hybrid-coderank unavailable on this machine (lancedb extra not installed).",
+  "rows": [
+    {
+      "query_id": "browser39:exact-symbol:examples-browser39-tools-py:browserclient",
+      "query": "BrowserClient",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py",
+        "examples/browser39_tools.rs",
+        "examples/browser39_tools.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "browser39:symbol-intent:examples-browser39-tools-py:class-browser-client",
+      "query": "class browser client",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py",
+        "examples/browser39_tools.rs",
+        "examples/browser39_tools.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "browser39:documentation-phrase:examples-browser39-tools-py:pass-tool-definitions-to-your-llm",
+      "query": "pass tool definitions to your llm",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": null
+    },
+    {
+      "query_id": "browser39:file-path-search:examples-browser39-tools-py",
+      "query": "examples browser39 tools.py",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": null
+    },
+    {
+      "query_id": "browser39:exact-symbol:examples-browser39-tools-py:init",
+      "query": "__init__",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "browser39:symbol-intent:examples-browser39-tools-py:function-ensure-running",
+      "query": "function ensure running",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py",
+        "examples/browser39_tools.rs"
+      ],
+      "julie_rank": null,
+      "eros_rank": 1,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "browser39:documentation-phrase:examples-browser39-tools-rs:browser39-tools-drop-in-web-search",
+      "query": "browser39 tools drop in web search",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.rs"
+      ],
+      "julie_rank": 2,
+      "eros_rank": 1,
+      "miller_rank": null
+    },
+    {
+      "query_id": "browser39:file-path-search:examples-browser39-tools-rs",
+      "query": "examples browser39 tools.rs",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.rs"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": null
+    },
+    {
+      "query_id": "browser39:exact-symbol:examples-browser39-tools-py:ensure-running",
+      "query": "_ensure_running",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "browser39:symbol-intent:examples-browser39-tools-py:function-web-search",
+      "query": "function web search",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py",
+        "examples/browser39_tools.rs",
+        "examples/browser39_tools.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": 3
+    },
+    {
+      "query_id": "browser39:documentation-phrase:examples-browser39-tools-ts:browser39-tools-drop-in-websearch-and",
+      "query": "browser39 tools drop in websearch and",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": null
+    },
+    {
+      "query_id": "browser39:file-path-search:examples-browser39-tools-ts",
+      "query": "examples browser39 tools.ts",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": null
+    },
+    {
+      "query_id": "browser39:exact-symbol:examples-browser39-tools-py:send",
+      "query": "send",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py",
+        "examples/browser39_tools.rs"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "browser39:symbol-intent:examples-browser39-tools-py:function-visit-website",
+      "query": "function visit website",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "examples/browser39_tools.py",
+        "examples/browser39_tools.rs",
+        "examples/browser39_tools.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": 1,
+      "miller_rank": 3
+    },
+    {
+      "query_id": "browser39:documentation-phrase:openclaw-plugin-index-ts:openclaw-native-plugin-for-browser39",
+      "query": "openclaw native plugin for browser39",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/browser39",
+      "expected_paths": [
+        "openclaw-plugin/index.ts"
+      ],
+      "julie_rank": 3,
+      "eros_rank": 1,
+      "miller_rank": 5
+    },
+    {
+      "query_id": "coa-goldfish-mcp:exact-symbol:archive-scripts-cleanup-memory-files-ts:cleanupresult",
+      "query": "CleanupResult",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/scripts/cleanup-memory-files.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "coa-goldfish-mcp:symbol-intent:archive-scripts-cleanup-memory-files-ts:interface-cleanup-result",
+      "query": "interface cleanup result",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/scripts/cleanup-memory-files.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "coa-goldfish-mcp:documentation-phrase:archive-eslint-config-js:web-api-globals-for-fetch-abortcontroller",
+      "query": "web api globals for fetch abortcontroller",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/eslint.config.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 3
+    },
+    {
+      "query_id": "coa-goldfish-mcp:file-path-search:archive-eslint-config-js",
+      "query": "archive eslint.config.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/eslint.config.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "coa-goldfish-mcp:likely-test:archive-src-tests-atomic-operations-test-ts",
+      "query": "src tests atomic operations.test.ts",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/src/__tests__/atomic-operations.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "coa-goldfish-mcp:exact-symbol:archive-scripts-cleanup-memory-files-ts:cleanupmemoryfiles",
+      "query": "cleanupMemoryFiles",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/scripts/cleanup-memory-files.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "coa-goldfish-mcp:symbol-intent:archive-scripts-cleanup-memory-files-ts:function-cleanup-memory-files",
+      "query": "function cleanup memory files",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/scripts/cleanup-memory-files.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 2
+    },
+    {
+      "query_id": "coa-goldfish-mcp:documentation-phrase:archive-scripts-cleanup-memory-files-ts:safe-cleanup-of-memory-object-files",
+      "query": "safe cleanup of memory object files",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/scripts/cleanup-memory-files.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 2
+    },
+    {
+      "query_id": "coa-goldfish-mcp:file-path-search:archive-jest-config-js",
+      "query": "archive jest.config.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/jest.config.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "coa-goldfish-mcp:likely-test:archive-src-tests-bug-analysis-date-handling-test-ts",
+      "query": "src tests bug analysis date handling.test.ts",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/src/__tests__/bug-analysis-date-handling.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "coa-goldfish-mcp:exact-symbol:archive-src-tests-cross-workspace-functionality-test-ts:createtestmemoriesforworkspace",
+      "query": "createTestMemoriesForWorkspace",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/src/__tests__/cross-workspace-functionality.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "coa-goldfish-mcp:symbol-intent:archive-src-core-config-ts:interface-goldfish-config",
+      "query": "interface goldfish config",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/src/core/config.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "coa-goldfish-mcp:documentation-phrase:archive-scripts-migrate-storage-ts:cli-tool-to-migrate-memory-objects",
+      "query": "cli tool to migrate memory objects",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/scripts/migrate-storage.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 4
+    },
+    {
+      "query_id": "coa-goldfish-mcp:file-path-search:archive-scripts-cleanup-memory-files-ts",
+      "query": "archive scripts cleanup memory files.ts",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/scripts/cleanup-memory-files.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "coa-goldfish-mcp:likely-test:archive-src-tests-bug-reproduction-date-handling-test-ts",
+      "query": "src tests bug reproduction date handling.test.ts",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/coa-goldfish-mcp",
+      "expected_paths": [
+        "archive/src/__tests__/bug-reproduction-date-handling.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "cobra:exact-symbol:active-help-go:appendactivehelp",
+      "query": "AppendActiveHelp",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:symbol-intent:active-help-go:function-append-active-help",
+      "query": "function append active help",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:documentation-phrase:active-help-go:without-warranties-or-conditions-of-any",
+      "query": "without warranties or conditions of any",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help.go",
+        "active_help_test.go",
+        "args.go",
+        "args_test.go",
+        "bash_completions.go",
+        "bash_completionsV2.go",
+        "bash_completionsV2_test.go",
+        "bash_completions_test.go",
+        "cobra.go",
+        "cobra_test.go",
+        "command.go",
+        "command_notwin.go",
+        "command_test.go",
+        "command_win.go",
+        "completions.go",
+        "completions_test.go",
+        "doc/cmd_test.go",
+        "doc/man_docs.go",
+        "doc/man_docs_test.go",
+        "doc/man_examples_test.go",
+        "doc/md_docs.go",
+        "doc/md_docs_test.go",
+        "doc/rest_docs.go",
+        "doc/rest_docs_test.go",
+        "doc/util.go",
+        "doc/yaml_docs.go",
+        "doc/yaml_docs_test.go",
+        "fish_completions.go",
+        "fish_completions_test.go",
+        "flag_groups.go",
+        "flag_groups_test.go",
+        "powershell_completions.go",
+        "powershell_completions_test.go",
+        "shell_completions.go",
+        "zsh_completions.go",
+        "zsh_completions_test.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "cobra:file-path-search:active-help-go",
+      "query": "active help.go",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "cobra:exact-symbol:active-help-go:getactivehelpconfig",
+      "query": "GetActiveHelpConfig",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:symbol-intent:active-help-go:function-get-active-help-config",
+      "query": "function get active help config",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:file-path-search:active-help-test-go",
+      "query": "active help test.go",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help_test.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "cobra:exact-symbol:active-help-go:activehelpenvvar",
+      "query": "activeHelpEnvVar",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:symbol-intent:active-help-go:function-active-help-env-var",
+      "query": "function active help env var",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:file-path-search:args-go",
+      "query": "args.go",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "args.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:exact-symbol:active-help-test-go:testactivehelpalone",
+      "query": "TestActiveHelpAlone",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help_test.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:symbol-intent:active-help-test-go:function-test-active-help-alone",
+      "query": "function test active help alone",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help_test.go"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:file-path-search:args-test-go",
+      "query": "args test.go",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "args_test.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "cobra:exact-symbol:active-help-test-go:testactivehelpwithcomps",
+      "query": "TestActiveHelpWithComps",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help_test.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "cobra:symbol-intent:active-help-test-go:function-test-active-help-with-comps",
+      "query": "function test active help with comps",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/cobra",
+      "expected_paths": [
+        "active_help_test.go"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:exact-symbol:cmd-codenav-index-go:runindex",
+      "query": "runIndex",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:symbol-intent:cmd-codenav-index-go:function-run-index",
+      "query": "function run index",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index.go"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:documentation-phrase:cmd-codenav-index-go:runindex-handles-the-codenav-index-root",
+      "query": "runindex handles the codenav index root",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:file-path-search:cmd-codenav-index-go",
+      "query": "cmd codenav index.go",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "codenav:exact-symbol:cmd-codenav-index-go:zoektdirbytes",
+      "query": "zoektDirBytes",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:symbol-intent:cmd-codenav-index-go:function-zoekt-dir-bytes",
+      "query": "function zoekt dir bytes",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:documentation-phrase:cmd-codenav-index-test-go:buildbinary-compiles-the-codenav-binary-into",
+      "query": "buildbinary compiles the codenav binary into",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index_test.go"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "codenav:file-path-search:cmd-codenav-index-test-go",
+      "query": "cmd codenav index test.go",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index_test.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "codenav:exact-symbol:cmd-codenav-index-go:formatbytes",
+      "query": "formatBytes",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:symbol-intent:cmd-codenav-index-go:function-format-bytes",
+      "query": "function format bytes",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:documentation-phrase:cmd-codenav-integration-test-go:testintegration-endtoend-builds-the-codenav-binary",
+      "query": "testintegration endtoend builds the codenav binary",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/integration_test.go"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "codenav:file-path-search:cmd-codenav-integration-test-go",
+      "query": "cmd codenav integration test.go",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/integration_test.go"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "codenav:exact-symbol:cmd-codenav-index-test-go:buildbinary",
+      "query": "buildBinary",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index_test.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codenav:symbol-intent:cmd-codenav-index-test-go:function-build-binary",
+      "query": "function build binary",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/index_test.go"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "codenav:documentation-phrase:cmd-codenav-main-go:package-main-is-the-codenav-cli",
+      "query": "package main is the codenav cli",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/codenav",
+      "expected_paths": [
+        "cmd/codenav/main.go"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 2
+    },
+    {
+      "query_id": "codex-plugin-cc:exact-symbol:plugins-codex-scripts-lib-app-server-protocol-d-ts:threadstartparams",
+      "query": "ThreadStartParams",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:symbol-intent:plugins-codex-scripts-lib-app-server-protocol-d-ts:type-thread-start-params",
+      "query": "type thread start params",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:file-path-search:plugins-codex-scripts-lib-app-server-protocol-d-ts",
+      "query": "scripts lib app server protocol.d.ts",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "codex-plugin-cc:exact-symbol:plugins-codex-scripts-lib-app-server-protocol-d-ts:threadresumeparams",
+      "query": "ThreadResumeParams",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:symbol-intent:plugins-codex-scripts-lib-app-server-protocol-d-ts:type-thread-resume-params",
+      "query": "type thread resume params",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:exact-symbol:plugins-codex-scripts-lib-app-server-protocol-d-ts:codexappserverclientoptions",
+      "query": "CodexAppServerClientOptions",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:symbol-intent:plugins-codex-scripts-lib-app-server-protocol-d-ts:interface-codex-app-server-client-options",
+      "query": "interface codex app server client options",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:exact-symbol:plugins-codex-scripts-lib-app-server-protocol-d-ts:appservermethodmap",
+      "query": "AppServerMethodMap",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:symbol-intent:plugins-codex-scripts-lib-app-server-protocol-d-ts:interface-app-server-method-map",
+      "query": "interface app server method map",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:exact-symbol:plugins-codex-scripts-lib-app-server-protocol-d-ts:appservermethod",
+      "query": "AppServerMethod",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:symbol-intent:plugins-codex-scripts-lib-app-server-protocol-d-ts:type-app-server-method",
+      "query": "type app server method",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:exact-symbol:plugins-codex-scripts-lib-app-server-protocol-d-ts:appserverrequestparams",
+      "query": "AppServerRequestParams",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:symbol-intent:plugins-codex-scripts-lib-app-server-protocol-d-ts:type-app-server-request-params",
+      "query": "type app server request params",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:exact-symbol:plugins-codex-scripts-lib-app-server-protocol-d-ts:appserverresponse",
+      "query": "AppServerResponse",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "codex-plugin-cc:symbol-intent:plugins-codex-scripts-lib-app-server-protocol-d-ts:type-app-server-response",
+      "query": "type app server response",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/codex-plugin-cc",
+      "expected_paths": [
+        "plugins/codex/scripts/lib/app-server-protocol.d.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "express:exact-symbol:examples-auth-index-js:authenticate",
+      "query": "authenticate",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/auth/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "express:symbol-intent:examples-route-middleware-index-js:function-load-user",
+      "query": "function load user",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/route-middleware/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "express:documentation-phrase:examples-auth-index-js:when-you-create-a-user-generate",
+      "query": "when you create a user generate",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/auth/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "express:file-path-search:examples-auth-index-js",
+      "query": "examples auth index.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/auth/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "express:likely-test:test-route-js",
+      "query": "test Route.js",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "test/Route.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "express:test-intent:test-res-location-js",
+      "query": "test requested redirect",
+      "category": "test intent lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "test/res.location.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "express:exact-symbol:examples-auth-index-js:restrict",
+      "query": "restrict",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/auth/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "express:symbol-intent:examples-route-middleware-index-js:function-and-restrict-to-self",
+      "query": "function and restrict to self",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/route-middleware/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "express:documentation-phrase:examples-content-negotiation-index-js:so-either-you-can-deal-with",
+      "query": "so either you can deal with",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/content-negotiation/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "express:file-path-search:examples-content-negotiation-db-js",
+      "query": "examples content negotiation db.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/content-negotiation/db.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "express:likely-test:test-router-js",
+      "query": "test Router.js",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "test/Router.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "express:exact-symbol:examples-error-index-js:error",
+      "query": "error",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/error/index.js",
+        "examples/web-service/index.js"
+      ],
+      "julie_rank": 3,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "express:symbol-intent:examples-route-middleware-index-js:function-and-restrict-to",
+      "query": "function and restrict to",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/route-middleware/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "express:documentation-phrase:examples-cookie-sessions-index-js:add-req-session-cookie-support",
+      "query": "add req session cookie support",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/cookie-sessions/index.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "express:file-path-search:examples-content-negotiation-index-js",
+      "query": "examples content negotiation index.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/express",
+      "expected_paths": [
+        "examples/content-negotiation/index.js"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "flask:exact-symbol:docs-conf-py:github-link",
+      "query": "github_link",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "docs/conf.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "flask:symbol-intent:docs-conf-py:function-github-link",
+      "query": "function github link",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "docs/conf.py"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "flask:documentation-phrase:examples-tutorial-flaskr-init-py:create-and-configure-an-instance-of",
+      "query": "create and configure an instance of",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/tutorial/flaskr/__init__.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "flask:file-path-search:docs-conf-py",
+      "query": "docs conf.py",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "docs/conf.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "flask:likely-test:examples-javascript-tests-conftest-py",
+      "query": "javascript tests conftest.py",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/javascript/tests/conftest.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "flask:test-intent:examples-tutorial-tests-test-auth-py",
+      "query": "test register validate input",
+      "category": "test intent lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/tutorial/tests/test_auth.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "flask:exact-symbol:docs-conf-py:setup",
+      "query": "setup",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "docs/conf.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "flask:symbol-intent:examples-celery-src-task-app-init-py:function-create-app",
+      "query": "function create app",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/celery/src/task_app/__init__.py",
+        "examples/tutorial/flaskr/__init__.py"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": 3
+    },
+    {
+      "query_id": "flask:documentation-phrase:examples-tutorial-flaskr-auth-py:view-decorator-that-redirects-anonymous-users",
+      "query": "view decorator that redirects anonymous users",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/tutorial/flaskr/auth.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "flask:file-path-search:examples-celery-make-celery-py",
+      "query": "examples celery make celery.py",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/celery/make_celery.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "flask:likely-test:examples-javascript-tests-test-js-example-py",
+      "query": "javascript tests test js example.py",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/javascript/tests/test_js_example.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "flask:test-intent:examples-tutorial-tests-test-blog-py",
+      "query": "test login required",
+      "category": "test intent lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/tutorial/tests/test_blog.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 2
+    },
+    {
+      "query_id": "flask:exact-symbol:examples-celery-src-task-app-init-py:create-app",
+      "query": "create_app",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/celery/src/task_app/__init__.py",
+        "examples/tutorial/flaskr/__init__.py",
+        "tests/test_apps/cliapp/factory.py",
+        "tests/test_cli.py",
+        "tests/test_testing.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 3
+    },
+    {
+      "query_id": "flask:symbol-intent:examples-celery-src-task-app-init-py:function-celery-init-app",
+      "query": "function celery init app",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/celery/src/task_app/__init__.py"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "flask:documentation-phrase:examples-tutorial-flaskr-blog-py:show-all-the-posts-most-recent",
+      "query": "show all the posts most recent",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/flask",
+      "expected_paths": [
+        "examples/tutorial/flaskr/blog.py"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "get-shit-done:exact-symbol:bin-install-js:getdirname",
+      "query": "getDirName",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:symbol-intent:bin-install-js:function-get-dir-name",
+      "query": "function get dir name",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:documentation-phrase:bin-install-js:get-version-from-package-json",
+      "query": "get version from package json",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": null,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:file-path-search:bin-install-js",
+      "query": "bin install.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "get-shit-done:exact-symbol:bin-install-js:getconfigdirfromhome",
+      "query": "getConfigDirFromHome",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:symbol-intent:bin-install-js:function-get-config-dir-from-home",
+      "query": "function get config dir from home",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:documentation-phrase:hooks-gsd-check-update-js:check-for-gsd-updates-in-background",
+      "query": "check for gsd updates in background",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "hooks/gsd-check-update.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "get-shit-done:file-path-search:hooks-gsd-check-update-js",
+      "query": "hooks gsd check update.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "hooks/gsd-check-update.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "get-shit-done:exact-symbol:bin-install-js:getopencodeglobaldir",
+      "query": "getOpencodeGlobalDir",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:symbol-intent:bin-install-js:function-get-opencode-global-dir",
+      "query": "function get opencode global dir",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:documentation-phrase:hooks-gsd-context-monitor-js:reads-context-metrics-from-the-statusline",
+      "query": "reads context metrics from the statusline",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "hooks/gsd-context-monitor.js"
+      ],
+      "julie_rank": 2,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "get-shit-done:file-path-search:hooks-gsd-context-monitor-js",
+      "query": "hooks gsd context monitor.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "hooks/gsd-context-monitor.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "get-shit-done:exact-symbol:bin-install-js:getglobaldir",
+      "query": "getGlobalDir",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:symbol-intent:bin-install-js:function-get-global-dir",
+      "query": "function get global dir",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "bin/install.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "get-shit-done:documentation-phrase:hooks-gsd-statusline-js:claude-code-statusline-gsd-edition",
+      "query": "claude code statusline gsd edition",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/get-shit-done",
+      "expected_paths": [
+        "hooks/gsd-statusline.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "gnhf:exact-symbol:src-cli-test-ts:climockoverrides",
+      "query": "CliMockOverrides",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "gnhf:symbol-intent:src-cli-ts:type-run-info",
+      "query": "type run info",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.ts",
+        "src/core/run.ts"
+      ],
+      "julie_rank": 3,
+      "eros_rank": null,
+      "miller_rank": 4
+    },
+    {
+      "query_id": "gnhf:documentation-phrase:src-cli-ts:leave-the-directory-in-place-if",
+      "query": "leave the directory in place if",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "gnhf:file-path-search:eslint-config-js",
+      "query": "eslint.config.js",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "eslint.config.js"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "gnhf:likely-test:src-cli-test-ts",
+      "query": "src cli.test.ts",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "gnhf:exact-symbol:src-cli-test-ts:runcliwithmocks",
+      "query": "runCliWithMocks",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "gnhf:symbol-intent:src-cli-ts:function-parse-non-negative-integer",
+      "query": "function parse non negative integer",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "gnhf:documentation-phrase:src-core-agents-managed-process-ts:fall-back-to-the-direct-child",
+      "query": "fall back to the direct child",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/core/agents/managed-process.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "gnhf:file-path-search:src-cli-ts",
+      "query": "src cli.ts",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "gnhf:likely-test:src-core-agents-claude-test-ts",
+      "query": "core agents claude.test.ts",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/core/agents/claude.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "gnhf:exact-symbol:src-cli-ts:runinfo",
+      "query": "RunInfo",
+      "category": "exact symbol lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.ts",
+        "src/core/run.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 2
+    },
+    {
+      "query_id": "gnhf:symbol-intent:src-cli-ts:function-parse-on-off-boolean",
+      "query": "function parse on off boolean",
+      "category": "symbol intent lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/cli.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 1
+    },
+    {
+      "query_id": "gnhf:documentation-phrase:src-core-agents-opencode-ts:on-windows-with-shell-true-child",
+      "query": "on windows with shell true child",
+      "category": "documentation phrase lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/core/agents/opencode.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": 4
+    },
+    {
+      "query_id": "gnhf:file-path-search:src-core-agents-claude-ts",
+      "query": "core agents claude.ts",
+      "category": "file/path search",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/core/agents/claude.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    },
+    {
+      "query_id": "gnhf:likely-test:src-core-agents-factory-test-ts",
+      "query": "core agents factory.test.ts",
+      "category": "likely test lookup",
+      "repo": "/Users/murphy/source/gnhf",
+      "expected_paths": [
+        "src/core/agents/factory.test.ts"
+      ],
+      "julie_rank": 1,
+      "eros_rank": null,
+      "miller_rank": null
+    }
+  ],
+  "overall": {
+    "julie": {
+      "top1_hits": 117,
+      "top5_hits": 122,
+      "mrr": 0.8814814814814815,
+      "top1_rate": 0.8666666666666667,
+      "top5_rate": 0.9037037037037037
+    },
+    "eros": {
+      "top1_hits": 15,
+      "top5_hits": 15,
+      "mrr": 0.1111111111111111,
+      "top1_rate": 0.1111111111111111,
+      "top5_rate": 0.1111111111111111
+    },
+    "miller": {
+      "top1_hits": 70,
+      "top5_hits": 84,
+      "mrr": 0.5564197530864197,
+      "top1_rate": 0.5185185185185185,
+      "top5_rate": 0.6222222222222222
+    }
+  },
+  "by_category": {
+    "documentation phrase lookup": {
+      "count": 25,
+      "julie": {
+        "top1_hits": 19,
+        "top5_hits": 22,
+        "mrr": 0.8133333333333332,
+        "top1_rate": 0.76,
+        "top5_rate": 0.88
+      },
+      "eros": {
+        "top1_hits": 4,
+        "top5_hits": 4,
+        "mrr": 0.16,
+        "top1_rate": 0.16,
+        "top5_rate": 0.16
+      },
+      "miller": {
+        "top1_hits": 3,
+        "top5_hits": 9,
+        "mrr": 0.20133333333333334,
+        "top1_rate": 0.12,
+        "top5_rate": 0.36
+      }
+    },
+    "exact symbol lookup": {
+      "count": 36,
+      "julie": {
+        "top1_hits": 35,
+        "top5_hits": 36,
+        "mrr": 0.9814814814814815,
+        "top1_rate": 0.9722222222222222,
+        "top5_rate": 1.0
+      },
+      "eros": {
+        "top1_hits": 4,
+        "top5_hits": 4,
+        "mrr": 0.1111111111111111,
+        "top1_rate": 0.1111111111111111,
+        "top5_rate": 0.1111111111111111
+      },
+      "miller": {
+        "top1_hits": 33,
+        "top5_hits": 35,
+        "mrr": 0.9398148148148149,
+        "top1_rate": 0.9166666666666666,
+        "top5_rate": 0.9722222222222222
+      }
+    },
+    "file/path search": {
+      "count": 25,
+      "julie": {
+        "top1_hits": 23,
+        "top5_hits": 23,
+        "mrr": 0.92,
+        "top1_rate": 0.92,
+        "top5_rate": 0.92
+      },
+      "eros": {
+        "top1_hits": 3,
+        "top5_hits": 3,
+        "mrr": 0.12,
+        "top1_rate": 0.12,
+        "top5_rate": 0.12
+      },
+      "miller": {
+        "top1_hits": 2,
+        "top5_hits": 2,
+        "mrr": 0.08,
+        "top1_rate": 0.08,
+        "top5_rate": 0.08
+      }
+    },
+    "likely test lookup": {
+      "count": 10,
+      "julie": {
+        "top1_hits": 10,
+        "top5_hits": 10,
+        "mrr": 1.0,
+        "top1_rate": 1.0,
+        "top5_rate": 1.0
+      },
+      "eros": {
+        "top1_hits": 0,
+        "top5_hits": 0,
+        "mrr": 0.0,
+        "top1_rate": 0.0,
+        "top5_rate": 0.0
+      },
+      "miller": {
+        "top1_hits": 0,
+        "top5_hits": 0,
+        "mrr": 0.0,
+        "top1_rate": 0.0,
+        "top5_rate": 0.0
+      }
+    },
+    "symbol intent lookup": {
+      "count": 36,
+      "julie": {
+        "top1_hits": 27,
+        "top5_hits": 28,
+        "mrr": 0.7592592592592592,
+        "top1_rate": 0.75,
+        "top5_rate": 0.7777777777777778
+      },
+      "eros": {
+        "top1_hits": 4,
+        "top5_hits": 4,
+        "mrr": 0.1111111111111111,
+        "top1_rate": 0.1111111111111111,
+        "top5_rate": 0.1111111111111111
+      },
+      "miller": {
+        "top1_hits": 30,
+        "top5_hits": 35,
+        "mrr": 0.8819444444444444,
+        "top1_rate": 0.8333333333333334,
+        "top5_rate": 0.9722222222222222
+      }
+    },
+    "test intent lookup": {
+      "count": 3,
+      "julie": {
+        "top1_hits": 3,
+        "top5_hits": 3,
+        "mrr": 1.0,
+        "top1_rate": 1.0,
+        "top5_rate": 1.0
+      },
+      "eros": {
+        "top1_hits": 0,
+        "top5_hits": 0,
+        "mrr": 0.0,
+        "top1_rate": 0.0,
+        "top5_rate": 0.0
+      },
+      "miller": {
+        "top1_hits": 2,
+        "top5_hits": 3,
+        "mrr": 0.8333333333333334,
+        "top1_rate": 0.6666666666666666,
+        "top5_rate": 1.0
+      }
+    }
+  }
+}
