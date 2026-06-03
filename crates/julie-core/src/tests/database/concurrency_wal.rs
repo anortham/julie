@@ -6,7 +6,7 @@ use super::*;
 
 #[test]
 fn test_concurrent_read_access_no_corruption() {
-    use julie_test_support::open_test_connection;
+    use crate::test_support::open_test_connection;
     use std::sync::Arc;
     use std::thread;
 
@@ -84,7 +84,7 @@ fn test_concurrent_read_access_no_corruption() {
 
 #[test]
 fn test_concurrent_mixed_access_no_corruption() {
-    use julie_test_support::open_test_connection;
+    use crate::test_support::open_test_connection;
     use std::sync::{Arc, Mutex};
     use std::thread;
 
@@ -201,7 +201,7 @@ fn test_concurrent_mixed_access_no_corruption() {
 #[test]
 #[ignore] // Long-running stress test - run manually
 fn test_extreme_concurrent_stress() {
-    use julie_test_support::open_test_connection;
+    use crate::test_support::open_test_connection;
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;

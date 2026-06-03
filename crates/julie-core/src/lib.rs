@@ -9,5 +9,8 @@ pub mod database;
 pub mod embeddings_contract;
 pub mod paths;
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 #[cfg(test)]
 mod tests;

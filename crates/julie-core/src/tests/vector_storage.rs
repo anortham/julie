@@ -1,9 +1,8 @@
 //! Tests for sqlite-vec vector storage (database::vectors).
 
 use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
+use crate::test_support::{file_info_builder, store_file_info_if_missing, symbol_builder};
 use julie_extractors::SymbolKind;
-use super::helpers::{file_info_builder, store_file_info_if_missing};
-use julie_test_support::symbol_builder;
 use tempfile::TempDir;
 
 /// Helper: create a fresh SymbolDatabase in a temp directory.

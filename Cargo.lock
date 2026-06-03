@@ -1739,7 +1739,6 @@ dependencies = [
  "chrono",
  "fs2",
  "julie-extractors",
- "julie-test-support",
  "md5",
  "rusqlite",
  "serde",
@@ -1804,12 +1803,7 @@ dependencies = [
 name = "julie-test-support"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "julie-core",
- "julie-extractors",
- "rusqlite",
- "serde_json",
- "tempfile",
 ]
 
 [[package]]

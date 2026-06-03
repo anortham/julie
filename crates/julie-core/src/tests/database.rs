@@ -4,13 +4,11 @@
 // etc.) come from julie_extractors and are imported directly.
 
 use crate::database::*;
+use crate::test_support::{
+    file_info_builder, identifier_builder, open_test_connection, relationship_builder,
+    set_symbol_reference_scores, symbol_builder,
+};
 use julie_extractors::{IdentifierKind, RelationshipKind, Symbol, SymbolKind, Visibility};
-// Local helpers for julie-core types (FileInfo, SymbolDatabase operations)
-use super::helpers::{file_info_builder, set_symbol_reference_scores};
-// open_test_connection returns rusqlite::Connection — external type — safe to import from julie-test-support
-use julie_test_support::open_test_connection;
-// External-type builders from julie-test-support (Symbol/Relationship/Identifier)
-use julie_test_support::{identifier_builder, relationship_builder, symbol_builder};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;

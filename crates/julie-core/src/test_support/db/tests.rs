@@ -1,4 +1,4 @@
-use julie_core::database::SymbolDatabase;
+use crate::database::SymbolDatabase;
 use julie_extractors::{
     AnnotationMarker, IdentifierKind, RelationshipKind, SymbolKind, Visibility,
 };

@@ -6,9 +6,17 @@ authors.workspace = true
 license.workspace = true
 description = "Bottom leaf crate of the Julie workspace — shared types and infrastructure"
 
+[features]
+# Enable handler-free test helpers (db builders, open_test_connection, tempdir, cleanup).
+# Automatically included when cfg(test); downstream consumers enable this feature explicitly.
+test-support = ["dep:tempfile"]
+
 [dependencies]
 # Julie Extractors — identical pin to the root crate so julie_extractors:: types unify
 julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.0.3" }
+
+# Temp directories — for test_support::tempdir (optional; enabled by test-support feature)
+tempfile = { version = "3.13", optional = true }
 
 # Database
 rusqlite = { version = "0.39.0", features = ["bundled"] }
@@ -43,8 +51,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 chrono = { version = "0.4.42", features = ["serde"] }
 
 [dev-dependencies]
-# Handler-free test helpers — dev-dep only to avoid cycle (julie-core → test-support → julie-core)
-julie-test-support = { path = "../julie-test-support" }
-# Used by database tests (TempDir, Parser)
+# tempfile as dev-dep so cfg(test) builds (which don't activate the test-support feature)
+# still compile test_support::tempdir and any test that calls tempfile::tempdir() directly.
 tempfile = "3.13"
 tree-sitter = "0.26.8"

@@ -4,23 +4,8 @@ version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Handler-free test helpers for the Julie workspace (db row builders, temp-dir utils)"
+description = "Thin re-export of julie_core::test_support — handler-free helpers for the Julie workspace (see ADR-0006)"
 
 [dependencies]
-# Julie leaf crate — SymbolDatabase, FileInfo, etc.
-julie-core = { path = "../julie-core" }
-
-# Julie Extractors — identical pin to the root crate so julie_extractors:: types unify
-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.0.3" }
-
-# SQLite — for open_test_connection (bundled matches root crate)
-rusqlite = { version = "0.39.0", features = ["bundled"] }
-
-# Serialization — serde_json::Value used in SymbolBuilder metadata field
-serde_json = "1.0"
-
-# Temp directories — unique_temp_dir
-tempfile = "3.13"
-
-# Error handling
-anyhow = "1.0"
+# Re-export the helpers that live in julie-core (ADR-0006: single source, no dep cycle).
+julie-core = { path = "../julie-core", features = ["test-support"] }

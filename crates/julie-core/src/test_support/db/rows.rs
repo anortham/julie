@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use anyhow::bail;
 
-use julie_core::database::SymbolDatabase;
-use julie_core::database::types::FileInfo;
+use crate::database::SymbolDatabase;
+use crate::database::types::FileInfo;
 use julie_extractors::{
     AnnotationMarker, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
     SymbolKind, Visibility,
