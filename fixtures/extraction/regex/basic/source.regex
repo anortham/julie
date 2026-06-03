@@ -1,1 +1,0 @@
-^(?<name>[A-Za-z]+)-(?<id>\d+)-\k<name>-(foo)-\3$

@@ -164,52 +164,26 @@ fn changed_tests_dogfood_repo_index_file_routes_to_new_bucket() {
 }
 
 #[test]
-fn changed_tests_extractor_crate_paths_select_extractors_bucket() {
+fn changed_tests_root_manifest_changes_fall_back_to_dev() {
+    // The external julie-extractors crate is now a git dependency; a re-pin (or any
+    // other dependency bump) shows up as a root Cargo.toml/Cargo.lock edit, which falls
+    // back to the full dev tier rather than a thin extractor-only bucket. The dev tier
+    // includes extractor-dep-integration, so the extractor gate still runs.
     let manifest = sample_manifest();
 
     let selection = select_changed_buckets(
         &manifest,
-        &[
-            "crates/julie-extractors/src/rust/mod.rs".to_string(),
-            "crates/julie-extractors/src/tests/rust/mod.rs".to_string(),
-        ],
+        &["Cargo.toml".to_string(), "Cargo.lock".to_string()],
     );
 
-    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["extractors"]);
-    assert!(selection.fallback_paths.is_empty());
-}
-
-#[test]
-fn changed_tests_extraction_fixtures_select_parser_upgrade_bucket() {
-    let manifest = sample_manifest();
-
-    let selection = select_changed_buckets(
-        &manifest,
-        &["fixtures/extraction/rust/basic/expected.json".to_string()],
+    assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
+    assert!(selection.fallback_paths.contains(&"Cargo.toml".to_string()));
+    assert!(selection.fallback_paths.contains(&"Cargo.lock".to_string()));
+    assert!(
+        selection
+            .bucket_names
+            .contains(&"extractor-dep-integration".to_string())
     );
-
-    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["parser-upgrade"]);
-    assert!(selection.fallback_paths.is_empty());
-}
-
-#[test]
-fn changed_tests_tree_sitter_dependency_paths_select_parser_upgrade_bucket() {
-    let manifest = sample_manifest();
-
-    let selection = select_changed_buckets(
-        &manifest,
-        &[
-            "Cargo.toml".to_string(),
-            "Cargo.lock".to_string(),
-            "crates/julie-extractors/Cargo.toml".to_string(),
-        ],
-    );
-
-    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["parser-upgrade"]);
-    assert!(selection.fallback_paths.is_empty());
 }
 
 #[test]
@@ -599,12 +573,12 @@ fn changed_tests_startup_routes_to_lifecycle_workspace_runtime_and_workspace() {
 }
 
 #[test]
-fn changed_tests_src_extractors_reexport_routes_to_extractors_bucket() {
+fn changed_tests_src_extractors_reexport_routes_to_extractor_dep_integration_bucket() {
     let manifest = sample_manifest();
 
     let selection = select_changed_buckets(&manifest, &["src/extractors/mod.rs".to_string()]);
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["extractors"]);
+    assert_eq!(selection.bucket_names, vec!["extractor-dep-integration"]);
     assert!(selection.fallback_paths.is_empty());
 }
 
@@ -760,6 +734,7 @@ dev = [
   "tools-format-filter",
   "core-fast",
   "search-quality",
+  "extractor-dep-integration",
 ]
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
 
@@ -918,19 +893,12 @@ expected_seconds = 200
 timeout_seconds = 450
 commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality"]
 
-[buckets.extractors]
-expected_seconds = 30
-timeout_seconds = 90
-commands = [
-  "cargo nextest run -p julie-extractors golden",
-  "cargo nextest run -p julie-extractors capability_matrix",
-]
-
-[buckets.parser-upgrade]
+[buckets.extractor-dep-integration]
 expected_seconds = 60
 timeout_seconds = 180
 commands = [
-  "cargo nextest run -p julie-extractors -E 'test(golden) | test(capability_matrix) | test(parser_upgrade)'",
+  "cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract",
+  "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
 ]
 
 [buckets.projection]

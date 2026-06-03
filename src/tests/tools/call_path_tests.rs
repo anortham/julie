@@ -617,17 +617,17 @@ async fn test_call_path_resolves_workspace_crate_glob_reexport_to_definition_tar
 {
     let (_temp_dir, handler) = setup_indexed_workspace_files(&[
         ("src/lib.rs", "pub mod extractors;\npub mod indexing;\n"),
-        ("src/extractors/mod.rs", "pub use julie_extractors::*;\n"),
+        ("src/extractors/mod.rs", "pub use sample_lib::*;\n"),
         (
             "src/indexing.rs",
             "pub fn extract_symbols_static() {\n    crate::extractors::extract_canonical();\n}\n",
         ),
         (
-            "crates/julie-extractors/src/lib.rs",
+            "crates/sample-lib/src/lib.rs",
             "pub use pipeline::extract_canonical;\npub mod pipeline;\n",
         ),
         (
-            "crates/julie-extractors/src/pipeline.rs",
+            "crates/sample-lib/src/pipeline.rs",
             "pub fn extract_canonical() {}\n",
         ),
     ])
@@ -639,7 +639,7 @@ async fn test_call_path_resolves_workspace_crate_glob_reexport_to_definition_tar
         max_hops: 2,
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/indexing.rs".to_string()),
-        to_file_path: Some("crates/julie-extractors/src/pipeline.rs".to_string()),
+        to_file_path: Some("crates/sample-lib/src/pipeline.rs".to_string()),
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -657,7 +657,7 @@ async fn test_call_path_resolves_workspace_crate_glob_reexport_to_definition_tar
             to: "extract_canonical".to_string(),
             edge: "call".to_string(),
             file: "src/indexing.rs:2".to_string(),
-            target_file: "crates/julie-extractors/src/pipeline.rs".to_string(),
+            target_file: "crates/sample-lib/src/pipeline.rs".to_string(),
             target_start_line: 1,
         }]
     );

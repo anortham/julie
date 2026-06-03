@@ -103,24 +103,14 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "extractors",
+            "extractor-dep-integration",
             ExpectedBucket {
                 expected_seconds: 60,
                 timeout_seconds: 180,
                 commands: &[
-                    "cargo nextest run -p julie-extractors golden",
-                    "cargo nextest run -p julie-extractors capability_matrix",
-                    "cargo xtask certify tree-sitter --check",
-                    "cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate",
+                    "cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract",
+                    "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
                 ],
-            },
-        ),
-        (
-            "extractor-units",
-            ExpectedBucket {
-                expected_seconds: 30,
-                timeout_seconds: 120,
-                commands: &["cargo nextest run -p julie-extractors --lib"],
             },
         ),
         (
@@ -139,17 +129,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 12,
                 timeout_seconds: 60,
                 commands: &["cargo nextest run --lib tests::dashboard -- --skip search_quality"],
-            },
-        ),
-        (
-            "parser-upgrade",
-            ExpectedBucket {
-                expected_seconds: 60,
-                timeout_seconds: 180,
-                commands: &[
-                    "cargo nextest run -p julie-extractors -E 'test(golden) | test(capability_matrix) | test(parser_upgrade)'",
-                    "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
-                ],
             },
         ),
         (
@@ -623,24 +602,13 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
             },
         ),
         (
-            "extractors",
+            "extractor-dep-integration",
             ExpectedBucketMetadata {
-                scope_label: "extractors",
+                scope_label: "extractor-dep",
                 owner: "lead",
                 expensive: false,
                 notes: Some(
-                    "extractor golden, capability matrix, and Pillar-3 downstream-consumer gate",
-                ),
-            },
-        ),
-        (
-            "extractor-units",
-            ExpectedBucketMetadata {
-                scope_label: "extractors",
-                owner: "lead",
-                expensive: false,
-                notes: Some(
-                    "per-language extractor unit suites (tests::<lang>::...), previously ungated",
+                    "extractor dependency integration: contract-version anchor + real-world extraction smoke",
                 ),
             },
         ),
@@ -660,15 +628,6 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("dashboard route coverage"),
-            },
-        ),
-        (
-            "parser-upgrade",
-            ExpectedBucketMetadata {
-                scope_label: "extractors",
-                owner: "lead",
-                expensive: false,
-                notes: Some("parser dependency upgrade gate"),
             },
         ),
         (

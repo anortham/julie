@@ -10,11 +10,6 @@ pub mod search_matrix;
 pub mod search_matrix_mine;
 pub mod search_matrix_report;
 pub mod sync_plugin;
-pub mod tree_sitter_certification;
-pub mod tree_sitter_certification_data;
-pub mod tree_sitter_certification_report;
-pub mod tree_sitter_real_world;
-pub mod tree_sitter_real_world_report;
 
 pub use cli::TestCommand;
 pub use manifest::{BucketConfig, TestManifest};

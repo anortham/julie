@@ -68,7 +68,7 @@ impl TypeScriptExtractor {
 }
 ```
 
-`BaseExtractor` uses `src/utils/paths.rs::to_relative_unix_style()` internally when storing symbol file paths. The factory at `crates/julie-extractors/src/factory.rs` passes `workspace_root` through to every extractor.
+`BaseExtractor` uses `src/utils/paths.rs::to_relative_unix_style()` internally when storing symbol file paths. The factory in the external `anortham/julie-extractors` repo passes `workspace_root` through to every extractor.
 
 ## Test Contract
 
@@ -117,8 +117,8 @@ to_relative_unix_style("/etc/passwd", workspace_root)
 ## Implementation
 
 - `src/utils/paths.rs` - `to_relative_unix_style()` and `to_absolute_native()` utilities
-- `crates/julie-extractors/src/base/extractor.rs` - `BaseExtractor::new()` accepts `workspace_root: &Path`
-- All 34 language extractors in `crates/julie-extractors/src/` pass `workspace_root` through
+- `src/base/extractor.rs` in the external `anortham/julie-extractors` repo - `BaseExtractor::new()` accepts `workspace_root: &Path`
+- All 34 language extractors in that repo pass `workspace_root` through
 
 ---
 

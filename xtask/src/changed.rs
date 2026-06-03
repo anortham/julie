@@ -340,10 +340,6 @@ enum FallbackRule {
 }
 
 fn fallback_rule_for_path(path: &str) -> Option<(FallbackRule, String)> {
-    if is_extractor_path(path) || is_parser_upgrade_path(path) {
-        return None;
-    }
-
     if let Some(exact_file) = DEV_FALLBACK_FILES
         .iter()
         .copied()
@@ -393,18 +389,13 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return buckets;
     }
 
-    if is_parser_upgrade_path(path) {
-        return &["parser-upgrade"];
-    }
-
-    if is_extractor_path(path) {
-        return &["extractors", "extractor-units"];
-    }
-
-    // src/extractors/ is a thin re-export wrapper for the julie-extractors crate;
-    // changes there only need the extractor buckets to gate.
+    // src/extractors/ is the thin re-export wrapper over the external julie-extractors
+    // crate; a change there runs the julie-owned dep-integration gate. Root
+    // Cargo.toml/Cargo.lock are intentionally NOT routed here — they fall back to the
+    // full dev tier (which includes extractor-dep-integration), so a general dependency
+    // bump is not under-tested by a thin extractor gate.
     if matches_prefix(path, &["src/extractors/"]) {
-        return &["extractors", "extractor-units"];
+        return &["extractor-dep-integration"];
     }
 
     // Handler cross-cutting subfiles map to specific buckets so an edit doesn't drag the
@@ -958,9 +949,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "xtask-runner",
         "core-database",
         "core-embeddings",
-        "extractors",
-        "extractor-units",
-        "parser-upgrade",
+        "extractor-dep-integration",
         "projection",
         "tools-get-context-pipeline",
         "tools-get-context-format",
@@ -1010,23 +999,6 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
             .unwrap_or(order.len())
     });
     sorted
-}
-
-fn is_extractor_path(path: &str) -> bool {
-    matches_prefix(path, &["crates/julie-extractors/"])
-        && path != "crates/julie-extractors/Cargo.toml"
-}
-
-fn is_parser_upgrade_path(path: &str) -> bool {
-    matches_prefix(path, &["fixtures/extraction/"])
-        || matches_exact(
-            path,
-            &[
-                "Cargo.toml",
-                "Cargo.lock",
-                "crates/julie-extractors/Cargo.toml",
-            ],
-        )
 }
 
 fn matches_exact(path: &str, candidates: &[&str]) -> bool {

@@ -210,7 +210,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "core-handler-telemetry".to_string(),
                 "daemon".to_string(),
                 "dashboard".to_string(),
-                "extractor-units".to_string(),
+                "extractor-dep-integration".to_string(),
             ],
         ),
         (
@@ -266,7 +266,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "integration".to_string(),
                 "tools-dogfood-repo-index".to_string(),
                 "search-quality".to_string(),
-                "extractor-units".to_string(),
+                "extractor-dep-integration".to_string(),
             ],
         ),
         (

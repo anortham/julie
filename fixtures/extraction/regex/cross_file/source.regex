@@ -1,6 +1,0 @@
-# Phase 4c fixture: regex backreferences are within-pattern only;
-# there is no cross-file forward-reference construct in regex syntax.
-# Numbered (\1) and named (\k<name>) backreferences resolve at parse
-# time. Locks the no-pending classification.
-
-(?<word>\w+)\s+\k<word>

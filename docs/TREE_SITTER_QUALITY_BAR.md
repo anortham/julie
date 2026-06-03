@@ -15,8 +15,8 @@ The 2026-05-10 autonomous run and Codex follow-up drove the best-in-class plan (
 - Phase 4a-d: every relationship-emitting language ships a `cross_file` fixture and locking test. Cross-file pending now emits StructuredPendingRelationship with `target.terminal_name` + `import_context` for 24 languages (Rust, C, C++, Go, Zig, TypeScript, JavaScript, TSX, JSX, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala, Dart, Elixir, Lua, R, GDScript, SQL, Vue, HTML, QML). Recipe-B no-pending classifications (CSS, regex, Markdown, YAML, Razor, TOML, JSON) carry locking tests as evidence.
 - Phase 5: Pillar-3 hardening landed. `capability_snapshot()` + `EXTRACTION_CONTRACT_VERSION` exported, `SEMANTIC_INDEX_ENGINE_VERSION` embeds the contract version and is checked by regression tests, downstream-consumer integration test spawns a tempdir consumer crate and runs the public API end-to-end. Extractors bucket now runs the downstream-smoke gate.
 - Phase 6: release-profile real-world evidence now covers 22 repos, including the VB.NET `samples` corpus, with 110 representative specs enforced by the hard-failure gate.
-- Phase 7: historical verification docs removed; canonical sources of truth are `fixtures/extraction/capabilities.json` (typed evidence schema, machine-checked) and the regenerated `docs/LANGUAGE_CERTIFICATION_REPORT.md` + `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json`.
-- Phase 5.4 follow-up: `cargo doc -p julie-extractors --no-deps` is warning-free after cleaning broken doc links and HTML-like text in public rustdoc.
+- Phase 7: historical verification docs removed; canonical source of truth for capability coverage is the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo (capabilities.json, golden fixtures, real-world corpus). `docs/LANGUAGE_CERTIFICATION_REPORT.md` and `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` were generated artifacts — they are no longer maintained in this repo.
+- Phase 5.4 follow-up: `cargo doc -p julie-extractors --no-deps` (run in the external repo) was warning-free after cleaning broken doc links and HTML-like text in public rustdoc.
 
 Live daemon-mode dogfood passed after a release rebuild and restart; see the verification ledger. The Codex-hosted `mcp__julie__` connector in this session still returned `Transport closed`, so the live rows were verified through `julie-server tool ...` against the daemon HTTP transport and the connector issue is tracked as a separate transport concern. PR #20 is open; merge back to `main` is still pending.
 
@@ -28,10 +28,8 @@ The restored verification docs were historical evidence, not current certificati
 
 - `fixtures/extraction/capabilities.json` tracks 36 registry rows: 34 user-facing language rows plus `tsx` and `jsx`.
 - `fixtures/extraction/capabilities.json` records 17 capability-gap rows, all `status: "exception"`; there are no open capability gaps.
-- `fixtures/extraction/capabilities.json` now records fixture-backed per-kind coverage for symbols, relationships, identifiers, and body spans. The generated certification report carries the current depth totals.
-- `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` records release-profile evidence for 22 repos and 0 skipped repos.
-- `fixtures/extraction/tree-sitter-real-world-corpus.toml` includes 110 representative specs, 5 per release-profile repo.
-- `cargo xtask certify tree-sitter --check` verifies [LANGUAGE_CERTIFICATION_REPORT.md](LANGUAGE_CERTIFICATION_REPORT.md) is current for the checked-in capability, fixture, historical-doc, and real-world evidence state.
+- `fixtures/extraction/capabilities.json` (in the external `anortham/julie-extractors` repo) records fixture-backed per-kind coverage for symbols, relationships, identifiers, and body spans. The certification report and real-world evidence JSON are generated artifacts that now live upstream, not in this repo.
+- The real-world corpus toml (110 specs, 5 per repo) and the 22-repo evidence run are maintained upstream in `anortham/julie-extractors`.
 
 Release claims must come from generated evidence plus verification ledger rows tied to the checked commit, not from manually edited historical docs. Generated docs do not embed a self-referential commit hash.
 
@@ -159,10 +157,7 @@ A release can claim this quality bar only when there are no open target gaps and
 | Gate | Command | Required when |
 | --- | --- | --- |
 | Formatter | `cargo fmt --check` | Always |
-| Tree-sitter certification report | `cargo xtask certify tree-sitter --check` | Always for tree-sitter claims |
-| Tree-sitter real-world evidence | `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` | Before updating checked-in release-profile real-world evidence |
-| Extractor bucket | `cargo xtask test bucket extractors` | Always |
-| Parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | Always for parser, fixture, or extractor contract changes |
+| Parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | Always for parser re-pin, extractor contract version changes |
 | Changed tier | `cargo xtask test changed` | Always after localized implementation changes |
 | Dev tier | `cargo xtask test dev` | Always before release handoff |
 | System tier | `cargo xtask test system` | Startup, watcher, workspace, daemon, or repair changes |
@@ -170,10 +165,12 @@ A release can claim this quality bar only when there are no open target gaps and
 | Full tier | `cargo xtask test full` | Final release candidate |
 | Release build | `cargo build --release` | Final release candidate |
 
+Note: Tree-sitter certification and real-world evidence gates now run in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo before tagging a release there.
+
 Live dogfood must also pass after a release rebuild and MCP restart:
 
 - `manage_workspace health` reports ready status for Julie.
-- `call_path extract_symbols_static extract_canonical` finds the production extraction edge.
+- `fast_refs extract_symbols_static` finds references to the extraction dispatch function in `src/tools/workspace/indexing/extractor.rs` (the extraction implementation now lives in the external `anortham/julie-extractors` repo, so `call_path ... → crates/julie-extractors/src/pipeline.rs` no longer applies to this repo's index).
 - `fast_refs` finds newly indexed semantic-version references after repair.
 - SQLite records the current schema and semantic index engine version.
 - Non-force refresh reports current state without repeating full reindex.

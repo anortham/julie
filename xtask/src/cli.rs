@@ -124,18 +124,6 @@ pub enum SearchMatrixCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CertifyCommand {
-    TreeSitter {
-        out: PathBuf,
-        check: bool,
-        real_world: bool,
-        profile: String,
-        corpus: PathBuf,
-        julie_home: PathBuf,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncPluginCommand {
     pub plugin_root: Option<PathBuf>,
     pub dry_run: bool,
@@ -180,7 +168,6 @@ pub enum EvalCommand {
 pub enum CliCommand {
     Test(TestCommand),
     SearchMatrix(SearchMatrixCommand),
-    Certify(CertifyCommand),
     SyncPlugin(SyncPluginCommand),
     DevLink(DevLinkCommand),
     DevRestart(DevRestartCommand),
@@ -198,13 +185,12 @@ where
         .collect::<Vec<_>>();
 
     let Some(command) = args.get(1) else {
-        bail!("expected `cargo xtask <test|search-matrix|certify> ...`");
+        bail!("expected `cargo xtask <test|search-matrix|sync-plugin|dev-link|dev-restart|eval> ...`");
     };
 
     match command.as_str() {
         "test" => Ok(CliCommand::Test(parse_test_command(args)?)),
         "search-matrix" => Ok(CliCommand::SearchMatrix(parse_search_matrix_command(args)?)),
-        "certify" => Ok(CliCommand::Certify(parse_certify_command(args)?)),
         "sync-plugin" => Ok(CliCommand::SyncPlugin(parse_sync_plugin_command(args)?)),
         "dev-link" => Ok(CliCommand::DevLink(parse_dev_link_command(args)?)),
         "dev-restart" => parse_dev_restart_command(args),
@@ -335,7 +321,6 @@ pub fn validate_cli_command(manifest: &TestManifest, command: CliCommand) -> Res
             test_command,
         )?)),
         CliCommand::SearchMatrix(command) => Ok(CliCommand::SearchMatrix(command)),
-        CliCommand::Certify(command) => Ok(CliCommand::Certify(command)),
         CliCommand::SyncPlugin(command) => Ok(CliCommand::SyncPlugin(command)),
         CliCommand::DevLink(command) => Ok(CliCommand::DevLink(command)),
         CliCommand::DevRestart(command) => Ok(CliCommand::DevRestart(command)),
@@ -393,47 +378,6 @@ fn parse_eval_ablation_command(args: Vec<String>) -> Result<EvalCommand> {
     let corpus = corpus.unwrap_or_else(|| PathBuf::from("docs/eval/julie-search-corpus-v1.json"));
 
     Ok(EvalCommand::Ablation { corpus, out, limit })
-}
-
-fn parse_certify_command(args: Vec<String>) -> Result<CertifyCommand> {
-    let mut tail = args.into_iter().skip(2);
-    let Some(kind) = tail.next() else {
-        bail!("missing `cargo xtask certify <tree-sitter>` subcommand");
-    };
-
-    match kind.as_str() {
-        "tree-sitter" => {
-            let options = parse_certify_options(tail.collect())?;
-            Ok(CertifyCommand::TreeSitter {
-                out: options
-                    .out
-                    .unwrap_or_else(|| default_tree_sitter_certify_out(options.real_world)),
-                check: options.check,
-                real_world: options.real_world,
-                profile: options.profile.unwrap_or_else(|| "smoke".to_string()),
-                corpus: options.corpus.unwrap_or_else(|| {
-                    PathBuf::from(
-                        crate::tree_sitter_real_world::DEFAULT_TREE_SITTER_REAL_WORLD_CORPUS,
-                    )
-                }),
-                julie_home: options.julie_home.unwrap_or_else(|| {
-                    PathBuf::from(
-                        crate::tree_sitter_real_world::DEFAULT_TREE_SITTER_REAL_WORLD_HOME,
-                    )
-                }),
-            })
-        }
-        other => bail!("unsupported `cargo xtask certify` subcommand `{other}`"),
-    }
-}
-
-struct ParsedCertifyOptions {
-    out: Option<PathBuf>,
-    check: bool,
-    real_world: bool,
-    profile: Option<String>,
-    corpus: Option<PathBuf>,
-    julie_home: Option<PathBuf>,
 }
 
 fn parse_search_matrix_command(args: Vec<String>) -> Result<SearchMatrixCommand> {
@@ -654,78 +598,6 @@ fn parse_search_matrix_options(args: Vec<String>) -> Result<ParsedSearchMatrixOp
         out,
         ablation,
     })
-}
-
-fn parse_certify_options(args: Vec<String>) -> Result<ParsedCertifyOptions> {
-    let mut out = None;
-    let mut check = false;
-    let mut real_world = false;
-    let mut profile = None;
-    let mut corpus = None;
-    let mut julie_home = None;
-    let mut iter = args.into_iter();
-
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--check" => check = true,
-            "--real-world" => real_world = true,
-            "--profile" => {
-                let raw_value = iter
-                    .next()
-                    .ok_or_else(|| anyhow!("missing value for --profile"))?;
-                profile = Some(raw_value);
-            }
-            "--corpus" => {
-                let raw_value = iter
-                    .next()
-                    .ok_or_else(|| anyhow!("missing value for --corpus"))?;
-                corpus = Some(PathBuf::from(raw_value));
-            }
-            "--julie-home" => {
-                let raw_value = iter
-                    .next()
-                    .ok_or_else(|| anyhow!("missing value for --julie-home"))?;
-                julie_home = Some(PathBuf::from(raw_value));
-            }
-            "--out" => {
-                let raw_value = iter
-                    .next()
-                    .ok_or_else(|| anyhow!("missing value for --out"))?;
-                out = Some(PathBuf::from(raw_value));
-            }
-            other => bail!("unexpected argument: {other}"),
-        }
-    }
-
-    if check && real_world {
-        bail!("`--check` is not valid with `--real-world`");
-    }
-    if !real_world && profile.is_some() {
-        bail!("`--profile` requires `--real-world`");
-    }
-    if !real_world && corpus.is_some() {
-        bail!("`--corpus` requires `--real-world`");
-    }
-    if !real_world && julie_home.is_some() {
-        bail!("`--julie-home` requires `--real-world`");
-    }
-
-    Ok(ParsedCertifyOptions {
-        out,
-        check,
-        real_world,
-        profile,
-        corpus,
-        julie_home,
-    })
-}
-
-fn default_tree_sitter_certify_out(real_world: bool) -> PathBuf {
-    if real_world {
-        PathBuf::from(crate::tree_sitter_real_world::DEFAULT_TREE_SITTER_REAL_WORLD_EVIDENCE)
-    } else {
-        PathBuf::from(crate::tree_sitter_certification::DEFAULT_TREE_SITTER_CERTIFICATION_REPORT)
-    }
 }
 
 fn is_program_tier(name: &str) -> bool {

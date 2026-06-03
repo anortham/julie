@@ -17,8 +17,8 @@ cargo nextest run --lib <exact_test_name>
 cargo xtask test changed
 
 # Run specific tests during development (narrow filter, not full suite)
-cargo test -p julie-extractors typescript_extractor -- --nocapture
-cargo test --lib test_stemming -- --nocapture
+# Note: per-extractor tests now live in the external anortham/julie-extractors repo
+cargo nextest run --lib test_stemming -- --nocapture
 
 # Check for issues
 cargo clippy
