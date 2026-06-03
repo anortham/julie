@@ -196,7 +196,7 @@ fn definition_search_pipeline_applies_nl_path_prior_after_reranker() {
 /// test gap; this is the cheap-but-strict cover.
 #[test]
 fn hybrid_search_does_not_apply_nl_path_prior_source_check() {
-    let source = include_str!("../../../search/hybrid.rs");
+    let source = include_str!("../../../../crates/julie-index/src/search/hybrid.rs");
     assert!(
         !source.contains("apply_nl_path_prior"),
         "src/search/hybrid.rs must not invoke `apply_nl_path_prior`. \
@@ -214,7 +214,7 @@ fn hybrid_search_does_not_apply_nl_path_prior_source_check() {
 /// scoring-ratio tests don't observe (e.g. a `pub(crate)` wrapper).
 #[test]
 fn search_index_does_not_apply_nl_path_prior_source_check() {
-    let source = include_str!("../../../search/index.rs");
+    let source = include_str!("../../../../crates/julie-index/src/search/index.rs");
     assert!(
         !source.contains("apply_nl_path_prior"),
         "src/search/index.rs must not invoke `apply_nl_path_prior`. The \

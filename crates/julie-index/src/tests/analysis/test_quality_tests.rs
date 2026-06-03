@@ -715,10 +715,10 @@ mod tests {
         // assertions in the body either, the result should be Unknown
         // (not high-confidence Stub from the identifier path seeing 0 matches).
         use crate::analysis::test_quality::compute_test_quality_metrics;
-        use crate::database::SymbolDatabase;
-        use crate::extractors::{IdentifierKind, SymbolKind};
+        use julie_core::database::SymbolDatabase;
+        use julie_extractors::{IdentifierKind, SymbolKind};
         use crate::search::LanguageConfigs;
-        use crate::tests::helpers::db::{file_info_builder, identifier_builder, symbol_builder};
+        use julie_test_support::{file_info_builder, identifier_builder, symbol_builder};
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
@@ -803,10 +803,10 @@ mod tests {
     #[test]
     fn test_identifier_evidence_without_matches_falls_back_to_regex_body() {
         use crate::analysis::test_quality::compute_test_quality_metrics;
-        use crate::database::SymbolDatabase;
-        use crate::extractors::{IdentifierKind, SymbolKind};
+        use julie_core::database::SymbolDatabase;
+        use julie_extractors::{IdentifierKind, SymbolKind};
         use crate::search::LanguageConfigs;
-        use crate::tests::helpers::db::{file_info_builder, identifier_builder, symbol_builder};
+        use julie_test_support::{file_info_builder, identifier_builder, symbol_builder};
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
@@ -881,10 +881,10 @@ mod tests {
         // This tests through the pipeline (compute_test_quality_metrics)
         // to verify that exact-match-only semantics hold end-to-end.
         use crate::analysis::test_quality::compute_test_quality_metrics;
-        use crate::database::SymbolDatabase;
-        use crate::extractors::{IdentifierKind, SymbolKind};
+        use julie_core::database::SymbolDatabase;
+        use julie_extractors::{IdentifierKind, SymbolKind};
         use crate::search::LanguageConfigs;
-        use crate::tests::helpers::db::{file_info_builder, identifier_builder, symbol_builder};
+        use julie_test_support::{file_info_builder, identifier_builder, symbol_builder};
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");

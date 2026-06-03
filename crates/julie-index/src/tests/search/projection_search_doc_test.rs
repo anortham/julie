@@ -8,8 +8,8 @@
 
 use tempfile::TempDir;
 
-use crate::database::types::FileInfo;
-use crate::extractors::{Symbol, SymbolKind};
+use julie_core::database::types::FileInfo;
+use julie_extractors::{Symbol, SymbolKind};
 use crate::search::projection::apply_documents;
 use crate::search::{SearchFilter, SearchIndex};
 

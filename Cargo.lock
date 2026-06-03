@@ -1809,6 +1809,7 @@ dependencies = [
  "fs2",
  "julie-core",
  "julie-extractors",
+ "julie-test-support",
  "regex",
  "rusqlite",
  "serde",

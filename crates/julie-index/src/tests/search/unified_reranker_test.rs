@@ -14,7 +14,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::extractors::SymbolKind;
+    use julie_extractors::SymbolKind;
     use crate::search::query_parse::parse_query;
     use crate::search::reranker::{Candidate, EXACT_TITLE_BOOST, VENDOR_PENALTY, rerank_unified};
 

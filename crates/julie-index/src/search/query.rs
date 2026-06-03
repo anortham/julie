@@ -13,7 +13,7 @@ use tantivy::Term;
 use tantivy::query::{BooleanQuery, BoostQuery, Occur, TermQuery};
 use tantivy::schema::{Field, IndexRecordOption};
 
-use crate::extractors::normalize_annotations;
+use julie_extractors::normalize_annotations;
 
 const ORIGINAL_GROUP_WEIGHT: f32 = 5.0;
 const ALIAS_GROUP_WEIGHT: f32 = 3.5;

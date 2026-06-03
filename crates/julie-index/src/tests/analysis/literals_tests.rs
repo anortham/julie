@@ -8,7 +8,7 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     use crate::analysis::literals::{LiteralCarrierConfig, classify_literals_by_carrier};
-    use crate::extractors::{Literal, LiteralKind};
+    use julie_extractors::{Literal, LiteralKind};
     use crate::search::LanguageConfigs;
 
     /// Build a captured-state literal (kind=Other, as a reader emits it).

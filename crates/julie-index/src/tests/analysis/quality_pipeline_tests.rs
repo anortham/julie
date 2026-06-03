@@ -3,9 +3,9 @@
 #[cfg(test)]
 mod tests {
     use crate::analysis::test_quality::compute_test_quality_metrics;
-    use crate::database::SymbolDatabase;
+    use julie_core::database::SymbolDatabase;
     use crate::search::LanguageConfigs;
-    use crate::tests::helpers::db::{file_info_builder, identifier_builder, symbol_builder};
+    use julie_test_support::{file_info_builder, identifier_builder, symbol_builder};
     use serde_json::json;
     use std::collections::HashMap;
     use tempfile::TempDir;

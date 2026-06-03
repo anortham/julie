@@ -4,19 +4,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{info, warn};
 
-use crate::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDatabase};
-use crate::extractors::Symbol;
+use julie_core::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDatabase};
+use julie_extractors::Symbol;
 use crate::search::SearchIndex;
 
 mod apply;
 
 pub use apply::apply_documents;
-#[cfg(test)]
-pub(crate) use apply::apply_documents_with_db;
-pub(crate) use apply::apply_uncommitted_documents_from_symbols;
-pub(crate) use apply::collect_relationship_names_bounded;
-pub(crate) use apply::collect_relationship_partner_symbol_ids;
-pub(crate) use apply::reproject_partner_symbols;
+#[cfg(any(test, feature = "test-support"))]
+pub use apply::apply_documents_with_db;
+pub use apply::apply_uncommitted_documents_from_symbols;
+pub use apply::collect_relationship_names_bounded;
+pub use apply::collect_relationship_partner_symbol_ids;
+pub use apply::reproject_partner_symbols;
 use apply::{
     RELATIONSHIP_TEXT_MAX_BYTES, SymbolIndexContext, apply_documents_with_context,
     load_symbol_contexts_from_database, symbol_contexts_from_symbols,
@@ -332,7 +332,7 @@ impl SearchProjection {
         )
     }
 
-    pub(crate) fn project_documents_with_locks(
+    pub fn project_documents_with_locks(
         &self,
         db: &Arc<Mutex<SymbolDatabase>>,
         index: &Arc<Mutex<SearchIndex>>,

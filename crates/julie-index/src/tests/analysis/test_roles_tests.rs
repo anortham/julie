@@ -5,7 +5,7 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     use crate::analysis::test_roles::*;
-    use crate::extractors::{AnnotationMarker, SymbolKind, TestRole};
+    use julie_extractors::{AnnotationMarker, SymbolKind, TestRole};
 
     /// Build a minimal symbol for testing classification.
     fn make_symbol(
@@ -13,7 +13,7 @@ mod tests {
         language: &str,
         annotations: Vec<AnnotationMarker>,
         metadata: Option<HashMap<String, serde_json::Value>>,
-    ) -> crate::extractors::Symbol {
+    ) -> julie_extractors::Symbol {
         make_symbol_named("test_fn", kind, language, annotations, metadata)
     }
 
@@ -23,8 +23,8 @@ mod tests {
         language: &str,
         annotations: Vec<AnnotationMarker>,
         metadata: Option<HashMap<String, serde_json::Value>>,
-    ) -> crate::extractors::Symbol {
-        crate::extractors::Symbol {
+    ) -> julie_extractors::Symbol {
+        julie_extractors::Symbol {
             id: "test-id".to_string(),
             name: name.to_string(),
             kind,

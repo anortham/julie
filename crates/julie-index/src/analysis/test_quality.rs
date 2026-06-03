@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use tracing::{debug, info, warn};
 
-use crate::database::SymbolDatabase;
+use julie_core::database::SymbolDatabase;
 use crate::search::LanguageConfigs;
 
 // =============================================================================

@@ -37,6 +37,13 @@ regex = "1.11"
 # File locking (index on-disk safety)
 fs2 = "0.4"
 
+[features]
+# Expose test-helper constructors to the top-level crate's test tree
+# (ADR-0006 pattern — see julie-core for precedent).
+test-support = []
+
 [dev-dependencies]
 # Temp dirs for unit tests inside search/similarity.rs
 tempfile = "3.13"
+# Database helpers shared across the workspace test tree
+julie-test-support = { path = "../julie-test-support" }

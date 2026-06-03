@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tracing::warn;
 
-use crate::database::{FileInfo, SymbolDatabase};
-use crate::extractors::{AnnotationMarker, Symbol};
+use julie_core::database::{FileInfo, SymbolDatabase};
+use julie_extractors::{AnnotationMarker, Symbol};
 use crate::search::SearchIndex;
 use crate::search::index::{SearchDocument, truncate_utf8_bytes};
 use crate::search::scoring::{classify_role, test_subrole};
@@ -36,7 +36,7 @@ struct SymbolContextSource {
 /// Returns a `HashMap<symbol_id, relationship_text_blob>`.
 /// Symbols with no relationships are omitted from the map (callers treat
 /// missing keys as empty string).
-pub(crate) fn collect_relationship_names_bounded(
+pub fn collect_relationship_names_bounded(
     db: &SymbolDatabase,
     symbol_ids: &[String],
     max_bytes_per: usize,
@@ -114,7 +114,7 @@ pub(crate) fn collect_relationship_names_bounded(
     Ok(result)
 }
 
-pub(crate) fn collect_relationship_partner_symbol_ids(
+pub fn collect_relationship_partner_symbol_ids(
     db: &SymbolDatabase,
     symbol_ids: &[String],
 ) -> Result<Vec<String>> {
@@ -162,7 +162,7 @@ fn truncate_to_whitespace_boundary(s: &str, max_bytes: usize) -> &str {
     }
 }
 
-pub(crate) fn apply_uncommitted_documents_from_symbols(
+pub fn apply_uncommitted_documents_from_symbols(
     index: &SearchIndex,
     symbols: &[Symbol],
     file_path: &str,
@@ -248,7 +248,7 @@ pub(crate) fn apply_documents_with_context(
 /// This is the canonical production entry point for relationship_text: it
 /// precomputes the map once per batch then delegates to
 /// `apply_documents_with_context`.
-pub(crate) fn apply_documents_with_db(
+pub fn apply_documents_with_db(
     index: &SearchIndex,
     symbols: &[Symbol],
     file_infos: &[FileInfo],
@@ -616,7 +616,7 @@ pub fn apply_documents(
 ///
 /// Callers are responsible for calling `index.commit()` after all partner
 /// reprojections for a tick have been applied.
-pub(crate) fn reproject_partner_symbols(
+pub fn reproject_partner_symbols(
     index: &SearchIndex,
     db: &SymbolDatabase,
     partner_symbol_ids: &[String],

@@ -10,7 +10,7 @@ use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, info};
 
-use crate::database::SymbolDatabase;
+use julie_core::database::SymbolDatabase;
 
 #[derive(Debug, Clone, Default)]
 struct LinkedTest {

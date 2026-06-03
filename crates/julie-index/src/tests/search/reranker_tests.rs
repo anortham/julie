@@ -1,6 +1,6 @@
 //! Tests for search-result reranking boost rules and deterministic ordering.
 
-use crate::extractors::SymbolKind;
+use julie_extractors::SymbolKind;
 use crate::search::query_parse::parse_query;
 use crate::search::reranker::{
     BODY_TERM_BOOST, Candidate, EXACT_TITLE_BOOST, INTENT_ROLE_MATCH_BOOST,

@@ -7,7 +7,7 @@
 //! Pure function, no I/O. See C.2 of
 //! `docs/plans/2026-05-15-daemon-split-and-search-reranker-design.md`.
 
-use crate::extractors::SymbolKind;
+use julie_extractors::SymbolKind;
 
 /// What the user is asking for, derived from a leading keyword token.
 #[derive(Debug, Clone, PartialEq, Eq)]

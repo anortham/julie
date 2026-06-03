@@ -16,7 +16,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::extractors::{Literal, LiteralKind};
+use julie_extractors::{Literal, LiteralKind};
 
 /// Per-language carrier vocabulary: the callee texts that mark a string-literal
 /// argument as a URL, SQL, or route literal. Built once per indexing run from

@@ -17,8 +17,8 @@ use tracing::{debug, info, warn};
 use super::SymbolSearchResult;
 use super::index::{SearchFilter, SearchIndex, SymbolSearchResults, symbol_role_and_test_role};
 use super::weights::SearchWeightProfile;
-use crate::database::SymbolDatabase;
-use crate::embeddings::EmbeddingProvider;
+use julie_core::database::SymbolDatabase;
+use julie_core::embeddings_contract::EmbeddingProvider;
 
 /// Per-side over-fetch multiplier for the hybrid candidate pool.
 ///

@@ -5,8 +5,8 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
-use crate::database::SymbolDatabase;
-use crate::extractors::base::Symbol;
+use julie_core::database::SymbolDatabase;
+use julie_extractors::base::Symbol;
 
 /// Minimum similarity score (1.0 - cosine_distance) to include in results.
 /// Below this threshold, matches are likely noise.
@@ -122,8 +122,8 @@ pub fn find_similar_symbols(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::{FileInfo, SymbolDatabase};
-    use crate::extractors::base::{SymbolKind, Visibility};
+    use julie_core::database::{FileInfo, SymbolDatabase};
+    use julie_extractors::base::{SymbolKind, Visibility};
     use tempfile::TempDir;
 
     fn setup_db() -> (TempDir, SymbolDatabase) {

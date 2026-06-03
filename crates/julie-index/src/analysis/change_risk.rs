@@ -6,8 +6,8 @@ use anyhow::{Result, anyhow};
 use tracing::{debug, info};
 
 use crate::analysis::test_linkage::test_linkage_entry;
-use crate::database::SymbolDatabase;
-use crate::extractors::SymbolKind;
+use julie_core::database::SymbolDatabase;
+use julie_extractors::SymbolKind;
 
 /// Weights for the change risk formula.
 const W_CENTRALITY: f64 = 0.35;

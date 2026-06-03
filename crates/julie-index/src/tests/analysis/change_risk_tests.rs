@@ -5,8 +5,8 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::analysis::change_risk::*;
-    use crate::extractors::{SymbolKind, Visibility};
-    use crate::tests::helpers::db::{
+    use julie_extractors::{SymbolKind, Visibility};
+    use julie_test_support::{
         file_info_builder, set_symbol_reference_scores, store_file_info_if_missing, symbol_builder,
     };
 
@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(risk_label(score), "LOW");
     }
 
-    use crate::database::SymbolDatabase;
+    use julie_core::database::SymbolDatabase;
     use tempfile::TempDir;
 
     fn insert_file(db: &SymbolDatabase, path: &str) {

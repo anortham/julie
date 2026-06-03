@@ -149,6 +149,7 @@ windows-sys = { version = "0.60", features = [
 
 [dev-dependencies]
 julie-test-support = { path = "crates/julie-test-support" }
+julie-index = { path = "crates/julie-index", features = ["test-support"] }
 tokio-test = "0.4"
 cargo-tarpaulin = "0.31"
 serial_test = { version = "3.2", features = ["file_locks"] }

@@ -1,14 +1,12 @@
-//! RED tests for NL-only path-prior scoring.
-// intent, language_affinity, query_shape, scoring_invariants relocated to
-// crates/julie-index/src/tests/search/tantivy_path_prior_tests/
+//! Tests for NL-only path-prior scoring.
 
 use crate::search::index::SymbolSearchResult;
 
-fn make_result(id: &str, file_path: &str, score: f32) -> SymbolSearchResult {
+pub fn make_result(id: &str, file_path: &str, score: f32) -> SymbolSearchResult {
     make_result_with_language(id, file_path, score, "rust")
 }
 
-fn make_result_with_language(
+pub fn make_result_with_language(
     id: &str,
     file_path: &str,
     score: f32,
@@ -29,5 +27,7 @@ fn make_result_with_language(
     }
 }
 
-mod language_layouts;
-mod path_classifiers;
+mod intent;
+mod language_affinity;
+mod query_shape;
+mod scoring_invariants;

@@ -29,7 +29,7 @@ use crate::search::scoring::{apply_important_patterns_boost, is_test_path};
 use crate::search::tokenizer::{
     CodeTokenizer, SimpleCodeTokenizer, TokenizerCompatibilitySignature, split_camel_case,
 };
-use crate::tools::search::matches_glob_pattern;
+use julie_core::glob::matches_glob_pattern;
 
 // 256MB total budget. Tantivy 0.26's `Index::writer(budget)` auto-clamps thread
 // count when per-thread budget falls below the 15MB floor. At 50MB we got 3
@@ -118,7 +118,7 @@ impl SearchDocument {
     /// `owner_names_text` from `SymbolIndexContext` (projection layer).
     /// `code_body` is truncated here to ≤ 2000 bytes.
     pub fn for_symbol(
-        symbol: &crate::extractors::Symbol,
+        symbol: &julie_extractors::Symbol,
         annotation_keys: Vec<String>,
         annotations_text: String,
         owner_names_text: String,
@@ -158,7 +158,7 @@ impl SearchDocument {
     ///
     /// Convenience constructor for direct test use. Computes `role`,
     /// `test_role`, and `basename` from the supplied path and language.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn symbol_from_parts(
         id: impl Into<String>,
         name: impl Into<String>,
@@ -204,7 +204,7 @@ impl SearchDocument {
     ///
     /// Convenience constructor for direct test use. Computes `basename`,
     /// `name` (stem), `role`, and `test_role` from the path and language.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn file_from_parts(
         file_path: impl Into<String>,
         content: impl Into<String>,
@@ -246,7 +246,7 @@ impl SearchDocument {
     ///
     /// `name` is set to the basename without its extension (e.g. `"parser"`
     /// for `src/parser.rs`).
-    pub fn for_file(file_info: &crate::database::FileInfo) -> Self {
+    pub fn for_file(file_info: &julie_core::database::FileInfo) -> Self {
         let normalized_path = normalize_file_path(&file_info.path);
         let basename = basename_for_path(&normalized_path).to_string();
         let name = stem_of_basename(&basename).to_string();
@@ -409,7 +409,7 @@ pub struct SymbolSearchResults {
 }
 
 /// A file content search result with relevance score.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone)]
 pub struct ContentSearchResult {
     pub file_path: String,
@@ -431,7 +431,7 @@ pub struct FileSearchResults {
 }
 
 /// Result from search_content, includes metadata about the search.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub struct ContentSearchResults {
     pub results: Vec<ContentSearchResult>,
     /// True if AND-per-term returned zero results and OR fallback was used
@@ -866,7 +866,7 @@ impl SearchIndex {
     ///
     /// The old `search_content` production method was deleted in T9; this wrapper
     /// keeps existing tests compiling while they migrate to unified search.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn search_content(
         &self,
         query_str: &str,
@@ -896,7 +896,7 @@ impl SearchIndex {
     /// The old `search_files` production method was deleted in T9; this wrapper keeps
     /// existing tests compiling.  The `match_kind` field is derived
     /// from the query and file_path via [`classify_file_match`].
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn search_files(
         &self,
         query_str: &str,
@@ -1003,7 +1003,7 @@ impl SearchIndex {
         limit: usize,
         files_only: Option<bool>,
     ) -> Result<(Vec<UnifiedHit>, bool, usize, usize)> {
-        use crate::extractors::SymbolKind;
+        use julie_extractors::SymbolKind;
         use crate::search::query_parse::parse_query;
         use crate::search::reranker::{Candidate, rerank_unified};
         use crate::search::scoring::{classify_role, is_source_language, test_subrole};
@@ -1243,7 +1243,7 @@ impl SearchIndex {
             hits.retain(|h| &h.kind == kind);
         }
         if let Some(ref pattern) = filter.file_pattern {
-            hits.retain(|h| crate::tools::search::matches_glob_pattern(&h.file_path, pattern));
+            hits.retain(|h| matches_glob_pattern(&h.file_path, pattern));
         }
         if filter.exclude_tests {
             hits.retain(|h| !is_test_symbol_result(&h.file_path, &h.role));
@@ -2035,14 +2035,14 @@ fn basename_for_path(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn query_contains_glob_syntax(query: &str) -> bool {
     query
         .chars()
         .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn classify_file_match(
     query: &str,
     normalized_query: &str,
@@ -2156,7 +2156,7 @@ fn promote_exact_unified_hits(hits: &mut Vec<UnifiedHit>, query: &str) {
     hits.extend(rest);
 }
 
-pub(crate) fn compact_alnum_lc(s: &str) -> String {
+pub fn compact_alnum_lc(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_alphanumeric())
         .flat_map(|c| c.to_lowercase())
@@ -2181,11 +2181,11 @@ pub(crate) fn compact_alnum_lc(s: &str) -> String {
 /// `EXACT_TITLE_BOOST` to that file's score and re-sort descending.
 ///
 /// When `db` is `None` the function returns immediately (preserves BM25 order).
-#[cfg(test)]
-pub(crate) fn apply_reranker_to_content_results(
+#[cfg(any(test, feature = "test-support"))]
+pub fn apply_reranker_to_content_results(
     query: &str,
     results: &mut Vec<ContentSearchResult>,
-    db: Option<&crate::database::SymbolDatabase>,
+    db: Option<&julie_core::database::SymbolDatabase>,
 ) {
     let Some(db) = db else { return };
     if results.is_empty() {
@@ -2217,11 +2217,11 @@ pub(crate) fn apply_reranker_to_content_results(
 ///
 /// Identical logic to `apply_reranker_to_content_results` but operates on
 /// `FileSearchResult` so file-target tests keep passing.
-#[cfg(test)]
-pub(crate) fn apply_symbol_title_boost_to_file_results(
+#[cfg(any(test, feature = "test-support"))]
+pub fn apply_symbol_title_boost_to_file_results(
     query: &str,
     results: &mut Vec<FileSearchResult>,
-    db: &crate::database::SymbolDatabase,
+    db: &julie_core::database::SymbolDatabase,
 ) {
     if results.is_empty() {
         return;

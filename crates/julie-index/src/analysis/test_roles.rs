@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::extractors::{Symbol, SymbolKind, TestRole};
+use julie_extractors::{Symbol, SymbolKind, TestRole};
 
 /// Config-driven test role classifier built from language TOML annotation classes.
 ///

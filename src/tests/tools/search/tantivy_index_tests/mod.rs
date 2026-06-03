@@ -1,8 +1,5 @@
 //! Tests for Tantivy search index.
+// lifecycle_basic, ranking_tokenization, relaxed_fallback, tokenizer_compat,
+// writer_lifecycle relocated to crates/julie-index/src/tests/search/tantivy_index_tests/
 
-mod lifecycle_basic;
-mod ranking_tokenization;
-mod relaxed_fallback;
 mod schema_compat;
-mod tokenizer_compat;
-mod writer_lifecycle;

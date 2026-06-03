@@ -11,7 +11,7 @@
 
 use std::cmp::Ordering;
 
-use crate::extractors::SymbolKind;
+use julie_extractors::SymbolKind;
 use crate::search::query_parse::{ParsedQuery, QueryIntent};
 
 // ---------------------------------------------------------------------------

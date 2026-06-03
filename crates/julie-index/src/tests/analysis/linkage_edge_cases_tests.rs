@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::{SymbolKind, Visibility};
-    use crate::tests::helpers::db::{
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::{SymbolKind, Visibility};
+    use julie_test_support::{
         file_info_builder, identifier_builder, relationship_builder, store_file_info_if_missing,
         symbol_builder,
     };

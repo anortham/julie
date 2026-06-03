@@ -8,3 +8,6 @@
 
 pub mod analysis;
 pub mod search;
+
+#[cfg(test)]
+mod tests;

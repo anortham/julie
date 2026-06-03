@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::database::SymbolDatabase;
+use julie_core::database::SymbolDatabase;
 use crate::search::index::SymbolSearchResult;
 use crate::search::language_config::LanguageConfigs;
 
@@ -20,9 +20,9 @@ pub const CENTRALITY_WEIGHT: f32 = 0.3;
 ///
 /// The intent is to gently prefer production code over docs/tests/fixtures when
 /// the query looks like natural language, without overwhelming text relevance.
-pub(crate) const NL_PATH_BOOST_SRC: f32 = 1.08;
+pub const NL_PATH_BOOST_SRC: f32 = 1.08;
 pub(crate) const NL_PATH_PENALTY_DOCS: f32 = 0.92;
-pub(crate) const NL_PATH_PENALTY_TESTS: f32 = 0.85;
+pub const NL_PATH_PENALTY_TESTS: f32 = 0.85;
 pub(crate) const NL_PATH_PENALTY_FIXTURES: f32 = 0.70;
 
 /// Soft penalty applied to candidates whose language is not the workspace's
@@ -46,7 +46,7 @@ pub(crate) const NL_LANGUAGE_DOMINANCE_THRESHOLD: f64 = 0.70;
 /// NOTE: Intentionally separate from `NOISE_NEIGHBOR_NAMES` in get_context pipeline,
 /// which serves a different purpose (neighbor expansion filtering) and has a different
 /// membership set.
-pub(crate) const CENTRALITY_NOISE_NAMES: &[&str] = &[
+pub const CENTRALITY_NOISE_NAMES: &[&str] = &[
     "clone",
     "to_string",
     "fmt",
@@ -282,7 +282,7 @@ pub fn apply_language_affinity_prior(
 /// - Go files: `*_test.go`
 /// - JS/TS files: `*.test.{js,ts,tsx,jsx}`, `*.spec.{js,ts,tsx,jsx}`
 /// - Python files: `test_*.py`
-pub(crate) fn is_test_path(path: &str) -> bool {
+pub fn is_test_path(path: &str) -> bool {
     // Check path segments (directory names)
     for segment in path.split('/') {
         // Exact segment matches
@@ -344,7 +344,7 @@ pub(crate) fn is_test_path(path: &str) -> bool {
 /// Detect whether a file path indicates documentation.
 ///
 /// Matches path segments: `docs`, `doc`, `documentation`.
-pub(crate) fn is_docs_path(path: &str) -> bool {
+pub fn is_docs_path(path: &str) -> bool {
     for segment in path.split('/') {
         match segment {
             "docs" | "doc" | "documentation" | "Docs" | "Doc" | "Documentation" => return true,
@@ -361,7 +361,7 @@ pub(crate) fn is_docs_path(path: &str) -> bool {
 /// `benchmark`.
 /// Also matches title-case variants (`Fixtures`, `Fixture`, `Snapshots`,
 /// `Benchmarks`, `Benchmark`).
-pub(crate) fn is_fixture_path(path: &str) -> bool {
+pub fn is_fixture_path(path: &str) -> bool {
     for segment in path.split('/') {
         match segment {
             "fixtures" | "fixture" | "Fixtures" | "Fixture" | "testdata" | "test_data"
@@ -409,7 +409,7 @@ pub(crate) fn is_generated_path(path: &str) -> bool {
 /// Tantivy schema. Ordering: vendor → generated → test → docs → source.
 /// `test` is checked AFTER vendor/generated so that vendored tests don't
 /// pollute the test bucket.
-pub(crate) fn classify_role(path: &str, language: &str) -> &'static str {
+pub fn classify_role(path: &str, language: &str) -> &'static str {
     if is_vendor_path(path) {
         "vendor"
     } else if is_generated_path(path) {
@@ -425,7 +425,7 @@ pub(crate) fn classify_role(path: &str, language: &str) -> &'static str {
 
 /// If `path` is a test path, return its sub-role (`unit | integration |
 /// smoke`) or empty string when no sub-role segment is present.
-pub(crate) fn test_subrole(path: &str) -> &'static str {
+pub fn test_subrole(path: &str) -> &'static str {
     if !is_test_path(path) {
         return "";
     }
@@ -445,7 +445,7 @@ pub(crate) fn is_source_language(language: &str) -> bool {
     !DOC_LANGUAGES.contains(&language)
 }
 
-pub(crate) fn is_nl_like_query(query: &str) -> bool {
+pub fn is_nl_like_query(query: &str) -> bool {
     let terms: Vec<&str> = query.split_whitespace().collect();
     if terms.len() < 2 {
         return false;

@@ -3,9 +3,9 @@
 #[cfg(test)]
 mod tests {
     use crate::analysis::test_linkage::tier_rank;
-    use crate::database::SymbolDatabase;
-    use crate::extractors::{RelationshipKind, SymbolKind, Visibility};
-    use crate::tests::helpers::db::{
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::{RelationshipKind, SymbolKind, Visibility};
+    use julie_test_support::{
         file_info_builder, identifier_builder, relationship_builder, store_file_info_if_missing,
         symbol_builder,
     };
