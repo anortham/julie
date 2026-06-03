@@ -481,3 +481,43 @@ Expected: evidence that the old index was invalidated and rebuilt. If it does NO
 ## Rollback
 
 Revert the Task A commit (restores `crates/julie-extractors/`, the path-dep, and the old engine version) — the only side effect is a re-revert reindex. The xtask/docs/fixtures commits revert independently.
+
+---
+
+## Verification Ledger
+
+All branch-gate evidence ran against HEAD `f8d5f97c` (the last code commit on this branch; the only commits added afterward are this ledger/checkpoint doc, which touch no `src/`, `xtask/`, `Cargo.*`, or fixtures).
+
+| Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
+|---|---|---|---|---|---|---|
+| Engine-version literal embeds the pinned crate's `EXTRACTION_CONTRACT_VERSION` (drift anchor) | `cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract` | worker-red-green | f8d5f97c | pass | 2026-06-03T04:27:29Z | no |
+| New external crate (v2.0.3) extracts the expected named symbols/identifiers across languages (presence) | `cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs` | affected-change | f8d5f97c | pass | 2026-06-03T04:27:29Z | no |
+| Stale engine version forces a full reindex via the `manage_workspace index` path (rebuilds relationships + restamps to current version) | `cargo nextest run --lib test_incremental_indexing_forces_reindex_when_index_engine_version_is_stale` | affected-change | f8d5f97c | pass | 2026-06-03T04:27:29Z | no |
+| Stale engine version forces a full reindex via the session-connect catch-up path (`SemanticVersionChanged` repair reason) | `cargo nextest run --lib test_primary_workspace_repair_plan_reports_semantic_version_changed` | affected-change | f8d5f97c | pass | 2026-06-03T04:27:29Z | no |
+| Whole dev tier green (35 buckets, incl. `extractor-dep-integration`, `tools-workspace` reindex proof) | `cargo xtask test dev` | branch-gate | f8d5f97c | pass (1087.2s, 35/35) | 2026-06-03T04:27:29Z | no |
+| Search/scoring ranking guard green over the frozen 100MB snapshot | `cargo xtask test dogfood` | branch-gate | f8d5f97c | pass (179.2s, 2/2) | 2026-06-03T04:34:00Z | no |
+
+### Step 2 method note (reindex-fires proof)
+
+The plan's Step 2 originally proposed a release-build + live-daemon `daemon.log` grep. I substituted **two hermetic tests covering both production reindex paths** because they are a *stronger, deterministic* proof of the same invariant and avoid disrupting the live MCP session (a release rebuild arms the daemon's stale-binary auto-restart, which can terminate the calling session, and the live index may already be re-stamped, making the log grep flaky). Both tests read the same `SEMANTIC_INDEX_ENGINE_VERSION` constant that Task A bumped to the v2.0.3 literal:
+- `index.rs` → `semantic_index_engine_refresh_needed` → `effective_force_reindex` (proven: relationships rebuilt + version restamped).
+- `startup.rs` → `plan_primary_workspace_repair` → `IndexingRepairReason::SemanticVersionChanged` (proven: session-connect catch-up reindexes on mismatch).
+
+### Step 3 evidence (end-to-end extraction dogfood, new v2.0.3 crate)
+
+Direct extraction via `julie-server extract --root <dir> scan`, all reporting `extract_contract_version=3` (`2026-06-03.ecmascript-swift-shape-v3`):
+
+| Language | Sample | Symbols | Relationships | Identifiers | Notes |
+|---|---|---|---|---|---|
+| Rust | `fixtures/real-world/rust` | 4 | 0 | 1 | correct for the 17-line smoke fixtures (`add`, `multiply`, `add` import, `main`) |
+| TypeScript | `fixtures/real-world/typescript` | 142 | 9 | 225 | healthy |
+| Python | `fixtures/real-world/python` | 142 | 0 | 220 | healthy symbol/identifier capture |
+| Swift | `fixtures/real-world/swift` | 32 | 1 | 19 | **stdlib filtering observed** |
+
+**Swift stdlib filtering (the documented 2.0.x behavior change):** the only relationship emitted is a local `implements` edge (`Circle` → `Drawable`). Stdlib/Foundation calls (`print`×4, `DateFormatter`, `NSPredicate`, `Date`, `Double.pi`, `evaluate`, `string`) are still captured as **identifiers** for reference lookup, but produce **zero pending cross-file relationships** — pre-filter, each unresolved stdlib reference would have polluted the relationship graph with an unresolvable edge. **Release-note item.**
+
+### Step 4a: Pre-merge external review (Codex `gpt-5.5 high`, adversarial)
+
+Reviewer choice: `codex` (from the approved `/goal`). Ran `codex exec -m gpt-5.5 -c model_reasoning_effort=high --sandbox read-only --output-schema …` over a focused unified diff (42 files, ~991+/~4230−; the wholesale `crates/julie-extractors/**` + `fixtures/extraction/**` deletions were excluded with an explicit note to flag any *remaining* live reference to deleted paths).
+
+**Verdict: `approve`, zero findings.** Codex confirmed: the dependency swap is coherent, the engine-version literal change invalidates old indexes through the existing stored-vs-current comparison, xtask routing removes the old extractor/parser branches while preserving the root-manifest → dev fallback, and the manifest/self-test snapshots are aligned with the new `extractor-dep-integration` bucket. Its two next-steps (run the gates; verify reindex-fires against a pre-migration index) were already satisfied — the gates are green above and the reindex-fires invariant is proven by the two hermetic tests in this ledger (stronger evidence than the diff-only view Codex had). No fix workers dispatched. Lead independently re-verified the highest-risk surface (`xtask/src/changed.rs` routing) and concurs.
