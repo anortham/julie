@@ -6,3 +6,4 @@
 
 pub mod connection_pool;
 pub mod embeddings_contract;
+pub mod paths;

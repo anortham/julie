@@ -3,12 +3,20 @@
 // Handles conversion between absolute native paths and relative Unix-style paths
 // for token-efficient storage and cross-platform compatibility.
 
-use anyhow::{Context, Result};
-use std::path::{MAIN_SEPARATOR, Path, PathBuf};
+use anyhow::Result;
+use std::path::{Path, PathBuf};
 
 use crate::tools::navigation::resolution::{
     WorkspaceResolutionFailure, WorkspaceResolutionFailureKind,
 };
+
+// strip_unc_prefix lives in julie-core; imported privately so
+// relative_within_workspace can keep calling it unchanged.
+use julie_core::paths::strip_unc_prefix;
+
+// to_relative_unix_style lives in julie-core; re-exported publicly so all
+// crate::utils::paths::to_relative_unix_style call sites compile unchanged.
+pub use julie_core::paths::to_relative_unix_style;
 
 /// Convert a path to a user-friendly display string.
 ///
@@ -88,55 +96,6 @@ pub fn resolve_workspace_file_input(
     })
 }
 
-/// Convert an absolute path to a relative Unix-style path (with `/` separators)
-///
-/// This function strips the workspace root prefix and converts all path separators
-/// to Unix-style forward slashes (`/`), regardless of the platform.
-///
-/// # Arguments
-/// * `absolute` - The absolute path to convert
-/// * `workspace_root` - The workspace root directory
-///
-/// # Returns
-/// * `Ok(String)` - The relative Unix-style path (e.g., "src/tools/search.rs")
-/// * `Err` - If the file is not within the workspace
-///
-/// # Examples
-/// ```
-/// // Windows
-/// to_relative_unix_style("C:\\Users\\murphy\\project\\src\\main.rs", "C:\\Users\\murphy\\project")
-/// // => "src/main.rs"
-///
-/// // Linux/macOS
-/// to_relative_unix_style("/home/murphy/project/src/main.rs", "/home/murphy/project")
-/// // => "src/main.rs"
-/// ```
-///
-/// # Token Savings
-/// - Windows UNC: `\\?\C:\Users\murphy\source\julie\src\tools\search.rs` (70 chars)
-/// - Relative Unix: `src/tools/search.rs` (21 chars)
-/// - **Savings: ~70% characters, ~60% tokens, no JSON escaping needed**
-/// Strip the Windows `\\?\` extended-length (UNC) prefix for path comparison.
-///
-/// `std::fs::canonicalize()` returns paths with this prefix on Windows, but
-/// non-canonical paths do not have it. Leaving it in place makes `strip_prefix`
-/// fail even when one path is genuinely nested under the other. On non-Windows
-/// targets this is a no-op clone.
-fn strip_unc_prefix(path: &Path) -> PathBuf {
-    #[cfg(windows)]
-    {
-        let path_str = path.to_string_lossy();
-        if let Some(stripped) = path_str.strip_prefix(r"\\?\") {
-            return PathBuf::from(stripped);
-        }
-        path.to_path_buf()
-    }
-    #[cfg(not(windows))]
-    {
-        path.to_path_buf()
-    }
-}
-
 /// Strip `workspace_root` from `path`, tolerating symlinked workspace roots
 /// (e.g. macOS `/tmp` → `/private/tmp`, `/var` → `/private/var`) and deleted
 /// leaf paths.
@@ -185,95 +144,6 @@ pub fn relative_within_workspace(path: &Path, workspace_root: &Path) -> Option<P
     }
 
     None
-}
-
-pub fn to_relative_unix_style(absolute: &Path, workspace_root: &Path) -> Result<String> {
-    // 🔥 CRITICAL: Try to canonicalize both paths to handle symlinks (e.g., /var -> /private/var on macOS)
-    // If canonicalization fails (path doesn't exist), fall back to original paths
-    let (path_to_use, root_to_use) = match (absolute.canonicalize(), workspace_root.canonicalize())
-    {
-        (Ok(canonical_abs), Ok(canonical_root)) => {
-            // Both paths can be canonicalized - use canonical versions
-            (canonical_abs, canonical_root)
-        }
-        _ => {
-            // One or both failed - use original paths for consistency
-            (absolute.to_path_buf(), workspace_root.to_path_buf())
-        }
-    };
-
-    let normalized_path = strip_unc_prefix(&path_to_use);
-    let normalized_root = strip_unc_prefix(&root_to_use);
-
-    // Strip workspace prefix
-    let relative = match normalized_path.strip_prefix(&normalized_root) {
-        Ok(relative) => relative,
-        Err(error) => {
-            if let Some(relative) =
-                relative_by_normalized_string(&normalized_path, &normalized_root)
-            {
-                return Ok(relative);
-            }
-
-            return Err(error).with_context(|| {
-                format!(
-                    "File path '{}' is not within workspace root '{}'",
-                    normalized_path.display(),
-                    normalized_root.display()
-                )
-            });
-        }
-    };
-
-    // Convert to string and normalize separators to Unix-style
-    let path_str = relative.to_str().context("Path contains invalid UTF-8")?;
-
-    // Replace platform-specific separators with Unix-style /
-    // On Unix, MAIN_SEPARATOR is already '/', so this is a no-op
-    // On Windows, this converts '\' to '/'
-    let unix_style = if MAIN_SEPARATOR == '\\' {
-        path_str.replace('\\', "/")
-    } else {
-        path_str.to_string()
-    };
-
-    Ok(unix_style)
-}
-
-fn relative_by_normalized_string(path: &Path, root: &Path) -> Option<String> {
-    let path = path.to_string_lossy().replace('\\', "/");
-    let root = root.to_string_lossy().replace('\\', "/");
-    let root = root.trim_end_matches('/');
-
-    if root.is_empty() {
-        return None;
-    }
-
-    strip_normalized_prefix(&path, root).map(ToOwned::to_owned)
-}
-
-#[cfg(windows)]
-fn strip_normalized_prefix<'a>(path: &'a str, root: &str) -> Option<&'a str> {
-    let path_lower = path.to_ascii_lowercase();
-    let root_lower = root.to_ascii_lowercase();
-
-    if path_lower == root_lower {
-        return Some("");
-    }
-
-    let prefix = format!("{root_lower}/");
-    path_lower
-        .starts_with(&prefix)
-        .then(|| &path[root.len() + 1..])
-}
-
-#[cfg(not(windows))]
-fn strip_normalized_prefix<'a>(path: &'a str, root: &str) -> Option<&'a str> {
-    if path == root {
-        return Some("");
-    }
-
-    path.strip_prefix(&format!("{root}/"))
 }
 
 /// Convert a relative Unix-style path to an absolute native path
