@@ -1691,6 +1691,7 @@ dependencies = [
  "hex",
  "ignore",
  "include_dir",
+ "julie-core",
  "julie-extractors",
  "libc",
  "md5",
@@ -1726,6 +1727,19 @@ dependencies = [
  "uuid",
  "windows-sys 0.60.2",
  "zerocopy 0.7.35",
+]
+
+[[package]]
+name = "julie-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "julie-extractors",
+ "rusqlite",
+ "sqlite-vec",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

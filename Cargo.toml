@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "xtask"]
+members = [".", "xtask", "crates/julie-core"]
 resolver = "2"
 
 [workspace.package]
@@ -42,6 +42,9 @@ embeddings-sidecar = []
 # SEMANTIC_INDEX_ENGINE_VERSION (src/tools/workspace/indexing/engine_version.rs) to the
 # tag's EXTRACTION_CONTRACT_VERSION so the changed extraction shape forces a reindex.
 julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.0.3" }
+
+# Julie leaf crate (bottom of the workspace DAG — no handler/tools/daemon deps)
+julie-core = { path = "crates/julie-core" }
 
 # MCP Server SDK - Official Anthropic SDK
 rmcp = { version = "1.6", features = ["server", "client", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "macros"] }

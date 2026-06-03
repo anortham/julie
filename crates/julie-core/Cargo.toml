@@ -1,0 +1,29 @@
+[package]
+name = "julie-core"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Bottom leaf crate of the Julie workspace — shared types and infrastructure"
+
+[dependencies]
+# Julie Extractors — identical pin to the root crate so julie_extractors:: types unify
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.0.3" }
+
+# Database
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+
+# Error handling
+anyhow = "1.0"
+
+# File locking
+fs2 = "0.4"
+
+# Semantic embeddings
+sqlite-vec = "0.1"
+
+# Logging
+tracing = "0.1"
+
+# Async runtime
+tokio = { version = "1.47.1", features = ["full"] }
