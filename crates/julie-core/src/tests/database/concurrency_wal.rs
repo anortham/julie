@@ -6,7 +6,7 @@ use super::*;
 
 #[test]
 fn test_concurrent_read_access_no_corruption() {
-    use crate::tests::test_helpers::open_test_connection;
+    use julie_test_support::open_test_connection;
     use std::sync::Arc;
     use std::thread;
 
@@ -33,7 +33,7 @@ fn test_concurrent_read_access_no_corruption() {
             doc_comment: None,
             parent_id: None,
             language: "rust".to_string(),
-            visibility: Some(crate::extractors::base::types::Visibility::Public),
+            visibility: Some(julie_extractors::base::types::Visibility::Public),
             metadata: Default::default(),
             code_context: None,
             content_type: None,
@@ -84,7 +84,7 @@ fn test_concurrent_read_access_no_corruption() {
 
 #[test]
 fn test_concurrent_mixed_access_no_corruption() {
-    use crate::tests::test_helpers::open_test_connection;
+    use julie_test_support::open_test_connection;
     use std::sync::{Arc, Mutex};
     use std::thread;
 
@@ -201,7 +201,7 @@ fn test_concurrent_mixed_access_no_corruption() {
 #[test]
 #[ignore] // Long-running stress test - run manually
 fn test_extreme_concurrent_stress() {
-    use crate::tests::test_helpers::open_test_connection;
+    use julie_test_support::open_test_connection;
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;

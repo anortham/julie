@@ -8,3 +8,6 @@ pub mod connection_pool;
 pub mod database;
 pub mod embeddings_contract;
 pub mod paths;
+
+#[cfg(test)]
+mod tests;

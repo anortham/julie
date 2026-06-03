@@ -45,3 +45,6 @@ chrono = { version = "0.4.42", features = ["serde"] }
 [dev-dependencies]
 # Handler-free test helpers — dev-dep only to avoid cycle (julie-core → test-support → julie-core)
 julie-test-support = { path = "../julie-test-support" }
+# Used by database tests (TempDir, Parser)
+tempfile = "3.13"
+tree-sitter = "0.26.8"

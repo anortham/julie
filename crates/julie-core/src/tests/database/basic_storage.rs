@@ -52,7 +52,7 @@ async fn test_debug_foreign_key_constraint() {
 
     // Create a symbol with the same file path (relative to match file_info)
     let file_path =
-        crate::utils::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap();
+        crate::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap();
     println!("File path in symbol: {}", file_path);
 
     let symbol = Symbol {
@@ -214,9 +214,10 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
     let db_path = temp_dir.path().join("bulk.db");
     let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-    // Use a real Go fixture to mirror the production failure scenario
-    let fixture_path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/real-world/go/main.go");
+    // Use a real Go fixture to mirror the production failure scenario.
+    // CARGO_MANIFEST_DIR is crates/julie-core/; fixtures live two levels up at workspace root.
+    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/real-world/go/main.go");
     let fixture_content = std::fs::read_to_string(&fixture_path).unwrap();
 
     let workspace_root = fixture_path
@@ -226,10 +227,10 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
     db.bulk_store_files(&[file_info]).unwrap();
 
     let mut parser = Parser::new();
-    let go_lang = crate::language::get_tree_sitter_language("go").unwrap();
+    let go_lang = julie_extractors::get_tree_sitter_language("go").unwrap();
     parser.set_language(&go_lang).unwrap();
     let tree = parser.parse(&fixture_content, None).unwrap();
-    let mut extractor = crate::extractors::go::GoExtractor::new(
+    let mut extractor = julie_extractors::go::GoExtractor::new(
         "go".to_string(),
         fixture_path.to_string_lossy().to_string(),
         fixture_content,
@@ -270,7 +271,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
         name: "getUserAsync".to_string(),
         kind: SymbolKind::Function,
         language: "typescript".to_string(),
-        file_path: crate::utils::paths::to_relative_unix_style(&test_file, temp_dir.path())
+        file_path: crate::paths::to_relative_unix_style(&test_file, temp_dir.path())
             .unwrap(),
         start_line: 20,
         start_column: 4,
@@ -280,7 +281,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
         end_byte: 800,
         signature: Some("async getUserAsync(id: string): Promise<User>".to_string()),
         doc_comment: Some("Fetches user data asynchronously".to_string()),
-        visibility: Some(crate::extractors::base::Visibility::Public),
+        visibility: Some(julie_extractors::base::Visibility::Public),
         parent_id: None, // No parent for this test
         metadata: Some(metadata.clone()),
         semantic_group: Some("user-data-access".to_string()),

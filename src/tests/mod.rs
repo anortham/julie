@@ -33,10 +33,6 @@ pub mod core {
     pub mod annotation_storage;
     pub mod batch_resolver;
     pub mod bulk_store_types_tests;
-    pub mod database; // Database operations and SQLite tests
-    pub mod database_init_race; // Cross-process-safe database initialization tests
-    pub mod database_lightweight_query; // Lightweight query optimization tests
-    pub mod database_row_mapping; // Database row mapper corruption guards
     pub mod early_warning_report_cache;
     pub mod embedding_deps; // Embedding dependency smoke tests (sqlite-vec + zerocopy)
     pub mod embedding_metadata; // Symbol metadata formatting for embeddings

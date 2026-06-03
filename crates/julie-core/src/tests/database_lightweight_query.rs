@@ -6,7 +6,7 @@
 // and large code_context column reads.
 
 use crate::database::{FileInfo, SymbolDatabase};
-use crate::extractors::base::{NormalizedSpan, Symbol, SymbolKind};
+use julie_extractors::base::{NormalizedSpan, Symbol, SymbolKind};
 use tempfile::TempDir;
 
 /// Helper to create a test database with a few symbols including metadata and code_context
@@ -45,7 +45,7 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
             end_byte: 500,
             signature: Some("pub struct UserService".to_string()),
             doc_comment: Some("User service for managing users".to_string()),
-            visibility: Some(crate::extractors::base::Visibility::Public),
+            visibility: Some(julie_extractors::base::Visibility::Public),
             parent_id: None,
             metadata: Some({
                 let mut m = std::collections::HashMap::new();
@@ -74,7 +74,7 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
             end_byte: 300,
             signature: Some("pub fn get_user(&self, id: u64) -> Option<&User>".to_string()),
             doc_comment: None,
-            visibility: Some(crate::extractors::base::Visibility::Public),
+            visibility: Some(julie_extractors::base::Visibility::Public),
             parent_id: Some("sym-parent-1".to_string()),
             metadata: Some({
                 let mut m = std::collections::HashMap::new();
@@ -116,7 +116,7 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
             end_byte: 490,
             signature: Some("pub fn add_user(&mut self, user: User)".to_string()),
             doc_comment: Some("Add a user to the service".to_string()),
-            visibility: Some(crate::extractors::base::Visibility::Public),
+            visibility: Some(julie_extractors::base::Visibility::Public),
             parent_id: Some("sym-parent-1".to_string()),
             metadata: None,
             semantic_group: None,

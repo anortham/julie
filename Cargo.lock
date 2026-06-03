@@ -1745,8 +1745,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlite-vec",
+ "tempfile",
  "tokio",
  "tracing",
+ "tree-sitter",
  "zerocopy 0.7.35",
 ]
 

@@ -7,7 +7,7 @@ async fn test_extractor_database_integration() {
     let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Simulate what an extractor would create
-    use crate::extractors::base::BaseExtractor;
+    use julie_extractors::base::BaseExtractor;
 
     let source_code = r#"
         function getUserById(id: string): Promise<User> {
@@ -47,7 +47,7 @@ async fn test_extractor_database_integration() {
         end_byte: 0,
         signature: Some("function getUserById(id: string): Promise<User>".to_string()),
         doc_comment: None,
-        visibility: Some(crate::extractors::base::Visibility::Public),
+        visibility: Some(julie_extractors::base::Visibility::Public),
         parent_id: None,
         metadata: Some(metadata),
         semantic_group: None, // Will be populated during cross-language analysis
@@ -124,12 +124,12 @@ async fn test_complete_symbol_field_persistence() {
         start_byte: 150,
         end_byte: 450,
         doc_comment: Some("/// This function does something important".to_string()),
-        visibility: Some(crate::extractors::base::Visibility::Public),
+        visibility: Some(julie_extractors::base::Visibility::Public),
         code_context: Some(
             "  // line before\n  fn complete_function() {\n  // line after".to_string(),
         ),
         content_type: None,
-        body_span: Some(crate::extractors::base::NormalizedSpan {
+        body_span: Some(julie_extractors::base::NormalizedSpan {
             start_line: 12,
             start_column: 4,
             end_line: 18,
@@ -171,7 +171,7 @@ async fn test_complete_symbol_field_persistence() {
     );
     assert_eq!(
         retrieved.visibility,
-        Some(crate::extractors::base::Visibility::Public),
+        Some(julie_extractors::base::Visibility::Public),
         "visibility should be persisted"
     );
     assert_eq!(
@@ -181,7 +181,7 @@ async fn test_complete_symbol_field_persistence() {
     );
     assert_eq!(
         retrieved.body_span,
-        Some(crate::extractors::base::NormalizedSpan {
+        Some(julie_extractors::base::NormalizedSpan {
             start_line: 12,
             start_column: 4,
             end_line: 18,

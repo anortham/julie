@@ -76,11 +76,11 @@ async fn test_relationship_with_id_field() {
         .unwrap();
 
     // Create relationship with generated id
-    let relationship = crate::extractors::base::Relationship {
+    let relationship = julie_extractors::base::Relationship {
         id: "caller_func_called_func_Calls_42".to_string(),
         from_symbol_id: "caller_func".to_string(),
         to_symbol_id: "called_func".to_string(),
-        kind: crate::extractors::base::RelationshipKind::Calls,
+        kind: julie_extractors::base::RelationshipKind::Calls,
         file_path: "main.rs".to_string(),
         line_number: 42,
         confidence: 0.9,
@@ -122,7 +122,7 @@ async fn test_cross_language_semantic_grouping() {
         end_byte: 200,
         signature: Some("interface User".to_string()),
         doc_comment: None,
-        visibility: Some(crate::extractors::base::Visibility::Public),
+        visibility: Some(julie_extractors::base::Visibility::Public),
         parent_id: None,
         metadata: None,
         semantic_group: Some("user-entity".to_string()),
@@ -148,7 +148,7 @@ async fn test_cross_language_semantic_grouping() {
         end_byte: 400,
         signature: Some("struct User".to_string()),
         doc_comment: None,
-        visibility: Some(crate::extractors::base::Visibility::Public),
+        visibility: Some(julie_extractors::base::Visibility::Public),
         parent_id: None,
         metadata: None,
         semantic_group: Some("user-entity".to_string()),
@@ -258,21 +258,21 @@ async fn test_get_outgoing_relationships_for_symbols_batch() {
     .unwrap();
 
     let relationships = vec![
-        crate::extractors::Relationship {
+        julie_extractors::Relationship {
             id: "rel_a_x".to_string(),
             from_symbol_id: "caller_a".to_string(),
             to_symbol_id: "callee_x".to_string(),
-            kind: crate::extractors::RelationshipKind::Calls,
+            kind: julie_extractors::RelationshipKind::Calls,
             file_path: "main.rs".to_string(),
             line_number: 10,
             confidence: 1.0,
             metadata: None,
         },
-        crate::extractors::Relationship {
+        julie_extractors::Relationship {
             id: "rel_b_y".to_string(),
             from_symbol_id: "caller_b".to_string(),
             to_symbol_id: "callee_y".to_string(),
-            kind: crate::extractors::RelationshipKind::Calls,
+            kind: julie_extractors::RelationshipKind::Calls,
             file_path: "main.rs".to_string(),
             line_number: 20,
             confidence: 1.0,

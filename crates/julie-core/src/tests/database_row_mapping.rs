@@ -1,5 +1,6 @@
 use crate::database::SymbolDatabase;
-use crate::tests::helpers::db::{file_info_builder, store_file_info_if_missing, symbol_builder};
+use super::helpers::{file_info_builder, store_file_info_if_missing};
+use julie_test_support::symbol_builder;
 use tempfile::TempDir;
 
 #[test]
