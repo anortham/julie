@@ -2,7 +2,7 @@
 
 **Languages Audited:** Lua, R, Bash, PowerShell, SQL, Regex
 **Audit Date:** 2026-05-06
-**Scope:** Source files in `crates/julie-extractors/src/<language>/` and corresponding test suites
+**Scope:** Source files in `crates/julie-extractors/src/<language>/` and corresponding test suites (source now lives in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo)
 
 ---
 
@@ -209,4 +209,4 @@ This audit identifies **47 findings** across six tree-sitter extractors. The mos
 
 ---
 
-*Report compiled from source files in `crates/julie-extractors/src/` and corresponding test suites.*
+*Report compiled from source files in `crates/julie-extractors/src/` (now the external `anortham/julie-extractors` repo) and corresponding test suites.*

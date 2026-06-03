@@ -1,5 +1,7 @@
 # ADR-0005: Source-aware language detection precedence
 
+> **Note (2026-06-02):** Source paths referencing `crates/julie-extractors/...` in this ADR now live in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. The decision recorded here remains valid.
+
 ## Context
 
 Language detection in Julie answers two different questions:

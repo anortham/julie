@@ -14,9 +14,11 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 - **Architecture**: Tantivy full-text search + SQLite structured storage + KNN vector search (embeddings)
 - **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout) + optional background daemon for shared workspaces
 - **Origin**: Native Rust implementation for true cross-platform compatibility
-- **Crown Jewels**: 34 tree-sitter extractors with comprehensive test suites
+- **Crown Jewels**: 34 tree-sitter extractors with comprehensive test suites, now maintained in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo and consumed here as a pinned git dependency
 
 ### 🏆 Current Language Support (34 - Complete)
+
+The 34 extractors live upstream in [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) (consumed as a pinned git dep). Language and parser work — adding languages, upgrading parsers, golden fixtures, capability tests — happens there. Re-pin julie's `julie-extractors` git-dep in `Cargo.toml` and sync `SEMANTIC_INDEX_ENGINE_VERSION` (in `src/tools/workspace/indexing/engine_version.rs`) to the new tag's `EXTRACTION_CONTRACT_VERSION` to pick up a new release.
 
 **Core Languages:** Rust, TypeScript, JavaScript, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala
 **Systems Languages:** C, C++, Go, Lua, Zig
@@ -33,10 +35,7 @@ cargo check                    # Type-check only (fastest compilation, no binary
 cargo build                    # Debug build
 cargo build --release          # Release build (for live MCP testing)
 cargo nextest run --lib <test_name>  # Default: narrowest test first
-cargo xtask test bucket extractors   # Extractor golden + capability gate
 cargo xtask test nano          # Minimal regression check (~25s)
-cargo xtask certify tree-sitter --check  # Tree-sitter certification report gate
-cargo xtask certify tree-sitter --real-world --profile smoke --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json  # Refresh real-world smoke evidence
 cargo xtask test bucket parser-upgrade  # Parser dependency upgrade gate
 cargo xtask test changed       # After a localized change (diff-scoped buckets)
 cargo xtask test dev           # Batch gate before handoff — not per edit
@@ -144,7 +143,7 @@ For the tight edit-test loop during implementation:
 
 (Previous known failures in `core-embeddings` and `workspace_init` were resolved as of 2026-03-19.)
 
-(As of 2026-05-30, the per-language `julie-extractors` unit suite — 2291 tests across all 34 extractors — is gated by the new `extractor-units` bucket in the **dev** and **full** tiers. Previously these ran in no bucket, so 24 pre-existing extractor failures were invisible to the tiers; all 24 are now fixed and the suite is green.)
+(As of v2.0.3, the per-language extractor unit suite — 2291 tests across all 34 extractors — lives and runs in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. Julie's own dev/full tiers no longer include extractor-unit or golden buckets.)
 
 ### Why Dogfood Is Slow
 

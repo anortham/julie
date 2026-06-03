@@ -8,18 +8,18 @@ Tree-sitter parser output is a data contract for Julie. Parser dependencies are 
 
 Current baseline:
 
-- `tree-sitter = "0.26.8"`
-- Parser crate inventory and decisions live in `docs/TREE_SITTER_UPGRADES.md`
-- Parser metadata for each registry language lives in `crates/julie-extractors/src/language_spec.rs`
-- Capability and fixture coverage live in `fixtures/extraction/capabilities.json`
+- `tree-sitter = "0.26.8"` (core ABI)
+- `julie-extractors` is consumed as a pinned git dependency from [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors)
+- Parser crate inventory and decisions live in `docs/TREE_SITTER_UPGRADES.md` (for context) and in the external repo's `Cargo.toml`
+- Parser metadata (`language_spec.rs`), capability coverage (`capabilities.json`), and golden fixtures all live in the external `anortham/julie-extractors` repo
 
 Required parser-change workflow:
 
-1. Verify the current upstream crate or git revision before editing manifests.
-2. Update `docs/TREE_SITTER_UPGRADES.md` with the decision and evidence.
-3. Update `LanguageSpec` and `fixtures/extraction/capabilities.json` when parser crate names or statuses change.
-4. Run narrow failing tests first for any grammar drift.
-5. Run `cargo xtask test bucket parser-upgrade`.
+1. Make the upgrade in the external `anortham/julie-extractors` repo; release a new tag there.
+2. Re-pin the `julie-extractors` git-dep in julie's `Cargo.toml` to the new tag.
+3. Sync `SEMANTIC_INDEX_ENGINE_VERSION` in `src/tools/workspace/indexing/engine_version.rs` to match the tag's `EXTRACTION_CONTRACT_VERSION`.
+4. Update `docs/TREE_SITTER_UPGRADES.md` with the decision and evidence (summary of what changed upstream).
+5. Run `cargo xtask test bucket parser-upgrade` in this repo.
 
 Git parser dependencies must be pinned with `rev`. Floating branch dependencies are not acceptable for parser infrastructure.
 

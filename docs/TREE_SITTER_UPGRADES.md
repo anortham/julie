@@ -8,15 +8,15 @@ Julie treats parser output as a data contract. A tree-sitter dependency upgrade 
 
 - `https://crates.io/api/v1/crates/<crate>` for current crates.io max versions.
 - `cargo metadata --format-version 1` for locked versions and git revisions.
-- `cargo tree -p julie-extractors -e normal` for the resolved parser graph.
+- `cargo tree -p julie-extractors -e normal` for the resolved parser graph (run from the `anortham/julie-extractors` checkout).
 - docs.rs for `tree-sitter 0.26.8` ABI constants: `LANGUAGE_VERSION = 15`, `MIN_COMPATIBLE_LANGUAGE_VERSION = 13`.
 
 ## Upgrade Rules
 
-1. Update parser crates only after every registry language has a `fixtures/extraction` golden case.
-2. Run `cargo xtask test bucket parser-upgrade` for any tree-sitter core, parser crate, parser git revision, or expected-output change caused by grammar drift.
+1. Parser crates and golden fixtures are managed in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. Make upgrades there; release a new tag; then re-pin julie's git-dep.
+2. After re-pinning here, run `cargo xtask test bucket parser-upgrade` for any tree-sitter core, parser crate, parser git revision, or expected-output change caused by grammar drift.
 3. If a parser crate cannot be updated, record the blocker here with the failing command or dependency resolver error.
-4. Git parser dependencies must be pinned by `rev` in `crates/julie-extractors/Cargo.toml`. Floating branch dependencies are not acceptable for parser infrastructure.
+4. Git parser dependencies must be pinned by `rev` in the external `julie-extractors` repo. Floating branch dependencies are not acceptable for parser infrastructure.
 5. Expected-output changes are acceptable only when they match reviewed parser behavior. Do not erase symbols, relationships, identifiers, types, or diagnostics just to make the gate pass.
 
 ## Core ABI Decision
@@ -71,11 +71,9 @@ The Dart parser replacement changed class, superclass, call-expression, field, m
 
 ## Commands
 
-Use these in order when changing parser dependencies:
+Parser tests and golden gates run in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. After re-pinning the git-dep here, run the julie-side parser-upgrade gate:
 
 ```bash
-cargo nextest run -p julie-extractors <exact_regression_test>
-cargo nextest run -p julie-extractors golden
 cargo xtask test bucket parser-upgrade
 ```
 

@@ -2,6 +2,8 @@
 
 Reviewed against `main` at `0bcc7c48` on 2026-05-07.
 
+> **Note (2026-06-02):** The parser inventory, certification, golden fixtures, and capability tests have migrated to the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. Source paths in the Evidence column below that start with `crates/julie-extractors/...` now live there. All findings recorded here were closed before the migration.
+
 This file tracks concrete review findings that were raised during the v7.8.0 tree-sitter review. The point is to keep these out of chat-only memory. Generated certification reports show capability gaps, but they do not cover every storage, ID, span, or performance defect below.
 
 ## Current Findings

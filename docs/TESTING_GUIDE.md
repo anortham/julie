@@ -69,7 +69,7 @@ cargo xtask search-matrix baseline --profile breadth --out artifacts/search-matr
 
 # Narrow filter for a specific test
 cargo nextest run --lib test_stemming
-cargo test -p julie-extractors typescript_extractor
+# Note: per-extractor tests now live in the external anortham/julie-extractors repo
 ```
 
 ## Test Tiers

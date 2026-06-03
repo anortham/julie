@@ -564,15 +564,6 @@ cargo xtask test full
 
 # Inspect available tiers and buckets
 cargo xtask test list
-
-# Regenerate the current tree-sitter certification report
-cargo xtask certify tree-sitter
-
-# Refresh checked-in tree-sitter real-world smoke evidence
-cargo xtask certify tree-sitter --real-world --profile smoke --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json
-
-# Check that the committed tree-sitter certification report is current
-cargo xtask certify tree-sitter --check
 ```
 
 Use `cargo xtask test changed` for the local loop. It maps the current git diff to the smallest matching bucket set, then falls back to `dev` if shared infrastructure moved. Run `cargo xtask test dev` once per completed batch, not after every edit.
