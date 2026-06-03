@@ -22,8 +22,11 @@
 - `crates/julie-core/src/database/bulk/type_arguments.rs:11` — De-linked the broken intra-doc ref `crate::indexing_core::ExtractedBatch` to plain `` `ExtractedBatch` `` (the referenced type lives up in the parent crate; a leaf crate cannot doc-link upward).
 - Branch-gate evidence reuse: the dev (35 buckets/1072s) and system (7 buckets/192s) tiers ran at `3fcaa15d`. The final commit `bef0c9e6` adds only tests + docs (verified via `git diff --name-only 3fcaa15d bef0c9e6` — zero production files), so I verified the delta (new tripwire) via `cargo nextest run -p julie-core` (120/120) at HEAD rather than re-running 18 minutes of unchanged-production-code dev tier.
 
-## External review: none (not requested for this run)
-(The design doc itself was Codex-reviewed during brainstorming — commit `3cf2569e` — but no pre-merge adversarial review of the branch diff was requested.)
+## External review (Codex `gpt-5.5` high, adversarial, pre-merge)
+Run on user request before merge against the full code diff (94 files, +3469/-1647), read-only sandbox, targeted at the six highest-risk areas of a crate split (shim fidelity, ADR-0006 feature-gating, the severed dep cycle + tripwire, test-coverage loss, moved-module behavioral drift, Cargo wiring).
+- **Verdict:** needs-attention — **1 finding** (medium); no critical/high. Shim fidelity, feature-gating, dep-cycle severance, and behavioral drift all came back clean.
+- **Verified real, fixed:** 1 — `changed.rs` blanket-routed every `crates/julie-core/src/**` edit to `core-database` only, collapsing the pre-split behavioral routing for the three moved leaf files (connection pool → `daemon`, embeddings contract → `core-embeddings`, paths → `core-fast`). A localized edit to moved leaf code would have run only `-p julie-core` and skipped its real regression tests without triggering dev-fallback. **Fixed in `16a14272`**: file-specific routing restored (each leaf file → `core-database` + its behavioral bucket), guarded by three new representative-path assertions; `cargo nextest run -p xtask` 165 passed. The design doc was also Codex-reviewed earlier during brainstorming (`3cf2569e`).
+- **Dismissed / flagged:** none.
 
 ## Tests
 - **julie-core own test binary @ HEAD bef0c9e6:** `cargo nextest run -p julie-core` → 120 passed (1 leaky, 1 skipped). The +2 over the prior 118 are exactly the new tripwire tests.
