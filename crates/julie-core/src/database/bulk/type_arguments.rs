@@ -6,7 +6,7 @@
 //! The extractor layer emits a tree per use site
 //! ([`TypeArgumentUsage`] holding nested [`TypeArgument`]s). This module
 //! flattens that tree into row form once — [`flatten_type_argument_usages`] —
-//! and stores the result on [`crate::indexing_core::batch::ExtractedBatch`] so
+//! and stores the result on `ExtractedBatch` so
 //! every atomic write path inserts the same rows via the
 //! [`CanonicalWriteSet`](crate::database::bulk::atomic::CanonicalWriteSet).
 
