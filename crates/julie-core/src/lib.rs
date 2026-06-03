@@ -4,4 +4,5 @@
 //! crate (and any future sibling crates) depend on. It must remain a true leaf:
 //! no references to `crate::handler`, `crate::tools`, or `crate::daemon`.
 
+pub mod connection_pool;
 pub mod embeddings_contract;
