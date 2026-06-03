@@ -161,3 +161,76 @@ Miller parameter changes. Miller's counter-advantage in "function name" symbol l
 78%) is genuine but narrow and does not overcome Julie's breadth.
 
 The rescue is the right call.
+
+---
+
+# Phase 0 — Relink Cure Proof + Dep-Direction Tripwire (Task 8)
+
+**Date:** 2026-06-03  **Branch:** julie-rescue  **HEAD at measurement:** `485afa49`
+**Platform:** darwin 25.5.0 (Apple Silicon), warm incremental build (sccache wrapper).
+
+## What Phase 0 changed
+
+The relink tax came from `src/lib.rs` pulling the entire 126k-LOC test tree into **one** test
+binary, so editing any source relinked the whole monolith. Phase 0 extracts a bottom leaf crate
+`julie-core` (embeddings-contract trait, connection pool, path helpers, the whole `database`
+module, the `test_support` helpers) and **relocates the 118 pure database-layer tests into
+julie-core's own test binary**. Editing one of those tests now relinks only julie-core, not the
+monolith.
+
+## Timed touch-and-rebuild (incremental relink wall-clock)
+
+| Scenario | Command | `cargo` build | wall-clock (`time -p real`) |
+|----------|---------|---------------|------------------------------|
+| **Cured** — edit a julie-core DB test | `touch crates/julie-core/src/tests/database/basic_storage.rs && cargo nextest run -p julie-core --no-run` | **1.68 s** | **3.41 s** |
+| **Monolith** — edit a top-crate test | `touch src/tests/tools/blast_radius_determinism_tests.rs && cargo nextest run -p julie --lib --no-run` | **9.77 s** | **12.91 s** |
+
+**Decoupling check (the key property):** immediately after editing the julie-core DB test, building
+the top-crate test binary (`cargo nextest run -p julie --lib --no-run`) reported `Finished … in
+0.25s` with **no `Compiling julie v7.13.2` line** — the monolith was **not** relinked. Editing a
+julie-core test no longer touches the top-crate test binary at all.
+
+**Result:** ~**5.8× faster** build/link (1.68 s vs 9.77 s) and ~**3.8× faster** wall-clock (3.41 s
+vs 12.91 s) for the database-test slice, plus full decoupling of the monolith from julie-core test
+edits. This is Phase 0's first leaf; the benefit compounds as later phases split more crates out of
+the monolith.
+
+**Honest caveats:**
+- Editing julie-core **production** code (e.g. `database/mod.rs`) still relinks the monolith,
+  because the top `julie` crate depends on julie-core's lib. Phase 0 cures the **test-edit** loop
+  for the relocated slice, not every edit. Further crate extraction (later phases) widens the cure.
+- Numbers are single-sample, warm incremental, one machine. They establish order-of-magnitude, not
+  a benchmark.
+
+## Dep-direction tripwire
+
+`crates/julie-core/tests/no_upward_deps.rs` — two guards that keep the leaf a leaf:
+1. `no_upward_source_references` — scans `julie-core/src/**/*.rs` (line-comment-stripped) and fails
+   on any `crate::{handler,tools,daemon,indexing_core,watcher,analysis,search,…}`,
+   `julie_test_support`, or bare `julie::` reference.
+2. `manifest_has_no_cyclic_or_upward_dependency` — fails if `julie-core/Cargo.toml` ever depends on
+   `julie-test-support` (the ADR-0006 cycle) or the parent `julie` crate.
+
+**Spike-verified:** dropping a throwaway `src/_tripwire_spike_tmp.rs` containing
+`"crate::tools::ManageWorkspaceTool"` made `no_upward_source_references` **FAIL** with
+`_tripwire_spike_tmp.rs:3: forbidden upward reference crate::tools`; removing it restored green (2/2).
+
+## Verification ledger
+
+| Scope | Invariant | Command | Commit | Result |
+|-------|-----------|---------|--------|--------|
+| worker | DB slice runs in julie-core's own binary | `cargo nextest run -p julie-core` | `485afa49` | 118 passed (1 leaky, 1 skipped) |
+| worker | slice gone from top crate | `cargo nextest run --lib tests::core::database` / `::vector_storage` | `485afa49` | 0 tests each |
+| worker | dep cycle severed | `cargo tree -p julie-core \| grep julie-test-support` | `485afa49` | empty |
+| worker | single-source builders | `grep -rn "pub fn file_info_builder" src/ crates/` | `485afa49` | only `test_support/db/rows.rs` |
+| worker | production stays clean | `cargo tree -p julie-core -e no-dev \| grep tempfile` | `485afa49` | absent |
+| affected-change | tripwire green + fires on violation | `cargo nextest run -p julie-core --test no_upward_deps` (+ spike) | `485afa49` | 2/2; FAIL on spike |
+| branch-gate | `cargo xtask test changed` (shared infra moved → dev fallback) | `cargo xtask test changed` | `3fcaa15d` | **35 buckets passed in 1072.0s** |
+| branch-gate | full system tier green | `cargo xtask test system` | `3fcaa15d` | **7 buckets passed in 192.1s** |
+
+Both branch gates ran at HEAD `3fcaa15d` (after the Task 10 xtask-bucket repoint). `changed`
+fell back to the full `dev` tier because the crate split + xtask `test_tiers.toml` edits touch
+shared infrastructure — expected, not a miss. Zero failures across all 35 dev buckets and all 7
+system buckets, so the crate split and DB-test relocation introduced no regressions anywhere in
+the suite.
+
