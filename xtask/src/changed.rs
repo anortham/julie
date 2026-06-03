@@ -509,13 +509,13 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     // those buckets (Phase 0 lesson: a localized edit to moved code must not silently
     // skip its behavioral coverage):
     //   crates/julie-index/src/search/**   -> core-index + all search tool buckets + search-quality
-    //   crates/julie-index/src/analysis/** -> core-index + analysis
+    //   crates/julie-index/src/analysis/** -> core-index (analysis bucket removed by T6; tests relocated to julie-index)
     // Subpath checks must precede the catch-all prefix (first match wins).
     if matches_prefix(path, &["crates/julie-index/src/search/"]) {
         return JULIE_INDEX_SEARCH_BUCKETS;
     }
     if matches_prefix(path, &["crates/julie-index/src/analysis/"]) {
-        return &["core-index", "analysis"];
+        return &["core-index"];
     }
     if matches_prefix(path, &["crates/julie-index/src/"]) {
         // lib.rs, tests/**, other top-level files — covered by `-p julie-index`.
@@ -787,10 +787,6 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["dashboard"];
     }
 
-    if matches_prefix(path, &["src/analysis/", "src/tests/analysis/"]) {
-        return &["analysis"];
-    }
-
     if matches_prefix(path, &["src/health/"])
         || matches_exact(path, &["src/tests/integration/system_health.rs"])
     {
@@ -1025,7 +1021,6 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "tools-refactoring",
         "tools-metrics",
         "tools-format-filter",
-        "analysis",
         "core-fast",
         "core-handler-telemetry",
         "transport",

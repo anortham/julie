@@ -67,14 +67,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "analysis",
-            ExpectedBucket {
-                expected_seconds: 30,
-                timeout_seconds: 90,
-                commands: &["cargo nextest run --lib tests::analysis -- --skip search_quality"],
-            },
-        ),
-        (
             "core-index",
             ExpectedBucket {
                 expected_seconds: 10,
@@ -415,7 +407,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 45,
                 commands: &[
                     "cargo nextest run --lib search::query_parse::tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::reranker_tests -- --skip search_quality",
                     "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
                 ],
             },
@@ -426,18 +417,12 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 60,
                 timeout_seconds: 120,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::search::c3_enriched_schema_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::compat_marker_v4_test -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::nl_path_prior_pipeline_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::nl_symbol_query_latency_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::pretokenized_emit_test -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::projection_search_doc_test -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::relationship_text_test -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::reranker_ordering_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::schema_phase2_fields_test -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::title_exact_boost_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::tokenizer_simple_test -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::unified_ -- --skip search_quality",
                 ],
             },
@@ -474,7 +459,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::tantivy_ -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::language_config_embedded_tests -- --skip search_quality",
                 ],
             },
         ),
@@ -579,15 +563,6 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("embedding stack"),
-            },
-        ),
-        (
-            "analysis",
-            ExpectedBucketMetadata {
-                scope_label: "tooling",
-                owner: "lead",
-                expensive: false,
-                notes: Some("post-indexing analysis (test quality, risk, linkage)"),
             },
         ),
         (

@@ -5,12 +5,12 @@
 nano = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
-dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-dep-integration"]
+dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-dep-integration"]
 # System coverage kept separate from fast local buckets.
 system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -109,7 +109,6 @@ scope_label = "tooling"
 notes = "tantivy-backed search coverage"
 commands = [
   "cargo nextest run --lib tests::tools::search::tantivy_ -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::language_config_embedded_tests -- --skip search_quality",
 ]
 
 [buckets.tools-search-line]
@@ -202,7 +201,6 @@ scope_label = "tooling"
 notes = "search query parsing and preprocessing"
 commands = [
   "cargo nextest run --lib search::query_parse::tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::reranker_tests -- --skip search_quality",
   "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
 ]
 
@@ -212,18 +210,12 @@ timeout_seconds = 120
 scope_label = "tooling"
 notes = "unified search schema, ranking, reranker, and query-path coverage"
 commands = [
-  "cargo nextest run --lib tests::tools::search::c3_enriched_schema_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::compat_marker_v4_test -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::nl_path_prior_pipeline_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::nl_symbol_query_latency_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::pretokenized_emit_test -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::projection_search_doc_test -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::relationship_text_test -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::reranker_ordering_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::schema_phase2_fields_test -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::title_exact_boost_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::tokenizer_simple_test -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::unified_ -- --skip search_quality",
 ]
 
@@ -385,16 +377,6 @@ timeout_seconds = 60
 scope_label = "core"
 notes = "julie-index crate: search + analysis layer above julie-core"
 commands = ["cargo nextest run -p julie-index"]
-
-[buckets.analysis]
-# Post-indexing analysis suite: change_risk, early_warnings, test_linkage,
-# test_quality, test_roles. Previously orphaned (no bucket ran these); routed
-# here so changes under src/analysis/ exercise their dedicated coverage.
-expected_seconds = 30
-timeout_seconds = 90
-scope_label = "tooling"
-notes = "post-indexing analysis (test quality, risk, linkage)"
-commands = ["cargo nextest run --lib tests::analysis -- --skip search_quality"]
 
 [buckets.daemon]
 # Daemon-mode tests: handler construction, HTTP session lifecycle,
