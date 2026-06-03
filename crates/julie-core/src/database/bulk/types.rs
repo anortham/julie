@@ -8,7 +8,7 @@ use crate::database::SymbolDatabase;
 
 pub(crate) fn insert_types_tx(
     tx: &Transaction<'_>,
-    types: &[crate::extractors::base::TypeInfo],
+    types: &[julie_extractors::base::TypeInfo],
     valid_symbol_ids: Option<&HashSet<String>>,
     now: i64,
 ) -> Result<i64> {
@@ -69,7 +69,7 @@ pub(crate) fn insert_types_tx(
 impl SymbolDatabase {
     pub fn bulk_store_types(
         &mut self,
-        types: &[crate::extractors::base::TypeInfo],
+        types: &[julie_extractors::base::TypeInfo],
         _workspace_id: &str,
     ) -> Result<()> {
         if types.is_empty() {

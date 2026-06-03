@@ -81,8 +81,8 @@ fn parse_symbol_kind(kind: &str) -> rusqlite::Result<SymbolKind> {
 
 fn parse_symbol_visibility(
     visibility: &str,
-) -> rusqlite::Result<crate::extractors::base::Visibility> {
-    crate::extractors::base::Visibility::from_storage_str(visibility)
+) -> rusqlite::Result<julie_extractors::base::Visibility> {
+    julie_extractors::base::Visibility::from_storage_str(visibility)
         .ok_or_else(|| row_conversion_error(13, format!("unknown symbol visibility: {visibility}")))
 }
 
@@ -93,7 +93,7 @@ fn parse_relationship_kind(kind: &str) -> rusqlite::Result<RelationshipKind> {
 
 fn row_to_body_span(
     row: &Row,
-) -> rusqlite::Result<Option<crate::extractors::base::NormalizedSpan>> {
+) -> rusqlite::Result<Option<julie_extractors::base::NormalizedSpan>> {
     let start_line: Option<u32> = row.get("body_start_line")?;
     let start_column: Option<u32> = row.get("body_start_col")?;
     let end_line: Option<u32> = row.get("body_end_line")?;
@@ -117,7 +117,7 @@ fn row_to_body_span(
             Some(end_column),
             Some(start_byte),
             Some(end_byte),
-        ) => Ok(Some(crate::extractors::base::NormalizedSpan {
+        ) => Ok(Some(julie_extractors::base::NormalizedSpan {
             start_line,
             start_column,
             end_line,

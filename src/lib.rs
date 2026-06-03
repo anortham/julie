@@ -6,7 +6,7 @@
 pub mod analysis;
 pub mod cli;
 pub mod cli_tools;
-pub mod database;
+pub use julie_core::database;
 pub mod embeddings;
 pub mod external_extract;
 pub mod extractors;

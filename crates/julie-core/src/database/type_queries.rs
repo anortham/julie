@@ -13,7 +13,7 @@ use tracing::debug;
 use crate::database::SymbolDatabase;
 use crate::database::helpers::SYMBOL_COLUMNS;
 use crate::database::symbols::annotations::hydrate_annotations_for_symbols;
-use crate::extractors::Symbol;
+use julie_extractors::Symbol;
 
 impl SymbolDatabase {
     /// Find all symbols that implement a given interface/trait
@@ -258,7 +258,7 @@ impl SymbolDatabase {
         let outgoing_rels = self.get_outgoing_relationships_for_symbols(&type_symbol_ids)?;
         let parent_ids: Vec<String> = outgoing_rels
             .iter()
-            .filter(|r| matches!(r.kind, crate::extractors::RelationshipKind::Extends))
+            .filter(|r| matches!(r.kind, julie_extractors::RelationshipKind::Extends))
             .map(|r| r.to_symbol_id.clone())
             .collect();
 
@@ -266,7 +266,7 @@ impl SymbolDatabase {
         let incoming_rels = self.get_relationships_to_symbols(&type_symbol_ids)?;
         let child_ids: Vec<String> = incoming_rels
             .iter()
-            .filter(|r| matches!(r.kind, crate::extractors::RelationshipKind::Extends))
+            .filter(|r| matches!(r.kind, julie_extractors::RelationshipKind::Extends))
             .map(|r| r.from_symbol_id.clone())
             .collect();
 

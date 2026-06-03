@@ -44,7 +44,7 @@ impl SymbolDatabase {
     pub fn store_file_parse_diagnostics(
         &self,
         file_path: &str,
-        diagnostics: &[crate::extractors::base::ParseDiagnostic],
+        diagnostics: &[julie_extractors::base::ParseDiagnostic],
     ) -> Result<()> {
         let payload = if diagnostics.is_empty() {
             None
@@ -63,7 +63,7 @@ impl SymbolDatabase {
     pub fn get_file_parse_diagnostics(
         &self,
         file_path: &str,
-    ) -> Result<Vec<crate::extractors::base::ParseDiagnostic>> {
+    ) -> Result<Vec<julie_extractors::base::ParseDiagnostic>> {
         let mut stmt = self
             .conn
             .prepare("SELECT parse_cache FROM files WHERE path = ?1")?;
@@ -585,7 +585,7 @@ pub fn create_file_info<P: AsRef<Path>>(
 
     // Convert to relative Unix-style path for token efficiency and cross-platform compatibility
     let relative_path =
-        crate::utils::paths::to_relative_unix_style(&canonical_path, workspace_root)?;
+        crate::paths::to_relative_unix_style(&canonical_path, workspace_root)?;
 
     let line_count = content
         .as_ref()

@@ -11,7 +11,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 impl SymbolDatabase {
-    pub(crate) fn create_index_engine_state_table(&self) -> Result<()> {
+    pub fn create_index_engine_state_table(&self) -> Result<()> {
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS index_engine_state (
                 workspace_id TEXT NOT NULL,
@@ -26,7 +26,7 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    pub(crate) fn get_index_engine_version(
+    pub fn get_index_engine_version(
         &self,
         workspace_id: &str,
         component: &str,
@@ -43,7 +43,7 @@ impl SymbolDatabase {
             .map_err(Into::into)
     }
 
-    pub(crate) fn index_engine_version_matches(
+    pub fn index_engine_version_matches(
         &self,
         workspace_id: &str,
         component: &str,
@@ -55,7 +55,7 @@ impl SymbolDatabase {
             == Some(expected_version))
     }
 
-    pub(crate) fn set_index_engine_version(
+    pub fn set_index_engine_version(
         &self,
         workspace_id: &str,
         component: &str,

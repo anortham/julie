@@ -8,7 +8,7 @@ use crate::database::SymbolDatabase;
 
 pub(crate) fn insert_identifiers_tx(
     tx: &Transaction<'_>,
-    identifiers: &[crate::extractors::Identifier],
+    identifiers: &[julie_extractors::Identifier],
     valid_symbol_ids: Option<&HashSet<String>>,
 ) -> Result<i64> {
     if identifiers.is_empty() {
@@ -84,7 +84,7 @@ fn normalize_symbol_ref(
 impl SymbolDatabase {
     pub fn bulk_store_identifiers(
         &mut self,
-        identifiers: &[crate::extractors::Identifier],
+        identifiers: &[julie_extractors::Identifier],
         workspace_id: &str,
     ) -> Result<()> {
         if identifiers.is_empty() {

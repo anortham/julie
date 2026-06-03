@@ -3,7 +3,7 @@ use rusqlite::{Connection, Params, Statement, Transaction, params, params_from_i
 use std::collections::HashMap;
 
 use crate::database::SymbolDatabase;
-use crate::extractors::{AnnotationMarker, Symbol};
+use julie_extractors::{AnnotationMarker, Symbol};
 
 const CHUNK_SIZE: usize = 500;
 

@@ -5,7 +5,7 @@ use rusqlite::{Transaction, params};
 use tracing::{debug, info};
 
 use crate::database::SymbolDatabase;
-use crate::extractors::Relationship;
+use julie_extractors::Relationship;
 
 pub(crate) fn insert_relationships_tx(
     tx: &Transaction<'_>,

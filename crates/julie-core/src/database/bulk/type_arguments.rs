@@ -13,7 +13,7 @@
 use anyhow::Result;
 use rusqlite::{Transaction, params};
 
-use crate::extractors::base::{TypeArgument, TypeArgumentUsage};
+use julie_extractors::base::{TypeArgument, TypeArgumentUsage};
 
 /// One flattened `type_arguments` row, ready to insert.
 ///
@@ -23,14 +23,14 @@ use crate::extractors::base::{TypeArgument, TypeArgumentUsage};
 /// resolves it yet (see `cleanup.rs` for the forward-safe NULL-on-symbol-delete
 /// guard kept in lockstep).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TypeArgumentRow {
-    pub(crate) id: String,
-    pub(crate) identifier_id: String,
-    pub(crate) parent_arg_id: Option<String>,
-    pub(crate) ordinal: u32,
-    pub(crate) type_name: String,
-    pub(crate) file_path: String,
-    pub(crate) language: String,
+pub struct TypeArgumentRow {
+    pub id: String,
+    pub identifier_id: String,
+    pub parent_arg_id: Option<String>,
+    pub ordinal: u32,
+    pub type_name: String,
+    pub file_path: String,
+    pub language: String,
 }
 
 /// Flatten use-site type-argument trees into insertable rows.
@@ -39,7 +39,7 @@ pub(crate) struct TypeArgumentRow {
 /// (e.g. `1.0` for the `int` of `Dictionary<string, List<int>>`), which is
 /// unique within a use site and deterministic across re-indexes, so
 /// `INSERT OR REPLACE` is idempotent. Parent/child rows are linked by `id`.
-pub(crate) fn flatten_type_argument_usages(usages: &[TypeArgumentUsage]) -> Vec<TypeArgumentRow> {
+pub fn flatten_type_argument_usages(usages: &[TypeArgumentUsage]) -> Vec<TypeArgumentRow> {
     let mut rows = Vec::new();
     for usage in usages {
         for arg in &usage.arguments {

@@ -14,7 +14,7 @@ use rusqlite::{Transaction, params};
 use tracing::{debug, info};
 
 use crate::database::SymbolDatabase;
-use crate::extractors::Literal;
+use julie_extractors::Literal;
 
 pub(crate) fn insert_literals_tx(
     tx: &Transaction<'_>,

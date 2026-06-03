@@ -11,13 +11,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Once;
 use tracing::{debug, info, warn};
 
-use crate::daemon::connection_pool::PooledConn;
+use crate::connection_pool::PooledConn;
 
-use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use julie_extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
 // Module declarations
 pub mod analytics;
-pub(crate) mod bulk;
+pub mod bulk;
 mod bulk_operations;
 mod files;
 mod helpers;
@@ -72,7 +72,7 @@ pub use types::*;
 ///
 /// Both variants deref to `&Connection` / `&mut Connection` so every
 /// `SymbolDatabase` method works unchanged regardless of which variant is held.
-pub(crate) enum SymbolDatabaseConn {
+pub enum SymbolDatabaseConn {
     Owned(Connection),
     Pooled(PooledConn),
 }
@@ -98,11 +98,11 @@ impl std::ops::DerefMut for SymbolDatabaseConn {
 
 /// The main database connection and operations
 pub struct SymbolDatabase {
-    pub(crate) conn: SymbolDatabaseConn,
-    pub(crate) file_path: PathBuf,
+    pub conn: SymbolDatabaseConn,
+    pub file_path: PathBuf,
 }
 
-pub(crate) struct ReadSnapshot {
+pub struct ReadSnapshot {
     db: SymbolDatabase,
 }
 
@@ -267,13 +267,12 @@ impl SymbolDatabase {
         }
     }
 
-    pub(crate) fn into_read_snapshot(self) -> Result<ReadSnapshot> {
+    pub fn into_read_snapshot(self) -> Result<ReadSnapshot> {
         self.conn.execute_batch("BEGIN DEFERRED TRANSACTION")?;
         Ok(ReadSnapshot { db: self })
     }
 
-    #[cfg(test)]
-    pub(crate) fn is_autocommit_for_test(&self) -> bool {
+    pub fn is_autocommit_for_test(&self) -> bool {
         self.conn.is_autocommit()
     }
 }

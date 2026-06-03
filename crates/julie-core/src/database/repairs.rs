@@ -12,15 +12,15 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IndexingRepairRecord {
-    pub(crate) path: String,
-    pub(crate) reason: String,
-    pub(crate) detail: Option<String>,
-    pub(crate) updated_at: i64,
+pub struct IndexingRepairRecord {
+    pub path: String,
+    pub reason: String,
+    pub detail: Option<String>,
+    pub updated_at: i64,
 }
 
 impl SymbolDatabase {
-    pub(crate) fn record_indexing_repair(
+    pub fn record_indexing_repair(
         &self,
         path: &str,
         reason: &str,
@@ -35,7 +35,7 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    pub(crate) fn clear_indexing_repair(&self, path: &str) -> Result<()> {
+    pub fn clear_indexing_repair(&self, path: &str) -> Result<()> {
         self.conn.execute(
             "DELETE FROM indexing_repairs WHERE path = ?1",
             params![path],
@@ -43,14 +43,14 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    pub(crate) fn clear_indexing_repairs(&self, paths: &[String]) -> Result<()> {
+    pub fn clear_indexing_repairs(&self, paths: &[String]) -> Result<()> {
         for path in paths {
             self.clear_indexing_repair(path)?;
         }
         Ok(())
     }
 
-    pub(crate) fn list_indexing_repairs(&self) -> Result<Vec<IndexingRepairRecord>> {
+    pub fn list_indexing_repairs(&self) -> Result<Vec<IndexingRepairRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT path, reason, detail, updated_at
              FROM indexing_repairs

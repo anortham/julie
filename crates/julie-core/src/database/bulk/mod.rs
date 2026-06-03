@@ -3,22 +3,22 @@ use std::collections::HashSet;
 use anyhow::Result;
 use rusqlite::Transaction;
 
-use crate::extractors::Relationship;
+use julie_extractors::Relationship;
 
-pub(crate) mod atomic;
-pub(crate) mod cleanup;
-pub(crate) mod identifiers;
-pub(crate) mod literals;
-pub(crate) mod relationships;
-pub(crate) mod type_arguments;
-pub(crate) mod types;
-pub(crate) mod write_set;
+pub mod atomic;
+pub mod cleanup;
+pub mod identifiers;
+pub mod literals;
+pub mod relationships;
+pub mod type_arguments;
+pub mod types;
+pub mod write_set;
 
 pub(crate) fn collect_referenced_symbol_ids(
     relationships: &[Relationship],
-    identifiers: &[crate::extractors::Identifier],
-    types: &[crate::extractors::base::TypeInfo],
-    literals: &[crate::extractors::Literal],
+    identifiers: &[julie_extractors::Identifier],
+    types: &[julie_extractors::base::TypeInfo],
+    literals: &[julie_extractors::Literal],
 ) -> HashSet<String> {
     let mut ids = HashSet::new();
     for rel in relationships {

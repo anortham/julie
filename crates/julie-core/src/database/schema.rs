@@ -70,7 +70,7 @@ impl SymbolDatabase {
     }
 
     /// Create the files table for tracking source files
-    pub(crate) fn create_files_table(&self) -> Result<()> {
+    pub fn create_files_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS files (
                 path TEXT PRIMARY KEY,
@@ -125,7 +125,7 @@ impl SymbolDatabase {
     }
 
     /// Create the symbols table with rich metadata
-    pub(crate) fn create_symbols_table(&self) -> Result<()> {
+    pub fn create_symbols_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS symbols (
                 id TEXT PRIMARY KEY,
@@ -216,7 +216,7 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    pub(crate) fn create_symbol_annotations_table(&self) -> Result<()> {
+    pub fn create_symbol_annotations_table(&self) -> Result<()> {
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS symbol_annotations (
                 id TEXT PRIMARY KEY,
@@ -240,7 +240,7 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    pub(crate) fn create_early_warning_reports_table(&self) -> Result<()> {
+    pub fn create_early_warning_reports_table(&self) -> Result<()> {
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS early_warning_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,7 +268,7 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    pub(crate) fn create_external_extract_metadata_table(&self) -> Result<()> {
+    pub fn create_external_extract_metadata_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS external_extract_metadata (
                 key TEXT PRIMARY KEY,
@@ -412,7 +412,7 @@ impl SymbolDatabase {
     }
 
     /// Create the relationships table for tracing data flow
-    pub(crate) fn create_relationships_table(&self) -> Result<()> {
+    pub fn create_relationships_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS relationships (
                 id TEXT PRIMARY KEY,

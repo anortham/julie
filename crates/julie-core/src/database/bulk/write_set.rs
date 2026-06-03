@@ -1,14 +1,14 @@
 use crate::database::FileInfo;
-use crate::extractors::{Relationship, Symbol};
+use julie_extractors::{Relationship, Symbol};
 
 use super::type_arguments::TypeArgumentRow;
 
 #[derive(Clone, Copy, Default)]
-pub(crate) struct AtomicPersistenceMetadata<'a> {
-    pub(crate) parse_diagnostics_by_file:
-        &'a [(String, Vec<crate::extractors::base::ParseDiagnostic>)],
-    pub(crate) repair_entries: &'a [(String, String)],
-    pub(crate) mark_external_analysis_stale: bool,
+pub struct AtomicPersistenceMetadata<'a> {
+    pub parse_diagnostics_by_file:
+        &'a [(String, Vec<julie_extractors::base::ParseDiagnostic>)],
+    pub repair_entries: &'a [(String, String)],
+    pub mark_external_analysis_stale: bool,
 }
 
 /// References to the canonical per-file extraction data persisted by a single
@@ -20,17 +20,17 @@ pub(crate) struct AtomicPersistenceMetadata<'a> {
 /// (`relationships`, `identifiers`, `types`, `type_arguments`, `literals`) that
 /// should be inserted after stale file rows are removed.
 #[derive(Clone, Copy, Default)]
-pub(crate) struct CanonicalWriteSet<'a> {
-    pub(crate) files: &'a [FileInfo],
-    pub(crate) symbols: &'a [Symbol],
-    pub(crate) relationships: &'a [Relationship],
-    pub(crate) identifiers: &'a [crate::extractors::Identifier],
-    pub(crate) types: &'a [crate::extractors::base::TypeInfo],
+pub struct CanonicalWriteSet<'a> {
+    pub files: &'a [FileInfo],
+    pub symbols: &'a [Symbol],
+    pub relationships: &'a [Relationship],
+    pub identifiers: &'a [julie_extractors::Identifier],
+    pub types: &'a [julie_extractors::base::TypeInfo],
     /// Flattened type-argument usage rows. These are derived from extractor
     /// `TypeArgumentUsage` trees in the indexing persistence layer so the
     /// database bulk path can stay schema-shaped.
-    pub(crate) type_arguments: &'a [TypeArgumentRow],
+    pub type_arguments: &'a [TypeArgumentRow],
     /// String-literal call arguments captured by extractors and classified by
     /// the indexing pipeline before persistence.
-    pub(crate) literals: &'a [crate::extractors::Literal],
+    pub literals: &'a [julie_extractors::Literal],
 }

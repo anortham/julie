@@ -1734,12 +1734,18 @@ name = "julie-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
+ "chrono",
  "fs2",
  "julie-extractors",
+ "md5",
  "rusqlite",
+ "serde",
+ "serde_json",
  "sqlite-vec",
  "tokio",
  "tracing",
+ "zerocopy 0.7.35",
 ]
 
 [[package]]

@@ -11,7 +11,7 @@ use crate::database::revision_changes::{
 use crate::database::revisions::record_canonical_revision_tx;
 use crate::database::symbols::annotations::replace_annotations_batch;
 use crate::database::{CanonicalRevisionKind, FileInfo, SymbolDatabase};
-use crate::extractors::{Relationship, Symbol};
+use julie_extractors::{Relationship, Symbol};
 
 use super::cleanup::{
     checkpoint_wal_best_effort, delete_all_indexed_rows_tx, delete_file_rows_tx,
@@ -23,7 +23,7 @@ use super::literals::insert_literals_tx;
 use super::relationships::insert_relationships_tx;
 use super::type_arguments::insert_type_arguments_tx;
 use super::types::insert_types_tx;
-pub(crate) use super::write_set::{AtomicPersistenceMetadata, CanonicalWriteSet};
+pub use super::write_set::{AtomicPersistenceMetadata, CanonicalWriteSet};
 use super::{collect_referenced_symbol_ids, load_existing_symbol_ids_tx};
 
 #[derive(Default)]
@@ -57,8 +57,8 @@ impl SymbolDatabase {
         new_files: &[FileInfo],
         new_symbols: &[Symbol],
         new_relationships: &[Relationship],
-        new_identifiers: &[crate::extractors::Identifier],
-        new_types: &[crate::extractors::base::TypeInfo],
+        new_identifiers: &[julie_extractors::Identifier],
+        new_types: &[julie_extractors::base::TypeInfo],
         workspace_id: &str,
     ) -> Result<()> {
         let write_set = CanonicalWriteSet {
@@ -82,7 +82,7 @@ impl SymbolDatabase {
         .map(|_| ())
     }
 
-    pub(crate) fn incremental_update_atomic_with_metadata(
+    pub fn incremental_update_atomic_with_metadata(
         &mut self,
         files_to_clean: &[String],
         write_set: &CanonicalWriteSet<'_>,
@@ -146,8 +146,8 @@ impl SymbolDatabase {
         files: &[FileInfo],
         symbols: &[Symbol],
         relationships: &[Relationship],
-        identifiers: &[crate::extractors::Identifier],
-        types: &[crate::extractors::base::TypeInfo],
+        identifiers: &[julie_extractors::Identifier],
+        types: &[julie_extractors::base::TypeInfo],
         workspace_id: &str,
     ) -> Result<()> {
         let write_set = CanonicalWriteSet {
@@ -167,7 +167,7 @@ impl SymbolDatabase {
         .map(|_| ())
     }
 
-    pub(crate) fn bulk_store_fresh_atomic_with_metadata(
+    pub fn bulk_store_fresh_atomic_with_metadata(
         &mut self,
         write_set: &CanonicalWriteSet<'_>,
         workspace_id: &str,
@@ -176,7 +176,7 @@ impl SymbolDatabase {
         fresh_insert_atomic(self, write_set, workspace_id, metadata, false)
     }
 
-    pub(crate) fn replace_workspace_data_atomic(
+    pub fn replace_workspace_data_atomic(
         &mut self,
         write_set: &CanonicalWriteSet<'_>,
         workspace_id: &str,
@@ -185,7 +185,7 @@ impl SymbolDatabase {
         fresh_insert_atomic(self, write_set, workspace_id, metadata, true)
     }
 
-    pub(crate) fn delete_single_file_atomic(
+    pub fn delete_single_file_atomic(
         &mut self,
         workspace_id: &str,
         file_path: &str,
