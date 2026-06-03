@@ -17,7 +17,6 @@ const DEV_FALLBACK_FILES: &[&str] = &[
 ];
 
 const DEV_FALLBACK_PREFIXES: &[&str] = &[
-    "crates/",
     "fixtures/",
     "src/tests/fixtures/",
     "src/tests/helpers/",
@@ -459,15 +458,15 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["core-embeddings"];
     }
 
-    if matches_prefix(path, &["src/database/"])
+    if matches_prefix(path, &["crates/julie-core/src/database/"])
         || matches_exact(
             path,
             &[
-                "src/tests/core/database.rs",
-                "src/tests/core/database_lightweight_query.rs",
+                "crates/julie-core/src/tests/database.rs",
+                "crates/julie-core/src/tests/database_lightweight_query.rs",
             ],
         )
-        || matches_prefix(path, &["src/tests/core/database/"])
+        || matches_prefix(path, &["crates/julie-core/src/tests/database/"])
     {
         return &["core-database"];
     }
@@ -720,10 +719,10 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
             "src/paths.rs",
             "src/tests/core/handler.rs",
             "src/tests/core/language.rs",
-            "src/tests/core/memory_vectors.rs",
+            "crates/julie-core/src/tests/memory_vectors.rs",
             "src/tests/core/paths.rs",
             "src/tests/core/tracing.rs",
-            "src/tests/core/vector_storage.rs",
+            "crates/julie-core/src/tests/vector_storage.rs",
             "src/tests/integration/watcher_filtering.rs",
         ],
     ) || matches_prefix(path, &["src/tests/utils/"])
