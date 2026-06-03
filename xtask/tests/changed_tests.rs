@@ -157,6 +157,34 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
         ("src/dashboard/mod.rs", vec!["dashboard"]),
         ("src/analysis/symbol_quality.rs", vec!["analysis"]),
         ("src/daemon/transport.rs", vec!["transport"]),
+        // Phase 1 T4: julie-index crate split. Editing search source pulls core-index
+        // (the crate's own test binary) AND all search tool buckets whose retained
+        // tests still cover the moved code (Phase 0 lesson: localized edits must not
+        // silently skip behavioral coverage). Analysis source pulls core-index + analysis.
+        // Bucket order is the canonical sort order from sort_bucket_names.
+        (
+            "crates/julie-index/src/search/index.rs",
+            vec![
+                "core-index",
+                "tools-search-tantivy",
+                "tools-search-line",
+                "tools-search-file-mode",
+                "tools-search-zero-hit",
+                "tools-search-promotion",
+                "tools-search-format-quality",
+                "tools-search-context",
+                "tools-search-text",
+                "tools-search-hybrid",
+                "tools-search-query",
+                "tools-search-unified",
+                "search-quality",
+            ],
+        ),
+        (
+            "crates/julie-index/src/analysis/early_warnings.rs",
+            vec!["core-index", "analysis"],
+        ),
+        ("crates/julie-index/src/lib.rs", vec!["core-index"]),
     ] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
 

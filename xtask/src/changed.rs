@@ -66,6 +66,28 @@ const SEARCH_TOOL_BUCKETS_WITH_HANDLER_TELEMETRY: &[&str] = &[
     "core-handler-telemetry",
 ];
 
+/// Buckets for `crates/julie-index/src/search/**` edits (Phase 1 crate split).
+/// Editing search code in julie-index compiles and runs the crate's own binary
+/// (`core-index`) PLUS all top-crate search buckets whose retained tests still
+/// exercise the moved search code — mirroring the `src/search/` pre-split routing
+/// (which used SEARCH_TOOL_BUCKETS_WITH_QUALITY). Keeping search-quality in this
+/// list ensures high-impact search changes are not silently under-tested.
+const JULIE_INDEX_SEARCH_BUCKETS: &[&str] = &[
+    "core-index",
+    "tools-search-tantivy",
+    "tools-search-line",
+    "tools-search-file-mode",
+    "tools-search-zero-hit",
+    "tools-search-promotion",
+    "tools-search-format-quality",
+    "tools-search-context",
+    "tools-search-text",
+    "tools-search-hybrid",
+    "tools-search-query",
+    "tools-search-unified",
+    "search-quality",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangedSelectionMode {
     NoChanges,
@@ -478,6 +500,26 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     if matches_prefix(path, &["crates/julie-core/src/"]) {
         // database/**, lib.rs, test_support/**, tests/** — covered by `-p julie-core`.
         return &["core-database"];
+    }
+
+    // julie-index leaf crate (Phase 1 crate split). Editing any leaf source compiles +
+    // runs the crate's own test binary via `core-index` (`cargo nextest run -p
+    // julie-index`, which holds the tripwire + any tests relocated there by T3). The
+    // two subpaths whose behavioral tests still live in top-crate buckets ALSO pull
+    // those buckets (Phase 0 lesson: a localized edit to moved code must not silently
+    // skip its behavioral coverage):
+    //   crates/julie-index/src/search/**   -> core-index + all search tool buckets + search-quality
+    //   crates/julie-index/src/analysis/** -> core-index + analysis
+    // Subpath checks must precede the catch-all prefix (first match wins).
+    if matches_prefix(path, &["crates/julie-index/src/search/"]) {
+        return JULIE_INDEX_SEARCH_BUCKETS;
+    }
+    if matches_prefix(path, &["crates/julie-index/src/analysis/"]) {
+        return &["core-index", "analysis"];
+    }
+    if matches_prefix(path, &["crates/julie-index/src/"]) {
+        // lib.rs, tests/**, other top-level files — covered by `-p julie-index`.
+        return &["core-index"];
     }
 
     if path == "src/tests/core/handler_telemetry.rs" {
@@ -955,6 +997,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "xtask-runner",
         "core-database",
         "core-embeddings",
+        "core-index",
         "extractor-dep-integration",
         "projection",
         "tools-get-context-pipeline",

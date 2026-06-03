@@ -75,6 +75,16 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "core-index",
+            ExpectedBucket {
+                expected_seconds: 10,
+                timeout_seconds: 60,
+                commands: &[
+                    "cargo nextest run -p julie-index",
+                ],
+            },
+        ),
+        (
             "core-fast",
             ExpectedBucket {
                 expected_seconds: 60,
@@ -578,6 +588,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("post-indexing analysis (test quality, risk, linkage)"),
+            },
+        ),
+        (
+            "core-index",
+            ExpectedBucketMetadata {
+                scope_label: "core",
+                owner: "lead",
+                expensive: false,
+                notes: Some("julie-index crate: search + analysis layer above julie-core"),
             },
         ),
         (
