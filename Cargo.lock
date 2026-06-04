@@ -1867,7 +1867,12 @@ dependencies = [
 name = "julie-test-support"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "julie-context",
  "julie-core",
+ "julie-index",
+ "tokio",
 ]
 
 [[package]]
