@@ -30,3 +30,6 @@ pub use symbols::GetSymbolsTool;
 pub use shared::{
     BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, BLACKLISTED_FILENAMES, OptimizedResponse,
 };
+
+#[cfg(test)]
+mod tests;

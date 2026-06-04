@@ -2,8 +2,8 @@
 //!
 //! Measure token reduction from data structure optimizations (skip_serializing_if).
 
-use crate::extractors::base::Visibility;
-use crate::extractors::{Symbol, SymbolKind};
+use julie_extractors::base::Visibility;
+use julie_extractors::{Symbol, SymbolKind};
 use anyhow::Result;
 use serde_json;
 

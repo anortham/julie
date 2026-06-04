@@ -126,6 +126,7 @@ fn changed_tests_selects_search_and_dogfood_for_search_core_changes() {
             "tools-search-text",
             "tools-search-hybrid",
             "tools-search-query",
+            "tools-search-unified",
             "search-quality"
         ]
     );
@@ -186,6 +187,67 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
             vec!["core-index"],
         ),
         ("crates/julie-index/src/lib.rs", vec!["core-index"]),
+    ] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+        assert_eq!(selection.bucket_names, expected_buckets, "{path}");
+        assert!(selection.fallback_paths.is_empty(), "{path}");
+    }
+}
+
+#[test]
+fn changed_tests_julie_tools_crate_split_routing() {
+    let manifest = sample_manifest();
+    for (path, expected_buckets) in [
+        // Specific query_preprocessor subpath → search-query only.
+        (
+            "crates/julie-tools/src/search/query_preprocessor.rs",
+            vec!["tools-search-query"],
+        ),
+        // Broad search subpath → search tool buckets (canonical sort order).
+        (
+            "crates/julie-tools/src/search/execution.rs",
+            vec![
+                "tools-search-promotion",
+                "tools-search-format-quality",
+                "tools-search-context",
+                "tools-search-text",
+                "tools-search-hybrid",
+                "tools-search-query",
+                "tools-search-unified",
+            ],
+        ),
+        // symbols/ → format-filter.
+        (
+            "crates/julie-tools/src/symbols/filtering.rs",
+            vec!["tools-format-filter"],
+        ),
+        // impact/ → blast-spillover.
+        (
+            "crates/julie-tools/src/impact/mod.rs",
+            vec!["tools-blast-spillover"],
+        ),
+        // spillover/ → blast-spillover.
+        (
+            "crates/julie-tools/src/spillover/store.rs",
+            vec!["tools-blast-spillover"],
+        ),
+        // navigation/ → fast-refs + format-filter (canonical sort order).
+        (
+            "crates/julie-tools/src/navigation/formatting.rs",
+            vec!["tools-fast-refs", "tools-format-filter"],
+        ),
+        // catch-all lib.rs → broad tool coverage (canonical sort order).
+        (
+            "crates/julie-tools/src/lib.rs",
+            vec![
+                "tools-search-hybrid",
+                "tools-search-query",
+                "tools-blast-spillover",
+                "tools-format-filter",
+            ],
+        ),
     ] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
 
@@ -266,6 +328,7 @@ fn changed_tests_reports_path_to_bucket_rationale() {
             "tools-search-text",
             "tools-search-hybrid",
             "tools-search-query",
+            "tools-search-unified",
         ]
     );
     assert!(output.contains("CHANGED: rationale: src/tools/search/mod.rs -> tools-search-tantivy, tools-search-line, tools-search-file-mode, tools-search-zero-hit, tools-search-promotion, tools-search-format-quality, tools-search-context, tools-search-text, tools-search-hybrid, tools-search-query"));
@@ -390,6 +453,7 @@ fn changed_tests_handler_tool_fast_search_selects_search_buckets() {
             "tools-search-text",
             "tools-search-hybrid",
             "tools-search-query",
+            "tools-search-unified",
         ]
     );
     assert!(selection.fallback_paths.is_empty());
@@ -523,6 +587,7 @@ fn changed_tests_handler_search_telemetry_selects_search_buckets() {
             "tools-search-text",
             "tools-search-hybrid",
             "tools-search-query",
+            "tools-search-unified",
         ]
     );
 }
@@ -750,6 +815,7 @@ dev = [
   "tools-search-text",
   "tools-search-hybrid",
   "tools-search-query",
+  "tools-search-unified",
   "tools-get-symbols",
   "tools-get-context-pipeline",
   "tools-get-context-format",
@@ -852,6 +918,11 @@ commands = ["cargo test --lib tests::tools::hybrid_search_tests"]
 expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tools::search::query_preprocessor::tests"]
+
+[buckets.tools-search-unified]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo nextest run -p julie-tools --lib tests::unified_search_tests"]
 
 [buckets.tools-get-symbols]
 expected_seconds = 10

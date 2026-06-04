@@ -92,14 +92,14 @@ pub mod tools {
         pub mod utils; // Workspace utilities tests // Registry service tests
     }
 
-    pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
+    // phase4_token_savings relocated to crates/julie-tools/src/tests/ (T2b.6)
 
     pub mod blast_radius_determinism_tests; // blast_radius identifier-walk + deterministic output tests (2026-04-21 fixup)
-    pub mod blast_radius_formatting_tests; // blast_radius readable output formatting tests
+    // blast_radius_formatting_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     pub mod blast_radius_tests; // blast_radius impact ranking and revision-range tests
     pub mod call_path_disambiguation_tests; // call_path per-endpoint file-path disambiguation tests
     pub mod call_path_tests; // call_path shortest-path navigation tests
-    pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
+    // filtering_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
 
     pub mod get_context_allocation_tests; // get_context token allocation tests
     pub mod get_context_formatting_tests; // get_context output formatting tests
@@ -115,8 +115,8 @@ pub mod tools {
     pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
     pub mod get_context_token_budget_tests; // get_context token truncation tests // get_context run_pipeline fallback relevance tests
 
-    pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
-    pub mod query_classification_tests; // QueryIntent classification heuristics (symbol, conceptual, mixed)
+    // hybrid_search_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // query_classification_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     pub mod spillover_tests; // Spillover store and spillover_get paging tests
 
     pub mod fast_refs_primary_rebind_tests; // FastRefsTool current-primary rebound routing tests

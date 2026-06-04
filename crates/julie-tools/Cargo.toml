@@ -61,4 +61,7 @@ test-support = []
 
 [dev-dependencies]
 julie-test-support = { path = "../julie-test-support" }
+# Enable test-helper constructors gated by #[cfg(any(test, feature = "test-support"))]
+julie-index = { path = "../julie-index", features = ["test-support"] }
 tempfile = "3.13"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::search::weights::{QueryIntent, classify_query};
+    use julie_index::search::weights::{QueryIntent, classify_query};
 
     #[test]
     fn test_classify_snake_case_as_symbol() {
@@ -76,7 +76,7 @@ mod tests {
 /// heuristic that gates hybrid search activation in `fast_search`.
 #[cfg(test)]
 mod nl_query_detection_tests {
-    use crate::search::scoring::is_nl_like_query;
+    use julie_index::search::scoring::is_nl_like_query;
 
     #[test]
     fn test_is_nl_like_query_examples() {

@@ -1,9 +1,9 @@
-use crate::extractors::{RelationshipKind, Symbol, SymbolKind};
-use crate::tools::impact::LikelyTests;
-use crate::tools::impact::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows};
-use crate::tools::impact::ranking::RankedImpact;
-use crate::tools::impact::seed::SeedContext;
-use crate::tools::spillover::SpilloverFormat;
+use julie_extractors::{RelationshipKind, Symbol, SymbolKind};
+use crate::impact::LikelyTests;
+use crate::impact::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows};
+use crate::impact::ranking::RankedImpact;
+use crate::impact::seed::SeedContext;
+use crate::spillover::SpilloverFormat;
 
 fn make_symbol(name: &str, file_path: &str, line: u32) -> Symbol {
     Symbol {
@@ -228,7 +228,7 @@ fn test_related_test_symbols_overflow_marker_independent_of_paths() {
 
 #[test]
 fn test_spillover_format_parse_strict_rejects_unknown_value() {
-    use crate::tools::spillover::SpilloverFormat;
+    use crate::spillover::SpilloverFormat;
 
     assert!(SpilloverFormat::parse_strict("readible").is_err());
     assert!(SpilloverFormat::parse_strict("").is_err());

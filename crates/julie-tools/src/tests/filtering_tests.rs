@@ -11,9 +11,9 @@
 /// - Empty input edge cases
 #[cfg(test)]
 mod tests {
-    use crate::extractors::base::Symbol;
-    use crate::extractors::base::types::SymbolKind;
-    use crate::tools::symbols::filtering::{
+    use julie_extractors::base::Symbol;
+    use julie_extractors::base::types::SymbolKind;
+    use crate::symbols::filtering::{
         apply_all_filters, apply_limit_filter, apply_max_depth_filter, apply_target_filter,
     };
 

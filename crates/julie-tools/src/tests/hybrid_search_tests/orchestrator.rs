@@ -13,12 +13,12 @@ mod orchestrator_tests {
     use std::sync::{Arc, Mutex};
     use tracing_subscriber::fmt::writer::MakeWriter;
 
-    use crate::database::SymbolDatabase;
-    use crate::embeddings::{DeviceInfo, EmbeddingProvider};
-    use crate::extractors::SymbolKind;
-    use crate::search::hybrid::hybrid_search;
-    use crate::search::index::{SearchDocument, SearchFilter, SearchIndex, SymbolSearchResults};
-    use crate::tests::helpers::db::{
+    use julie_core::database::SymbolDatabase;
+    use julie_pipeline::embeddings::{DeviceInfo, EmbeddingProvider};
+    use julie_extractors::SymbolKind;
+    use julie_index::search::hybrid::hybrid_search;
+    use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex, SymbolSearchResults};
+    use julie_test_support::db::{
         file_info_builder, store_file_info_if_missing, symbol_builder,
     };
     use tempfile::TempDir;

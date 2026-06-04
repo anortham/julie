@@ -110,6 +110,29 @@ const JULIE_PIPELINE_INDEXING_BUCKETS: &[&str] = &[
 /// embeddings edit co-targets `core-embeddings` alongside `core-pipeline` (R6).
 const JULIE_PIPELINE_EMBEDDINGS_BUCKETS: &[&str] = &["core-pipeline", "core-embeddings"];
 
+/// Buckets for general `crates/julie-tools/src/**` edits (Phase 2b crate split).
+/// Covers the tool-specific test buckets whose commands now include `-p julie-tools`
+/// entries. A catch-all for tool source not covered by the subpath arms below.
+const JULIE_TOOLS_BUCKETS: &[&str] = &[
+    "tools-format-filter",
+    "tools-search-query",
+    "tools-search-hybrid",
+    "tools-blast-spillover",
+];
+
+/// Buckets for `crates/julie-tools/src/search/**` edits. Covers all search-facing
+/// test buckets whose commands target either the top-crate test binary or the
+/// julie-tools binary directly (R6: a localized edit must not skip its coverage).
+const JULIE_TOOLS_SEARCH_BUCKETS: &[&str] = &[
+    "tools-search-query",
+    "tools-search-hybrid",
+    "tools-search-text",
+    "tools-search-context",
+    "tools-search-unified",
+    "tools-search-format-quality",
+    "tools-search-promotion",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangedSelectionMode {
     NoChanges,
@@ -566,6 +589,32 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     if matches_prefix(path, &["crates/julie-pipeline/src/"]) {
         // lib.rs, tests/**, other top-level files — covered by `-p julie-pipeline`.
         return &["core-pipeline"];
+    }
+
+    // julie-tools crate (Phase 2b crate split): handler-free tool implementations.
+    // Changes to tool source should trigger the relevant behavioral test buckets.
+    // Subpath checks must precede the catch-all prefix (first match wins).
+    if matches_prefix(path, &["crates/julie-tools/src/search/query_preprocessor"]) {
+        return &["tools-search-query"];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/search/"]) {
+        return JULIE_TOOLS_SEARCH_BUCKETS;
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/symbols/"]) {
+        return &["tools-format-filter"];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/impact/"]) {
+        return &["tools-blast-spillover"];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/spillover/"]) {
+        return &["tools-blast-spillover"];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/navigation/"]) {
+        return &["tools-format-filter", "tools-fast-refs"];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/"]) {
+        // lib.rs, tests/**, other top-level modules — broad tool coverage.
+        return JULIE_TOOLS_BUCKETS;
     }
 
     if path == "src/tests/core/handler_telemetry.rs" {

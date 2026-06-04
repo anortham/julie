@@ -266,10 +266,10 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 15,
                 timeout_seconds: 60,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::filtering_tests -- --skip search_quality",
+                    "cargo nextest run -p julie-tools --lib tests::filtering_tests",
                     "cargo nextest run --lib tests::tools::formatting_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::query_classification_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::phase4_token_savings -- --skip search_quality",
+                    "cargo nextest run -p julie-tools --lib tests::query_classification_tests",
+                    "cargo nextest run -p julie-tools --lib tests::phase4_token_savings",
                 ],
             },
         ),
@@ -338,6 +338,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 45,
                 commands: &[
                     "cargo nextest run --lib tests::tools::blast_radius -- --skip search_quality",
+                    "cargo nextest run -p julie-tools --lib tests::blast_radius_formatting_tests",
                     "cargo nextest run --lib tests::tools::spillover_tests -- --skip search_quality",
                 ],
             },
@@ -368,7 +369,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 40,
                 timeout_seconds: 120,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality",
+                    "cargo nextest run -p julie-tools --lib tests::hybrid_search_tests",
                     "cargo nextest run --lib tests::tools::search::backend_param_tests -- --skip search_quality",
                 ],
             },
@@ -411,7 +412,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 8,
                 timeout_seconds: 45,
                 commands: &[
-                    "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
+                    "cargo nextest run -p julie-tools --lib search::query_preprocessor::tests",
                 ],
             },
         ),

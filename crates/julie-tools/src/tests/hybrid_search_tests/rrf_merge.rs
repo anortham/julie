@@ -3,8 +3,8 @@
 /// Formula: RRF(d) = sum(1 / (k + rank)) where rank is 1-based position.
 #[cfg(test)]
 mod tests {
-    use crate::search::SymbolSearchResult;
-    use crate::search::hybrid::rrf_merge;
+    use julie_index::search::SymbolSearchResult;
+    use julie_index::search::hybrid::rrf_merge;
 
     /// Helper to build a minimal SymbolSearchResult for testing.
     fn make_result(id: &str, name: &str, score: f32) -> SymbolSearchResult {
@@ -176,9 +176,9 @@ mod tests {
 /// - Zero weight = effectively excluded
 #[cfg(test)]
 mod weighted_rrf_tests {
-    use crate::search::SymbolSearchResult;
-    use crate::search::hybrid::{rrf_merge, weighted_rrf_merge};
-    use crate::search::weights::SearchWeightProfile;
+    use julie_index::search::SymbolSearchResult;
+    use julie_index::search::hybrid::{rrf_merge, weighted_rrf_merge};
+    use julie_index::search::weights::SearchWeightProfile;
 
     fn make_result(id: &str, name: &str, score: f32) -> SymbolSearchResult {
         SymbolSearchResult {
