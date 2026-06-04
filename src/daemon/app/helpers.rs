@@ -404,22 +404,28 @@ pub(crate) fn spawn_embedding_init(
     embedding_service: Arc<EmbeddingService>,
     daemon_db: Option<Arc<DaemonDatabase>>,
     watcher_pool: Arc<WatcherPool>,
+    paths: DaemonPaths,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         info!("Background embedding init task started");
 
         // Single init_result computed from whichever path is active; both
-        // branches produce the same type so the match below is unchanged.
+        // branches produce the same type so the existing match below is
+        // byte-for-byte unchanged — the (Some,Some) arm's device_info() call
+        // gates Ready on a real health round-trip, and the daemon_db model-sync
+        // runs for both paths.
         let init_result = if use_embedding_host() {
-            tokio::task::spawn_blocking(|| {
-                // Resolve the home dir inside the closure — no new param needed.
-                match DaemonPaths::try_new()
-                    .map_err(anyhow::Error::from)
-                    .and_then(|paths| crate::embedding_host_launch::connect_or_spawn_host(&paths))
-                {
+            tokio::task::spawn_blocking(move || {
+                // All blocking work — including the health round-trip triggered
+                // by accelerated()/degraded_reason() — must stay inside this
+                // closure. Calling them outside (e.g. in a .map()) would block
+                // the tokio runtime and deadlock with the async server task.
+                match crate::embedding_host_launch::connect_or_spawn_host(&paths) {
                     Ok(rpc) => {
                         let provider: Arc<dyn crate::embeddings::EmbeddingProvider> =
                             Arc::new(rpc);
+                        // accelerated() / degraded_reason() → get_cached() →
+                        // ensure_connected() → health handshake (blocking I/O).
                         let status = crate::embeddings::EmbeddingRuntimeStatus {
                             requested_backend: crate::embeddings::EmbeddingBackend::Sidecar,
                             resolved_backend: crate::embeddings::EmbeddingBackend::Sidecar,
@@ -431,7 +437,7 @@ pub(crate) fn spawn_embedding_init(
                     Err(e) => {
                         let status = crate::embeddings::EmbeddingRuntimeStatus {
                             requested_backend: crate::embeddings::EmbeddingBackend::Sidecar,
-                            resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+                            resolved_backend: crate::embeddings::EmbeddingBackend::Sidecar,
                             accelerated: false,
                             degraded_reason: Some(format!(
                                 "embedding-host connect/spawn failed: {e}"
