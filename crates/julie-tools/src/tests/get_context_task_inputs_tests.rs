@@ -198,6 +198,7 @@ mod tests {
             &db,
             &index,
             None,
+            None, // precomputed_embedding
             Some(&signals),
             None,
             None,
@@ -249,6 +250,7 @@ mod tests {
             &db,
             &index,
             None,
+            None, // precomputed_embedding
             Some(&signals),
             None,
             None,
@@ -292,6 +294,7 @@ mod tests {
             &db,
             &index,
             None,
+            None, // precomputed_embedding
             Some(&signals),
             None,
             None,
@@ -331,6 +334,7 @@ mod tests {
             &db,
             &index,
             None,
+            None, // precomputed_embedding
             Some(&signals),
             None,
             None,
@@ -389,6 +393,7 @@ mod tests {
             &db,
             &index,
             None,
+            None, // precomputed_embedding
             Some(&signals),
             None,
             None,
@@ -452,6 +457,7 @@ mod tests {
             &db,
             &index,
             None,
+            None, // precomputed_embedding
             Some(&signals),
             Some(&spillover_store),
             Some(("session-a", SpilloverFormat::Readable)),

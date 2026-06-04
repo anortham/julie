@@ -478,3 +478,206 @@ async fn test_hash_match_clears_stale_repair_entry() {
         "hash-match early return must clear stale repair entries to prevent infinite retry loops"
     );
 }
+
+/// After a successful watcher-driven file index, projected_revision must equal
+/// canonical_revision so that `canonical > projected` is a true crash/handoff
+/// lag signal rather than firing on every healthy save.
+#[tokio::test]
+async fn test_watcher_advances_projected_revision() {
+    use julie_core::database::ProjectionStatus;
+    use julie_index::search::SearchIndex;
+    use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
+
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_proj_rev_advances");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let test_file = workspace_root.join("revision_advance.rs");
+    fs::write(&test_file, "fn revision_advance() {}\n").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    let tantivy_dir = workspace_root.join("tantivy");
+    fs::create_dir_all(&tantivy_dir).unwrap();
+    let search_index = Arc::new(Mutex::new(SearchIndex::create(&tantivy_dir).unwrap()));
+
+    let guard = acquire_gate("test_watcher_advances_projected_revision").await;
+
+    handle_file_created_or_modified_static(
+        absolute_path,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        Some(&search_index),
+        &guard,
+    )
+    .await
+    .expect("watcher indexing should succeed");
+
+    // Derive the same workspace_id the handler used so we can query projection_states.
+    let workspace_key = workspace_root.to_string_lossy();
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&workspace_key)
+            .unwrap_or_else(|_| workspace_key.into_owned());
+
+    let db_lock = db.lock().unwrap();
+    let canonical = db_lock
+        .get_latest_canonical_revision(&workspace_id)
+        .expect("should be able to read canonical revision")
+        .expect("SQLite commit should have recorded a canonical_revision");
+
+    let state = db_lock
+        .get_projection_state(TANTIVY_PROJECTION_NAME, &workspace_id)
+        .expect("should be able to read projection state")
+        .expect("projection_states row should exist after successful watcher index");
+
+    assert_eq!(
+        state.status,
+        ProjectionStatus::Ready,
+        "projection status should be Ready"
+    );
+    assert_eq!(
+        state.projected_revision,
+        Some(canonical.revision),
+        "projected_revision must equal canonical_revision after successful Tantivy apply"
+    );
+    assert_eq!(
+        state.canonical_revision,
+        Some(canonical.revision),
+        "canonical_revision in projection_states must match latest canonical revision"
+    );
+}
+
+/// Reproduce the mid-pipeline crash scenario:
+///   SQLite commit advances canonical_revision → process crashes → Tantivy apply never runs.
+///
+/// The projected_revision gap (canonical > projected) is the durable crash signal.
+/// `ensure_current_from_database` must reconcile it: make the symbol searchable and
+/// stamp projected_revision = canonical_revision.
+#[tokio::test]
+async fn test_mid_crash_projection_lag_reconciliation() {
+    use julie_core::database::ProjectionStatus;
+    use julie_index::search::{SearchIndex, SearchProjection};
+    use julie_index::search::index::SearchFilter;
+    use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
+
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_mid_crash_reconcile");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let test_file = workspace_root.join("crash_recoverable.rs");
+    fs::write(&test_file, "fn crash_recoverable_fn() {}\n").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    let guard = acquire_gate("test_mid_crash_projection_lag").await;
+
+    // Phase 1: Index via watcher WITHOUT a search_index.
+    // This advances canonical_revision in SQLite but leaves Tantivy untouched —
+    // exactly what happens when the process crashes before the Tantivy apply.
+    handle_file_created_or_modified_static(
+        absolute_path,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None, // no Tantivy — simulates crash before apply
+        &guard,
+    )
+    .await
+    .expect("SQLite-only watcher index should succeed");
+
+    let workspace_key = workspace_root.to_string_lossy();
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&workspace_key)
+            .unwrap_or_else(|_| workspace_key.into_owned());
+
+    // Phase 2: Simulate the crash gap — remove the projection_states row to
+    // reproduce the durable lag condition (canonical_revision exists, projected absent).
+    {
+        let db_lock = db.lock().unwrap();
+        db_lock
+            .conn
+            .execute(
+                "DELETE FROM projection_states WHERE workspace_id = ?1 AND projection = ?2",
+                rusqlite::params![workspace_id, TANTIVY_PROJECTION_NAME],
+            )
+            .expect("crash simulation: clearing projection_states should succeed");
+    }
+
+    // Verify the lag condition holds before reconciliation.
+    {
+        let db_lock = db.lock().unwrap();
+        let canonical = db_lock
+            .get_latest_canonical_revision(&workspace_id)
+            .unwrap();
+        assert!(
+            canonical.is_some(),
+            "canonical_revision must exist after the SQLite commit"
+        );
+        let state = db_lock
+            .get_projection_state(TANTIVY_PROJECTION_NAME, &workspace_id)
+            .unwrap();
+        assert!(
+            state.is_none(),
+            "projection_states row must be absent to represent the crash/lag condition"
+        );
+    }
+
+    // Phase 3: Open a fresh (empty) Tantivy index — mirrors daemon restart.
+    let tantivy_dir = workspace_root.join("tantivy");
+    fs::create_dir_all(&tantivy_dir).unwrap();
+    let index = SearchIndex::create(&tantivy_dir).unwrap();
+    assert_eq!(
+        index.num_docs(),
+        0,
+        "fresh Tantivy index must be empty before reconciliation"
+    );
+
+    // Phase 4: Reconcile — ensure_current_from_database rebuilds Tantivy from SQLite
+    // without touching source files.
+    let projection = SearchProjection::tantivy(&workspace_id);
+    {
+        let mut db_lock = db.lock().unwrap();
+        projection
+            .ensure_current_from_database(&mut db_lock, &index)
+            .expect("ensure_current_from_database should reconcile the projection lag");
+    }
+    // Commit so docs are visible to readers.
+    index.commit().unwrap();
+
+    // Phase 5: Symbol must now be searchable.
+    let results = index
+        .search_symbols("crash_recoverable_fn", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+    assert!(
+        !results.is_empty(),
+        "crash_recoverable_fn should be searchable after projection lag reconciliation: {:?}",
+        results
+    );
+
+    // Phase 6: projected_revision must equal canonical_revision after reconciliation.
+    let db_lock = db.lock().unwrap();
+    let canonical = db_lock
+        .get_latest_canonical_revision(&workspace_id)
+        .unwrap()
+        .unwrap();
+    let state = db_lock
+        .get_projection_state(TANTIVY_PROJECTION_NAME, &workspace_id)
+        .unwrap()
+        .expect("projection_states row must exist after reconciliation");
+    assert_eq!(
+        state.projected_revision,
+        Some(canonical.revision),
+        "projected_revision must equal canonical_revision after reconciliation"
+    );
+    assert_eq!(
+        state.status,
+        ProjectionStatus::Ready,
+        "projection status must be Ready after reconciliation"
+    );
+}

@@ -39,12 +39,21 @@ pub fn run_pipeline(
         db,
         search_index,
         embedding_provider,
+        None, // precomputed_embedding: caller doesn't hold the index lock
         None,
         None,
         None,
     )
 }
 
+/// Run the get_context pipeline with full option control.
+///
+/// `precomputed_embedding`: when the caller holds the `SearchIndex` lock it MUST
+/// call [`julie_index::search::hybrid::compute_query_embedding_for_hybrid`] before
+/// acquiring the lock and pass the result here.  This keeps the sidecar round-trip
+/// (up to 30 s) outside the locked region, preventing index starvation.  Callers
+/// that do NOT hold the lock pass `None`; the embedding is then computed on-demand.
+#[allow(clippy::too_many_arguments)]
 pub fn run_pipeline_with_options(
     query: &str,
     max_tokens: Option<u32>,
@@ -54,6 +63,7 @@ pub fn run_pipeline_with_options(
     db: &SymbolDatabase,
     search_index: &julie_index::search::SearchIndex,
     embedding_provider: Option<&dyn julie_pipeline::embeddings::EmbeddingProvider>,
+    precomputed_embedding: Option<Vec<f32>>,
     task_signals: Option<&TaskSignals>,
     spillover_store: Option<&SpilloverStore>,
     spillover_session: Option<(&str, SpilloverFormat)>,
@@ -73,13 +83,20 @@ pub fn run_pipeline_with_options(
         exclude_tests: false,
     };
     let profile = julie_index::search::weights::SearchWeightProfile::get_context();
-    let mut search_results = julie_index::search::hybrid::hybrid_search(
+    // Resolve the query embedding.  Callers that hold the SearchIndex lock MUST
+    // supply `precomputed_embedding` (computed before lock acquisition) so the
+    // sidecar round-trip does not happen inside the locked region.  Callers without
+    // a lock (tests, `run_pipeline` wrapper) pass `None` and we compute on-demand.
+    let effective_embedding = precomputed_embedding.or_else(|| {
+        julie_index::search::hybrid::compute_query_embedding_for_hybrid(query, embedding_provider)
+    });
+    let mut search_results = julie_index::search::hybrid::hybrid_search_with_embedding(
         query,
         &filter,
         30,
         search_index,
         db,
-        embedding_provider,
+        effective_embedding,
         Some(profile),
     )?;
     merge_task_signal_seed_results(&mut search_results.results, db, &filter, &resolved_signals)?;
@@ -232,6 +249,13 @@ pub async fn run_with_target(
                         "No search index for workspace. Run manage_workspace(operation=\"refresh\") first."
                     )
                 })?;
+                // Compute embedding BEFORE acquiring the SearchIndex lock.
+                // The sidecar RPC can take up to 30 s; holding the lock across it
+                // would starve every other index user on this workspace.
+                let precomputed_embedding = julie_index::search::hybrid::compute_query_embedding_for_hybrid(
+                    &query,
+                    embedding_provider.as_deref(),
+                );
                 let index = si
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
@@ -243,7 +267,8 @@ pub async fn run_with_target(
                     format,
                     &pooled_db,
                     &index,
-                    embedding_provider.as_deref(),
+                    None, // provider already consumed above; precomputed_embedding carries the result
+                    precomputed_embedding,
                     Some(&task_signals),
                     Some(&spillover_store),
                     Some((&session_id, spillover_format)),
@@ -260,6 +285,11 @@ pub async fn run_with_target(
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let db = db.into_read_snapshot()?;
+                // Compute embedding BEFORE acquiring the SearchIndex lock.
+                let precomputed_embedding = julie_index::search::hybrid::compute_query_embedding_for_hybrid(
+                    &query,
+                    embedding_provider.as_deref(),
+                );
                 let index = search_index
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
@@ -271,7 +301,8 @@ pub async fn run_with_target(
                     format,
                     &db,
                     &index,
-                    embedding_provider.as_deref(),
+                    None, // provider already consumed above; precomputed_embedding carries the result
+                    precomputed_embedding,
                     Some(&task_signals),
                     Some(&spillover_store),
                     Some((&session_id, spillover_format)),

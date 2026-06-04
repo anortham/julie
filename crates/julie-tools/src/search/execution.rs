@@ -382,16 +382,24 @@ async fn run_symbol_backend_pass(
                                 workspace_id
                             )
                         })?;
+                        // Compute embedding BEFORE acquiring the SearchIndex lock.
+                        // The sidecar RPC can take up to 30 s; holding the lock
+                        // across it blocks every other index user on this workspace.
+                        let precomputed_embedding =
+                            julie_index::search::hybrid::compute_query_embedding_for_hybrid(
+                                &query,
+                                Some(provider.as_ref()),
+                            );
                         let index = si_arc
                             .lock()
                             .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
-                        julie_index::search::hybrid::hybrid_search(
+                        julie_index::search::hybrid::hybrid_search_with_embedding(
                             &query,
                             &filter,
                             limit_usize,
                             &index,
                             &db,
-                            Some(provider.as_ref()),
+                            precomputed_embedding,
                             Some(julie_index::search::weights::SearchWeightProfile::fast_search()),
                         )?
                     }

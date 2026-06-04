@@ -197,6 +197,18 @@ pub async fn handle_file_created_or_modified_static(
     let new_symbol_ids: Vec<String>;
     let old_partner_set: HashSet<String>;
 
+    // Hoist workspace_id before the db-lock block so it's available for the
+    // post-Tantivy projected_revision stamp (canonical_revision is captured
+    // from the SQLite commit below and must outlive the lock block).
+    let workspace_key = workspace_root.to_string_lossy();
+    let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
+        .unwrap_or_else(|_| workspace_key.into_owned());
+    // Populated inside the db-lock block; read after the Tantivy apply.
+    // Declared uninitialized: every non-early-return path through the block
+    // below assigns it before the function reads it past the block.
+    #[allow(unused_assignments)]
+    let mut canonical_revision: Option<i64> = None;
+
     {
         let mut db_lock = match db.lock() {
             Ok(guard) => guard,
@@ -310,10 +322,6 @@ pub async fn handle_file_created_or_modified_static(
             }
         }
 
-        let workspace_key = workspace_root.to_string_lossy();
-        let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
-            .unwrap_or_else(|_| workspace_key.into_owned());
-
         // Live single-file watcher path (Rule 2: a distinct persistence entry
         // point from the pipeline and extract-CLI). Build the write-set struct
         // explicitly so any future canonical collection is compile-forced here
@@ -329,7 +337,11 @@ pub async fn handle_file_created_or_modified_static(
             type_arguments: &type_argument_rows,
             literals: &literals_vec,
         };
-        db_lock.incremental_update_atomic_with_metadata(
+        // Capture canonical_revision so we can stamp projected_revision after a
+        // successful Tantivy apply.  Previously this return value was discarded,
+        // which meant canonical > projected was always true and could never serve
+        // as a crash/handoff lag signal.
+        canonical_revision = db_lock.incremental_update_atomic_with_metadata(
             &files_to_clean,
             &write_set,
             &workspace_id,
@@ -462,6 +474,37 @@ pub async fn handle_file_created_or_modified_static(
     } else {
         true // No search index configured — nothing to fail
     };
+
+    // Stamp projected_revision only after a successful Tantivy apply.
+    // This makes canonical_revision > projected_revision a true crash/handoff
+    // lag signal instead of firing on every healthy save.  The stamp is
+    // best-effort: a failure here is logged but does not abort the index.
+    if tantivy_ok {
+        if let Some(rev) = canonical_revision {
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!(
+                        "Database mutex poisoned during projected_revision stamp, recovering"
+                    );
+                    poisoned.into_inner()
+                }
+            };
+            if let Err(e) = db_lock.upsert_projection_state(
+                julie_index::search::projection::TANTIVY_PROJECTION_NAME,
+                &workspace_id,
+                julie_core::database::ProjectionStatus::Ready,
+                Some(rev),
+                Some(rev),
+                None,
+            ) {
+                warn!(
+                    "Failed to stamp projected_revision={} for watcher Tantivy apply: {}",
+                    rev, e
+                );
+            }
+        }
+    }
 
     debug!("Watcher: indexed {}", relative_path);
     if tantivy_ok {
