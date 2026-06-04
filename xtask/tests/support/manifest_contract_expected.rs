@@ -422,6 +422,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::nl_embeddings_daemon_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::nl_path_prior_pipeline_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::nl_symbol_query_latency_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::pretokenized_emit_test -- --skip search_quality",
