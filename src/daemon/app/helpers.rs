@@ -404,9 +404,46 @@ pub(crate) fn spawn_embedding_init(
     embedding_service: Arc<EmbeddingService>,
     daemon_db: Option<Arc<DaemonDatabase>>,
     watcher_pool: Arc<WatcherPool>,
+    paths: DaemonPaths,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         info!("Background embedding init task started");
+
+        // --- Opt-in host path (JULIE_EMBEDDING_USE_HOST) ---
+        if is_use_host_enabled() {
+            let host_result = tokio::task::spawn_blocking(move || {
+                crate::embedding_host_launch::connect_or_spawn_host(&paths)
+            })
+            .await;
+            match host_result {
+                Ok(Ok(provider)) => {
+                    let provider: Arc<dyn crate::embeddings::EmbeddingProvider> =
+                        Arc::new(provider);
+                    let status = crate::embeddings::EmbeddingRuntimeStatus {
+                        requested_backend: crate::embeddings::EmbeddingBackend::Sidecar,
+                        resolved_backend: crate::embeddings::EmbeddingBackend::Sidecar,
+                        accelerated: false,
+                        degraded_reason: None,
+                    };
+                    embedding_service.publish_ready(Arc::clone(&provider), status);
+                    watcher_pool.update_all_provider(Some(provider)).await;
+                }
+                Ok(Err(e)) => {
+                    embedding_service.publish_unavailable(
+                        format!("embedding-host connect/spawn failed: {e}"),
+                        None,
+                    );
+                }
+                Err(join_err) => {
+                    embedding_service.publish_unavailable(
+                        format!("embedding-host init task panicked: {join_err}"),
+                        None,
+                    );
+                }
+            }
+            return;
+        }
+        // --- End host path ---
         let init_result =
             tokio::task::spawn_blocking(|| crate::embeddings::create_embedding_provider()).await;
 
@@ -500,4 +537,16 @@ pub(crate) fn spawn_embedding_init(
             }
         }
     })
+}
+
+/// Returns `true` when `JULIE_EMBEDDING_USE_HOST` is set to a truthy value
+/// (`1`, `true`, `yes`, or `on`, case-insensitive). Any other value, or the
+/// variable being absent, returns `false`.
+fn is_use_host_enabled() -> bool {
+    std::env::var("JULIE_EMBEDDING_USE_HOST")
+        .map(|v| {
+            let lower = v.to_ascii_lowercase();
+            matches!(lower.trim(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
 }

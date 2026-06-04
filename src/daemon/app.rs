@@ -445,6 +445,7 @@ impl DaemonApp {
             Arc::clone(&self.embedding_service),
             self.daemon_db.clone(),
             Arc::clone(&watcher_pool_for_handlers),
+            self.paths.clone(),
         );
 
         // ---- Build the handle (owns lock, pools, background tasks) ----
@@ -497,9 +498,9 @@ impl Drop for DaemonApp {
 mod helpers;
 pub(crate) use helpers::{
     acquire_or_yield_to_existing_daemon, bind_mcp_listener_with_fallback,
-    publish_starting_discovery, shutdown_signal, spawn_restart_bridge,
+    publish_starting_discovery, shutdown_signal, spawn_embedding_init, spawn_restart_bridge,
 };
 use helpers::{
     bind_dashboard_listener_and_publish, open_and_migrate_daemon_db, session_reaper_interval,
-    setup_stop_notify, spawn_cleanup_sweep, spawn_embedding_init, spawn_session_idle_reaper,
+    setup_stop_notify, spawn_cleanup_sweep, spawn_session_idle_reaper,
 };
