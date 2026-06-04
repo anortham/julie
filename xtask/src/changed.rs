@@ -612,6 +612,51 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     if matches_prefix(path, &["crates/julie-tools/src/navigation/"]) {
         return &["tools-format-filter", "tools-fast-refs"];
     }
+    // Per-file routing for relocated handler-free tool tests (T2b.6).
+    // These checks must precede the broad crates/julie-tools/src/ catch-all.
+    if matches_prefix(path, &["crates/julie-tools/src/tests/get_context_"]) {
+        // Delegate to the per-file get_context routing helper (also covers julie-tools paths).
+        if let Some(buckets) = get_context_test_buckets_for_path(path) {
+            return buckets;
+        }
+        return &[
+            "tools-get-context-pipeline",
+            "tools-get-context-format",
+            "tools-get-context-graph",
+        ];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/tests/deep_dive_"]) {
+        return &["tools-deep-dive"];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/tests/editing_"]) {
+        return &["tools-editing"];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/tests/refactoring_"]) {
+        return &["tools-refactoring"];
+    }
+    if matches_prefix(path, &["crates/julie-tools/src/tests/metrics_"]) {
+        return &["tools-metrics"];
+    }
+    if matches_prefix(
+        path,
+        &[
+            "crates/julie-tools/src/tests/search_",
+            "crates/julie-tools/src/tests/tantivy_",
+        ],
+    ) {
+        return JULIE_TOOLS_SEARCH_BUCKETS;
+    }
+    if matches_exact(
+        path,
+        &[
+            "crates/julie-tools/src/tests/formatting_tests.rs",
+            "crates/julie-tools/src/tests/filtering_tests.rs",
+            "crates/julie-tools/src/tests/query_classification_tests.rs",
+            "crates/julie-tools/src/tests/phase4_token_savings.rs",
+        ],
+    ) {
+        return &["tools-format-filter"];
+    }
     if matches_prefix(path, &["crates/julie-tools/src/"]) {
         // lib.rs, tests/**, other top-level modules — broad tool coverage.
         return JULIE_TOOLS_BUCKETS;
@@ -838,17 +883,9 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-metrics"];
     }
 
-    if matches_exact(
-        path,
-        &[
-            "src/tests/tools/filtering_tests.rs",
-            "src/tests/tools/formatting_tests.rs",
-            "src/tests/tools/query_classification_tests.rs",
-            "src/tests/tools/phase4_token_savings.rs",
-        ],
-    ) {
-        return &["tools-format-filter"];
-    }
+    // Note: filtering_tests, formatting_tests, query_classification_tests, phase4_token_savings
+    // were all relocated to crates/julie-tools/src/tests/ (T2b.6 or earlier). Routing for their
+    // julie-tools paths is handled by the crates/julie-tools/src/tests/ prefix checks above.
 
     if matches_prefix(
         path,
@@ -931,6 +968,8 @@ fn handler_tool_buckets_for_path(path: &str) -> Option<&'static [&'static str]> 
 }
 
 fn get_context_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
+    // Top-crate paths (primary_rebind + target_workspace_metrics STAY; the rest relocated to julie-tools T2b.6).
+    // Julie-tools paths (T2b.6 relocated tests) share the same bucket assignments.
     if matches_exact(
         path,
         &[
@@ -939,6 +978,11 @@ fn get_context_test_buckets_for_path(path: &str) -> Option<&'static [&'static st
             "src/tests/tools/get_context_relevance_tests.rs",
             "src/tests/tools/get_context_scoring_tests.rs",
             "src/tests/tools/get_context_quality_tests.rs",
+            "crates/julie-tools/src/tests/get_context_pipeline_tests.rs",
+            "crates/julie-tools/src/tests/get_context_pipeline_relevance_tests.rs",
+            "crates/julie-tools/src/tests/get_context_relevance_tests.rs",
+            "crates/julie-tools/src/tests/get_context_scoring_tests.rs",
+            "crates/julie-tools/src/tests/get_context_quality_tests.rs",
         ],
     ) {
         return Some(&["tools-get-context-pipeline"]);
@@ -951,6 +995,10 @@ fn get_context_test_buckets_for_path(path: &str) -> Option<&'static [&'static st
             "src/tests/tools/get_context_formatting_tests.rs",
             "src/tests/tools/get_context_token_budget_tests.rs",
             "src/tests/tools/get_context_tests.rs",
+            "crates/julie-tools/src/tests/get_context_allocation_tests.rs",
+            "crates/julie-tools/src/tests/get_context_formatting_tests.rs",
+            "crates/julie-tools/src/tests/get_context_token_budget_tests.rs",
+            "crates/julie-tools/src/tests/get_context_tests.rs",
         ],
     ) {
         return Some(&["tools-get-context-format"]);
@@ -963,13 +1011,17 @@ fn get_context_test_buckets_for_path(path: &str) -> Option<&'static [&'static st
             "src/tests/tools/get_context_task_inputs_tests.rs",
             "src/tests/tools/get_context_primary_rebind_tests.rs",
             "src/tests/tools/get_context_target_workspace_metrics_tests.rs",
+            "crates/julie-tools/src/tests/get_context_graph_expansion_tests.rs",
+            "crates/julie-tools/src/tests/get_context_task_inputs_tests.rs",
         ],
     ) {
         return Some(&["tools-get-context-graph"]);
     }
 
-    // Any other src/tests/tools/get_context_*.rs runs all three slices.
-    if path.starts_with("src/tests/tools/get_context") {
+    // Any other get_context_*.rs in either location runs all three slices.
+    if path.starts_with("src/tests/tools/get_context")
+        || path.starts_with("crates/julie-tools/src/tests/get_context_")
+    {
         return Some(&[
             "tools-get-context-pipeline",
             "tools-get-context-format",

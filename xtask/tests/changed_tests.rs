@@ -414,7 +414,8 @@ fn changed_tests_misc_tool_paths_select_split_tool_buckets() {
             "src/tools/deep_dive/mod.rs".to_string(),
             "src/tools/refactoring/rename.rs".to_string(),
             "src/tools/metrics/centrality.rs".to_string(),
-            "src/tests/tools/filtering_tests.rs".to_string(),
+            // filtering_tests relocated to julie-tools (T2b.6); use new path
+            "crates/julie-tools/src/tests/filtering_tests.rs".to_string(),
         ],
     );
 

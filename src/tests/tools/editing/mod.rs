@@ -3,12 +3,12 @@
 //! This module contains tests for EditingTransaction plus rewrite_symbol coverage.
 
 mod edit_file_tests;
-mod markdown_section_tests;
 mod rewrite_symbol_cross_language_tests;
 mod rewrite_symbol_tests;
-mod security_tests;
-pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
-mod validation_tests;
+// markdown_section_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+// security_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+// transactional_editing_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+// validation_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
 
 use crate::tools::editing::EditingTransaction;
 use std::env;
