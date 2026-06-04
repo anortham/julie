@@ -3,44 +3,51 @@
 //!
 //! ## Architecture
 //!
-//! Three `std::thread`s each call `connect_or_spawn_host`.  The first to reach
-//! `is_host_live → false` spawns the real `julie-embedding-host` binary; the
-//! other two also spawn it but those copies fail the **fs2 singleton lock**
-//! (acquired before the factory/sidecar starts) and exit immediately.
+//! Three `tokio::spawn` tasks each call `run_embedding_host_default` with the
+//! **same** `lock_path` and **same** `addr`.  The fs2 singleton lock uses
+//! `flock(2)` semantics (per-open-file-description, not per-process), so the
+//! three tasks' independent `OpenOptions` file descriptors **genuinely race**
+//! even within a single process:
 //!
-//! The stub sidecar (`stub_sidecar.py`) is a self-contained Python script:
-//! - Appends one `"launch\n"` line to `$STUB_COUNTER_FILE` on startup — giving
-//!   a **cross-process** launch count even though the sidecar is a separate
-//!   OS process.
-//! - Writes `os.getppid()` (= the host binary PID) to `$STUB_PPID_FILE` so
-//!   the test can `SIGTERM` the host for a clean shutdown.
-//! - Serves `health` / `embed_query` / `embed_batch` / `shutdown` using the
-//!   standard sidecar wire protocol over stdin/stdout.
+//! - **Winner** (1 task): acquires the lock → calls `make_provider` →
+//!   `create_embedding_provider()` runs → sidecar spawns → socket bound.
+//! - **Losers** (2 tasks): `try_lock_exclusive` returns `Err` immediately →
+//!   `run_embedding_host_default` returns `Err` before ever touching the
+//!   provider factory.
 //!
-//! The host binary is located via `locate_embedding_host` (sibling of the
-//! current exe, then PATH).  The test prepends `target/debug/` to `PATH` so
-//! the binary is found when running with `cargo nextest run -p julie`.
+//! A build without the lock-first refactor would call `create_embedding_provider`
+//! (and spawn the Python sidecar) in all three tasks before any lock is held,
+//! making `counter==3` and breaking the HARD GATE.
+//!
+//! Three `connect_or_spawn_host` clients then take the fast path (socket is live)
+//! and perform concurrent `embed_query` + `embed_batch` calls through the single
+//! resident host.
 //!
 //! ## HARD GATE assertions
 //!
-//! (a) All 3 clients return correctly-dimensioned vectors for both
-//!     `embed_query` and `embed_batch`.
-//! (b) The counter file contains **exactly one** line — one sidecar spawn.
-//! (c) SIGTERM to the host PID → socket removed → lock re-acquirable.
+//! (a) All 3 clients return correctly-dimensioned vectors for `embed_query` and
+//!     `embed_batch`.
+//! (b) The counter file contains **exactly one** line — one sidecar spawn despite
+//!     the three-way host race.
+//! (c) `cancel()` → exactly **1 Ok / 2 Err** from the host handles (lock
+//!     ordering), socket removed, singleton lock re-acquirable.
 
 #[cfg(all(test, unix))]
 #[cfg(feature = "embeddings-sidecar")]
 mod unix {
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use std::time::{Duration, Instant};
 
     use fs2::FileExt as _;
     use serial_test::serial;
+    use tokio_util::sync::CancellationToken;
 
     use crate::embedding_host_launch::connect_or_spawn_host;
     use crate::paths::DaemonPaths;
+    use julie_pipeline::embeddings::host_server::run_embedding_host_default;
+    use julie_pipeline::embeddings::host_transport::{HostAddress, HostClientConn};
     use julie_pipeline::embeddings::EmbeddingProvider;
-    use julie_pipeline::embeddings::host_transport::HostAddress;
 
     /// Dimensionality the stub sidecar advertises.
     const STUB_DIMS: usize = 4;
@@ -105,12 +112,10 @@ mod unix {
 
     /// Write a self-contained Python stub sidecar to `dir/stub_sidecar.py`.
     ///
-    /// On startup the script:
-    /// - Appends `"launch\n"` to `$STUB_COUNTER_FILE` (cross-process count).
-    /// - Writes `os.getppid()` (= host PID) to `$STUB_PPID_FILE`.
-    /// - Serves the sidecar wire protocol over stdin/stdout.
-    ///
-    /// Vectors are deterministic: `[len(text) as f32; DIMS]`.
+    /// On startup the script appends `"launch\n"` to `$STUB_COUNTER_FILE`
+    /// (cross-process sidecar launch count), then serves the sidecar wire
+    /// protocol over stdin/stdout until `shutdown` or EOF.
+    /// Vectors: `[len(text) as f32; DIMS]`.
     fn write_stub(dir: &Path) -> PathBuf {
         let script = r#"#!/usr/bin/env python3
 import json, sys, os
@@ -120,13 +125,6 @@ counter_file = os.environ.get("STUB_COUNTER_FILE", "")
 if counter_file:
     with open(counter_file, "a") as f:
         f.write("launch\n")
-        f.flush()
-
-# Write host PID (our parent) so the test can SIGTERM it.
-ppid_file = os.environ.get("STUB_PPID_FILE", "")
-if ppid_file:
-    with open(ppid_file, "w") as f:
-        f.write(str(os.getppid()))
         f.flush()
 
 DIMS = 4
@@ -177,56 +175,45 @@ while True:
     }
 
     // -----------------------------------------------------------------------
+    // Helper: poll until the host's socket accepts connections.
+    // -----------------------------------------------------------------------
+
+    fn wait_for_live(addr: &HostAddress, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if HostClientConn::connect(addr).is_ok() {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "embedding-host did not become live within {timeout:?}"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Test
     // -----------------------------------------------------------------------
 
-    /// HARD GATE: one resident embedding-host serves three concurrent sessions,
-    /// and exactly one sidecar is launched despite the three concurrent spawns.
-    #[test]
+    /// HARD GATE: three concurrent hosts race for the same singleton lock;
+    /// exactly one wins → spawns exactly one sidecar → serves three clients.
+    #[tokio::test(flavor = "multi_thread")]
     #[serial]
-    fn one_sidecar_serves_three_sessions() {
+    async fn one_sidecar_serves_three_sessions() {
         let dir = tempfile::tempdir().expect("tempdir");
         let counter_file = dir.path().join("sidecar_launches");
-        let ppid_file = dir.path().join("host_ppid");
         let python = test_python_interpreter();
         let stub_path = write_stub(dir.path());
 
-        // -------------------------------------------------------------------
-        // PATH: prepend target/debug so locate_embedding_host finds the binary.
-        //
-        // Test exe lives at  target/debug/deps/<name>
-        //                                          ^ .parent() = deps/
-        //                                   ^ .parent() = target/debug/
-        // julie-embedding-host is at target/debug/julie-embedding-host.
-        // -------------------------------------------------------------------
-        let target_debug = std::env::current_exe()
-            .expect("current_exe")
-            .parent()
-            .expect("exe parent (deps/)")
-            .parent()
-            .expect("exe grandparent (debug/)")
-            .to_path_buf();
-        let orig_path = std::env::var_os("PATH").unwrap_or_default();
-        let new_path = std::env::join_paths(
-            std::iter::once(target_debug.clone())
-                .chain(std::env::split_paths(&orig_path)),
-        )
-        .expect("join_paths");
+        // Pin JULIE_EMBEDDING_SIDECAR_ROOT so sidecar_root_path() resolves
+        // immediately via env-var priority (called even in script-override mode).
+        let sidecar_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .map(|a| a.join("python").join("embeddings_sidecar"))
+            .find(|p| p.join("pyproject.toml").exists())
+            .expect("python/embeddings_sidecar/pyproject.toml not found");
 
-        // Pin JULIE_EMBEDDING_SIDECAR_ROOT to the source checkout so
-        // sidecar_root_path() succeeds (it's called before the script
-        // override is honoured; the root itself is unused when a script
-        // override is set but the path must resolve).
-        let sidecar_root = {
-            let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            manifest
-                .ancestors()
-                .map(|a| a.join("python").join("embeddings_sidecar"))
-                .find(|p| p.join("pyproject.toml").exists())
-                .expect("python/embeddings_sidecar/pyproject.toml not found from CARGO_MANIFEST_DIR")
-        };
-
-        let _path_g = EnvGuard::set("PATH", &new_path);
         let _prov_g = EnvGuard::set("JULIE_EMBEDDING_PROVIDER", "sidecar");
         let _prog_g = EnvGuard::set("JULIE_EMBEDDING_SIDECAR_PROGRAM", &python);
         let _scrpt_g = EnvGuard::set(
@@ -234,145 +221,189 @@ while True:
             stub_path.to_str().expect("stub path utf8"),
         );
         let _raw_g = EnvGuard::remove("JULIE_EMBEDDING_SIDECAR_RAW_PROGRAM");
-        let _root_g =
-            EnvGuard::set("JULIE_EMBEDDING_SIDECAR_ROOT", sidecar_root.to_str().expect("utf8"));
+        let _root_g = EnvGuard::set(
+            "JULIE_EMBEDDING_SIDECAR_ROOT",
+            sidecar_root.to_str().expect("sidecar root utf8"),
+        );
         let _cnt_g = EnvGuard::set(
             "STUB_COUNTER_FILE",
             counter_file.to_str().expect("counter path utf8"),
         );
-        let _ppid_g =
-            EnvGuard::set("STUB_PPID_FILE", ppid_file.to_str().expect("ppid path utf8"));
 
         let julie_home = dir.path().join("julie_home");
         let paths = DaemonPaths::with_home(julie_home.clone());
         paths.ensure_dirs().expect("ensure_dirs");
 
-        let addr = HostAddress::from_paths(&paths);
         let lock_path = paths.embedding_host_lock();
+        let addr = HostAddress::from_paths(&paths);
         let socket_path = addr.socket_path().to_path_buf();
 
         // -------------------------------------------------------------------
-        // 1. Three concurrent sessions.
+        // 1. Start 3 concurrent run_embedding_host_default tasks, all using
+        //    the SAME lock_path and SAME addr.
         //
-        // Thread 1: is_host_live→false → spawns binary → binary wins lock →
-        //           factory spawns sidecar → host binds socket → client returns.
-        // Thread 2: is_host_live→false → spawns binary → binary fails lock →
-        //           binary exits → poll_for_liveness waits for thread-1's socket.
-        // Thread 3: same as thread 2 (or is_host_live→true if socket is already
-        //           up by then → takes the fast path directly).
+        // Each task opens its own file descriptor via OpenOptions, so the
+        // three try_lock_exclusive() calls genuinely race (flock semantics
+        // are per-open-file-description, not per-process):
+        //   - Winner  (1): lock held → make_provider → sidecar spawns → socket bound.
+        //   - Losers  (2): try_lock_exclusive fails → Err returned immediately,
+        //                  before make_provider is ever called.
+        // -------------------------------------------------------------------
+        let cancel = CancellationToken::new();
+        let mut host_handles = Vec::new();
+        for _ in 0..3 {
+            let c = cancel.clone();
+            let a = HostAddress::from_paths(&paths);
+            let l = lock_path.clone();
+            host_handles.push(tokio::spawn(async move {
+                run_embedding_host_default(&a, &l, c).await
+            }));
+        }
+
+        // 2. Wait until the winner's socket is accepting connections.
+        let addr_wait = HostAddress::from_paths(&paths);
+        tokio::task::spawn_blocking(move || {
+            wait_for_live(&addr_wait, Duration::from_secs(15))
+        })
+        .await
+        .expect("wait_for_live join");
+
+        // -------------------------------------------------------------------
+        // 3. Three concurrent sessions via connect_or_spawn_host.
+        //    Socket is already live → all three take the fast path
+        //    (is_host_live → true → RpcEmbeddingProvider::new).
+        // -------------------------------------------------------------------
+        let paths1 = paths.clone();
+        let paths2 = paths.clone();
+        let paths3 = paths.clone();
+
+        let (r1, r2, r3) = tokio::join!(
+            tokio::task::spawn_blocking(move || connect_or_spawn_host(&paths1)),
+            tokio::task::spawn_blocking(move || connect_or_spawn_host(&paths2)),
+            tokio::task::spawn_blocking(move || connect_or_spawn_host(&paths3)),
+        );
+
+        let provider1: Arc<dyn EmbeddingProvider> =
+            Arc::new(r1.expect("join 1").expect("connect 1"));
+        let provider2: Arc<dyn EmbeddingProvider> =
+            Arc::new(r2.expect("join 2").expect("connect 2"));
+        let provider3: Arc<dyn EmbeddingProvider> =
+            Arc::new(r3.expect("join 3").expect("connect 3"));
+
+        // -------------------------------------------------------------------
+        // 4. Concurrent embed_query + embed_batch from all three providers.
         // -------------------------------------------------------------------
         let t0 = Instant::now();
 
-        let handles: Vec<_> = (0..3usize)
-            .map(|i| {
-                let home = julie_home.clone();
-                std::thread::spawn(move || -> anyhow::Result<(Vec<f32>, Vec<Vec<f32>>)> {
-                    let p = DaemonPaths::with_home(home);
-                    let t1 = Instant::now();
-                    let provider = connect_or_spawn_host(&p)?;
-                    let t_connect = t1.elapsed();
+        let (h1, h2, h3) = tokio::join!(
+            tokio::task::spawn_blocking({
+                let p = Arc::clone(&provider1);
+                move || {
+                    let q = p.embed_query("hello").expect("session1 embed_query");
+                    let b = p
+                        .embed_batch(&["a".to_string(), "bb".to_string()])
+                        .expect("session1 embed_batch");
+                    (q, b)
+                }
+            }),
+            tokio::task::spawn_blocking({
+                let p = Arc::clone(&provider2);
+                move || {
+                    let q = p.embed_query("hello").expect("session2 embed_query");
+                    let b = p
+                        .embed_batch(&["a".to_string(), "bb".to_string()])
+                        .expect("session2 embed_batch");
+                    (q, b)
+                }
+            }),
+            tokio::task::spawn_blocking({
+                let p = Arc::clone(&provider3);
+                move || {
+                    let q = p.embed_query("hello").expect("session3 embed_query");
+                    let b = p
+                        .embed_batch(&["a".to_string(), "bb".to_string()])
+                        .expect("session3 embed_batch");
+                    (q, b)
+                }
+            }),
+        );
 
-                    let t2 = Instant::now();
-                    let q = provider.embed_query("hello")?;
-                    let b = provider
-                        .embed_batch(&["a".to_string(), "bb".to_string()])?;
-                    let t_embed = t2.elapsed();
+        let embed_elapsed = t0.elapsed();
 
-                    eprintln!("session {i}: connect={t_connect:?} embed={t_embed:?}");
-                    Ok((q, b))
-                })
-            })
-            .collect();
-
-        let results: Vec<(Vec<f32>, Vec<Vec<f32>>)> = handles
-            .into_iter()
-            .enumerate()
-            .map(|(i, h)| {
-                h.join()
-                    .unwrap_or_else(|_| panic!("thread {i} panicked"))
-                    .unwrap_or_else(|e| panic!("session {i} error: {e}"))
-            })
-            .collect();
-
-        eprintln!("All 3 sessions completed in {:?}", t0.elapsed());
+        let (q1, b1) = h1.expect("join h1");
+        let (q2, b2) = h2.expect("join h2");
+        let (q3, b3) = h3.expect("join h3");
 
         // -------------------------------------------------------------------
         // HARD GATE (a): all 3 clients return correctly-dimensioned vectors.
         // -------------------------------------------------------------------
-        for (i, (qv, bv)) in results.iter().enumerate() {
-            assert_eq!(qv.len(), STUB_DIMS, "session {i} embed_query dims");
-            assert_eq!(bv.len(), 2, "session {i} embed_batch count");
+        let sessions: &[(&Vec<f32>, &Vec<Vec<f32>>)] = &[(&q1, &b1), (&q2, &b2), (&q3, &b3)];
+        for (i, (qv, bv)) in sessions.iter().enumerate() {
+            let session = i + 1;
+            assert_eq!(qv.len(), STUB_DIMS, "session {session} embed_query dims");
+            assert_eq!(bv.len(), 2, "session {session} embed_batch count");
             for (j, v) in bv.iter().enumerate() {
-                assert_eq!(v.len(), STUB_DIMS, "session {i} embed_batch[{j}] dims");
+                assert_eq!(v.len(), STUB_DIMS, "session {session} embed_batch[{j}] dims");
             }
         }
 
-        // Spot-check vector values: stub returns [len(text) as f32; DIMS].
-        // "hello".len()=5, "a".len()=1, "bb".len()=2
-        for (i, (qv, bv)) in results.iter().enumerate() {
-            assert_eq!(qv[0], 5.0f32, "session {i} embed_query value");
-            assert_eq!(bv[0][0], 1.0f32, "session {i} embed_batch[0] value");
-            assert_eq!(bv[1][0], 2.0f32, "session {i} embed_batch[1] value");
+        // Spot-check values: stub returns [len(text) as f32; DIMS].
+        // "hello"=5, "a"=1, "bb"=2
+        for (i, (qv, bv)) in sessions.iter().enumerate() {
+            let s = i + 1;
+            assert_eq!(qv[0], 5.0f32, "session {s} query value");
+            assert_eq!(bv[0][0], 1.0f32, "session {s} batch[0] value");
+            assert_eq!(bv[1][0], 2.0f32, "session {s} batch[1] value");
         }
 
         // -------------------------------------------------------------------
         // HARD GATE (b): exactly one sidecar launch (lock-first correctness).
+        //
+        // A build without the lock-first fix would show counter==3, because
+        // all three host tasks would call create_embedding_provider() before
+        // any of them held the lock.
         // -------------------------------------------------------------------
-        // By the time all embed calls have returned, the sidecar is live and
-        // has written its ppid.  Poll briefly as a safety net.
-        let deadline = Instant::now() + Duration::from_secs(5);
-        let host_pid: libc::pid_t = loop {
-            if let Ok(contents) = std::fs::read_to_string(&ppid_file) {
-                let trimmed = contents.trim();
-                if !trimmed.is_empty() {
-                    break trimmed
-                        .parse::<libc::pid_t>()
-                        .expect("parse host pid from ppid file");
-                }
-            }
-            assert!(
-                Instant::now() < deadline,
-                "STUB_PPID_FILE not written within 5s"
-            );
-            std::thread::sleep(Duration::from_millis(50));
-        };
-
         let counter_contents = std::fs::read_to_string(&counter_file).unwrap_or_default();
         let launch_count = counter_contents.lines().count();
         assert_eq!(
             launch_count,
             1,
             "HARD GATE: expected exactly 1 sidecar launch, got {launch_count}.\n\
-             Counter file contents:\n{counter_contents}"
+             Counter file:\n{counter_contents}"
         );
 
         // -------------------------------------------------------------------
-        // HARD GATE (c): SIGTERM → clean shutdown → socket removed → lock free.
+        // HARD GATE (c): cancel → 1 Ok / 2 Err (lock ordering) → clean shutdown.
         // -------------------------------------------------------------------
-        assert!(
-            socket_path.exists(),
-            "socket must exist before shutdown"
-        );
+        assert!(socket_path.exists(), "socket must exist while host is running");
 
-        // SAFETY: valid pid from ppid file; SIGTERM is safe signal.
-        unsafe { libc::kill(host_pid, libc::SIGTERM) };
+        cancel.cancel();
 
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if !socket_path.exists() {
-                break;
+        let mut ok_count = 0usize;
+        let mut err_count = 0usize;
+        for h in host_handles {
+            match h.await.expect("host task join") {
+                Ok(()) => ok_count += 1,
+                Err(e) => {
+                    let msg = e.to_string();
+                    assert!(
+                        msg.contains("lock") || msg.contains("singleton"),
+                        "loser error must mention the lock; got: {msg:?}"
+                    );
+                    err_count += 1;
+                }
             }
-            assert!(
-                Instant::now() < deadline,
-                "embedding-host did not shut down within 10s after SIGTERM"
-            );
-            std::thread::sleep(Duration::from_millis(50));
         }
+        assert_eq!(ok_count, 1, "exactly one host must win the lock");
+        assert_eq!(err_count, 2, "exactly two hosts must fail the lock");
+
+        // Winner's shutdown removes the socket.
         assert!(
             !socket_path.exists(),
             "socket file must be removed after shutdown"
         );
 
+        // The singleton lock must be re-acquirable once the winner exits.
         let lf = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
@@ -385,8 +416,8 @@ while True:
 
         eprintln!(
             "T8 PASS — 3 sessions × (embed_query + embed_batch) | \
-             total={:?} | sidecar_launches={launch_count} | host_pid={host_pid}",
-            t0.elapsed()
+             embed_elapsed={embed_elapsed:?} | sidecar_launches={launch_count} | \
+             host_ok={ok_count} host_err={err_count}"
         );
     }
 }
