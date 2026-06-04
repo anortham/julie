@@ -1861,6 +1861,7 @@ dependencies = [
  "sqlite-vec",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
  "zerocopy 0.7.35",
 ]

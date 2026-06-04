@@ -18,6 +18,7 @@ julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag =
 
 # Async runtime
 tokio = { version = "1.47.1", features = ["full"] }
+tokio-util = "0.7" # CancellationToken for the embedding-host accept loop
 
 # Async futures
 futures = "0.3"

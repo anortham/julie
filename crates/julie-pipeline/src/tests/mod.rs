@@ -5,3 +5,6 @@ pub mod embedding_metadata_enrichment;
 pub mod sidecar_embedding_tests;
 pub mod sidecar_supervisor_tests;
 pub mod embedding_sidecar_protocol;
+pub mod host_transport_test;
+pub mod host_server_test;
+pub mod rpc_client_test;

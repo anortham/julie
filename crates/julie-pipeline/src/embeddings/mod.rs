@@ -11,16 +11,21 @@
 //! - Vector storage lives in `database::vectors` (sqlite-vec)
 
 pub mod factory;
+pub mod host_server;
+pub mod host_transport;
 pub mod init;
 pub mod log_fields;
 pub mod metadata;
 pub mod pipeline;
+pub mod rpc_client;
+// Pure-serde envelope contracts — always compiled (no torch/Python deps) so the
+// thin RPC client works in binaries built WITHOUT the `embeddings-sidecar`
+// feature (a session process that only talks to the resident host, Phase 3b).
+pub mod sidecar_protocol;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_bootstrap;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_embedded;
-#[cfg(feature = "embeddings-sidecar")]
-pub mod sidecar_protocol;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_provider;
 #[cfg(feature = "embeddings-sidecar")]
@@ -40,8 +45,8 @@ pub use factory::{
     parse_provider_preference, resolve_backend_preference, should_disable_for_strict_acceleration,
     strict_acceleration_enabled_from_env_value,
 };
+pub use host_transport::{HostAddress, HostClientConn, HostListener, HostServerConn};
 pub use init::create_embedding_provider;
-#[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_protocol::{
     DeviceBackendCapabilities, DeviceBackendCapability, DeviceLoadPolicy, EmbedBatchRequest,
     EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, HealthResult, ProtocolError,
