@@ -375,7 +375,7 @@ fn extract_workspace_name(path: &str) -> String {
 }
 
 /// Sanitize name for use in file system
-pub(crate) fn sanitize_name(name: &str) -> String {
+pub fn sanitize_name(name: &str) -> String {
     let invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', ' ', '.'];
     let mut sanitized = name.to_lowercase();
 
