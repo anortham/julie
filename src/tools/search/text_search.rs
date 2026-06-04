@@ -3,7 +3,8 @@
 use anyhow::Result;
 
 use crate::extractors::{Symbol, SymbolKind};
-use crate::handler::JulieServerHandler;
+
+use julie_context::ToolContext;
 
 // Re-export for tests
 #[cfg(test)]
@@ -185,7 +186,7 @@ pub async fn unified_search_impl(
     filter: &crate::search::SearchFilter,
     limit: u32,
     workspace_ids: Option<Vec<String>>,
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<(Vec<Symbol>, bool, usize)> {
     // Lazy-init the workspace's embedding provider when the query looks
     // like natural language.  Single-flighted; idempotent.  Pre-T9 this
@@ -206,7 +207,7 @@ pub async fn unified_search_impl_with_kind_filter(
     limit: u32,
     workspace_ids: Option<Vec<String>>,
     kind_filter: Option<UnifiedKindFilter>,
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<(Vec<Symbol>, bool, usize)> {
     // Lazy-init the workspace's embedding provider when the query looks
     // like natural language (mirrors the contract of `unified_search_impl`
@@ -364,7 +365,7 @@ pub async fn unified_search_hits(
     filter: &crate::search::SearchFilter,
     limit: u32,
     workspace_ids: Option<Vec<String>>,
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<(Vec<crate::search::index::UnifiedHit>, bool, usize)> {
     let current_primary_id = handler.current_workspace_id();
     let loaded_workspace_id = handler.loaded_workspace_id();
@@ -455,7 +456,7 @@ pub(crate) async fn text_search_impl(
     search_target: &str,
     _context_lines: Option<u32>,
     exclude_tests: Option<bool>,
-    handler: &crate::handler::JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> anyhow::Result<(Vec<crate::extractors::Symbol>, bool, usize)> {
     let mut filter = crate::search::SearchFilter::default();
     if let Some(lang) = language {

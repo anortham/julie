@@ -11,8 +11,8 @@ use serde::Deserialize;
 use tracing::debug;
 
 use crate::database::SymbolDatabase;
-use crate::handler::JulieServerHandler;
-use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use julie_context::ToolContext;
+use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::tools::spillover::{SpilloverFormat, SpilloverStore};
 
 use self::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows, store_list_overflow};
@@ -94,16 +94,16 @@ pub struct BlastRadiusTool {
 }
 
 impl BlastRadiusTool {
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         let result = run(self, handler).await?;
         Ok(CallToolResult::success(vec![Content::text(result)]))
     }
 }
 
-pub async fn run(tool: &BlastRadiusTool, handler: &JulieServerHandler) -> Result<String> {
-    let workspace_target = resolve_workspace_filter(tool.workspace.as_deref(), handler).await?;
-    let spillover_store = handler.spillover_store.clone();
-    let session_id = handler.session_metrics.session_id.clone();
+pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<String> {
+    let workspace_target = handler.resolve_workspace_target(tool.workspace.as_deref()).await?;
+    let spillover_store = handler.spillover_store();
+    let session_id = handler.session_id().to_string();
     let tool = tool.clone();
 
     match workspace_target {

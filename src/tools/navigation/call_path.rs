@@ -8,11 +8,11 @@ use tracing::debug;
 
 use crate::database::SymbolDatabase;
 use crate::extractors::{Relationship, RelationshipKind, Symbol};
-use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResultExt;
 use crate::tools::deep_dive::data::find_symbol;
+use julie_context::ToolContext;
 
-use super::resolution::{WorkspaceTarget, file_path_matches_suffix, resolve_workspace_filter};
+use super::resolution::{WorkspaceTarget, file_path_matches_suffix};
 
 const DEFAULT_MAX_HOPS: u32 = 6;
 const MAX_HOPS: u32 = 32;
@@ -344,9 +344,9 @@ impl CallPathTool {
 
     async fn resolve_workspace_target(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
     ) -> Result<SymbolDatabase> {
-        match resolve_workspace_filter(self.workspace.as_deref(), handler).await? {
+        match handler.resolve_workspace_target(self.workspace.as_deref()).await? {
             WorkspaceTarget::Primary => handler.primary_pooled_database().await,
             WorkspaceTarget::Target(workspace_id) => {
                 handler
@@ -356,7 +356,7 @@ impl CallPathTool {
         }
     }
 
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         if self.from.is_empty() || self.to.is_empty() {
             return Self::response_result(&Self::diagnostic_response(
                 "both 'from' and 'to' are required",

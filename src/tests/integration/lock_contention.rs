@@ -67,7 +67,7 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
                 exclude_tests: None,
                 ..Default::default()
             };
-            tool.call_tool(&handler_clone).await
+            tool.call_tool(handler_clone.as_ref()).await
         });
         tasks.push(task);
     }
@@ -162,7 +162,7 @@ async fn test_force_reindex_no_lock_busy_errors() -> Result<()> {
         exclude_tests: None,
         ..Default::default()
     };
-    let search_result = tool.call_tool(&handler).await;
+    let search_result = tool.call_tool(handler.as_ref()).await;
     assert!(
         search_result.is_ok(),
         "Content search after force re-index should work: {:?}",

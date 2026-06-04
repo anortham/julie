@@ -13,11 +13,11 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::formatting::format_lean_refs_results;
-use super::resolution::{WorkspaceTarget, parse_qualified_name, resolve_workspace_filter};
+use super::resolution::{WorkspaceTarget, parse_qualified_name};
 use super::target_workspace;
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
-use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
+use julie_context::ToolContext;
 use std::collections::{HashMap, HashSet};
 
 fn default_true() -> bool {
@@ -77,7 +77,7 @@ impl FastRefsTool {
     /// Skips for some explicit workspace queries when embeddings are unavailable.
     async fn try_semantic_fallback(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         workspace_target: &WorkspaceTarget,
     ) -> String {
         use super::formatting::format_semantic_fallback;
@@ -138,11 +138,11 @@ impl FastRefsTool {
         format_semantic_fallback(&self.symbol, &similar)
     }
 
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         // Resolve workspace target (primary or explicit workspace). The helpers
         // below each acquire their own pooled DB internally — there's no longer
         // a shared Arc<Mutex<>> passed around (see A2.2c follow-up).
-        let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        let workspace_target = handler.resolve_workspace_target(self.workspace.as_deref()).await?;
         self.call_tool_with_target(handler, &workspace_target).await
     }
 
@@ -152,7 +152,7 @@ impl FastRefsTool {
     /// attribution and the actual tool call).
     pub async fn call_tool_with_target(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         workspace_target: &WorkspaceTarget,
     ) -> Result<CallToolResult> {
         debug!("Finding references for: {}", self.symbol);
@@ -197,7 +197,7 @@ impl FastRefsTool {
     /// `primary_pooled_database`.
     async fn resolve_source_names(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         references: &[Relationship],
         workspace_target: &WorkspaceTarget,
     ) -> HashMap<String, String> {
@@ -242,7 +242,7 @@ impl FastRefsTool {
 
     pub async fn find_references_and_definitions(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         workspace_target: WorkspaceTarget,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
         debug!(
@@ -512,7 +512,7 @@ impl FastRefsTool {
     /// Find references in a target workspace by delegating to the target_workspace module.
     async fn database_find_references_in_target_workspace(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         target_workspace_id: String,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
         target_workspace::find_references_in_target_workspace(

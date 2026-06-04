@@ -5,7 +5,7 @@ use rmcp::model::{CallToolResult, Content};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::handler::JulieServerHandler;
+use julie_context::ToolContext;
 
 pub use store::{SpilloverFormat, SpilloverPage, SpilloverStore};
 
@@ -25,15 +25,15 @@ pub struct SpilloverGetTool {
 }
 
 impl SpilloverGetTool {
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         let format = self
             .format
             .as_deref()
             .map(SpilloverFormat::parse_strict)
             .transpose()
             .map_err(anyhow::Error::msg)?;
-        let page = handler.spillover_store.page(
-            &handler.session_metrics.session_id,
+        let page = handler.spillover_store().page(
+            handler.session_id(),
             &self.spillover_handle,
             self.limit.map(|value| value as usize),
             format,

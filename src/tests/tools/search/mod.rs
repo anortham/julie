@@ -17,6 +17,7 @@ mod line_match_strategy_tests;
 mod line_mode;
 mod line_mode_or_fallback_tests;
 mod line_mode_second_pass_tests;
+mod nl_embeddings_daemon_tests;
 mod nl_path_prior_pipeline_tests;
 mod nl_symbol_query_latency_tests;
 mod pretokenized_emit_test;

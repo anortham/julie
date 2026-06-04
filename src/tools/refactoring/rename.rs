@@ -8,9 +8,9 @@ use tracing::debug;
 
 use super::{RenameChange, RenameSymbolTool, SmartRefactorTool, compute_line_changes};
 use crate::extractors::{Relationship, Symbol};
-use crate::handler::JulieServerHandler;
 use crate::tools::navigation::FastRefsTool;
-use crate::tools::navigation::resolution::{parse_qualified_name, resolve_workspace_filter};
+use crate::tools::navigation::resolution::parse_qualified_name;
+use julie_context::ToolContext;
 
 impl RenameSymbolTool {
     pub(crate) fn request_input_bytes(&self) -> u64 {
@@ -19,7 +19,7 @@ impl RenameSymbolTool {
             .unwrap_or(0)
     }
 
-    pub(crate) async fn metrics_metadata(&self, handler: &JulieServerHandler) -> Result<JsonValue> {
+    pub(crate) async fn metrics_metadata(&self, handler: &dyn ToolContext) -> Result<JsonValue> {
         let workspace = self
             .workspace
             .clone()
@@ -35,8 +35,9 @@ impl RenameSymbolTool {
             workspace: workspace.clone(),
             reference_kind: None,
         };
-        let workspace_target =
-            resolve_workspace_filter(refs_tool.workspace.as_deref(), handler).await?;
+        let workspace_target = handler
+            .resolve_workspace_target(refs_tool.workspace.as_deref())
+            .await?;
         let (definitions, references) = refs_tool
             .find_references_and_definitions(handler, workspace_target)
             .await?;
@@ -105,7 +106,7 @@ impl SmartRefactorTool {
     /// Handle rename symbol operation
     pub async fn handle_rename_symbol(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
     ) -> Result<CallToolResult> {
         debug!("🔄 Processing rename symbol operation");
 
@@ -160,8 +161,9 @@ impl SmartRefactorTool {
             reference_kind: None, // No filtering - find all reference kinds
         };
 
-        let workspace_target =
-            resolve_workspace_filter(refs_tool.workspace.as_deref(), handler).await?;
+        let workspace_target = handler
+            .resolve_workspace_target(refs_tool.workspace.as_deref())
+            .await?;
         let (definitions, references) = refs_tool
             .find_references_and_definitions(handler, workspace_target)
             .await?;
