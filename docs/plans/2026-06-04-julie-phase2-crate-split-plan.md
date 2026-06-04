@@ -82,6 +82,12 @@ One row per verification run. Reuse only when Scope Label + Commit SHA match cur
 | U2: embeddings→workspace + indexing_core→ManageWorkspaceTool inversions severed | `rg "crate::workspace" src/embeddings/ ; rg "extract_symbols_static\|ManageWorkspaceTool" src/indexing_core/` (zero hits) | affected-change | 63b3810c | pass | 2026-06-04T07:50:10Z | no |
 | U2: dep-direction tripwire holds with new core modules | `cargo test -p julie-core --test no_upward_deps` | affected-change | 63b3810c | pass | 2026-06-04T07:50:10Z | no |
 | U2: extract/index path intact (CLI live-smoke) | `./target/debug/julie-server search ... --standalone --json` | affected-change | 63b3810c | pass | 2026-06-04T07:50:10Z | no |
+| U3: julie-pipeline crate extracted; relocated test suite passes | `cargo nextest run -p julie-pipeline` (142/142) | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
+| U3: top-crate test binary compiles after pipeline extraction (cfg(test)) | `cargo nextest run -p julie --no-run` | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
+| U3: core+index dep-direction tripwires still hold after extraction | `cargo test -p julie-core --test no_upward_deps && cargo test -p julie-index --test no_upward_deps` | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
+| U3: dev-mode sidecar_root_path regression fixed (crate move broke CARGO_MANIFEST_DIR priority-3) | `cargo nextest run -p julie --features embeddings-sidecar --lib test_sidecar_root_path_succeeds_from_source_checkout` | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
+| U3: top-crate lib build warning-clean | `cargo build` (warning count = 0) | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
+| U3: extract/index/search path intact (CLI live-smoke) | `./target/debug/julie-server search "@test" --target definitions --standalone --json` | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
 
 ---
 
