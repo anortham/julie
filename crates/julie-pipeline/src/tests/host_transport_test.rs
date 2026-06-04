@@ -87,7 +87,7 @@ mod unix {
         // Generous 5 s timeout — server responds immediately.
         let reply = tokio::task::spawn_blocking(move || {
             let mut client =
-                HostClientConn::connect_with_timeout(&addr, Duration::from_secs(5))
+                HostClientConn::connect_with_timeout(&addr, Some(Duration::from_secs(5)))
                     .expect("connect");
             client.round_trip("ping")
         })
@@ -99,27 +99,25 @@ mod unix {
         server.await.expect("server task");
     }
 
-    /// `round_trip` returns an error when the server accepts but stalls longer
-    /// than the configured read timeout.
+    /// `round_trip` returns an error when the server accepts the connection but
+    /// never writes a response, stalling past the client's read timeout.
     #[tokio::test]
     async fn connect_with_timeout_read_times_out_on_stalled_server() {
         let (_dir, addr) = temp_address();
 
         let listener = HostListener::bind(&addr).await.expect("bind");
         let server = tokio::spawn(async move {
-            let mut conn = listener.accept().await.expect("accept");
-            // Consume the request but stall the response beyond the client timeout.
-            let _req = conn.read_line().await.expect("read");
-            tokio::time::sleep(Duration::from_millis(400)).await;
-            let _ = conn.write_line("too late").await;
+            let _conn = listener.accept().await.expect("accept");
+            // Accept only; never read or write — client must time out.
+            tokio::time::sleep(Duration::from_millis(500)).await;
         });
 
-        // 50 ms read timeout — the server stalls 400 ms, so round_trip must error.
+        // 200 ms read timeout — server never responds, so round_trip must error.
         let result = tokio::task::spawn_blocking(move || {
             let mut client =
-                HostClientConn::connect_with_timeout(&addr, Duration::from_millis(50))
+                HostClientConn::connect_with_timeout(&addr, Some(Duration::from_millis(200)))
                     .expect("connect");
-            client.round_trip("hello")
+            client.round_trip("{}")
         })
         .await
         .expect("join");
@@ -130,5 +128,29 @@ mod unix {
         );
 
         server.await.expect("server task");
+    }
+
+    /// Pure unit tests for `parse_rpc_timeout` — no environment mutation.
+    #[test]
+    fn parse_rpc_timeout_values() {
+        use crate::embeddings::host_transport::parse_rpc_timeout;
+
+        // "0" → None (infinite — escape hatch).
+        assert_eq!(parse_rpc_timeout(Some("0".into())), None);
+        // None (env var absent) → Some(default = 120 s).
+        assert_eq!(
+            parse_rpc_timeout(None),
+            Some(Duration::from_secs(120))
+        );
+        // Valid positive integer → Some(that many seconds).
+        assert_eq!(
+            parse_rpc_timeout(Some("3".into())),
+            Some(Duration::from_secs(3))
+        );
+        // Invalid string → Some(default).
+        assert_eq!(
+            parse_rpc_timeout(Some("bad".into())),
+            Some(Duration::from_secs(120))
+        );
     }
 }

@@ -49,7 +49,7 @@ pub fn connect_or_spawn_host(paths: &DaemonPaths) -> Result<RpcEmbeddingProvider
     info!("embedding-host not live; spawning it now");
     spawn_host_process(paths)?;
 
-    poll_for_liveness(&addr, spawn_timeout())
+    poll_for_liveness(&addr, host_spawn_timeout())
         .context("embedding-host did not become live after spawn")?;
 
     Ok(RpcEmbeddingProvider::new(addr))
@@ -59,20 +59,29 @@ pub fn connect_or_spawn_host(paths: &DaemonPaths) -> Result<RpcEmbeddingProvider
 // Spawn timeout
 // ---------------------------------------------------------------------------
 
-/// How long `poll_for_liveness` waits after spawning the host binary.
+/// Default wait for the host process to become live after spawning.
 ///
-/// Default: 180 s — enough for a cold sidecar init (model download + venv
-/// bootstrap, which can take up to ~180 s on a slow machine).
+/// 180 s covers a cold sidecar init: model download + venv bootstrap can
+/// take up to ~3 minutes on a slow machine.
+const DEFAULT_HOST_SPAWN_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// Parse a raw env-var string into a spawn timeout duration.
 ///
-/// Override with `JULIE_EMBEDDING_HOST_SPAWN_TIMEOUT_SECS` for tests or
-/// deployments where startup is known to be faster or slower.
-fn spawn_timeout() -> Duration {
-    const DEFAULT_SECS: u64 = 180;
-    std::env::var("JULIE_EMBEDDING_HOST_SPAWN_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
+/// - `Some("0")` → `DEFAULT_HOST_SPAWN_TIMEOUT` (0 means "use the default").
+/// - `Some("<positive integer>")` → `Duration::from_secs(n)`.
+/// - `Some("<invalid>")` | `None` → `DEFAULT_HOST_SPAWN_TIMEOUT`.
+///
+/// Exposed as module-private so the inline `#[cfg(test)]` block can unit-test
+/// it without touching the process environment.
+fn parse_spawn_timeout(raw: Option<String>) -> Duration {
+    raw.and_then(|s| s.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
         .map(Duration::from_secs)
-        .unwrap_or(Duration::from_secs(DEFAULT_SECS))
+        .unwrap_or(DEFAULT_HOST_SPAWN_TIMEOUT)
+}
+
+fn host_spawn_timeout() -> Duration {
+    parse_spawn_timeout(std::env::var("JULIE_EMBEDDING_HOST_SPAWN_TIMEOUT_SECS").ok())
 }
 
 // ---------------------------------------------------------------------------
@@ -226,4 +235,24 @@ fn locate_embedding_host() -> io::Result<std::path::PathBuf> {
              check installation"
         ),
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_spawn_timeout_values() {
+        assert_eq!(
+            parse_spawn_timeout(Some("5".into())),
+            Duration::from_secs(5)
+        );
+        assert_eq!(parse_spawn_timeout(None), DEFAULT_HOST_SPAWN_TIMEOUT);
+        // "0" is treated as "use the default" (not a valid timeout).
+        assert_eq!(parse_spawn_timeout(Some("0".into())), DEFAULT_HOST_SPAWN_TIMEOUT);
+    }
 }
