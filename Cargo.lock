@@ -1691,6 +1691,7 @@ dependencies = [
  "hex",
  "ignore",
  "include_dir",
+ "julie-context",
  "julie-core",
  "julie-extractors",
  "julie-index",
@@ -1730,6 +1731,17 @@ dependencies = [
  "uuid",
  "windows-sys 0.60.2",
  "zerocopy 0.7.35",
+]
+
+[[package]]
+name = "julie-context"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "julie-core",
+ "julie-index",
 ]
 
 [[package]]

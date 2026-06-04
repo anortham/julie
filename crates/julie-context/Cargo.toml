@@ -1,0 +1,23 @@
+[package]
+name = "julie-context"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "ToolContext facade trait + SpilloverStore + WorkspaceTarget (Phase 2 PR 2b)"
+
+[dependencies]
+# Julie workspace crates — ONLY core + index allowed (no pipeline, no julie, no runtime)
+julie-core = { path = "../julie-core" }
+julie-index = { path = "../julie-index" }
+
+# Async trait support
+async-trait = "0.1"
+
+# Error handling
+anyhow = "1.0"
+
+# Blake3 hashing (SpilloverStore handle generation)
+blake3 = "1.8"
+
+[dev-dependencies]

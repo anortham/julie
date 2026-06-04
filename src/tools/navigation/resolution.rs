@@ -12,6 +12,12 @@ pub use julie_core::workspace_errors::{
     WorkspaceResolutionFailure, WorkspaceResolutionFailureKind, workspace_resolution_failure_kind,
 };
 
+// `WorkspaceTarget` has been relocated to `julie-context` so that
+// `ToolContext::resolve_workspace_target` can name it without a cycle.
+// All importers of `crate::tools::navigation::resolution::WorkspaceTarget`
+// continue to resolve unchanged via this re-export.
+pub use julie_context::WorkspaceTarget;
+
 /// Parse a qualified symbol name like "MyClass::method" or "MyClass.method"
 /// into (parent_name, child_name), splitting on the LAST separator.
 ///
@@ -34,19 +40,6 @@ pub fn parse_qualified_name(symbol: &str) -> Option<(&str, &str)> {
     }
     None
 }
-
-/// Workspace targeting for tool operations.
-///
-/// Replaces the previous `Option<String>` / `Option<Vec<String>>` return types
-/// from workspace resolution with an explicit enum that all tool callers match on.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkspaceTarget {
-    /// Use the primary workspace (handler.get_workspace().db)
-    Primary,
-    /// Use a specific non-primary workspace by ID
-    Target(String),
-}
-
 
 fn workspace_resolution_failure(
     kind: WorkspaceResolutionFailureKind,
