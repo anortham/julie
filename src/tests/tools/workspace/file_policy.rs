@@ -1,4 +1,4 @@
-use crate::tools::workspace::indexing::file_policy::{
+use julie_core::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
     should_watch_path,
 };

@@ -1,37 +1,6 @@
 //! Symbol extraction for workspace indexing.
-//! Uses the canonical extractor pipeline so workspace indexing matches the supported public API.
-
-use crate::extractors::ExtractionResults;
-use crate::tools::workspace::commands::ManageWorkspaceTool;
-use anyhow::Result;
-use tracing::debug;
-
-impl ManageWorkspaceTool {
-    /// Static version for use in spawn_blocking (where self is not available)
-    ///
-    /// This method extracts symbols without requiring `&self`, making it suitable for use inside
-    /// `spawn_blocking` closures. It delegates to the canonical extractor pipeline so indexing,
-    /// JSONL handling, and path normalization all follow the same production path.
-    pub(crate) fn extract_symbols_static(
-        file_path: &str,
-        content: &str,
-        workspace_root_path: &std::path::Path,
-    ) -> Result<ExtractionResults> {
-        debug!("Extracting symbols (static): file={}", file_path);
-        debug!("    Content length: {} chars", content.len());
-
-        let results =
-            crate::extractors::extract_canonical(file_path, content, workspace_root_path)?;
-
-        debug!(
-            "🎯 extract_symbols_static returning: {} symbols, {} relationships, {} identifiers, {} types for file: {}",
-            results.symbols.len(),
-            results.relationships.len(),
-            results.identifiers.len(),
-            results.types.len(),
-            file_path
-        );
-
-        Ok(results)
-    }
-}
+//!
+//! `ManageWorkspaceTool::extract_symbols_static` was the only item here; it was a
+//! thin wrapper over `crate::extractors::extract_canonical` and is now called
+//! directly at the `indexing_core::extraction::process_file_with_parser` call site,
+//! severing the `indexing_core → ManageWorkspaceTool` dependency edge.

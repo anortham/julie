@@ -3,9 +3,9 @@
 //! This module provides utilities for determining which files should be indexed
 //! based on extension and ignore patterns.
 
-use crate::tools::shared::BLACKLISTED_DIRECTORIES;
-use crate::tools::workspace::indexing::file_policy;
 use anyhow::Result;
+use julie_core::file_policy;
+use julie_core::shared::BLACKLISTED_DIRECTORIES;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::collections::HashSet;
 use std::path::Path;

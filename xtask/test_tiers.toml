@@ -5,12 +5,12 @@
 nano = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
-dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-dep-integration"]
+dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-dep-integration"]
 # System coverage kept separate from fast local buckets.
 system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -46,18 +46,23 @@ notes = "core database layer"
 commands = ["cargo nextest run -p julie-core"]
 
 [buckets.core-embeddings]
-# Embedding/provider cluster; multiple modules that often move together.
+# Top-crate embedding/provider tests that stayed behind after Phase 2 PR 2a.
+# The bulk of the embedding stack (embedding_metadata, embedding_deps,
+# embedding_sidecar_protocol, sidecar_supervisor_tests — 118 tests) relocated INTO
+# julie-pipeline and now runs via the `core-pipeline` bucket. The three survivors
+# below still live in the top crate (src/tests/core/) — embedding_provider +
+# embedding_sidecar_provider exercise the moved code through shim re-exports, and
+# sidecar_embedding_tests holds the top-crate-only CARGO_MANIFEST_DIR resolution
+# test. A nextest filter that matches zero tests exits non-zero (code 4), so the
+# moved-group filters were removed here to keep this bucket green; their coverage
+# is preserved by `core-pipeline`.
 expected_seconds = 15
 timeout_seconds = 60
 scope_label = "core"
-notes = "embedding stack"
+notes = "embedding stack (top-crate survivors; bulk moved to core-pipeline)"
 commands = [
   "cargo nextest run --lib tests::core::embedding_provider -- --skip search_quality",
-  "cargo nextest run --lib tests::core::embedding_metadata -- --skip search_quality",
-  "cargo nextest run --lib tests::core::embedding_deps -- --skip search_quality",
-  "cargo nextest run --lib tests::core::embedding_sidecar_protocol -- --skip search_quality",
   "cargo nextest run --lib tests::core::embedding_sidecar_provider -- --skip search_quality",
-  "cargo nextest run --lib tests::core::sidecar_supervisor_tests -- --skip search_quality",
   "cargo nextest run --lib tests::core::sidecar_embedding_tests -- --skip search_quality",
 ]
 
@@ -349,9 +354,12 @@ expected_seconds = 60
 timeout_seconds = 120
 scope_label = "core"
 notes = "misc fast core coverage"
+# Note: `utils::string_similarity::tests` was removed here — string_similarity
+# relocated to julie-core in PR 2a U1, and its tests run via the `core-database`
+# bucket (`cargo nextest run -p julie-core`). A zero-match nextest filter exits 4,
+# so leaving it here made `dev` RED.
 commands = [
   "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
-  "cargo nextest run --lib utils::string_similarity::tests -- --skip search_quality",
   "cargo nextest run --lib tests::integration::watcher_filtering -- --skip search_quality",
   "cargo nextest run --lib tests::core::handler -- --skip search_quality",
   "cargo nextest run --lib tests::core::language -- --skip search_quality",
@@ -376,6 +384,19 @@ timeout_seconds = 60
 scope_label = "core"
 notes = "julie-index crate: search + analysis layer above julie-core"
 commands = ["cargo nextest run -p julie-index"]
+
+[buckets.core-pipeline]
+# julie-pipeline crate (Phase 2 PR 2a crate split): indexing + embedding engine
+# above julie-index. `cargo nextest run -p julie-pipeline` compiles the crate's
+# test binary AND runs its integration `no_upward_deps` tripwire (verified:
+# nextest runs the integration binary, it is NOT skipped), so this single command
+# both runs the ~142 relocated pipeline/embedding unit tests and guards the
+# dependency direction (no upward/sibling deps — R7).
+expected_seconds = 10
+timeout_seconds = 60
+scope_label = "core"
+notes = "julie-pipeline crate: indexing + embedding engine above julie-index"
+commands = ["cargo nextest run -p julie-pipeline"]
 
 [buckets.daemon]
 # Daemon-mode tests: handler construction, HTTP session lifecycle,
