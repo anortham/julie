@@ -411,15 +411,14 @@ pub(crate) fn spawn_embedding_init(
 
         // Single init_result computed from whichever path is active; both
         // branches produce the same type so the existing match below is
-        // byte-for-byte unchanged — the (Some,Some) arm's device_info() call
-        // gates Ready on a real health round-trip, and the daemon_db model-sync
-        // runs for both paths.
+        // byte-for-byte unchanged — ensure_ready() gates Ready on a real
+        // health handshake, and the daemon_db model-sync runs for both paths.
         let init_result = if use_embedding_host() {
             tokio::task::spawn_blocking(move || {
                 // All blocking work — including the health round-trip triggered
-                // by accelerated()/degraded_reason() — must stay inside this
-                // closure. Calling them outside (e.g. in a .map()) would block
-                // the tokio runtime and deadlock with the async server task.
+                // by ensure_ready() — must stay inside this closure. Calling
+                // blocking I/O outside (e.g. in a .map()) would block the
+                // tokio runtime and deadlock with the async server task.
                 match crate::embedding_host_launch::connect_or_spawn_host(&paths) {
                     Ok(rpc) => {
                         // Hard-gate: ensure_ready() runs the health handshake
@@ -427,26 +426,36 @@ pub(crate) fn spawn_embedding_init(
                         // dyn-trait getters (accelerated/degraded_reason/
                         // dimensions/device_info) would otherwise swallow by
                         // returning silent defaults.
-                        if let Err(e) = rpc.ensure_ready() {
-                            let status = crate::embeddings::EmbeddingRuntimeStatus {
-                                requested_backend: crate::embeddings::EmbeddingBackend::Sidecar,
-                                resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,
-                                accelerated: false,
-                                degraded_reason: Some(format!("embedding-host not ready: {e}")),
-                            };
-                            return (None, Some(status));
+                        match rpc.ensure_ready() {
+                            Ok(()) => {
+                                let provider: Arc<dyn crate::embeddings::EmbeddingProvider> =
+                                    Arc::new(rpc);
+                                // OnceLock already populated by ensure_ready()
+                                // — cache hits below, no extra I/O.
+                                let status = crate::embeddings::EmbeddingRuntimeStatus {
+                                    requested_backend:
+                                        crate::embeddings::EmbeddingBackend::Sidecar,
+                                    resolved_backend:
+                                        crate::embeddings::EmbeddingBackend::Sidecar,
+                                    accelerated: provider.accelerated().unwrap_or(false),
+                                    degraded_reason: provider.degraded_reason(),
+                                };
+                                (Some(provider), Some(status))
+                            }
+                            Err(e) => {
+                                let status = crate::embeddings::EmbeddingRuntimeStatus {
+                                    requested_backend:
+                                        crate::embeddings::EmbeddingBackend::Sidecar,
+                                    resolved_backend:
+                                        crate::embeddings::EmbeddingBackend::Unresolved,
+                                    accelerated: false,
+                                    degraded_reason: Some(format!(
+                                        "embedding-host health handshake failed: {e}"
+                                    )),
+                                };
+                                (None, Some(status))
+                            }
                         }
-                        let provider: Arc<dyn crate::embeddings::EmbeddingProvider> =
-                            Arc::new(rpc);
-                        // OnceLock already populated by ensure_ready() — cache
-                        // hits below, no extra I/O.
-                        let status = crate::embeddings::EmbeddingRuntimeStatus {
-                            requested_backend: crate::embeddings::EmbeddingBackend::Sidecar,
-                            resolved_backend: crate::embeddings::EmbeddingBackend::Sidecar,
-                            accelerated: provider.accelerated().unwrap_or(false),
-                            degraded_reason: provider.degraded_reason(),
-                        };
-                        (Some(provider), Some(status))
                     }
                     Err(e) => {
                         let status = crate::embeddings::EmbeddingRuntimeStatus {

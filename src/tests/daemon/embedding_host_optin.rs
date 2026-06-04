@@ -178,7 +178,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     #[serial(embedding_host_optin_env)]
-    async fn host_path_publishes_unavailable_when_host_not_ready() {
+    async fn host_unavailable_when_health_not_ready() {
         use julie_pipeline::embeddings::host_transport::{HostAddress, HostListener};
         use julie_pipeline::embeddings::{
             HealthResult, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
@@ -232,10 +232,16 @@ mod tests {
 
         let outcome = svc.wait_until_settled(Duration::from_secs(5)).await;
 
-        assert!(
-            matches!(outcome, EmbeddingServiceSettled::Unavailable { .. }),
-            "expected Unavailable when host reports ready=false",
-        );
+        match &outcome {
+            EmbeddingServiceSettled::Unavailable { reason, .. } => {
+                assert!(
+                    reason.contains("embedding-host health handshake failed")
+                        || reason.contains("not ready"),
+                    "reason should mention the health failure; got: {reason:?}",
+                );
+            }
+            _ => panic!("expected Unavailable when host reports ready=false"),
+        }
         server.await.expect("fake host server task");
     }
 }
