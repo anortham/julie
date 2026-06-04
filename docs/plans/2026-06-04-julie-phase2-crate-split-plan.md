@@ -61,6 +61,42 @@ The gating PR. Stand up the abstraction, do the mechanical swap, then physically
 - **Relink-cure check:** touch a `crates/julie-tools/src` file → ~498 tool unit tests rebuild in `-p julie-tools`, not the top crate. Record wall-clock.
 - `cargo xtask test dev` + `cargo xtask test dogfood` green (search/scoring touched); live smoke search/deep_dive/fast_refs/get_context/edit_file identical.
 
+### PR 2b — VALIDATED against post-2a `main` (HEAD `07fe4a27`)
+
+Re-validated by an 11-agent read-only workflow (6 map → 1 draft → 3 adversarial-verify → 1 synthesize, ~1M tokens). All 3 adversarial lenses (raw-fields, async-cross-ws, index-pending-daemon) returned **surface complete** — `draft.uncovered_uses == []`. The boundary holds; the deltas below are corrections to the pre-2a design, plus lead decisions on the open questions.
+
+**`ToolContext` surface = 21 methods** (design said ~20; map found 23; lead dropped 2 over-inclusions — see decisions). Final set:
+- *identity (sync):* `current_workspace_id`, `require_primary_workspace_identity`, `require_primary_workspace_root`, `require_primary_workspace_binding`, `loaded_workspace_id`, `is_primary_workspace_swap_in_progress`, `session_id() -> &str` (**NEW accessor** wrapping the raw `session_metrics.session_id` field — only `.session_id` is read).
+- *primary db/index (async):* `primary_pooled_database`, `primary_pooled_database_and_search_index`, `primary_workspace_snapshot`, `get_workspace`.
+- *cross-workspace (async):* `get_pooled_database_for_workspace`, `get_database_for_workspace` (**NEW — missing from the design's enumeration; used at 4 probe sites in search/mod.rs**), `get_search_index_for_workspace`, `get_workspace_root_for_target` (also absorbs the `refactoring/mod.rs` daemon_db workspace-root read).
+- *embeddings (async):* `embedding_provider`, `ensure_embedding_provider(timeout)` (**purpose-method**, encapsulates `wait_for_embedding_provider_settled`: daemon `EmbeddingServiceSettled` wait + stdio lazy-init).
+- *spillover (sync):* `spillover_store() -> Arc<SpilloverStore>` (**NEW accessor** wrapping the raw field; the `SpilloverStore` TYPE relocates to julie-context).
+- *purpose-methods (top-crate impls, keep daemon/tool types out of julie-tools):* `resolve_workspace_target` (Blocker 2 — encapsulates the WHOLE `resolve_workspace_filter` resolver verbatim, incl. the `activate_workspace_with_root` mutation), `ensure_target_workspace_indexed_if_pending` (Blocker 1 — the only `ManageWorkspaceTool` site), `system_readiness` (Blocker 5 — **CORRECTED to a purpose-method, NOT a default method**).
+
+**Blocker corrections (vs design §4):**
+- **B2:** resolver needs **6 caps + 1 mutation** (not 5). Resolver body spans `resolution.rs:94-162`, mutation at `:133`. Fix unchanged (encapsulate verbatim).
+- **B5:** `system_readiness` is **NOT a pure default method** — the primary/None branch (`health/checker.rs:113 → system_snapshot`) reads `embedding_service.is_some()` (`:89`, daemon-only). Downgrade to a top-crate purpose-method (the design's own fallback). `SystemStatus` already in julie-core (`health_types.rs:12`).
+- **B3 / file_policy:** fully RESOLVED in PR 2a. Residual 2b work = mechanical import repoint when tools physically move (T2b.5): `crate::utils::*` / `crate::mcp_compat::*` → `julie_core::*` (~29 `serde_lenient` string-literal `deserialize_with=` sites + mcp_compat). The shims live in the top crate and are unreachable from julie-tools.
+- **B4:** confirmed a **2c** concern (commands not in the 2b move set).
+
+**New blockers from the adversarial pass:**
+- **NB1 (T2b.1 STRUCTURAL PRECONDITION):** `WorkspaceTarget` enum (return type of `resolve_workspace_target`) lives in `src/tools/navigation/resolution.rs:43` — a julie-tools file consumed by ~12 tool files. It MUST relocate **before** the trait can name it (else context→tools illegal). **Lead decision: relocate to julie-context** (co-located with the trait; only tools consume it, and tools dep context). Fold into T2b.1.
+- **NB2 (T2b.4 enumeration risk, NOT a coverage gap):** `ensure_embedding_provider` has **4 production callers**, not 1: `nl_embeddings.rs:56`, `execution.rs:121` (direct), `text_search.rs:195` + `:214` (via `maybe_initialize_embeddings_for_nl_definitions`). The acceptance grep `EmbeddingServiceSettled → zero` will catch a miss in nl_embeddings but NOT `execution.rs:121` (it names no daemon type). **T2b.4 done-check MUST add:** `rg "wait_for_embedding_provider_settled" src/tools/` → zero after the swap.
+- **NB3 (2c flag):** `registry/health.rs` (a "daemon-free" file slated for runtime in 2c) calls `HealthChecker` (top-crate, above runtime). Pre-flag for 2c; not a 2b concern.
+
+**Lead decisions on the open questions:**
+1. **OMIT `record_refactor_metrics`** — no moved tool writes refactor metrics (the daemon write is at the handler layer; `refactoring/mod.rs:184` is a workspace-root read covered by `get_workspace_root_for_target`). Add only if a consumer surfaces in T2b.4.
+2. **DROP `acquire_mutation_gate` + `current_workspace_root`** (minimal trait): no moved tool calls either (the gate is acquired at handler/commands/startup; `symbols/primary.rs` uses a local var). 21-method surface. Re-add in T2b.4 if a moved path needs one (cheap — trait is in julie-context).
+3. **`session_id() -> &str`** (callers `.to_string()` where they need owned).
+4. **`WorkspaceTarget` home = julie-context** (see NB1).
+5. **`external_extract::{operations,report,cli}`**: keep in T2b.5 scope **with a handler-free verify-gate** — relocate if clean, defer if it pulls a daemon/runtime edge.
+
+**Test inventory (relink-cure target):** ~**603 handler-free / ~246 handler-bound** across the 9 julie-tools dirs (design estimated ~498/~159; direction holds — strong cure — magnitude ~1.2–1.6× larger). `JulieServerHandler::new_for_test()` (`handler.rs:955`) is the dominant bound-test ctor (36 files). Acceptance numbers in the section above should read "~603 free / ~246 bound", not 498/159.
+
+**`SpilloverStore` relocation:** deps are `std` + `anyhow` + `blake3` only (`store.rs:1-6`), both already julie-core deps → clean move to julie-context, handler-free confirmed.
+
+**Validated execution order (strict sequential):** T2b.1 (julie-context: trait + relocate SpilloverStore + WorkspaceTarget) → T2b.2 (`impl ToolContext for JulieServerHandler`, incl. the 4 purpose-methods) → T2b.3 (`FakeToolContext`, may run parallel to T2b.4 once T2b.2 lands) → T2b.4 (facade swap — high-risk, gate each batch on `nextest -p julie --no-run`) → T2b.5 (physical julie-tools extraction + test relocation + import repoint) → T2b.6 (tripwire + xtask routing). T2b.4 must compile against the real handler-as-ToolContext BEFORE the physical move (T2b.5), because the move only succeeds once tools name zero handler/daemon types.
+
 ---
 
 ## PR 2c — `julie-runtime` (highest of the three)
