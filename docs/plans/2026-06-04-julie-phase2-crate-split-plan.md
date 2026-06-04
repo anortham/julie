@@ -74,6 +74,10 @@ One row per verification run. Reuse only when Scope Label + Commit SHA match cur
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| U1: julie-core test binary compiles after leaf relocations | `cargo nextest run -p julie-core --no-run` | affected-change | 435fc2f6 | pass | 2026-06-04T07:34:31Z | no |
+| U1: top-crate test binary compiles (cfg(test) — the gate `cargo build` missed) | `cargo nextest run -p julie --no-run` | affected-change | 435fc2f6 | pass | 2026-06-04T07:34:31Z | no |
+| U1: dep-direction tripwires hold (no upward source refs / no cyclic+upward manifest deps) | `cargo test -p julie-core --test no_upward_deps && cargo test -p julie-index --test no_upward_deps` | affected-change | 435fc2f6 | pass | 2026-06-04T07:34:31Z | no |
+| U1: top-crate lib build is warning-clean | `cargo build` (warning count = 0) | affected-change | 435fc2f6 | pass | 2026-06-04T07:34:31Z | no |
 
 ---
 
