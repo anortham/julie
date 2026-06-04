@@ -101,10 +101,12 @@ pub async fn run_embedding_host_with_factory(
     let _ =
         tokio::task::spawn_blocking(move || p.wait_for_exit(Duration::from_secs(3))).await;
 
-    // `lock_file` drops here → fs2 lock released.
-    // `listener` drops here → socket file removed (unix Drop impl).
-    drop(lock_file);
+    // Drop listener FIRST (removes socket file) then lock_file (releases lock).
+    // Order matters: once the lock is free a new host process may win it and
+    // call HostListener::bind — at that point the old socket must already be
+    // gone so the new host can cleanly re-bind without hitting AddrInUse.
     drop(listener);
+    drop(lock_file);
 
     info!("embedding-host shut down cleanly");
     Ok(())

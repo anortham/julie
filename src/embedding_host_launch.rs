@@ -10,7 +10,9 @@
 //! 2. **Host not live** — locates the `julie-embedding-host` sibling binary
 //!    (same strategy as `src/adapter/launcher.rs` for `julie-daemon`), spawns
 //!    it as a detached background process, then polls until the socket/pipe
-//!    accepts connections or the 10-second timeout expires.
+//!    accepts connections or the spawn timeout expires (default 180 s, override
+//!    with `JULIE_EMBEDDING_HOST_SPAWN_TIMEOUT_SECS`).  180 s covers a cold
+//!    sidecar initialisation (model download + venv bootstrap).
 //!
 //! `JULIE_HOME` is pinned from the `paths` argument when spawning, so the child
 //! binds the same socket this function polls; the `JULIE_EMBEDDING_*` vars are
@@ -47,10 +49,30 @@ pub fn connect_or_spawn_host(paths: &DaemonPaths) -> Result<RpcEmbeddingProvider
     info!("embedding-host not live; spawning it now");
     spawn_host_process(paths)?;
 
-    poll_for_liveness(&addr, Duration::from_secs(10))
+    poll_for_liveness(&addr, spawn_timeout())
         .context("embedding-host did not become live after spawn")?;
 
     Ok(RpcEmbeddingProvider::new(addr))
+}
+
+// ---------------------------------------------------------------------------
+// Spawn timeout
+// ---------------------------------------------------------------------------
+
+/// How long `poll_for_liveness` waits after spawning the host binary.
+///
+/// Default: 180 s — enough for a cold sidecar init (model download + venv
+/// bootstrap, which can take up to ~180 s on a slow machine).
+///
+/// Override with `JULIE_EMBEDDING_HOST_SPAWN_TIMEOUT_SECS` for tests or
+/// deployments where startup is known to be faster or slower.
+fn spawn_timeout() -> Duration {
+    const DEFAULT_SECS: u64 = 180;
+    std::env::var("JULIE_EMBEDDING_HOST_SPAWN_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(DEFAULT_SECS))
 }
 
 // ---------------------------------------------------------------------------

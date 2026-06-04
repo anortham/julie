@@ -20,6 +20,7 @@
 //! box** (matches the Phase 3 design's "Unix proof is the must-have" stance).
 
 use std::io::{self, BufRead, BufReader, Write};
+use std::time::Duration;
 
 #[cfg(unix)]
 use std::path::PathBuf;
@@ -93,12 +94,42 @@ pub struct HostClientConn {
 }
 
 impl HostClientConn {
-    /// Open a blocking connection to the host. Errors if the host is not
-    /// listening (socket/pipe absent or refused).
+    /// Default read/write timeout applied to every `round_trip`.
+    ///
+    /// Prevents a stalled host from hanging a session indefinitely.
+    /// Override per-call with [`connect_with_timeout`], or globally via
+    /// `JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS`.
+    const DEFAULT_RPC_TIMEOUT_SECS: u64 = 30;
+
+    /// Read the default RPC timeout from the environment, falling back to
+    /// [`DEFAULT_RPC_TIMEOUT_SECS`].
+    fn default_rpc_timeout() -> Duration {
+        std::env::var("JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(Self::DEFAULT_RPC_TIMEOUT_SECS))
+    }
+
+    /// Open a blocking connection to the host using the default RPC timeout.
+    ///
+    /// Errors if the host is not listening (socket/pipe absent or refused).
     pub fn connect(addr: &HostAddress) -> io::Result<Self> {
+        Self::connect_with_timeout(addr, Self::default_rpc_timeout())
+    }
+
+    /// Open a blocking connection and set `rpc_timeout` as both the read and
+    /// write timeout on the underlying socket.
+    ///
+    /// A `round_trip` that takes longer than `rpc_timeout` (because the host
+    /// is stalled or unresponsive) returns an error instead of blocking forever.
+    /// Use a short timeout in tests for deterministic failure paths.
+    pub fn connect_with_timeout(addr: &HostAddress, rpc_timeout: Duration) -> io::Result<Self> {
         #[cfg(unix)]
         {
             let writer = StdUnixStream::connect(&addr.socket)?;
+            writer.set_read_timeout(Some(rpc_timeout))?;
+            writer.set_write_timeout(Some(rpc_timeout))?;
             let reader = BufReader::new(writer.try_clone()?);
             Ok(Self { writer, reader })
         }
@@ -106,6 +137,9 @@ impl HostClientConn {
         {
             // A Windows named pipe is opened like a file. Byte-mode framing
             // (newline-delimited) matches the server side below.
+            // Windows pipe handles do not support SO_RCVTIMEO; callers on
+            // Windows should rely on async cancellation instead.
+            let _ = rpc_timeout;
             let writer = std::fs::OpenOptions::new()
                 .read(true)
                 .write(true)
