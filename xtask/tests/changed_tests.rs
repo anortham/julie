@@ -197,6 +197,32 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
 }
 
 #[test]
+fn changed_tests_julie_runtime_crate_split_routing() {
+    let manifest = load_checked_in_manifest();
+
+    for (path, expected_buckets) in [
+        // Watcher source → core-runtime + workspace-runtime (daemon pool tests
+        // exercise the watcher lifecycle from above — R6 co-target).
+        (
+            "crates/julie-runtime/src/watcher/mod.rs",
+            vec!["core-runtime", "workspace-runtime"],
+        ),
+        // Workspace source → core-runtime + workspace-runtime + workspace-init.
+        (
+            "crates/julie-runtime/src/workspace/registry.rs",
+            vec!["core-runtime", "workspace-runtime", "workspace-init"],
+        ),
+        // lib.rs / catch-all → core-runtime only.
+        ("crates/julie-runtime/src/lib.rs", vec!["core-runtime"]),
+    ] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+        assert_eq!(selection.bucket_names, expected_buckets, "{path}");
+        assert!(selection.fallback_paths.is_empty(), "{path}");
+    }
+}
+
+#[test]
 fn changed_tests_julie_tools_crate_split_routing() {
     let manifest = sample_manifest();
     for (path, expected_buckets) in [

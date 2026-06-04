@@ -1,6 +1,6 @@
 //! Tests for the file watcher module extracted from the implementation file to keep it lean.
 
-use crate::language; // Centralized language support
+use julie_extractors::language; // Language detection (julie_extractors::language::*)
 use crate::watcher::IncrementalIndexer;
 use crate::watcher::filtering;
 use std::fs;
@@ -148,9 +148,9 @@ fn test_watcher_filtering_keeps_text_only_and_extensionless_paths_in_sync() {
 #[serial_test::serial]
 #[ignore] // Flaky in test environment - file watcher events unreliable in parallel test runs
 async fn test_real_time_file_watcher_indexing() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
-    use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
+    use julie_core::test_support::atomic_cleanup_julie_dir;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::time::sleep;
@@ -189,7 +189,7 @@ async fn test_real_time_file_watcher_indexing() {
         extractor_manager.clone(),
         None,
         shared_provider, // No embedding provider in test
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 
@@ -251,13 +251,13 @@ async fn test_real_time_file_watcher_indexing() {
 
 #[tokio::test]
 async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
     use std::sync::{Arc, Mutex, atomic::Ordering};
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_rescan_repair");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_rescan_repair");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let tracked_file = workspace_root.join("tracked.rs");
@@ -274,7 +274,7 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
         extractor_manager.clone(),
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 
@@ -334,11 +334,11 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
 
 #[tokio::test]
 async fn test_process_pending_changes_retries_persisted_extractor_failure() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_retry_persisted_repair");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_retry_persisted_repair");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let retry_file = workspace_root.join("retry.rs");
@@ -367,7 +367,7 @@ async fn test_process_pending_changes_retries_persisted_extractor_failure() {
         extractor_manager,
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 
@@ -399,12 +399,12 @@ async fn test_process_pending_changes_retries_persisted_extractor_failure() {
 
 #[tokio::test]
 async fn test_process_pending_changes_does_not_leave_watcher_repair_active_without_search_index() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
-    use crate::tools::workspace::indexing::state::{IndexingOperation, IndexingRuntimeState};
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
+    use julie_core::indexing_state::{IndexingOperation, IndexingRuntimeState};
     use std::sync::{Arc, Mutex};
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_dirty_without_search_index");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_dirty_without_search_index");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let db_path = workspace_root.join("test.db");
@@ -441,7 +441,7 @@ async fn test_process_pending_changes_does_not_leave_watcher_repair_active_witho
     );
     assert!(
         snapshot.repair_reasons.contains(
-            &crate::tools::workspace::indexing::state::IndexingRepairReason::TantivyDirty
+            &julie_core::indexing_state::IndexingRepairReason::TantivyDirty
         ),
         "dirty projection reason should stay visible for later repair"
     );
@@ -482,8 +482,8 @@ async fn test_run_guarded_task_step_returns_true_after_success() {
 /// content does change.
 #[tokio::test]
 async fn test_blake3_change_detection() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
     use std::sync::{Arc, Mutex};
@@ -619,11 +619,11 @@ async fn test_blake3_change_detection() {
 /// an infinite 1-second retry loop.
 #[tokio::test]
 async fn test_repair_retry_clears_unsupported_extension() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_repair_unsupported_ext");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_repair_unsupported_ext");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create a binary file that has an unsupported extension
@@ -658,7 +658,7 @@ async fn test_repair_retry_clears_unsupported_extension() {
         extractor_manager,
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 

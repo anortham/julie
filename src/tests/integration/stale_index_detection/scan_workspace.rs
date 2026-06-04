@@ -31,7 +31,7 @@ fn test_scan_workspace_files_respects_julieignore() -> Result<()> {
     )?;
 
     // Call scan_workspace_files
-    let files = crate::startup::scan_workspace_files(workspace_path)?;
+    let files = julie_core::workspace_scan::scan_workspace_files(workspace_path)?;
 
     // Verify: normal.rs is included
     assert!(files.contains("normal.rs"), "Should find normal.rs");
@@ -66,7 +66,7 @@ fn test_scan_workspace_files_respects_gitignore() -> Result<()> {
     fs::create_dir_all(root.join("src"))?;
     fs::write(root.join("src/main.rs"), "fn main() {}")?;
 
-    let files = crate::startup::scan_workspace_files(root)?;
+    let files = julie_core::workspace_scan::scan_workspace_files(root)?;
     assert!(files.contains("src/main.rs"), "should include src/main.rs");
     assert!(
         !files.iter().any(|f| f.contains("generated")),
@@ -89,7 +89,7 @@ fn test_scan_workspace_files_includes_unknown_text_extensions() -> Result<()> {
         "<svg><text>ignored</text></svg>\n",
     )?;
 
-    let files = crate::startup::scan_workspace_files(root)?;
+    let files = julie_core::workspace_scan::scan_workspace_files(root)?;
 
     assert!(
         files.contains("flake.nix"),
@@ -131,7 +131,7 @@ fn test_scan_workspace_files_returns_unix_style_paths() -> Result<()> {
     fs::write(&nested_file, "pub fn search() {}")?;
 
     // Call scan_workspace_files
-    let files = crate::startup::scan_workspace_files(workspace_path)?;
+    let files = julie_core::workspace_scan::scan_workspace_files(workspace_path)?;
 
     // Verify: ALL paths use Unix-style forward slashes
     for file_path in &files {

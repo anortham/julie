@@ -8,3 +8,6 @@ pub use julie_core::test_support::{cleanup, db, tempdir};
 
 mod fake_tool_context;
 pub use fake_tool_context::FakeToolContext;
+
+pub mod workspace_markers;
+pub use workspace_markers::{make_isolated_workspace_root, mark_workspace_root};

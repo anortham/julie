@@ -1,9 +1,7 @@
 use super::{FileChangeEvent, FileChangeType, IncrementalIndexer, SharedEmbeddingProvider};
-use crate::database::SymbolDatabase;
-use crate::extractors::ExtractorManager;
-use crate::tools::workspace::indexing::state::{
-    IndexingOperation, IndexingRepairReason, SharedIndexingRuntime,
-};
+use julie_core::database::SymbolDatabase;
+use julie_core::indexing_state::{IndexingOperation, IndexingRepairReason, SharedIndexingRuntime};
+use julie_extractors::ExtractorManager;
 use crate::watcher::observability::timed_acquire_gate_with_registry_or_cancelled;
 use crate::workspace::mutation_gate::{MutationGuard, Registry as MutationGateRegistry};
 use anyhow::Result;
@@ -29,9 +27,9 @@ const MAX_TANTIVY_RETRY_ATTEMPTS: u32 = 10;
 pub(super) struct QueueRuntime {
     db: Arc<StdMutex<SymbolDatabase>>,
     extractor_manager: Arc<ExtractorManager>,
-    search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
+    search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
     embedding_provider: SharedEmbeddingProvider,
-    lang_configs: Arc<crate::search::language_config::LanguageConfigs>,
+    lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
     index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
     last_processed: Arc<TokioMutex<HashMap<PathBuf, SystemTime>>>,
     supported_extensions: HashSet<String>,
@@ -75,9 +73,9 @@ impl QueueRuntime {
     pub(super) fn new(
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
-        search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
+        search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
         embedding_provider: SharedEmbeddingProvider,
-        lang_configs: Arc<crate::search::language_config::LanguageConfigs>,
+        lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
         index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
         last_processed: Arc<TokioMutex<HashMap<PathBuf, SystemTime>>>,
         supported_extensions: HashSet<String>,
@@ -383,12 +381,12 @@ impl QueueRuntime {
         let Some(language) = path
             .extension()
             .and_then(|extension| extension.to_str())
-            .and_then(crate::extractors::language::detect_language_from_extension)
+            .and_then(julie_extractors::language::detect_language_from_extension)
         else {
             return false;
         };
 
-        crate::extractors::registry::registry_entry(language).is_ok()
+        julie_extractors::registry::registry_entry(language).is_ok()
     }
 
     async fn retry_dirty_tantivy(&self) {
@@ -468,11 +466,11 @@ impl QueueRuntime {
                 let symbol_ids: Vec<String> =
                     symbols.iter().map(|symbol| symbol.id.clone()).collect();
                 let partner_symbol_ids =
-                    crate::search::projection::collect_relationship_partner_symbol_ids(
+                    julie_index::search::projection::collect_relationship_partner_symbol_ids(
                         &db_guard,
                         &symbol_ids,
                     )?;
-                crate::search::projection::apply_uncommitted_documents_from_symbols(
+                julie_index::search::projection::apply_uncommitted_documents_from_symbols(
                     &idx,
                     &symbols,
                     &rel_clone,
@@ -482,7 +480,7 @@ impl QueueRuntime {
                     &db_guard,
                 )?;
                 if !partner_symbol_ids.is_empty() {
-                    crate::search::projection::reproject_partner_symbols(
+                    julie_index::search::projection::reproject_partner_symbols(
                         &idx,
                         &db_guard,
                         &partner_symbol_ids,
@@ -772,7 +770,7 @@ impl QueueRuntime {
         };
         let indexed_set: HashSet<String> = indexed_hashes.keys().cloned().collect();
 
-        let workspace_files = match crate::startup::scan_workspace_files(&self.workspace_root) {
+        let workspace_files = match julie_core::workspace_scan::scan_workspace_files(&self.workspace_root) {
             Ok(files) => files,
             Err(err) => {
                 warn!(
@@ -853,7 +851,7 @@ impl QueueRuntime {
                 continue;
             }
 
-            match crate::database::calculate_file_hash(&abs_path) {
+            match julie_core::database::calculate_file_hash(&abs_path) {
                 Ok(current_hash) if current_hash != *stored_hash => {
                     super::dispatch_file_event(
                         FileChangeEvent {

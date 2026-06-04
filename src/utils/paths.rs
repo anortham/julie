@@ -5,14 +5,10 @@
 
 use std::path::{Path, PathBuf};
 
-// strip_unc_prefix lives in julie-core; imported privately so
-// relative_within_workspace can keep calling it unchanged.
-use julie_core::paths::strip_unc_prefix;
-
-// to_relative_unix_style, WorkspaceFileInputResolution, and
-// resolve_workspace_file_input live in julie-core; re-exported publicly so all
+// to_relative_unix_style, WorkspaceFileInputResolution, resolve_workspace_file_input,
+// and relative_within_workspace live in julie-core; re-exported publicly so all
 // crate::utils::paths::* callers compile unchanged.
-pub use julie_core::paths::{WorkspaceFileInputResolution, resolve_workspace_file_input, to_relative_unix_style};
+pub use julie_core::paths::{WorkspaceFileInputResolution, relative_within_workspace, resolve_workspace_file_input, to_relative_unix_style};
 
 /// Convert a path to a user-friendly display string.
 ///
@@ -31,56 +27,6 @@ pub fn display_path(path: &Path) -> String {
     } else {
         s.into_owned()
     }
-}
-
-/// Strip `workspace_root` from `path`, tolerating symlinked workspace roots
-/// (e.g. macOS `/tmp` → `/private/tmp`, `/var` → `/private/var`) and deleted
-/// leaf paths.
-///
-/// The file watcher receives event paths from `notify`, which on macOS reports
-/// canonical (symlink-resolved) paths via FSEvents even when the workspace was
-/// registered under a symlinked root. A naive `path.strip_prefix(workspace_root)`
-/// then fails, and callers that fall back to inspecting the *absolute* path hit
-/// false positives from ancestor directory names — e.g. `/private/tmp/proj/…`
-/// contains the blacklisted component `tmp`, so delete/modify events for gone
-/// files get silently dropped and leave orphaned symbols in the index.
-///
-/// Resolution order:
-/// 1. Direct strip — both paths already share a symlink form (the common case:
-///    canonical project root + canonical event paths, or raw root + raw paths).
-/// 2. Canonicalize the root (which always exists, even when the leaf was
-///    deleted) and retry against the candidate as-is. This recovers the relative
-///    path whenever the candidate is already canonical, which is what `notify`
-///    emits on macOS — and crucially does not require the leaf to exist.
-/// 3. Canonicalize the candidate's current form (existing files only) and retry,
-///    covering the reverse case where the candidate is raw but the root is
-///    canonical (Windows junctions / symlinked candidates).
-///
-/// Returns the workspace-relative path, or `None` when `path` is genuinely not
-/// inside `workspace_root`.
-pub fn relative_within_workspace(path: &Path, workspace_root: &Path) -> Option<PathBuf> {
-    if let Ok(rel) = path.strip_prefix(workspace_root) {
-        return Some(rel.to_path_buf());
-    }
-
-    let canonical_root = match workspace_root.canonicalize() {
-        Ok(root) => strip_unc_prefix(&root),
-        Err(_) => return None,
-    };
-
-    let candidate = strip_unc_prefix(path);
-    if let Ok(rel) = candidate.strip_prefix(&canonical_root) {
-        return Some(rel.to_path_buf());
-    }
-
-    if let Ok(canonical_candidate) = path.canonicalize() {
-        let canonical_candidate = strip_unc_prefix(&canonical_candidate);
-        if let Ok(rel) = canonical_candidate.strip_prefix(&canonical_root) {
-            return Some(rel.to_path_buf());
-        }
-    }
-
-    None
 }
 
 /// Convert a relative Unix-style path to an absolute native path

@@ -132,8 +132,8 @@ async fn test_rename_any_existing_path_emits_modified() {
 /// indexed symbols — should clean up regardless (trust the caller's decision).
 #[tokio::test]
 async fn test_delete_handler_trusts_caller_no_toctou() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::{
         handle_file_created_or_modified_static, handle_file_deleted_static,
     };

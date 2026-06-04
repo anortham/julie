@@ -223,13 +223,12 @@ async fn test_request_db_does_not_block_on_legacy_workspace_mutex() {
     let writer_guard = legacy_db.lock().expect("hold legacy writer mutex");
 
     // Step 4: call request_db under a tight timeout. The spawned task gets a
-    // clone of the workspace Arc and the pool Arc; if request_db touches
-    // `self.db.lock()` it will deadlock against `writer_guard`.
-    let workspace_for_task = Arc::clone(&workspace);
+    // clone of the pool Arc; if request_db were to lock the workspace mutex
+    // it would deadlock against `writer_guard`.
     let pool_for_task = Arc::clone(&pool);
     let pooled_db = timeout(Duration::from_millis(500), async move {
-        workspace_for_task
-            .request_db(&pool_for_task)
+        pool_for_task
+            .request_db()
             .await
             .expect("request_db should succeed")
     })

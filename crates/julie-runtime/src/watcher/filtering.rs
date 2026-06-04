@@ -139,7 +139,7 @@ pub fn contains_blacklisted_directory_relative(path: &Path, workspace_root: Opti
     // silently dropping legitimate delete/modify events. When no root is given
     // (or relativization genuinely fails), fall back to the full path.
     let relative =
-        workspace_root.and_then(|root| crate::utils::paths::relative_within_workspace(path, root));
+        workspace_root.and_then(|root| julie_core::paths::relative_within_workspace(path, root));
     let check_path = relative.as_deref().unwrap_or(path);
     check_path.components().any(|c| {
         if let std::path::Component::Normal(name) = c {
@@ -158,7 +158,7 @@ pub fn contains_blacklisted_directory_relative(path: &Path, workspace_root: Opti
 pub fn is_gitignored(path: &Path, gitignore: &Gitignore, workspace_root: &Path) -> bool {
     // Symlink-tolerant relativization so gitignore patterns anchor correctly
     // even when the event path is canonical but the workspace root is symlinked.
-    let rel_path = match crate::utils::paths::relative_within_workspace(path, workspace_root) {
+    let rel_path = match julie_core::paths::relative_within_workspace(path, workspace_root) {
         Some(p) => p,
         None => return false,
     };
@@ -173,7 +173,7 @@ pub fn is_gitignored(path: &Path, gitignore: &Gitignore, workspace_root: &Path) 
 /// daemon cannot be running anyway, and the conventional `~/.julie`
 /// fallback is handled separately by the workspace-root finder.
 fn is_under_configured_julie_home(path: &Path) -> bool {
-    match crate::paths::DaemonPaths::try_new() {
+    match julie_core::paths::DaemonPaths::try_new() {
         Ok(paths) => paths.is_under_julie_home(path),
         Err(_) => false,
     }
@@ -239,7 +239,7 @@ pub fn should_process_deletion(
     // deleted leaf cannot be canonicalized, so the helper strips via the
     // canonical root instead. If the path is genuinely outside the workspace we
     // still process the deletion (matches the prior strip-failure behavior).
-    let rel_path = match crate::utils::paths::relative_within_workspace(path, workspace_root) {
+    let rel_path = match julie_core::paths::relative_within_workspace(path, workspace_root) {
         Some(p) => p,
         None => return true,
     };

@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use rusqlite::Connection;
 use tokio::sync::Notify;
 use tracing::warn;
@@ -288,6 +288,30 @@ impl WorkspaceConnectionPool {
             min: inner.min,
             max: inner.max,
         }
+    }
+
+    /// Acquire a per-request `SymbolDatabase` backed by a pooled connection.
+    ///
+    /// This pool already knows the on-disk DB path it was constructed with.
+    /// Reading it from this pool (instead of locking a workspace's legacy
+    /// `Arc<Mutex<DB>>` to clone `file_path`) keeps pooled acquisition free
+    /// of contention with writers that hold the legacy lock
+    /// (watcher, bulk-indexer, etc.). The pool path is canonical for both
+    /// stdio and daemon-mode workspaces because it was set at pool
+    /// construction time from the same source.
+    ///
+    /// The workspace's database must have been initialized previously
+    /// (`initialize_database`) — this method assumes the schema is current and
+    /// does NOT run migrations.
+    pub async fn request_db(self: &Arc<Self>) -> anyhow::Result<crate::database::SymbolDatabase> {
+        let file_path = self.db_path().to_path_buf();
+        let pooled = self
+            .acquire()
+            .await
+            .context("acquiring workspace connection from pool")?;
+        Ok(crate::database::SymbolDatabase::from_pooled(
+            pooled, file_path,
+        ))
     }
 }
 

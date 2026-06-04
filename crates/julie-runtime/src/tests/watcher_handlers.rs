@@ -3,9 +3,9 @@
 //! These tests verify that file creation, modification, deletion, and rename
 //! operations correctly update the database with proper path handling.
 
-use crate::database::SymbolDatabase;
-use crate::extractors::ExtractorManager;
-use crate::tools::workspace::indexing::state::IndexingRepairReason;
+use julie_core::database::SymbolDatabase;
+use julie_extractors::ExtractorManager;
+use julie_core::indexing_state::IndexingRepairReason;
 use crate::watcher::handlers::{
     handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
 };
@@ -24,7 +24,7 @@ mod repair_projection;
 /// because identifiers (needed for reference tracking) are silently dropped.
 #[tokio::test]
 async fn test_incremental_indexing_stores_identifiers_and_relationships() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_full_data");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_full_data");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create a Rust file with function calls (produces identifiers + relationships)
@@ -107,7 +107,7 @@ fn caller() -> i32 {
 
 #[tokio::test]
 async fn test_incremental_indexing_stores_cpp_language_for_cpp_h_header() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_cpp_header_language");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_cpp_header_language");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let include_dir = workspace_root.join("include");
@@ -175,7 +175,7 @@ public:
 
 #[tokio::test]
 async fn test_incremental_indexing_resolves_cross_file_pending_relationships() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_pending_resolution");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_pending_resolution");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let caller_file = workspace_root.join("caller.rs");
@@ -273,7 +273,7 @@ fn caller() {
 
 #[tokio::test]
 async fn test_incremental_indexing_oversized_parser_file_switches_to_text_only_without_repair() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_oversized_text_only");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_oversized_text_only");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let file_path = workspace_root.join("main.rs");
@@ -355,7 +355,7 @@ fn original_symbol() {}
 /// Fix: Convert all paths to relative Unix-style before database operations.
 #[tokio::test]
 async fn test_incremental_indexing_absolute_path_handling() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("incremental_indexing");
+    let temp_dir = julie_test_support::unique_temp_dir("incremental_indexing");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create initial test file with one function
@@ -658,7 +658,7 @@ fn final_function() {
 /// Test file deletion with absolute path
 #[tokio::test]
 async fn test_file_deletion_absolute_path() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("file_deletion");
+    let temp_dir = julie_test_support::unique_temp_dir("file_deletion");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create and index a file
@@ -711,7 +711,7 @@ async fn test_file_deletion_absolute_path() {
 /// Test file rename with absolute paths
 #[tokio::test]
 async fn test_file_rename_absolute_paths() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("file_rename");
+    let temp_dir = julie_test_support::unique_temp_dir("file_rename");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create original file
@@ -773,7 +773,7 @@ async fn test_file_rename_absolute_paths() {
 /// path must stay indexed instead of being deleted first.
 #[tokio::test]
 async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("file_rename_destination_failure");
+    let temp_dir = julie_test_support::unique_temp_dir("file_rename_destination_failure");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let old_file = workspace_root.join("old_name.rs");
@@ -854,7 +854,7 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
 
 #[tokio::test]
 async fn test_file_rename_persists_repair_when_source_retirement_fails() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("file_rename_source_retirement_failure");
+    let temp_dir = julie_test_support::unique_temp_dir("file_rename_source_retirement_failure");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let old_file = workspace_root.join("old_name.rs");

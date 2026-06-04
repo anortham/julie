@@ -5,12 +5,12 @@
 nano = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
-dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-dep-integration"]
+dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-dep-integration"]
 # System coverage kept separate from fast local buckets.
 system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -384,7 +384,7 @@ notes = "misc fast core coverage"
 # so leaving it here made `dev` RED.
 commands = [
   "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
-  "cargo nextest run --lib tests::integration::watcher_filtering -- --skip search_quality",
+  "cargo nextest run -p julie-runtime --lib tests::watcher_filtering",
   "cargo nextest run --lib tests::core::handler -- --skip search_quality",
   "cargo nextest run --lib tests::core::language -- --skip search_quality",
   "cargo nextest run --lib tests::core::paths -- --skip search_quality",
@@ -421,6 +421,19 @@ timeout_seconds = 60
 scope_label = "core"
 notes = "julie-pipeline crate: indexing + embedding engine above julie-index"
 commands = ["cargo nextest run -p julie-pipeline"]
+
+[buckets.core-runtime]
+# julie-runtime crate (Phase 2c crate split): watcher + workspace lifecycle
+# layer above julie-pipeline. `cargo nextest run -p julie-runtime` compiles the
+# crate's test binary AND runs its integration `no_upward_deps` tripwire
+# (verified: nextest runs the integration binary, it is NOT skipped), so this
+# single command both runs the ~80 relocated watcher/workspace unit tests and
+# guards the dependency direction (no upward/sibling deps — R7).
+expected_seconds = 10
+timeout_seconds = 60
+scope_label = "core"
+notes = "julie-runtime crate: watcher + workspace lifecycle layer above julie-pipeline"
+commands = ["cargo nextest run -p julie-runtime"]
 
 [buckets.daemon]
 # Daemon-mode tests: handler construction, HTTP session lifecycle,
@@ -502,7 +515,7 @@ commands = [
   "cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality",
   "cargo nextest run --lib tests::daemon::watcher_pool -- --skip search_quality",
   "cargo nextest run --lib tests::daemon::workspace_cleanup -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::workspace::registry -- --skip search_quality",
+  "cargo nextest run -p julie-runtime --lib tests::workspace::registry",
 ]
 
 [buckets.workspace-init]

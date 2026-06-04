@@ -24,6 +24,7 @@ pub mod token_estimation;
 pub mod walk;
 pub mod workspace;
 pub mod workspace_errors;
+pub mod workspace_scan;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

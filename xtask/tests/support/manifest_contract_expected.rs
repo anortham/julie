@@ -83,13 +83,21 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "core-runtime",
+            ExpectedBucket {
+                expected_seconds: 10,
+                timeout_seconds: 60,
+                commands: &["cargo nextest run -p julie-runtime"],
+            },
+        ),
+        (
             "core-fast",
             ExpectedBucket {
                 expected_seconds: 60,
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::integration::watcher_filtering -- --skip search_quality",
+                    "cargo nextest run -p julie-runtime --lib tests::watcher_filtering",
                     "cargo nextest run --lib tests::core::handler -- --skip search_quality",
                     "cargo nextest run --lib tests::core::language -- --skip search_quality",
                     "cargo nextest run --lib tests::core::paths -- --skip search_quality",
@@ -536,7 +544,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::watcher_pool -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::workspace_cleanup -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::workspace::registry -- --skip search_quality",
+                    "cargo nextest run -p julie-runtime --lib tests::workspace::registry",
                 ],
             },
         ),
@@ -597,6 +605,17 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("julie-pipeline crate: indexing + embedding engine above julie-index"),
+            },
+        ),
+        (
+            "core-runtime",
+            ExpectedBucketMetadata {
+                scope_label: "core",
+                owner: "lead",
+                expensive: false,
+                notes: Some(
+                    "julie-runtime crate: watcher + workspace lifecycle layer above julie-pipeline",
+                ),
             },
         ),
         (

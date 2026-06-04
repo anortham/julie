@@ -7,10 +7,11 @@
 use serial_test::serial;
 use std::env;
 use std::fs;
+#[allow(unused_imports)] // consumed by sub-mods via `use super::*`
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
-mod env_paths;
+// env_paths — relocated to julie-runtime (T2c.3); only handler-free tests moved
 mod handler_binding;
 mod indexing_env;
 mod instructions_paths;

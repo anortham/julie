@@ -1,0 +1,59 @@
+[package]
+name = "julie-runtime"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "File-watcher and workspace lifecycle layer above julie-pipeline"
+
+[features]
+# Enable handler-free test helpers shared with downstream consumers.
+test-support = ["dep:julie-test-support"]
+
+[dependencies]
+# Julie workspace crates
+julie-core = { path = "../julie-core" }
+julie-index = { path = "../julie-index" }
+julie-pipeline = { path = "../julie-pipeline" }
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.1.0" }
+
+# Test-support helpers (optional; enabled by the test-support feature or cfg(test))
+julie-test-support = { path = "../julie-test-support", optional = true }
+
+# Async runtime
+tokio = { version = "1.47.1", features = ["full"] }
+
+# Error handling
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# TOML config (workspace/mod.rs: save_config / load_config)
+toml = "0.8"
+
+# File locking (workspace health: disk space check)
+fs2 = "0.4"
+
+# File watching
+notify = "8.2"
+
+# Gitignore-aware directory walking
+ignore = "0.4"
+
+# Content hashing (watcher/handlers.rs: file-change detection)
+blake3 = "1.8"
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = "3.13"
+julie-test-support = { path = "../julie-test-support" }
+julie-index = { path = "../julie-index", features = ["test-support"] }
+serial_test = { version = "3.2", features = ["file_locks"] }
+shellexpand = "3.1"
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+dirs = "6"
