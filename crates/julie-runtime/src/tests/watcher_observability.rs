@@ -9,8 +9,8 @@
 //! dropped. This avoids the `block_on`-inside-a-runtime panic that occurs when
 //! using `with_default(subscriber, || { runtime.block_on(...) })`.
 
-use crate::database::SymbolDatabase;
-use crate::extractors::ExtractorManager;
+use julie_core::database::SymbolDatabase;
+use julie_extractors::ExtractorManager;
 use crate::watcher::handlers::handle_file_created_or_modified_static;
 use crate::watcher::observability::LogCapture;
 use crate::workspace::mutation_gate::acquire_gate;
@@ -47,7 +47,7 @@ fn install_capture() -> (LogCapture, tracing::subscriber::DefaultGuard) {
 /// "unchanged" log (the hash matched).
 #[tokio::test]
 async fn test_hash_match_logs_skipped_info() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("obs_hash_skip");
+    let temp_dir = julie_test_support::unique_temp_dir("obs_hash_skip");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let test_file = workspace_root.join("skipped.rs");
@@ -112,7 +112,7 @@ async fn test_hash_match_logs_skipped_info() {
 /// and extraction details.
 #[tokio::test]
 async fn test_indexed_file_logs_symbol_count_info() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("obs_indexed");
+    let temp_dir = julie_test_support::unique_temp_dir("obs_indexed");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let test_file = workspace_root.join("indexed.rs");

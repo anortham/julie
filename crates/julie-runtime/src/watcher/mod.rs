@@ -11,7 +11,7 @@
 //!
 //! This separation prevents blocking on file I/O or database operations.
 
-pub(crate) mod events;
+pub mod events;
 pub mod filtering; // Public for tests
 pub mod handlers; // Public for tests
 pub mod observability; // INFO-level event observability helpers
@@ -31,9 +31,9 @@ use std::time::SystemTime;
 use tokio::sync::{Mutex as TokioMutex, mpsc};
 use tracing::{debug, error, info, warn};
 
-use crate::database::SymbolDatabase;
-use crate::extractors::ExtractorManager;
-use crate::tools::workspace::indexing::state::{IndexingRepairReason, SharedIndexingRuntime};
+use julie_core::database::SymbolDatabase;
+use julie_core::indexing_state::{IndexingRepairReason, SharedIndexingRuntime};
+use julie_extractors::ExtractorManager;
 use crate::workspace::mutation_gate::MutationGuard;
 use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 
@@ -44,7 +44,7 @@ pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 /// `initialize_embedding_provider()` writes a new provider, the watcher's
 /// background tasks see it on their next read-lock.
 pub(crate) type SharedEmbeddingProvider =
-    Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>;
+    Arc<std::sync::RwLock<Option<Arc<dyn julie_pipeline::embeddings::EmbeddingProvider>>>>;
 
 pub(crate) async fn run_guarded_task_step<F>(task_name: &'static str, step: F) -> bool
 where
@@ -68,7 +68,7 @@ pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<StdMutex<SymbolDatabase>>,
     extractor_manager: Arc<ExtractorManager>,
-    search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
+    search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
 
     /// Embedding provider for incremental semantic updates.
     /// Shared with the workspace via Arc<RwLock<...>> so lazy initialization
@@ -76,10 +76,10 @@ pub struct IncrementalIndexer {
     embedding_provider: SharedEmbeddingProvider,
 
     /// Language configs for embedding text generation (extra kinds per language).
-    lang_configs: Arc<crate::search::language_config::LanguageConfigs>,
+    lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
 
     // Processing queues
-    pub(crate) index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
+    pub index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
 
     // Event deduplication: Track recently processed files to avoid duplicate processing
     // Key: file path, Value: last processed timestamp
@@ -101,7 +101,7 @@ pub struct IncrementalIndexer {
 
     /// Set to true when the event queue overflows (>1000 events).
     /// The queue processor and external callers check this to trigger a full rescan.
-    pub(crate) needs_rescan: Arc<AtomicBool>,
+    pub needs_rescan: Arc<AtomicBool>,
 
     /// Relative paths of files whose SQLite update succeeded but Tantivy update
     /// failed. Retried at the start of each queue-processor tick (Fix B-b).
@@ -127,16 +127,16 @@ pub(super) async fn dispatch_file_event(
     event: FileChangeEvent,
     db: &Arc<StdMutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
-    search_index: &Option<Arc<StdMutex<crate::search::SearchIndex>>>,
-    embedding_provider: &Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    search_index: &Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
+    embedding_provider: &Option<Arc<dyn julie_pipeline::embeddings::EmbeddingProvider>>,
     workspace_root: &std::path::Path,
-    lang_configs: &Arc<crate::search::language_config::LanguageConfigs>,
+    lang_configs: &Arc<julie_index::search::language_config::LanguageConfigs>,
     tantivy_dirty: &Arc<StdMutex<std::collections::HashSet<String>>>,
     indexing_runtime: &SharedIndexingRuntime,
     _guard: &MutationGuard<'_>,
 ) -> Option<PathBuf> {
     let relative_for_embed =
-        crate::utils::paths::to_relative_unix_style(&event.path, workspace_root).ok();
+        julie_core::paths::to_relative_unix_style(&event.path, workspace_root).ok();
 
     match event.change_type {
         FileChangeType::Created | FileChangeType::Modified => {
@@ -177,7 +177,7 @@ pub(super) async fn dispatch_file_event(
                         let rel_owned = rel.clone();
                         let lc = Arc::clone(lang_configs);
                         if let Err(e) = tokio::task::spawn_blocking(move || {
-                            crate::embeddings::pipeline::reembed_symbols_for_file(
+                            julie_pipeline::embeddings::pipeline::reembed_symbols_for_file(
                                 &db_clone,
                                 provider_clone.as_ref(),
                                 &rel_owned,
@@ -236,7 +236,7 @@ pub(super) async fn dispatch_file_event(
             None
         }
         FileChangeType::Renamed { from, to } => {
-            let rel_from = crate::utils::paths::to_relative_unix_style(&from, workspace_root).ok();
+            let rel_from = julie_core::paths::to_relative_unix_style(&from, workspace_root).ok();
             match handlers::handle_file_renamed_static(
                 from,
                 to.clone(),
@@ -274,7 +274,7 @@ pub(super) async fn dispatch_file_event(
                     // Track Tantivy failure on rename's create side for dirty-retry.
                     if !outcome.tantivy_ok {
                         if let Ok(ref rel_to) =
-                            crate::utils::paths::to_relative_unix_style(&to, workspace_root)
+                            julie_core::paths::to_relative_unix_style(&to, workspace_root)
                         {
                             tantivy_dirty
                                 .lock()
@@ -297,7 +297,7 @@ pub(super) async fn dispatch_file_event(
             }
             if let (Some(provider), Ok(rel_to)) = (
                 embedding_provider,
-                crate::utils::paths::to_relative_unix_style(&to, workspace_root),
+                julie_core::paths::to_relative_unix_style(&to, workspace_root),
             ) {
                 // Fix E: wrap blocking IPC call in spawn_blocking
                 let db_clone = Arc::clone(db);
@@ -305,7 +305,7 @@ pub(super) async fn dispatch_file_event(
                 let rel_owned = rel_to.clone();
                 let lc = Arc::clone(lang_configs);
                 if let Err(e) = tokio::task::spawn_blocking(move || {
-                    crate::embeddings::pipeline::reembed_symbols_for_file(
+                    julie_pipeline::embeddings::pipeline::reembed_symbols_for_file(
                         &db_clone,
                         provider_clone.as_ref(),
                         &rel_owned,
@@ -324,11 +324,11 @@ pub(super) async fn dispatch_file_event(
 
 impl IncrementalIndexer {
     /// Create a new incremental indexer for the given workspace
-    pub(crate) fn new(
+    pub fn new(
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
-        search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
+        search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
     ) -> Result<Self> {
@@ -343,11 +343,11 @@ impl IncrementalIndexer {
         )
     }
 
-    pub(crate) fn new_with_mutation_gate_registry(
+    pub fn new_with_mutation_gate_registry(
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
-        search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
+        search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
         mutation_gate_registry: Arc<MutationGateRegistry>,
@@ -355,7 +355,7 @@ impl IncrementalIndexer {
         let supported_extensions = filtering::build_supported_extensions();
         let gitignore = filtering::build_gitignore_matcher(&workspace_root)?;
         let lang_configs =
-            Arc::new(crate::search::language_config::LanguageConfigs::load_embedded());
+            Arc::new(julie_index::search::language_config::LanguageConfigs::load_embedded());
 
         // Derive a stable workspace_id for use as the mutation-gate key.
         // Falls back to the raw path string so construction never fails.
@@ -390,7 +390,7 @@ impl IncrementalIndexer {
     /// Update the shared embedding provider after lazy initialization.
     pub fn update_embedding_provider(
         &self,
-        provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+        provider: Option<Arc<dyn julie_pipeline::embeddings::EmbeddingProvider>>,
     ) {
         let mut guard = self
             .embedding_provider
@@ -399,8 +399,11 @@ impl IncrementalIndexer {
         *guard = provider;
     }
 
-    #[cfg(test)]
-    pub(crate) fn mark_tantivy_dirty_for_test(&self, rel_path: &str) {
+    // Exposed for tests only — gated by cfg(test) or the "test-support" feature so
+    // it is compiled into library builds only when the top-crate enables the feature
+    // in its dev-dependencies (Cargo.toml: julie-runtime = { features = ["test-support"] }).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn mark_tantivy_dirty_for_test(&self, rel_path: &str) {
         self.tantivy_dirty
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -560,7 +563,11 @@ impl IncrementalIndexer {
         Ok(())
     }
 
-    #[cfg(test)]
+    // Test-only helper. Its sole consumer is the top crate's `#[cfg(test)]`
+    // `loaded_workspace_file_watcher_running_for_test`, so it is gated behind
+    // `test-support` (the top crate's dev-dep enables `julie-runtime/test-support`)
+    // to keep it out of the production library.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn is_running_for_test(&self) -> bool {
         self.watcher.is_some()
             && self.event_task.is_some()

@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "xtask", "crates/julie-core", "crates/julie-index", "crates/julie-pipeline", "crates/julie-context", "crates/julie-test-support", "crates/julie-tools"]
+members = [".", "xtask", "crates/julie-core", "crates/julie-index", "crates/julie-pipeline", "crates/julie-runtime", "crates/julie-context", "crates/julie-test-support", "crates/julie-tools"]
 resolver = "2"
 
 [workspace.package]
@@ -51,6 +51,9 @@ julie-index = { path = "crates/julie-index" }
 
 # Julie pipeline crate (indexing engine + embeddings, above julie-index)
 julie-pipeline = { path = "crates/julie-pipeline", features = ["embeddings-sidecar"] }
+
+# Julie runtime crate (watcher + workspace lifecycle, above julie-pipeline)
+julie-runtime = { path = "crates/julie-runtime" }
 
 # Julie context crate (ToolContext facade trait + SpilloverStore + WorkspaceTarget)
 julie-context = { path = "crates/julie-context" }
@@ -160,6 +163,7 @@ windows-sys = { version = "0.60", features = [
 julie-test-support = { path = "crates/julie-test-support" }
 julie-index = { path = "crates/julie-index", features = ["test-support"] }
 julie-tools = { path = "crates/julie-tools", features = ["test-support"] }
+julie-runtime = { path = "crates/julie-runtime", features = ["test-support"] }
 tokio-test = "0.4"
 cargo-tarpaulin = "0.31"
 serial_test = { version = "3.2", features = ["file_locks"] }

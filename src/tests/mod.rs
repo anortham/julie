@@ -86,9 +86,9 @@ pub mod tools {
         pub mod mod_tests; // Workspace module functionality tests
         pub mod processor; // Indexing processor parser-failure handling tests
         pub mod refresh_routing; // Primary force-refresh should reuse full index path
-        pub mod registry; // Workspace registry tests
+        // registry.rs relocated to crates/julie-runtime/src/tests/ (T2c.3 — tests julie-runtime's workspace::registry)
         pub mod resolver; // Cross-file relationship resolution tests
-        pub mod root_safety; // Sensitive workspace root rejection tests
+        // root_safety.rs relocated to crates/julie-runtime/src/tests/ (T2c.3 — tests julie-runtime's workspace::root_safety)
         pub mod utils; // Workspace utilities tests // Registry service tests
     }
 
@@ -167,12 +167,8 @@ pub mod integration {
     pub mod stale_index_detection; // Stale index detection tests
     pub mod system_health;
     pub mod target_workspace; // Target-workspace tests
-    pub mod watcher; // File watcher tests
-    pub mod watcher_filtering; // Watcher file filtering tests
-    pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
-    pub mod watcher_mutation_gate; // Per-workspace mutation gate concurrency contract (LEAD-OWNED)
-    pub mod watcher_observability; // INFO-level observability regression tests (rate limiter, gate timing)
-    pub mod watcher_queue; // Watcher queue coalescing and overflow policy tests
+    // watcher, watcher_filtering, watcher_handlers, watcher_mutation_gate,
+    // watcher_observability, watcher_queue — relocated to julie-runtime (T2c.3)
     pub mod wiring_a1_8; // A1.8 end-to-end wiring tests (adapter + daemon split)
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests) // Daemon + adapter integration tests (lifecycle, pool sharing, IPC, migration)
     pub mod zero_hit_replay_task3; // Task 3 diagnostic harness (ignored): replay content zero-hit fixture.

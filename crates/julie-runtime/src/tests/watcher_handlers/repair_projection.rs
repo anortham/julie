@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn test_extractor_failure_is_persisted_durably() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_extractor_failure_repair");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_extractor_failure_repair");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let test_file = workspace_root.join("broken.rs");
@@ -88,7 +88,7 @@ async fn test_extractor_failure_is_persisted_durably() {
 /// The handler now trusts the caller's decision to proceed with deletion.
 #[tokio::test]
 async fn test_delete_handler_always_cleans_up() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("atomic_save");
+    let temp_dir = julie_test_support::unique_temp_dir("atomic_save");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create and index a file
@@ -163,9 +163,9 @@ async fn test_delete_handler_always_cleans_up() {
 /// Compare with populate_tantivy_index() in processor.rs which correctly adds both.
 #[tokio::test]
 async fn test_incremental_indexing_preserves_tantivy_file_content() {
-    use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
+    use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex};
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_tantivy_content");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_tantivy_content");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create a Rust file with a distinctive identifier for content search
@@ -295,9 +295,9 @@ fn render_rich_text_field() {
 
 #[tokio::test]
 async fn test_incremental_indexing_preserves_tantivy_annotation_fields() {
-    use crate::search::index::{SearchFilter, SearchIndex};
+    use julie_index::search::index::{SearchFilter, SearchIndex};
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_tantivy_annotations");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_tantivy_annotations");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let test_file = workspace_root.join("annotated_test.rs");
@@ -354,9 +354,9 @@ fn watched_annotation_marker() {
 
 #[tokio::test]
 async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
-    use crate::search::index::SearchIndex;
+    use julie_index::search::index::SearchIndex;
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_projection_repair");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_projection_repair");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let test_file = workspace_root.join("projection_failure.rs");
@@ -412,7 +412,7 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
 /// retry loop (every 1-second cycle) that bloats logs and wastes CPU.
 #[tokio::test]
 async fn test_hash_match_clears_stale_repair_entry() {
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_hash_match_repair_clear");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_hash_match_repair_clear");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     let test_file = workspace_root.join("stable.rs");

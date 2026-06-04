@@ -7,6 +7,7 @@ pub use julie_core::workspace::registry::{
     WorkspaceRegistry, WorkspaceStatus, WorkspaceType, current_timestamp, generate_workspace_id,
 };
 
-// Used only in cfg(test) — gate to suppress unused-import warning in non-test builds.
+// Only needed by intra-crate tests (registry.rs moved to julie-runtime tests in T2c.3).
+// cfg(test) is sufficient: no cross-crate consumer remains.
 #[cfg(test)]
 pub use julie_core::workspace::registry::sanitize_name;

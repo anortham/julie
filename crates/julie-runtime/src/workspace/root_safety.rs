@@ -6,7 +6,8 @@ pub use julie_core::workspace::root_safety::{
     reject_sensitive_cwd_workspace_root, reject_sensitive_workspace_root,
 };
 
-// Used only in cfg(test) — gate to suppress unused-import warning in non-test builds.
+// Only needed by intra-crate tests (root_safety.rs moved to julie-runtime tests in T2c.3).
+// cfg(test) is sufficient: no cross-crate consumer remains.
 #[cfg(test)]
 pub use julie_core::workspace::root_safety::{
     is_sensitive_workspace_root, sensitive_root_candidates,

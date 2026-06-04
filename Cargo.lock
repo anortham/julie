@@ -1696,6 +1696,7 @@ dependencies = [
  "julie-extractors",
  "julie-index",
  "julie-pipeline",
+ "julie-runtime",
  "julie-test-support",
  "julie-tools",
  "libc",
@@ -1862,6 +1863,33 @@ dependencies = [
  "tokio",
  "tracing",
  "zerocopy 0.7.35",
+]
+
+[[package]]
+name = "julie-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "dirs",
+ "fs2",
+ "hex",
+ "ignore",
+ "julie-core",
+ "julie-extractors",
+ "julie-index",
+ "julie-pipeline",
+ "julie-test-support",
+ "notify",
+ "rusqlite",
+ "serde",
+ "serial_test",
+ "shellexpand",
+ "tempfile",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

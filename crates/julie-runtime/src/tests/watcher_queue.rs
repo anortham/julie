@@ -23,14 +23,14 @@ fn gitignore_for(path: &std::path::Path) -> Gitignore {
     filtering::build_gitignore_matcher(path).expect("gitignore matcher should build")
 }
 
-fn seed_extractor_repair(db: &crate::database::SymbolDatabase, path: &str) {
+fn seed_extractor_repair(db: &julie_core::database::SymbolDatabase, path: &str) {
     db.conn
         .execute(
             "INSERT INTO indexing_repairs (path, reason, detail, updated_at)
              VALUES (?1, ?2, ?3, 0)",
             rusqlite::params![
                 path,
-                crate::tools::workspace::indexing::state::IndexingRepairReason::ExtractorFailure
+                julie_core::indexing_state::IndexingRepairReason::ExtractorFailure
                     .as_str(),
                 "seeded repair"
             ],
@@ -262,10 +262,10 @@ async fn test_queue_overflow_drains_to_headroom() {
 
 #[tokio::test]
 async fn test_runtime_drops_recent_duplicates_and_processes_delete_and_rename() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_runtime_duplicate_policy");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_runtime_duplicate_policy");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
@@ -278,7 +278,7 @@ async fn test_runtime_drops_recent_duplicates_and_processes_delete_and_rename() 
         extractor_manager,
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 
@@ -458,13 +458,13 @@ async fn test_runtime_drops_recent_duplicates_and_processes_delete_and_rename() 
 
 #[tokio::test]
 async fn test_overflow_repair_skips_unchanged_indexed_files() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
-    use crate::tools::workspace::indexing::state::IndexingRepairReason;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
+    use julie_core::indexing_state::IndexingRepairReason;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_repair_skip_unchanged");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_repair_skip_unchanged");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
@@ -477,7 +477,7 @@ async fn test_overflow_repair_skips_unchanged_indexed_files() {
         extractor_manager.clone(),
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 
@@ -524,12 +524,12 @@ async fn test_overflow_repair_skips_unchanged_indexed_files() {
 
 #[tokio::test]
 async fn test_stop_with_pending_queue_does_not_wait_forever_when_gate_is_held() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
     use std::time::Duration;
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_stop_gate_held");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_stop_gate_held");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
     let queued_file = workspace_root.join("queued.rs");
     fs::write(&queued_file, "fn queued_symbol() {}\n").unwrap();
@@ -549,7 +549,7 @@ async fn test_stop_with_pending_queue_does_not_wait_forever_when_gate_is_held() 
         extractor_manager,
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
         Arc::clone(&mutation_gate_registry),
     )
     .unwrap();
@@ -576,12 +576,12 @@ async fn test_stop_with_pending_queue_does_not_wait_forever_when_gate_is_held() 
 
 #[tokio::test]
 async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_only() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_repair_targeted_dispatch");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_repair_targeted_dispatch");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
@@ -594,7 +594,7 @@ async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_o
         extractor_manager.clone(),
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 
@@ -698,10 +698,10 @@ async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_o
 
 #[tokio::test]
 async fn test_repair_retry_clears_unsupported_extensionless_and_unsupported_names() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_retry_unsupported_names");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_retry_unsupported_names");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
@@ -725,7 +725,7 @@ async fn test_repair_retry_clears_unsupported_extensionless_and_unsupported_name
         extractor_manager,
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 
@@ -749,12 +749,12 @@ async fn test_repair_retry_clears_unsupported_extensionless_and_unsupported_name
 
 #[tokio::test]
 async fn test_repair_retry_keeps_supported_extractor_failures_due_for_retry() {
-    use crate::database::SymbolDatabase;
-    use crate::extractors::ExtractorManager;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
 
-    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_retry_supported_failure");
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_retry_supported_failure");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
@@ -789,7 +789,7 @@ async fn test_repair_retry_keeps_supported_extractor_failures_due_for_retry() {
         extractor_manager,
         None,
         shared_provider,
-        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        julie_core::indexing_state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 

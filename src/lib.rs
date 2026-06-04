@@ -20,8 +20,8 @@ pub use julie_index::search;
 pub mod startup;
 pub mod tools;
 pub mod utils;
-pub mod watcher;
-pub mod workspace;
+pub use julie_runtime::watcher;
+pub use julie_runtime::workspace;
 
 pub mod adapter;
 pub mod daemon;

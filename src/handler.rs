@@ -2177,7 +2177,7 @@ impl JulieServerHandler {
             .await?;
 
         if let Some(workspace_pool) = self.workspace_pool.as_ref() {
-            let workspace = workspace_pool.get(workspace_id).await.ok_or_else(|| {
+            let _workspace = workspace_pool.get(workspace_id).await.ok_or_else(|| {
                 anyhow::anyhow!(
                     "Workspace '{}' is not loaded in the daemon workspace pool",
                     workspace_id
@@ -2189,7 +2189,7 @@ impl JulieServerHandler {
                 .ok_or_else(|| {
                     anyhow::anyhow!("Connection pool missing for workspace '{}'", workspace_id)
                 })?;
-            return workspace.request_db(&conn_pool).await;
+            return conn_pool.request_db().await;
         }
 
         // Stdio-mode fallback: open a fresh owned SymbolDatabase. Migrations

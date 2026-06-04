@@ -3,14 +3,14 @@
 //! This module implements the core logic for handling Create, Modify, Delete,
 //! and Rename operations on indexed files.
 
-use crate::database::SymbolDatabase;
-use crate::extractors::ExtractorManager;
-use crate::search::SearchIndex;
-use crate::tools::workspace::indexing::file_policy::{
+use julie_core::database::SymbolDatabase;
+use julie_core::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
 };
-use crate::tools::workspace::indexing::finalize::resolve_pending_relationships;
-use crate::tools::workspace::indexing::state::IndexingRepairReason;
+use julie_core::indexing_state::IndexingRepairReason;
+use julie_extractors::ExtractorManager;
+use julie_index::search::SearchIndex;
+use julie_pipeline::finalize::resolve_pending_relationships;
 use crate::workspace::mutation_gate::MutationGuard;
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
@@ -19,9 +19,9 @@ use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FileIndexOutcome {
-    pub(crate) tantivy_ok: bool,
-    pub(crate) repair_reason: Option<IndexingRepairReason>,
+pub struct FileIndexOutcome {
+    pub tantivy_ok: bool,
+    pub repair_reason: Option<IndexingRepairReason>,
 }
 
 impl FileIndexOutcome {
@@ -73,7 +73,7 @@ fn persist_repair_state(
 ///
 /// Returns a repair-aware outcome so callers can track projection failures and
 /// extraction drift without inferring meaning from a bare bool.
-pub(crate) async fn handle_file_created_or_modified_static(
+pub async fn handle_file_created_or_modified_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
@@ -88,7 +88,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         .context("Failed to read file content")?;
     let new_hash = blake3::hash(&content);
 
-    let relative_path = crate::utils::paths::to_relative_unix_style(&path, workspace_root)
+    let relative_path = julie_core::paths::to_relative_unix_style(&path, workspace_root)
         .context("Failed to convert path to relative")?;
 
     {
@@ -166,7 +166,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
                 }
             }
         }
-        ExtractionMode::TextOnly => crate::extractors::ExtractionResults {
+        ExtractionMode::TextOnly => julie_extractors::ExtractionResults {
             symbols: Vec::new(),
             relationships: Vec::new(),
             pending_relationships: Vec::new(),
@@ -215,7 +215,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         // These "partners" live in other files and their relationship_text may go stale
         // once we delete or replace the current file's symbols below.
         old_symbol_ids = existing_symbols.iter().map(|s| s.id.clone()).collect();
-        old_partner_set = crate::search::projection::collect_relationship_partner_symbol_ids(
+        old_partner_set = julie_index::search::projection::collect_relationship_partner_symbol_ids(
             &db_lock,
             &old_symbol_ids,
         )?
@@ -254,7 +254,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         let new_hash_str = hex::encode(new_hash.as_bytes());
         let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
         let file_info_rel_path =
-            crate::utils::paths::to_relative_unix_style(&canonical, workspace_root)
+            julie_core::paths::to_relative_unix_style(&canonical, workspace_root)
                 .context("Failed to convert path to relative for file info")?;
         let metadata = std::fs::metadata(&path)
             .map_err(|e| anyhow::anyhow!("Failed to read metadata for {:?}: {}", path, e))?;
@@ -265,7 +265,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
         let line_count = content_str.lines().count() as i32;
-        let file_info = crate::database::FileInfo {
+        let file_info = julie_core::database::FileInfo {
             path: file_info_rel_path,
             language: language.clone(),
             hash: new_hash_str.clone(),
@@ -279,7 +279,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
 
         let types_vec: Vec<_> = results.types.into_values().collect();
         let type_argument_rows =
-            crate::database::bulk::type_arguments::flatten_type_argument_usages(
+            julie_core::database::bulk::type_arguments::flatten_type_argument_usages(
                 &results.type_argument_usages,
             );
 
@@ -293,17 +293,17 @@ pub(crate) async fn handle_file_created_or_modified_static(
         // symbols (including class/struct containers). Load configs once.
         let mut literals_vec = results.literals;
         if !literals_vec.is_empty() || !results.symbols.is_empty() {
-            let configs = crate::search::LanguageConfigs::load_embedded();
+            let configs = julie_index::search::LanguageConfigs::load_embedded();
             if !literals_vec.is_empty() {
                 let carrier_configs = configs.build_literal_carrier_configs();
-                crate::analysis::literals::classify_literals_by_carrier(
+                julie_index::analysis::literals::classify_literals_by_carrier(
                     &mut literals_vec,
                     &carrier_configs,
                 );
             }
             if !results.symbols.is_empty() {
                 let role_configs = configs.build_test_role_configs();
-                crate::analysis::test_roles::classify_symbols_by_role(
+                julie_index::analysis::test_roles::classify_symbols_by_role(
                     &mut results.symbols,
                     &role_configs,
                 );
@@ -320,7 +320,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         // too — the watcher has no ExtractedBatch to map from.
         let files_to_clean = [relative_path.clone()];
         let watcher_files = [file_info];
-        let write_set = crate::database::bulk::atomic::CanonicalWriteSet {
+        let write_set = julie_core::database::bulk::atomic::CanonicalWriteSet {
             files: &watcher_files,
             symbols: &results.symbols,
             relationships: &results.relationships,
@@ -333,7 +333,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             &files_to_clean,
             &write_set,
             &workspace_id,
-            crate::database::bulk::atomic::AtomicPersistenceMetadata::default(),
+            julie_core::database::bulk::atomic::AtomicPersistenceMetadata::default(),
         )?;
 
         new_symbol_ids = results.symbols.iter().map(|s| s.id.clone()).collect();
@@ -361,7 +361,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             }
         };
         let new_partner_set: HashSet<String> =
-            crate::search::projection::collect_relationship_partner_symbol_ids(
+            julie_index::search::projection::collect_relationship_partner_symbol_ids(
                 &db_lock,
                 &new_symbol_ids,
             )?
@@ -406,7 +406,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
                 }
             };
 
-            let ok = match crate::search::projection::apply_uncommitted_documents_from_symbols(
+            let ok = match julie_index::search::projection::apply_uncommitted_documents_from_symbols(
                 &idx,
                 &symbols,
                 &file_to_clean,
@@ -426,7 +426,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             // the just-indexed symbols. Partners live in other files and are not covered
             // by apply_uncommitted_documents_from_symbols above.
             let ok = if ok && !partner_ids_for_tantivy.is_empty() {
-                match crate::search::projection::reproject_partner_symbols(
+                match julie_index::search::projection::reproject_partner_symbols(
                     &idx,
                     &db_guard,
                     &partner_ids_for_tantivy,
@@ -485,13 +485,13 @@ pub(crate) async fn handle_file_deleted_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
-    search_index: Option<&Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
+    search_index: Option<&Arc<std::sync::Mutex<julie_index::search::SearchIndex>>>,
     _guard: &MutationGuard<'_>,
 ) -> Result<()> {
     info!("Processing file deletion: {}", path.display());
 
     // CRITICAL FIX: Convert absolute path to relative for database operations
-    let relative_path = crate::utils::paths::to_relative_unix_style(&path, workspace_root)
+    let relative_path = julie_core::paths::to_relative_unix_style(&path, workspace_root)
         .context("Failed to convert path to relative")?;
 
     {
@@ -606,7 +606,7 @@ pub(crate) async fn handle_file_renamed_static(
         return Ok(outcome);
     }
 
-    let relative_from = crate::utils::paths::to_relative_unix_style(&from, workspace_root)
+    let relative_from = julie_core::paths::to_relative_unix_style(&from, workspace_root)
         .unwrap_or_else(|_| from.to_string_lossy().replace('\\', "/"));
     if let Err(err) =
         handle_file_deleted_static(from, db, workspace_root, search_index, _guard).await

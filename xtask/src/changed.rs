@@ -110,6 +110,19 @@ const JULIE_PIPELINE_INDEXING_BUCKETS: &[&str] = &[
 /// embeddings edit co-targets `core-embeddings` alongside `core-pipeline` (R6).
 const JULIE_PIPELINE_EMBEDDINGS_BUCKETS: &[&str] = &["core-pipeline", "core-embeddings"];
 
+/// Buckets for `crates/julie-runtime/src/watcher/**` edits (Phase 2c crate split).
+/// Editing watcher source compiles + runs the crate's own test binary via
+/// `core-runtime`. The daemon watcher-pool tests (`workspace-runtime` bucket)
+/// are behavioral tests that exercise the watcher lifecycle from above (R6).
+const JULIE_RUNTIME_WATCHER_BUCKETS: &[&str] = &["core-runtime", "workspace-runtime"];
+
+/// Buckets for `crates/julie-runtime/src/workspace/**` edits (Phase 2c crate split).
+/// Editing workspace source compiles + runs the crate's own test binary via
+/// `core-runtime`. Co-targets cover the top-crate workspace-runtime (daemon pool
+/// tests) and workspace-init (handler binding tests) slices (R6).
+const JULIE_RUNTIME_WORKSPACE_BUCKETS: &[&str] =
+    &["core-runtime", "workspace-runtime", "workspace-init"];
+
 /// Buckets for general `crates/julie-tools/src/**` edits (Phase 2b crate split).
 /// Covers the tool-specific test buckets whose commands now include `-p julie-tools`
 /// entries. A catch-all for tool source not covered by the subpath arms below.
@@ -591,6 +604,27 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["core-pipeline"];
     }
 
+    // julie-runtime crate (Phase 2c crate split): watcher + workspace lifecycle
+    // layer above julie-pipeline. Editing any runtime source compiles + runs the
+    // crate's own test binary via `core-runtime` (`cargo nextest run -p
+    // julie-runtime`, which holds the ~80 relocated tests + the dep-direction
+    // tripwire). The two subpaths whose behavioral tests still live in top-crate
+    // buckets ALSO pull those buckets (Phase 0/1/2a lesson — a localized edit to
+    // moved code must not silently skip its behavioral coverage):
+    //   crates/julie-runtime/src/watcher/**    -> core-runtime + workspace-runtime
+    //   crates/julie-runtime/src/workspace/**  -> core-runtime + workspace-runtime + workspace-init
+    // Subpath checks must precede the catch-all prefix (first match wins).
+    if matches_prefix(path, &["crates/julie-runtime/src/watcher/"]) {
+        return JULIE_RUNTIME_WATCHER_BUCKETS;
+    }
+    if matches_prefix(path, &["crates/julie-runtime/src/workspace/"]) {
+        return JULIE_RUNTIME_WORKSPACE_BUCKETS;
+    }
+    if matches_prefix(path, &["crates/julie-runtime/src/"]) {
+        // lib.rs, tests/**, other top-level files — covered by `-p julie-runtime`.
+        return &["core-runtime"];
+    }
+
     // julie-tools crate (Phase 2b crate split): handler-free tool implementations.
     // Changes to tool source should trigger the relevant behavioral test buckets.
     // Subpath checks must precede the catch-all prefix (first match wins).
@@ -749,7 +783,10 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["workspace-runtime"];
     }
 
-    if matches_prefix(path, &["src/tools/workspace/", "src/workspace/"]) {
+    // Note: "src/workspace/" removed — workspace moved to crates/julie-runtime (T2c.2);
+    // edits to the top-crate re-export shim at src/workspace/ now route via the
+    // crates/julie-runtime/src/workspace/ arm above when editing the real source.
+    if matches_prefix(path, &["src/tools/workspace/"]) {
         return &[
             "tools-workspace",
             "tools-workspace-targeting",
@@ -887,10 +924,13 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     // were all relocated to crates/julie-tools/src/tests/ (T2b.6 or earlier). Routing for their
     // julie-tools paths is handled by the crates/julie-tools/src/tests/ prefix checks above.
 
+    // Note: "src/watcher/" removed — watcher moved to crates/julie-runtime (T2c.2);
+    // "src/tests/integration/watcher_filtering.rs" removed — tests moved to
+    // crates/julie-runtime/src/tests/ (T2c.3). Both now route via the
+    // crates/julie-runtime/src/ arms above.
     if matches_prefix(
         path,
         &[
-            "src/watcher/",
             "src/utils/",
             "src/tracing/",
             "src/tests/core/handler/",
@@ -904,7 +944,6 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
             "src/tests/core/language.rs",
             "src/tests/core/paths.rs",
             "src/tests/core/tracing.rs",
-            "src/tests/integration/watcher_filtering.rs",
         ],
     ) || matches_prefix(path, &["src/tests/utils/"])
     {
@@ -1142,6 +1181,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "core-embeddings",
         "core-index",
         "core-pipeline",
+        "core-runtime",
         "extractor-dep-integration",
         "projection",
         "tools-get-context-pipeline",
@@ -1338,18 +1378,24 @@ mod tests {
     }
 
     #[test]
-    fn changed_tests_route_watcher_filtering_to_core_fast_bucket() {
+    fn changed_tests_route_watcher_filtering_to_core_runtime_bucket() {
+        // T2c.2/T2c.3: watcher source + tests relocated to crates/julie-runtime.
+        // Editing watcher source routes to core-runtime (the crate's own test binary)
+        // plus workspace-runtime (daemon watcher-pool behavioral co-target).
         let manifest = manifest();
         let selection = select_changed_buckets(
             &manifest,
-            &["src/tests/integration/watcher_filtering.rs".to_string()],
+            &["crates/julie-runtime/src/watcher/filtering.rs".to_string()],
         );
 
         assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-        assert_eq!(selection.bucket_names, vec!["core-fast"]);
+        assert_eq!(
+            selection.bucket_names,
+            vec!["core-runtime", "workspace-runtime"]
+        );
         assert!(
             selection.fallback_paths.is_empty(),
-            "watcher filtering tests should not force integration/dev fallback; rationale={:?}",
+            "watcher source should not force dev fallback; rationale={:?}",
             selection.rationale
         );
     }

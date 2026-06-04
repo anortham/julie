@@ -10,10 +10,10 @@
 
 pub mod mutation_gate;
 pub mod registry;
-pub(crate) mod root_safety;
+pub mod root_safety;
 pub mod startup_hint;
 
-use crate::health::{EmbeddingState, ProjectionState, WatcherState};
+use julie_core::health_types::{EmbeddingState, ProjectionState, WatcherState};
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -24,7 +24,7 @@ use tracing::{debug, info, warn};
 use crate::watcher::IncrementalIndexer;
 
 // Forward declarations for types we'll implement later
-pub type SqliteDB = crate::database::SymbolDatabase;
+pub type SqliteDB = julie_core::database::SymbolDatabase;
 
 /// The main Julie workspace structure
 ///
@@ -43,16 +43,16 @@ pub struct JulieWorkspace {
     pub db: Option<Arc<std::sync::Mutex<SqliteDB>>>,
 
     /// Tantivy search index for full-text code search
-    pub search_index: Option<Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
+    pub search_index: Option<Arc<std::sync::Mutex<julie_index::search::SearchIndex>>>,
 
     /// File watcher for incremental updates
     pub watcher: Option<IncrementalIndexer>,
 
     /// Embedding provider for semantic vector generation (None if unavailable)
-    pub embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    pub embedding_provider: Option<Arc<dyn julie_pipeline::embeddings::EmbeddingProvider>>,
 
     /// Runtime status for embedding backend initialization.
-    pub embedding_runtime_status: Option<crate::embeddings::EmbeddingRuntimeStatus>,
+    pub embedding_runtime_status: Option<julie_pipeline::embeddings::EmbeddingRuntimeStatus>,
 
     /// Workspace configuration
     pub config: WorkspaceConfig,
@@ -63,7 +63,7 @@ pub struct JulieWorkspace {
     pub index_root_override: Option<PathBuf>,
 
     /// Shared runtime indexing state used by health reporting and the dashboard.
-    pub(crate) indexing_runtime: crate::tools::workspace::indexing::state::SharedIndexingRuntime,
+    pub indexing_runtime: julie_core::indexing_state::SharedIndexingRuntime,
 }
 
 /// Configuration for a Julie workspace
@@ -85,11 +85,10 @@ pub struct WorkspaceConfig {
     pub incremental_updates: bool,
 }
 
-// Embedding runtime log-field helpers relocated to crate::embeddings::log_fields.
-// Re-exported here for test callers that use `crate::workspace::...` paths.
-// Production callers import from `crate::embeddings::log_fields` directly.
-#[cfg(test)]
-pub(crate) use crate::embeddings::log_fields::build_embedding_runtime_log_fields;
+// Embedding runtime log-field helper re-exported for callers that reach it via
+// `crate::workspace::build_embedding_runtime_log_fields`.  Production callers
+// may also import directly from `julie_pipeline::embeddings::log_fields`.
+pub use julie_pipeline::embeddings::log_fields::build_embedding_runtime_log_fields;
 
 impl Clone for JulieWorkspace {
     fn clone(&self) -> Self {
@@ -165,7 +164,7 @@ impl JulieWorkspace {
             config,
             index_root_override: None,
             indexing_runtime:
-                crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+                julie_core::indexing_state::IndexingRuntimeState::shared(),
         };
 
         // Initialize persistent components
@@ -213,7 +212,7 @@ impl JulieWorkspace {
                     config,
                     index_root_override: None,
                     indexing_runtime:
-                        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+                        julie_core::indexing_state::IndexingRuntimeState::shared(),
                 };
 
                 // Validate workspace structure
@@ -306,7 +305,7 @@ impl JulieWorkspace {
 
     /// Find workspace root by searching up the directory tree.
     ///
-    /// Stops at VCS-repository-root boundary markers (`crate::paths::VCS_ROOT_MARKERS`
+    /// Stops at VCS-repository-root boundary markers (`julie_core::paths::VCS_ROOT_MARKERS`
     /// — `.git`, `.hg`, `.svn`, `.jj`, `.bzr`, `_darcs`; each matched as a file OR a
     /// directory, so a git worktree/submodule `.git` *file* still counts) to prevent
     /// walking past worktrees or sibling projects into unrelated `.julie/` dirs (e.g. a
@@ -314,7 +313,7 @@ impl JulieWorkspace {
     /// (`Cargo.toml`, `package.json`) are deliberately NOT boundaries here: they also
     /// appear in monorepo sub-packages and would falsely halt the walk inside a workspace
     /// member. See `VCS_ROOT_MARKERS` for the pre-1.7-SVN nesting caveat.
-    pub(crate) fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
+    pub fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
         let mut current = start_path.to_path_buf();
 
         // We use `DaemonPaths::is_any_known_julie_home` to detect the global
@@ -334,7 +333,7 @@ impl JulieWorkspace {
                 // the configured override with the conventional ~/.julie
                 // default, so the guard cannot be silently disabled by a
                 // broken env.
-                let is_global = crate::paths::DaemonPaths::is_any_known_julie_home(&julie_dir);
+                let is_global = julie_core::paths::DaemonPaths::is_any_known_julie_home(&julie_dir);
                 if is_global {
                     debug!(
                         "Skipping global Julie home config dir at: {}",
@@ -353,7 +352,7 @@ impl JulieWorkspace {
             // a parent/temp dir). Build manifests (Cargo.toml/package.json) are
             // intentionally excluded as boundaries because they also appear in monorepo
             // sub-packages and would falsely halt the walk inside a workspace member crate.
-            for marker in crate::paths::VCS_ROOT_MARKERS {
+            for marker in julie_core::paths::VCS_ROOT_MARKERS {
                 let boundary = current.join(marker);
                 if boundary.exists() {
                     debug!(
@@ -626,9 +625,9 @@ impl JulieWorkspace {
             tantivy_path.display()
         ))?;
 
-        let configs = crate::search::LanguageConfigs::load_embedded();
+        let configs = julie_index::search::LanguageConfigs::load_embedded();
         let open_outcome =
-            crate::search::SearchIndex::open_or_create_with_language_configs_outcome(
+            julie_index::search::SearchIndex::open_or_create_with_language_configs_outcome(
                 &tantivy_path,
                 &configs,
             )
@@ -647,7 +646,7 @@ impl JulieWorkspace {
                 anyhow!("Database must be initialized before repairing recreated Tantivy index")
             })?;
             let mut db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let projection = crate::search::SearchProjection::tantivy(workspace_id.clone());
+            let projection = julie_index::search::SearchProjection::tantivy(workspace_id.clone());
             projection.repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
         }
 
@@ -672,7 +671,7 @@ impl JulieWorkspace {
         info!("Initializing file watcher for: {}", self.root.display());
 
         // Create placeholder extractor manager for now
-        let extractor_manager = Arc::new(crate::extractors::ExtractorManager::new());
+        let extractor_manager = Arc::new(julie_extractors::ExtractorManager::new());
 
         let shared_provider = Arc::new(std::sync::RwLock::new(self.embedding_provider.clone()));
         let file_watcher = IncrementalIndexer::new(
@@ -720,7 +719,7 @@ impl JulieWorkspace {
     /// If initialization fails, `embedding_provider` stays `None` and keyword
     /// search continues to work without embeddings.
     pub fn initialize_embedding_provider(&mut self) {
-        let (provider, runtime_status) = crate::embeddings::create_embedding_provider();
+        let (provider, runtime_status) = julie_pipeline::embeddings::create_embedding_provider();
         self.embedding_provider = provider.clone();
         self.embedding_runtime_status = runtime_status;
         // Propagate to file watcher so incremental updates use the new provider
@@ -747,31 +746,6 @@ impl JulieWorkspace {
         Ok(())
     }
 
-    /// Acquire a per-request `SymbolDatabase` backed by a pooled connection.
-    ///
-    /// The workspace's database must have been initialized previously
-    /// (`initialize_database`) — this method assumes the schema is current and
-    /// does NOT run migrations.
-    pub async fn request_db(
-        &self,
-        pool: &Arc<crate::daemon::connection_pool::WorkspaceConnectionPool>,
-    ) -> Result<crate::database::SymbolDatabase> {
-        // The pool already knows the on-disk DB path it was constructed with.
-        // Reading it from the pool (instead of locking `self.db` to clone the
-        // legacy SymbolDatabase's `file_path`) keeps pooled acquisition free
-        // of contention with writers that hold the legacy `Arc<Mutex<DB>>`
-        // (watcher, bulk-indexer, etc.). The pool path is canonical for both
-        // stdio and daemon-mode workspaces because it was set at pool
-        // construction time from the same source.
-        let file_path = pool.db_path().to_path_buf();
-        let pooled = pool
-            .acquire()
-            .await
-            .context("acquiring workspace connection from pool")?;
-        Ok(crate::database::SymbolDatabase::from_pooled(
-            pooled, file_path,
-        ))
-    }
 }
 
 /// Health status of a Julie workspace

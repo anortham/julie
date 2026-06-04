@@ -377,7 +377,7 @@ pub(crate) async fn plan_primary_workspace_repair(
             // No normalization needed - indexed_files are already relative
             let indexed_files: HashSet<String> = indexed_files_raw.into_iter().collect();
 
-            let workspace_files = scan_workspace_files(&current_primary_root)?;
+            let workspace_files = julie_core::workspace_scan::scan_workspace_files(&current_primary_root)?;
             let new_files: Vec<_> = workspace_files.difference(&indexed_files).collect();
 
             debug!(
@@ -523,7 +523,7 @@ fn get_max_file_mtime_in_workspace(workspace_root: &Path) -> Result<SystemTime> 
             continue;
         }
 
-        if !is_code_file(entry.path()) {
+        if !julie_core::workspace_scan::is_code_file(entry.path()) {
             continue;
         }
 
@@ -539,52 +539,3 @@ fn get_max_file_mtime_in_workspace(workspace_root: &Path) -> Result<SystemTime> 
     Ok(max_mtime)
 }
 
-/// Scan workspace and return a set of all code file paths (relative to workspace root)
-///
-/// This is used to detect new files that aren't in the database yet
-pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<String>> {
-    use crate::utils::walk::{WalkConfig, build_walker};
-
-    let mut files = HashSet::new();
-
-    for result in build_walker(workspace_root, &WalkConfig::stale_scan()) {
-        let entry = match result {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        if !entry.file_type().map_or(false, |ft| ft.is_file()) {
-            continue;
-        }
-
-        if !is_code_file(entry.path()) {
-            continue;
-        }
-
-        // Get relative path from workspace root in Unix-style format
-        // CRITICAL: Use to_relative_unix_style() to ensure cross-platform compatibility
-        // On Windows, strip_prefix() returns paths with backslashes (src\file.rs)
-        // But database stores paths with forward slashes (src/file.rs)
-        if let Ok(relative_path) =
-            crate::utils::paths::to_relative_unix_style(entry.path(), workspace_root)
-        {
-            files.insert(relative_path);
-        }
-    }
-
-    Ok(files)
-}
-
-/// Check if a file is a supported code file.
-///
-/// Accepts files through the same candidate policy used by watcher events:
-/// known parser-backed extensions are included, blacklisted names/extensions
-/// are rejected, and unknown or extensionless text files stay indexable as
-/// text-only files. The goal is to keep startup freshness scans, overflow
-/// repair scans, and live watcher events from disagreeing about tracked files.
-fn is_code_file(path: &Path) -> bool {
-    crate::tools::workspace::indexing::file_policy::should_index_path_candidate(
-        path,
-        crate::tools::workspace::indexing::file_policy::supported_extensions_for_indexing(),
-    )
-}
