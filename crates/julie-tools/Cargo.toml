@@ -1,0 +1,64 @@
+[package]
+name = "julie-tools"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Handler-free MCP tool implementations for Julie (search, navigation, editing, analysis)"
+
+[dependencies]
+# Julie workspace crates
+julie-core    = { path = "../julie-core" }
+julie-index   = { path = "../julie-index" }
+julie-pipeline = { path = "../julie-pipeline" }
+julie-context  = { path = "../julie-context" }
+
+# Julie extractors (symbol types, language parsers)
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.1.0" }
+
+# MCP schema derives (JsonSchema on tool param structs)
+schemars = "1.0"
+
+# Tree-sitter (used by refactoring/editing tools for parse-aware edits)
+tree-sitter = "0.26.8"
+
+# Diff/patch (editing tools)
+diff-match-patch-rs = "0.5.1"
+
+# UUID (editing transaction IDs)
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+# Search tokenizer traits (CodeTokenizer implements tantivy::tokenizer::Tokenizer)
+tantivy = "0.26.0"
+
+# Database (rusqlite::params! macro used in get_context/task_signals)
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+
+# Regex (used by refactoring rename tool)
+regex = "1.11"
+
+# Blake3 hashing (editing rewrite_symbol safety check)
+blake3 = "1.8"
+
+# Async runtime
+tokio = { version = "1.47.1", features = ["full"] }
+
+# Serialization
+serde       = { version = "1.0", features = ["derive"] }
+serde_json  = "1.0"
+
+# Error handling
+anyhow = "1.0"
+
+# Async trait support
+async-trait = "0.1"
+
+# Logging
+tracing = "0.1"
+
+[features]
+test-support = []
+
+[dev-dependencies]
+julie-test-support = { path = "../julie-test-support" }
+tempfile = "3.13"

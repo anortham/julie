@@ -1697,6 +1697,7 @@ dependencies = [
  "julie-index",
  "julie-pipeline",
  "julie-test-support",
+ "julie-tools",
  "libc",
  "md5",
  "notify",
@@ -1873,6 +1874,33 @@ dependencies = [
  "julie-core",
  "julie-index",
  "tokio",
+]
+
+[[package]]
+name = "julie-tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "diff-match-patch-rs",
+ "julie-context",
+ "julie-core",
+ "julie-extractors",
+ "julie-index",
+ "julie-pipeline",
+ "julie-test-support",
+ "regex",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tantivy",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tree-sitter",
+ "uuid",
 ]
 
 [[package]]
