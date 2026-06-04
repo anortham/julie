@@ -15,7 +15,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Upward module paths / crate names that must never appear in julie-core's
-/// executable source. Matched against comment-stripped lines.
+/// executable source. Matched as substrings against comment-stripped lines.
+///
+/// NOTE: these are matched with a plain `contains`, so a needle must not be a
+/// prefix of a module julie-core *legitimately owns*, or it will false-positive.
+/// julie-core owns `workspace`, `workspace_errors`, `health_types`, and `paths`
+/// (see lib.rs), so:
+///   - `crate::workspace` is intentionally NOT listed: julie-core owns the
+///     `workspace` module, so `crate::workspace[_errors]` are legitimate
+///     intra-crate references. A genuine upward reference to the parent crate's
+///     workspace would be `julie::workspace`, which the `julie::` needle catches.
+///   - `crate::health` is listed as `crate::health::` (trailing `::`) so it
+///     guards refs to a (nonexistent-here) `health` module without matching the
+///     owned `crate::health_types`.
 const FORBIDDEN_SOURCE: &[&str] = &[
     "crate::handler",
     "crate::tools",
@@ -24,9 +36,8 @@ const FORBIDDEN_SOURCE: &[&str] = &[
     "crate::watcher",
     "crate::analysis",
     "crate::search",
-    "crate::workspace",
     "crate::external_extract",
-    "crate::health",
+    "crate::health::",
     "julie_test_support",
     "julie::",
 ];
