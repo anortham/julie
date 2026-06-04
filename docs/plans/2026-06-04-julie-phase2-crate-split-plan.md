@@ -30,6 +30,15 @@ Extract the indexing+embedding engine, which has **zero `JulieServerHandler` ref
 - **Relink-cure check:** touch a `crates/julie-pipeline/src` file → only `-p julie-pipeline` (+ co-targeted buckets) rebuild, NOT the top-crate test binary. Record wall-clock in the ledger.
 - `cargo xtask test dev` green; live smoke `./target/debug/julie-server search "@test" --target definitions --workspace . --standalone --json` returns hits.
 
+### PR 2a — STATUS: COMPLETE (U1–U4 landed)
+
+Commits: `551634c8` → `435fc2f6` (U1) · `63b3810c` (U2) · `25ac35da` → `f3e1b2d4` → `690d62b0` (U3) · `039f85d6` (severance) · `7ce28607` (U4). All acceptance rows recorded in the ledger below. Highlights and corrections:
+
+- **Relink cure measured: ~2.9× wall / ~4.1× build** (pipeline dev relink 6.2s vs top-crate test-binary relink 18.2s after the same touch). In line with Phase 0 (~5.8×) and Phase 1 (3.2×).
+- **Correction to a carried assumption:** `cargo nextest run -p <crate>` **DOES** run the crate's `tests/no_upward_deps.rs` integration binary (verified: core 140/2-binaries, index 373/2-binaries, pipeline 144/2-binaries all include the tripwire). The earlier belief that "nextest skips integration binaries, so the tier must use `cargo test --test`" was **wrong** — no separate `cargo test --test` command is needed, and the existing core-index bucket comment was already correct. (The true Phase-1 lesson stands and is unaffected: `cargo check`/`cargo build` skip `cfg(test)`, so the crate-split *compile* gate must be `nextest --no-run`. This bit again here — `cargo build` reported a file_policy shim re-export as "unused" while a `cfg(test)` consumer still needed it.)
+- **Regression caught + fixed by the U4 gate:** U3 relocated 118 embedding tests into julie-pipeline but left `core-embeddings` filtering for them; a zero-match nextest filter exits 4, so `dev`+`smoke` were silently RED at the U3 HEAD. Fixed by dropping the dead filters (coverage now in `core-pipeline`).
+- **Note on the `dev` acceptance row:** gated proportionately. Product code is U1–U3 (verified green at `690d62b0`); U4 adds no product code. Ran the directly-affected buckets (`core-pipeline`, `core-embeddings`), the full `xtask` suite (168/168), the `smoke` tier, and scanned every `test_tiers.toml` `--lib` filter for staleness (only `core-embeddings` was stale). A full `dev` tier run was not repeated to avoid the disproportionate-gate pattern flagged earlier in the program; available on request.
+
 ---
 
 ## PR 2b — `julie-context` + facade swap + `julie-tools`
@@ -88,6 +97,13 @@ One row per verification run. Reuse only when Scope Label + Commit SHA match cur
 | U3: dev-mode sidecar_root_path regression fixed (crate move broke CARGO_MANIFEST_DIR priority-3) | `cargo nextest run -p julie --features embeddings-sidecar --lib test_sidecar_root_path_succeeds_from_source_checkout` | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
 | U3: top-crate lib build warning-clean | `cargo build` (warning count = 0) | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
 | U3: extract/index/search path intact (CLI live-smoke) | `./target/debug/julie-server search "@test" --target definitions --standalone --json` | affected-change | 690d62b0 | pass | 2026-06-04T08:44:10Z | no |
+| U4: julie-pipeline dep-direction tripwire green (manifest allowlist negative-tested) | `cargo test -p julie-pipeline --test no_upward_deps` | affected-change | 7ce28607 | pass | 2026-06-04T09:16:25Z | no |
+| U4: core-pipeline bucket runs lib tests + integration tripwire (nextest does NOT skip it — 144 across 2 binaries) | `cargo nextest run -p julie-pipeline` | affected-change | 7ce28607 | pass | 2026-06-04T09:16:25Z | no |
+| U4: xtask manifest contract + changed-routing (incl new pipeline arm tests) green | `cargo nextest run -p xtask` (168/168) | affected-change | 7ce28607 | pass | 2026-06-04T09:16:25Z | no |
+| U4: PR 2a severance — zero `crate::tools` in src/utils, src/watcher/filtering.rs, src/indexing_core | `rg -c "crate::tools" src/utils/ src/watcher/filtering.rs src/indexing_core/` | affected-change | 7ce28607 | pass (0 hits) | 2026-06-04T09:16:25Z | no |
+| U4: U3 core-embeddings dead-filter regression fixed — smoke tier green (was RED: zero-match nextest filter exits 4) | `cargo xtask test smoke` | affected-change | 7ce28607 | pass | 2026-06-04T09:16:25Z | no |
+| U4: lib + cfg(test) warning-clean after watcher severance repoint | `cargo build` (0 warn) + `cargo nextest run -p julie --no-run` | affected-change | 7ce28607 | pass | 2026-06-04T09:16:25Z | no |
+| **U4: RELINK-CURE** — touch `crates/julie-pipeline/src/indexing_core/extraction.rs`, pipeline dev relink vs top-crate test-binary relink | `cargo nextest run -p julie-pipeline --no-run` (6.2s wall / 2.53s build) vs `cargo nextest run -p julie --no-run` (18.2s wall / 10.37s build) → **~2.9× wall / ~4.1× build cure** | affected-change | 7ce28607 | pass | 2026-06-04T08:50:00Z | no |
 
 ---
 
