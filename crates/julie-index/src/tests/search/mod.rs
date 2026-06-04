@@ -1,5 +1,6 @@
 //! Search layer tests — indexing, scoring, tokenization, reranking, projection.
 
+pub mod tantivy_cross_process_reload_test;
 pub mod c3_enriched_schema_tests;
 pub mod compat_marker_v4_test;
 pub mod file_mode_index_tests;
