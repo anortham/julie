@@ -89,7 +89,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
-                    "cargo nextest run --lib utils::string_similarity::tests -- --skip search_quality",
                     "cargo nextest run --lib tests::integration::watcher_filtering -- --skip search_quality",
                     "cargo nextest run --lib tests::core::handler -- --skip search_quality",
                     "cargo nextest run --lib tests::core::language -- --skip search_quality",

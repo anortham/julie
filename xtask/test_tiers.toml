@@ -354,9 +354,12 @@ expected_seconds = 60
 timeout_seconds = 120
 scope_label = "core"
 notes = "misc fast core coverage"
+# Note: `utils::string_similarity::tests` was removed here — string_similarity
+# relocated to julie-core in PR 2a U1, and its tests run via the `core-database`
+# bucket (`cargo nextest run -p julie-core`). A zero-match nextest filter exits 4,
+# so leaving it here made `dev` RED.
 commands = [
   "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
-  "cargo nextest run --lib utils::string_similarity::tests -- --skip search_quality",
   "cargo nextest run --lib tests::integration::watcher_filtering -- --skip search_quality",
   "cargo nextest run --lib tests::core::handler -- --skip search_quality",
   "cargo nextest run --lib tests::core::language -- --skip search_quality",
