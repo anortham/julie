@@ -12,8 +12,9 @@
 //!    it as a detached background process, then polls until the socket/pipe
 //!    accepts connections or the 10-second timeout expires.
 //!
-//! All `JULIE_HOME` and `JULIE_EMBEDDING_*` env vars are inherited by the
-//! child process — no explicit forwarding needed.
+//! `JULIE_HOME` is pinned from the `paths` argument when spawning, so the child
+//! binds the same socket this function polls; the `JULIE_EMBEDDING_*` vars are
+//! inherited from the parent environment.
 
 use std::io;
 use std::time::{Duration, Instant};
@@ -92,10 +93,12 @@ fn poll_for_liveness(addr: &HostAddress, timeout: Duration) -> Result<()> {
 
 /// Spawn `julie-embedding-host` as a detached background process.
 ///
-/// stdin/stdout/stderr are redirected to null.  The child inherits the
-/// parent's environment, including `JULIE_HOME` and all `JULIE_EMBEDDING_*`
-/// settings.  Process-group detachment mirrors `spawn_daemon` in
-/// `src/adapter/launcher.rs`.
+/// stdin/stdout/stderr are redirected to null.  `JULIE_HOME` is pinned from the
+/// `paths` argument so the spawned host binds the exact socket this function
+/// polls (even when `paths` was built via `with_home(...)` and differs from the
+/// parent's own `$JULIE_HOME`, e.g. in tests).  The `JULIE_EMBEDDING_*` vars are
+/// inherited from the parent environment.  Process-group detachment mirrors
+/// `spawn_daemon` in `src/adapter/launcher.rs`.
 fn spawn_host_process(paths: &DaemonPaths) -> io::Result<()> {
     let host_exe = locate_embedding_host()?;
     info!("Spawning embedding-host: {}", host_exe.display());
@@ -112,6 +115,11 @@ fn spawn_host_process(paths: &DaemonPaths) -> io::Result<()> {
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
+
+    // Pin the child's $JULIE_HOME to the caller's `paths` so the host binds the
+    // exact socket this function polls — `connect_or_spawn_host` derives the
+    // address from `paths`, not from the parent's env, and the two must agree.
+    cmd.env("JULIE_HOME", paths.julie_home());
 
     #[cfg(unix)]
     {
