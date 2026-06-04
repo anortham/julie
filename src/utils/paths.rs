@@ -6,9 +6,7 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-use crate::tools::navigation::resolution::{
-    WorkspaceResolutionFailure, WorkspaceResolutionFailureKind,
-};
+use julie_core::workspace_errors::{WorkspaceResolutionFailure, WorkspaceResolutionFailureKind};
 
 // strip_unc_prefix lives in julie-core; imported privately so
 // relative_within_workspace can keep calling it unchanged.

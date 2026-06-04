@@ -1,4 +1,4 @@
-use crate::tools::shared::BLACKLISTED_DIRECTORIES;
+use julie_core::shared::BLACKLISTED_DIRECTORIES;
 use anyhow::{Context, Result};
 use ignore::WalkBuilder;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
