@@ -26,17 +26,22 @@ use super::sidecar_protocol::{
 // Public entry points
 // ---------------------------------------------------------------------------
 
-/// Acquire the singleton lock, bind the IPC front door, and serve embedding
-/// requests until `cancel` fires.
+/// Core loop: acquire the singleton lock, call `make_provider` to build the
+/// [`EmbeddingProvider`] (sidecar spawns only **after** we hold the lock), bind
+/// the listener, and serve connections until `cancel` fires.
 ///
-/// Returns `Ok(())` after a clean cancel-driven shutdown.
-/// Returns `Err` if the singleton lock is already held (another host is
-/// running) or if the listener cannot be bound.
-pub async fn run_embedding_host(
+/// By calling the factory after lock acquisition, competing host processes fail
+/// fast on the lock and exit without ever spawning a sidecar — guaranteeing
+/// exactly one sidecar per `$JULIE_HOME` under concurrent `connect_or_spawn_host`
+/// calls.
+///
+/// If `make_provider` returns an error, `lock_file` drops (releasing the lock)
+/// before the error propagates.
+pub async fn run_embedding_host_with_factory(
     addr: &HostAddress,
     lock_path: &Path,
     cancel: CancellationToken,
-    provider: Arc<dyn EmbeddingProvider>,
+    make_provider: impl FnOnce() -> anyhow::Result<Arc<dyn EmbeddingProvider>>,
 ) -> Result<()> {
     // 1. Singleton lock — refuse to start a second instance.
     if let Some(parent) = lock_path.parent() {
@@ -58,14 +63,18 @@ pub async fn run_embedding_host(
             )
         })?;
 
-    // 2. Bind the front door.
+    // 2. Build provider — only the lock winner reaches this point.
+    //    If make_provider fails, lock_file goes out of scope here → lock released.
+    let provider = make_provider()?;
+
+    // 3. Bind the front door.
     let listener = HostListener::bind(addr)
         .await
         .context("failed to bind embedding-host listener")?;
 
     info!("embedding-host listening");
 
-    // 3. Accept loop.
+    // 4. Accept loop.
     loop {
         tokio::select! {
             _ = cancel.cancelled() => {
@@ -86,7 +95,7 @@ pub async fn run_embedding_host(
         }
     }
 
-    // 4. Graceful shutdown: ask the provider to stop its child process.
+    // 5. Graceful shutdown: ask the provider to stop its child process.
     provider.shutdown();
     let p = Arc::clone(&provider);
     let _ =
@@ -101,20 +110,40 @@ pub async fn run_embedding_host(
     Ok(())
 }
 
-/// Resolve the provider via [`super::init::create_embedding_provider`] and
-/// run the host.  Returns an error if no provider is available.
+/// Thin wrapper for tests that inject a pre-built provider (e.g. `FakeProvider`).
+///
+/// The lock is still acquired first; `make_provider` just wraps the already-built
+/// `Arc<dyn EmbeddingProvider>` in `Ok(...)`.
+pub async fn run_embedding_host(
+    addr: &HostAddress,
+    lock_path: &Path,
+    cancel: CancellationToken,
+    provider: Arc<dyn EmbeddingProvider>,
+) -> Result<()> {
+    run_embedding_host_with_factory(addr, lock_path, cancel, || Ok(provider)).await
+}
+
+/// Resolve the provider via [`super::init::create_embedding_provider`] and run
+/// the host.
+///
+/// The singleton lock is acquired **before** `create_embedding_provider` is
+/// called, so competing host processes fail the lock before ever spawning a
+/// sidecar.  Returns an error if no provider is available or the lock is already
+/// held.
 pub async fn run_embedding_host_default(
     addr: &HostAddress,
     lock_path: &Path,
     cancel: CancellationToken,
 ) -> Result<()> {
-    let (provider, _status) = super::init::create_embedding_provider();
-    let provider = provider.ok_or_else(|| {
-        anyhow::anyhow!(
-            "no embedding provider available — cannot start the resident embedding-host"
-        )
-    })?;
-    run_embedding_host(addr, lock_path, cancel, provider).await
+    run_embedding_host_with_factory(addr, lock_path, cancel, || {
+        let (p, _status) = super::init::create_embedding_provider();
+        p.ok_or_else(|| {
+            anyhow::anyhow!(
+                "no embedding provider available — cannot start the resident embedding-host"
+            )
+        })
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------------
