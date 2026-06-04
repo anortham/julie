@@ -1,0 +1,458 @@
+//! Transactional Editing Infrastructure
+//!
+//! This module provides atomic file operation primitives used by all editing tools:
+//! - EditingTransaction: Single-file atomic operations (temp file + rename)
+//! - MultiFileTransaction: Multi-file all-or-nothing transactions
+//!
+//! These primitives ensure file safety across all editing tools in Julie.
+
+pub mod edit_file;
+pub mod rewrite_symbol;
+pub mod validation;
+
+use anyhow::Result;
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use tracing::{debug, warn};
+use uuid::Uuid;
+
+//******************************************//
+//     Transactional Editing System        //
+//******************************************//
+
+#[cfg(any(test, feature = "test-support"))]
+type CommitHook = Arc<dyn Fn(&Path) + Send + Sync + 'static>;
+
+#[cfg(any(test, feature = "test-support"))]
+static COMMIT_AFTER_EXPECTED_CHECK_HOOK: OnceLock<Mutex<Option<CommitHook>>> = OnceLock::new();
+#[cfg(any(test, feature = "test-support"))]
+static MULTI_FILE_BEFORE_RENAME_HOOK: OnceLock<Mutex<Option<CommitHook>>> = OnceLock::new();
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn set_commit_after_expected_check_hook(hook: Option<CommitHook>) {
+    let hook_cell = COMMIT_AFTER_EXPECTED_CHECK_HOOK.get_or_init(|| Mutex::new(None));
+    *hook_cell.lock().expect("commit hook lock poisoned") = hook;
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn run_commit_after_expected_check_hook(file_path: &Path) {
+    let hook = COMMIT_AFTER_EXPECTED_CHECK_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .expect("commit hook lock poisoned")
+        .clone();
+    if let Some(hook) = hook {
+        hook(file_path);
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn set_multi_file_before_rename_hook(hook: Option<CommitHook>) {
+    let hook_cell = MULTI_FILE_BEFORE_RENAME_HOOK.get_or_init(|| Mutex::new(None));
+    *hook_cell.lock().expect("multi-file hook lock poisoned") = hook;
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn run_multi_file_before_rename_hook(file_path: &Path) {
+    let hook = MULTI_FILE_BEFORE_RENAME_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .expect("multi-file hook lock poisoned")
+        .clone();
+    if let Some(hook) = hook {
+        hook(file_path);
+    }
+}
+
+#[cfg(not(any(test, feature = "test-support")))]
+fn run_commit_after_expected_check_hook(_file_path: &Path) {}
+
+#[cfg(not(any(test, feature = "test-support")))]
+fn run_multi_file_before_rename_hook(_file_path: &Path) {}
+
+static EDIT_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+
+fn edit_lock_for(file_path: &Path) -> Arc<Mutex<()>> {
+    let lock_path = normalized_edit_lock_path(file_path);
+    let mut locks = EDIT_LOCKS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .expect("edit lock registry poisoned");
+    locks
+        .entry(lock_path)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+fn normalized_edit_lock_path(file_path: &Path) -> PathBuf {
+    if let Ok(path) = file_path.canonicalize() {
+        return path;
+    }
+    if file_path.is_absolute() {
+        return file_path.to_path_buf();
+    }
+    std::env::current_dir()
+        .map(|cwd| cwd.join(file_path))
+        .unwrap_or_else(|_| file_path.to_path_buf())
+}
+
+/// Memory-based single-file transaction system
+///
+/// Provides atomic file operations without creating persistent backup files.
+/// Uses temp file + rename pattern for guaranteed atomicity.
+pub struct EditingTransaction {
+    file_path: PathBuf,
+    original_content: Option<String>,
+    temp_file_path: Option<PathBuf>,
+}
+
+impl EditingTransaction {
+    /// Begin a new transaction for a file
+    pub fn begin(file_path: &str) -> Result<Self> {
+        let file_path = PathBuf::from(file_path);
+
+        // Read original content if file exists
+        let original_content = if file_path.exists() {
+            Some(fs::read_to_string(&file_path)?)
+        } else {
+            None
+        };
+
+        debug!("Started transaction for: {}", file_path.display());
+
+        Ok(EditingTransaction {
+            file_path,
+            original_content,
+            temp_file_path: None,
+        })
+    }
+
+    /// Commit new content to the file atomically
+    pub fn commit(mut self, content: &str) -> Result<()> {
+        self.commit_inner(content, None)
+    }
+
+    /// Commit new content only if the target still matches the expected content.
+    pub fn commit_if_unchanged(mut self, content: &str, expected_current: &str) -> Result<()> {
+        self.commit_inner(content, Some(expected_current))
+    }
+
+    fn commit_inner(&mut self, content: &str, expected_current: Option<&str>) -> Result<()> {
+        let edit_lock = edit_lock_for(&self.file_path);
+        let _edit_guard = edit_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Edit lock poisoned for {}", self.file_path.display()))?;
+
+        let existing_permissions = if self.file_path.exists() {
+            let permissions = fs::metadata(&self.file_path)?.permissions();
+            if permissions.readonly() {
+                return Err(anyhow::anyhow!(
+                    "Cannot write to readonly file: {}",
+                    self.file_path.display()
+                ));
+            }
+            Some(permissions)
+        } else {
+            None
+        };
+
+        // Generate unique temp file name
+        let base_name = self
+            .file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("julie_edit");
+        let temp_name = format!("{}.tmp.{}", base_name, Uuid::new_v4().simple());
+        let temp_path = self.file_path.with_file_name(&temp_name);
+
+        // Write to temp file first
+        fs::write(&temp_path, content)?;
+        self.temp_file_path = Some(temp_path.clone());
+        if let Some(permissions) = existing_permissions {
+            fs::set_permissions(&temp_path, permissions)?;
+        }
+
+        if let Some(expected) = expected_current {
+            let current = fs::read_to_string(&self.file_path)?;
+            if current != expected {
+                return Err(anyhow::anyhow!(
+                    "File changed during edit: {}",
+                    self.file_path.display()
+                ));
+            }
+            run_commit_after_expected_check_hook(&self.file_path);
+        }
+
+        // Atomic rename (this is the commit point)
+        fs::rename(&temp_path, &self.file_path)?;
+
+        debug!("Transaction committed for: {}", self.file_path.display());
+        Ok(())
+    }
+
+    /// Rollback to original content
+    pub fn rollback(self) -> Result<()> {
+        match &self.original_content {
+            Some(content) => {
+                fs::write(&self.file_path, content)?;
+                debug!("Transaction rolled back for: {}", self.file_path.display());
+            }
+            None => {
+                // File didn't exist originally, remove it
+                if self.file_path.exists() {
+                    fs::remove_file(&self.file_path)?;
+                    debug!(
+                        "Transaction rolled back - removed file: {}",
+                        self.file_path.display()
+                    );
+                }
+            }
+        }
+
+        // Clean up temp file if it exists
+        if let Some(temp_path) = &self.temp_file_path {
+            if temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Emergency cleanup of orphaned temp files
+    pub fn emergency_cleanup(directory: &Path) -> Result<()> {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+
+            // Remove orphaned temp files
+            if name.contains(".tmp.") {
+                let path = entry.path();
+                if let Err(e) = fs::remove_file(&path) {
+                    warn!("Failed to clean up temp file {:?}: {}", path, e);
+                } else {
+                    debug!("Cleaned up orphaned temp file: {:?}", path);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for EditingTransaction {
+    fn drop(&mut self) {
+        // Clean up temp file on drop (if transaction wasn't committed)
+        if let Some(temp_path) = &self.temp_file_path {
+            if temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
+    }
+}
+
+/// Memory-based multi-file transaction system
+///
+/// Provides all-or-nothing semantics across multiple files.
+/// Either all files are updated successfully, or none are changed.
+pub struct MultiFileTransaction {
+    session_id: String,
+    /// Maps each enrolled file to its pre-transaction content.
+    /// `None` means the file did not exist before the transaction and must be
+    /// DELETED (not truncated to empty) if rollback is needed.
+    files: HashMap<PathBuf, Option<String>>,
+    pending_content: HashMap<PathBuf, String>, // file_path -> new_content
+    temp_files: Vec<PathBuf>,
+}
+
+impl MultiFileTransaction {
+    /// Create a new multi-file transaction
+    pub fn new(session_id: &str) -> Result<Self> {
+        debug!("Started multi-file transaction: {}", session_id);
+
+        Ok(MultiFileTransaction {
+            session_id: session_id.to_string(),
+            files: HashMap::new(),
+            pending_content: HashMap::new(),
+            temp_files: Vec::new(),
+        })
+    }
+
+    /// Add a file to the transaction
+    pub fn add_file(&mut self, file_path: &str) -> Result<()> {
+        let path = PathBuf::from(file_path);
+
+        // Store None when the file doesn't exist so rollback can DELETE it instead
+        // of writing an empty placeholder.
+        let original_content = if path.exists() {
+            Some(fs::read_to_string(&path)?)
+        } else {
+            None
+        };
+
+        self.files.insert(path.clone(), original_content);
+        debug!("Added file to transaction: {}", path.display());
+
+        Ok(())
+    }
+
+    /// Set new content for a file in the transaction
+    pub fn set_content(&mut self, file_path: &str, content: &str) -> Result<()> {
+        let path = PathBuf::from(file_path);
+
+        if !self.files.contains_key(&path) {
+            return Err(anyhow::anyhow!(
+                "File not added to transaction: {}",
+                file_path
+            ));
+        }
+
+        self.pending_content.insert(path, content.to_string());
+        Ok(())
+    }
+
+    /// Commit all changes atomically
+    pub fn commit_all(mut self) -> Result<()> {
+        // Collect into a stable Vec once. Phase 1 builds self.temp_files in this order;
+        // Phase 2 must iterate in the same order so temp_files[i] maps to the right
+        // destination. HashMap iteration is non-deterministic across re-iterations.
+        // Use std::mem::take because Drop prevents direct field moves from self.
+        let file_list: Vec<(PathBuf, String)> = std::mem::take(&mut self.pending_content)
+            .into_iter()
+            .collect();
+        let mut edit_locks: Vec<(PathBuf, Arc<Mutex<()>>)> = file_list
+            .iter()
+            .map(|(path, _)| (normalized_edit_lock_path(path), edit_lock_for(path)))
+            .collect();
+        edit_locks.sort_by(|(left, _), (right, _)| left.cmp(right));
+        edit_locks.dedup_by(|(left, _), (right, _)| left == right);
+        let mut _edit_guards = Vec::with_capacity(edit_locks.len());
+        for (path, lock) in &edit_locks {
+            _edit_guards.push(
+                lock.lock()
+                    .map_err(|_| anyhow::anyhow!("Edit lock poisoned for {}", path.display()))?,
+            );
+        }
+
+        // Phase 0: Pre-flight validation - check if we can write to all target files
+        for (file_path, _) in &file_list {
+            if file_path.exists() {
+                // Check if file is readonly by trying to get metadata and permissions
+                let metadata = fs::metadata(file_path)?;
+                let permissions = metadata.permissions();
+                if permissions.readonly() {
+                    return Err(anyhow::anyhow!(
+                        "Cannot write to readonly file: {}",
+                        file_path.display()
+                    ));
+                }
+            }
+        }
+
+        // Phase 1: Write all content to temp files
+        for (file_path, content) in &file_list {
+            let temp_name = format!("{}.tmp.{}", file_path.display(), self.session_id);
+            let temp_path = file_path.with_file_name(temp_name);
+
+            fs::write(&temp_path, content)?;
+            self.temp_files.push(temp_path);
+        }
+
+        // Phase 2: Atomic rename all temp files (commit point)
+        for (i, (file_path, _)) in file_list.iter().enumerate() {
+            let temp_path = &self.temp_files[i];
+            run_multi_file_before_rename_hook(file_path);
+
+            if let Err(e) = fs::rename(temp_path, file_path) {
+                // Roll back already-committed renames using the same stable order
+                let committed: Vec<PathBuf> =
+                    file_list[..i].iter().map(|(p, _)| p.clone()).collect();
+                self.rollback_partial_commit(&committed)?;
+                return Err(e.into());
+            }
+        }
+
+        debug!(
+            "Multi-file transaction committed: {} files",
+            file_list.len()
+        );
+        Ok(())
+    }
+
+    /// Rollback partial commit (used internally)
+    fn rollback_partial_commit(&self, committed_paths: &[PathBuf]) -> Result<()> {
+        // Restore files that were successfully renamed
+        for file_path in committed_paths {
+            match &self.files[file_path] {
+                None => {
+                    // File did not exist before the transaction: delete it rather than
+                    // leaving behind an empty placeholder.
+                    if file_path.exists() {
+                        if let Err(e) = fs::remove_file(file_path) {
+                            warn!(
+                                "Failed to delete new file during rollback: {:?}: {}",
+                                file_path, e
+                            );
+                        }
+                    }
+                }
+                Some(original_content) => {
+                    // File existed before: restore atomically via temp+rename to avoid
+                    // partial writes if the process is interrupted mid-rollback.
+                    let temp_name = format!(
+                        "{}.rollback.{}",
+                        file_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("file"),
+                        self.session_id
+                    );
+                    let temp_path = file_path.with_file_name(temp_name);
+                    if let Err(e) = fs::write(&temp_path, original_content)
+                        .and_then(|_| fs::rename(&temp_path, file_path))
+                    {
+                        // Clean up the temp if the rename failed
+                        let _ = fs::remove_file(&temp_path);
+                        warn!(
+                            "Failed to restore file during rollback: {:?}: {}",
+                            file_path, e
+                        );
+                    }
+                }
+            }
+        }
+
+        // Clean up remaining temp files (those not yet renamed)
+        let committed_count = committed_paths.len();
+        for (i, temp_path) in self.temp_files.iter().enumerate() {
+            if i >= committed_count && temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for MultiFileTransaction {
+    fn drop(&mut self) {
+        // Clean up any remaining temp files
+        for temp_path in &self.temp_files {
+            if temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl MultiFileTransaction {
+    /// Test-only accessor: call rollback_partial_commit directly with an explicit set of
+    /// committed paths.  Lets unit tests verify rollback behavior without having to trigger
+    /// an actual Phase 2 rename failure.
+    pub fn test_rollback_partial_commit(&self, committed: &[PathBuf]) -> Result<()> {
+        self.rollback_partial_commit(committed)
+    }
+}

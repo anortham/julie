@@ -1,0 +1,373 @@
+//! Zero-hit hint formatters for `fast_search`.
+//!
+//! When `search_target="content"` returns zero hits and no auto-promotion
+//! fired, the formatter here produces an informative structured hint (per
+//! plan §3.7) instead of the historical terse "no lines found" string. The
+//! builders are pure functions so they are testable without a handler.
+//!
+//! Invoked from `FastSearchTool::execute_with_trace` (content zero-hit
+//! branch). `hint_kind` on the trace is set by the caller.
+
+use std::collections::HashSet;
+
+use tantivy::tokenizer::{TokenStream, Tokenizer};
+
+use julie_index::search::tokenizer::CodeTokenizer;
+use crate::search::query::{line_match_strategy, looks_like_whitespace_separated_globs};
+use crate::search::trace::{FilePatternDiagnostic, HintKind, ZeroHitReason};
+use crate::search::types::LineMatchStrategy;
+
+/// Whether `query` has two or more whitespace-separated tokens. This is the
+/// gate for the multi-token zero-hit hint: single-token content zero-hits
+/// flow through the auto-promotion path instead (Task 7).
+pub fn is_multi_token_query(query: &str) -> bool {
+    query.split_whitespace().count() >= 2
+}
+
+/// Tokenize `query` using the same `CodeTokenizer` that drives index-time
+/// analysis, returning tokens in first-seen order with duplicates removed.
+/// Surfaces the actual tokens the search index would see, which is the
+/// information the agent needs when a multi-token query returns zero hits.
+pub fn tokenize_query_for_hint(query: &str) -> Vec<String> {
+    let mut tokenizer = CodeTokenizer::with_default_patterns();
+    let mut stream = tokenizer.token_stream(query);
+    let mut tokens = Vec::new();
+    let mut seen = HashSet::new();
+    while stream.advance() {
+        let text = stream.token().text.clone();
+        if seen.insert(text.clone()) {
+            tokens.push(text);
+        }
+    }
+    tokens
+}
+
+/// Display label for a `LineMatchStrategy` used by the hint template.
+fn strategy_label(query: &str) -> &'static str {
+    match line_match_strategy(query) {
+        LineMatchStrategy::FileLevel { .. } => "FileLevel",
+        LineMatchStrategy::Tokens { .. } => "Tokens",
+        LineMatchStrategy::Substring(_) => "Substring",
+    }
+}
+
+/// Render a `ZeroHitReason` as its snake_case telemetry string, falling back
+/// to "unknown" when absent (Task 4 populates this; during Phase 2 the field
+/// may still be `None`).
+fn reason_label(reason: Option<&ZeroHitReason>) -> String {
+    let Some(reason) = reason else {
+        return "unknown".to_string();
+    };
+    match serde_json::to_value(reason) {
+        Ok(serde_json::Value::String(s)) => s,
+        _ => "unknown".to_string(),
+    }
+}
+
+/// Build the structured multi-token content zero-hit hint (plan §3.7).
+///
+/// The template is verbose on purpose: it fires only on zero-hit responses
+/// where the agent has already committed to a search, so the extra tokens
+/// buy real diagnostic context. Callers set `trace.hint_kind =
+/// Some(HintKind::MultiTokenHint)` independently.
+pub fn build_multi_token_zero_hit_hint(
+    query: &str,
+    file_pattern: Option<&str>,
+    language: Option<&str>,
+    exclude_tests: Option<bool>,
+    zero_hit_reason: Option<&ZeroHitReason>,
+) -> String {
+    let tokens = tokenize_query_for_hint(query);
+    let first_token = tokens.first().map(String::as_str).unwrap_or(query);
+    let pattern_display = file_pattern.unwrap_or("(none)");
+    let language_display = language.unwrap_or("(none)");
+    let exclude_display = match exclude_tests {
+        Some(true) => "true",
+        Some(false) => "false",
+        None => "auto",
+    };
+    let reason_display = reason_label(zero_hit_reason);
+    let strategy = strategy_label(query);
+    let tokens_list = tokens.join(", ");
+
+    format!(
+        "0 content matches for \"{query}\" with file_pattern={pattern}.\n\
+         \n\
+         Content search requires all tokens on the same line (under Tokens strategy) or the same file (under FileLevel strategy). Multi-token zero-hits usually mean:\n\
+         - Concept query → try: get_context(query=\"{query}\")\n\
+         - Symbol lookup → try: fast_search(query=\"{first_token}\")\n\
+         - Literal phrase → drop to 1-2 key tokens\n\
+         \n\
+         Tokens: [{tokens_list}]\n\
+         Strategy used: {strategy}\n\
+         Filters: file_pattern={pattern}, language={language}, exclude_tests={exclude_tests}\n\
+         Zero-hit reason: {reason}",
+        query = query,
+        pattern = pattern_display,
+        first_token = first_token,
+        tokens_list = tokens_list,
+        strategy = strategy,
+        language = language_display,
+        exclude_tests = exclude_display,
+        reason = reason_display,
+    )
+}
+
+pub fn build_file_pattern_syntax_hint(query: &str, file_pattern: &str) -> String {
+    format!(
+        "0 content matches for \"{query}\" with file_pattern={file_pattern}.\n\
+         \n\
+         file_pattern looks like multiple globs separated by whitespace.\n\
+         Use ',' or '|' between globs, for example: src/**,tests/**",
+        query = query,
+        file_pattern = file_pattern,
+    )
+}
+
+pub fn build_out_of_scope_content_hint(query: &str, file_pattern: &str) -> String {
+    format!(
+        "0 content matches for \"{query}\" with file_pattern={file_pattern}.\n\
+         \n\
+         Content search found no candidate files inside file_pattern={file_pattern}.\n\
+         Try broadening that scope or removing file_pattern if you are not sure where the code lives.",
+        query = query,
+        file_pattern = file_pattern,
+    )
+}
+
+pub fn build_scope_rescue_header(file_pattern: &str, result_count: usize) -> String {
+    let mut text = format!(
+        "NOTE: 0 matches within file_pattern={file_pattern}. Showing {result_count} results from the full codebase (outside requested scope).",
+        file_pattern = file_pattern,
+        result_count = result_count,
+    );
+
+    if !contains_glob_marker(file_pattern) {
+        text.push_str(&format!(
+            "\nHint: for symbol structure within a specific file, use get_symbols(file_path={file_pattern}). file_pattern is valid for text search within a known file.",
+            file_pattern = file_pattern,
+        ));
+    }
+
+    text
+}
+
+fn contains_glob_marker(pattern: &str) -> bool {
+    pattern
+        .chars()
+        .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
+}
+
+fn build_target_hint(query: &str, description: &str) -> String {
+    format!(
+        "0 matches for \"{query}\".\n\
+         \n\
+         This looks like {description}. Try: fast_search(query=\"{query}\")",
+        query = query,
+        description = description,
+    )
+}
+
+fn build_file_target_hint(query: &str) -> String {
+    build_target_hint(query, "a path or file name")
+}
+
+fn build_definitions_target_hint(query: &str) -> String {
+    build_target_hint(query, "a symbol name")
+}
+
+fn has_path_separator(query: &str) -> bool {
+    query.contains('/') || query.contains('\\')
+}
+
+fn has_directory_marker(query: &str) -> bool {
+    query.starts_with("./")
+        || query.starts_with("../")
+        || query.starts_with(".\\")
+        || query.starts_with("..\\")
+        || query.starts_with("~/")
+}
+
+fn has_known_file_extension(query: &str) -> bool {
+    let Some((stem, extension)) = query.rsplit_once('.') else {
+        return false;
+    };
+    if stem.is_empty() {
+        return false;
+    }
+
+    let extension = extension.to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "rs" | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "py"
+            | "java"
+            | "cs"
+            | "vb"
+            | "php"
+            | "rb"
+            | "swift"
+            | "kt"
+            | "kts"
+            | "scala"
+            | "go"
+            | "c"
+            | "h"
+            | "hh"
+            | "hpp"
+            | "cc"
+            | "cpp"
+            | "cxx"
+            | "lua"
+            | "zig"
+            | "vue"
+            | "qml"
+            | "dart"
+            | "r"
+            | "sql"
+            | "html"
+            | "htm"
+            | "css"
+            | "scss"
+            | "less"
+            | "sass"
+            | "json"
+            | "jsonc"
+            | "toml"
+            | "yaml"
+            | "yml"
+            | "md"
+            | "markdown"
+            | "txt"
+            | "rst"
+            | "adoc"
+            | "ini"
+            | "cfg"
+            | "conf"
+            | "env"
+            | "sh"
+            | "bash"
+            | "ps1"
+            | "bat"
+            | "cmd"
+            | "csv"
+            | "tsv"
+            | "xml"
+            | "lock"
+            | "gradle"
+            | "properties"
+            | "ex"
+            | "exs"
+            | "el"
+    )
+}
+
+fn is_path_like_query(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.is_empty()
+        && (has_path_separator(trimmed)
+            || has_directory_marker(trimmed)
+            || has_known_file_extension(trimmed))
+}
+
+fn has_dotted_identifier(query: &str) -> bool {
+    let trimmed = query.trim();
+    trimmed.contains('.')
+        && !has_path_separator(trimmed)
+        && trimmed.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        })
+}
+
+fn has_camel_case_shape(query: &str) -> bool {
+    let trimmed = query.trim();
+    trimmed.chars().any(|ch| ch.is_ascii_uppercase())
+        && trimmed.chars().any(|ch| ch.is_ascii_lowercase())
+        && !trimmed.contains(' ')
+}
+
+fn has_snake_case_shape(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.contains(' ')
+        && trimmed.contains('_')
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn zero_hit_reason_supports_symbol_hint(reason: Option<&ZeroHitReason>) -> bool {
+    matches!(
+        reason,
+        Some(ZeroHitReason::LineMatchMiss | ZeroHitReason::TantivyNoCandidates)
+    )
+}
+
+fn is_symbol_like_query(query: &str, zero_hit_reason: Option<&ZeroHitReason>) -> bool {
+    let trimmed = query.trim();
+    zero_hit_reason_supports_symbol_hint(zero_hit_reason)
+        && !trimmed.is_empty()
+        && (trimmed.contains("::")
+            || trimmed.ends_with('(')
+            || has_dotted_identifier(trimmed)
+            || has_camel_case_shape(trimmed)
+            || has_snake_case_shape(trimmed))
+}
+
+pub fn build_content_zero_hit_hint(
+    query: &str,
+    file_pattern: Option<&str>,
+    language: Option<&str>,
+    exclude_tests: Option<bool>,
+    zero_hit_reason: Option<&ZeroHitReason>,
+    file_pattern_diagnostic: Option<&FilePatternDiagnostic>,
+) -> Option<(HintKind, String)> {
+    if let Some(file_pattern) = file_pattern
+        && looks_like_whitespace_separated_globs(file_pattern)
+    {
+        return Some((
+            HintKind::FilePatternSyntaxHint,
+            build_file_pattern_syntax_hint(query, file_pattern),
+        ));
+    }
+
+    if let (Some(file_pattern), Some(FilePatternDiagnostic::NoInScopeCandidates)) =
+        (file_pattern, file_pattern_diagnostic)
+    {
+        return Some((
+            HintKind::OutOfScopeContentHint,
+            build_out_of_scope_content_hint(query, file_pattern),
+        ));
+    }
+
+    if is_path_like_query(query) {
+        return Some((HintKind::FileTargetHint, build_file_target_hint(query)));
+    }
+
+    if is_symbol_like_query(query, zero_hit_reason) {
+        return Some((
+            HintKind::DefinitionsTargetHint,
+            build_definitions_target_hint(query),
+        ));
+    }
+
+    if is_multi_token_query(query) {
+        return Some((
+            HintKind::MultiTokenHint,
+            build_multi_token_zero_hit_hint(
+                query,
+                file_pattern,
+                language,
+                exclude_tests,
+                zero_hit_reason,
+            ),
+        ));
+    }
+
+    None
+}

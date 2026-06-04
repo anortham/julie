@@ -9,8 +9,8 @@ use tracing::debug;
 
 use super::resolution::parse_qualified_name;
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
-use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
+use julie_context::ToolContext;
 
 /// Find references in a target workspace using handler helpers for DB access.
 ///
@@ -22,7 +22,7 @@ use crate::utils::cross_language_intelligence::generate_naming_variants;
 ///
 /// Results are sorted by confidence (descending) then truncated to `limit`.
 pub async fn find_references_in_target_workspace(
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
     target_workspace_id: String,
     symbol: &str,
     limit: u32,

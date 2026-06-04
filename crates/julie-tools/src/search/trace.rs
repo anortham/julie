@@ -1,0 +1,542 @@
+use serde::Serialize;
+
+use julie_extractors::Symbol;
+use julie_index::search::index::{FileSearchResult, UnifiedHit};
+
+use super::types::LineMatch;
+
+#[derive(Debug, Clone)]
+pub enum SearchHitBacking {
+    Symbol(Symbol),
+    LineMatch(LineMatch),
+    File(FileSearchResult),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchHit {
+    pub name: String,
+    pub file: String,
+    pub line: Option<u32>,
+    pub kind: String,
+    pub language: String,
+    pub score: f32,
+    pub snippet: Option<String>,
+    pub workspace: String,
+    pub symbol_id: Option<String>,
+    #[serde(skip_serializing)]
+    pub backing: SearchHitBacking,
+}
+
+impl SearchHit {
+    pub fn from_symbol(symbol: Symbol, workspace: String) -> Self {
+        let line = Some(symbol.start_line);
+        let score = symbol.confidence.unwrap_or(0.0);
+        let snippet = symbol
+            .signature
+            .clone()
+            .or(symbol.doc_comment.clone())
+            .or(symbol.code_context.clone());
+        let symbol_id = Some(symbol.id.clone());
+        let name = symbol.name.clone();
+        let file = symbol.file_path.clone();
+        let kind = symbol.kind.to_string();
+        let language = symbol.language.clone();
+
+        Self {
+            name,
+            file,
+            line,
+            kind,
+            language,
+            score,
+            snippet,
+            workspace,
+            symbol_id,
+            backing: SearchHitBacking::Symbol(symbol),
+        }
+    }
+
+    pub fn from_line_match(
+        line_match: LineMatch,
+        workspace: String,
+        language: String,
+        score: f32,
+    ) -> Self {
+        let filename = line_match
+            .file_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&line_match.file_path)
+            .to_string();
+        let file = line_match.file_path.clone();
+        let line = Some(line_match.line_number as u32);
+        let snippet = Some(line_match.line_content.clone());
+
+        Self {
+            name: filename,
+            file,
+            line,
+            kind: "line".to_string(),
+            language,
+            score,
+            snippet,
+            workspace,
+            symbol_id: None,
+            backing: SearchHitBacking::LineMatch(line_match),
+        }
+    }
+
+    pub fn from_file_result(file_result: FileSearchResult, workspace: String) -> Self {
+        let name = file_result
+            .file_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&file_result.file_path)
+            .to_string();
+        let file = file_result.file_path.clone();
+        let language = file_result.language.clone();
+        let score = file_result.score;
+
+        Self {
+            name,
+            file,
+            line: None,
+            kind: "file".to_string(),
+            language,
+            score,
+            snippet: None,
+            workspace,
+            symbol_id: None,
+            backing: SearchHitBacking::File(file_result),
+        }
+    }
+
+    /// Build a [`SearchHit`] directly from a [`UnifiedHit`] returned by
+    /// [`SearchIndex::search_unified`], preserving the original `kind` field.
+    ///
+    /// File rows (`kind == "file"`) are represented with `line = None` and
+    /// `symbol_id = None`, matching the shape returned by `from_file_result`.
+    /// Symbol rows carry their `id` and `start_line` from the index.
+    pub fn from_unified_hit(hit: UnifiedHit, workspace: String) -> Self {
+        let is_file = hit.kind == "file";
+        let name = if is_file {
+            // Use the basename for file hits so the display matches
+            // what `from_file_result` produces.
+            if hit.basename.is_empty() {
+                hit.file_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&hit.file_path)
+                    .to_string()
+            } else {
+                hit.basename.clone()
+            }
+        } else {
+            hit.name.clone()
+        };
+
+        let snippet = if !hit.signature.is_empty() {
+            Some(hit.signature.clone())
+        } else if !hit.doc_comment.is_empty() {
+            Some(hit.doc_comment.clone())
+        } else {
+            None
+        };
+
+        let symbol_id = if is_file { None } else { Some(hit.id.clone()) };
+        let line = if is_file { None } else { Some(hit.start_line) };
+
+        // Construct a minimal FileSearchResult for the backing when kind=="file"
+        // so downstream code that pattern-matches on SearchHitBacking::File works.
+        let backing = if is_file {
+            SearchHitBacking::File(FileSearchResult {
+                file_path: hit.file_path.clone(),
+                language: hit.language.clone(),
+                score: hit.tantivy_score,
+                match_kind: julie_index::search::index::FileMatchKind::ExactBasename,
+            })
+        } else {
+            use julie_extractors::SymbolKind;
+            let kind = SymbolKind::try_from_string(&hit.kind).unwrap_or(SymbolKind::Variable);
+            SearchHitBacking::Symbol(Symbol {
+                id: hit.id.clone(),
+                name: hit.name.clone(),
+                kind,
+                language: hit.language.clone(),
+                file_path: hit.file_path.clone(),
+                start_line: hit.start_line,
+                start_column: 0,
+                end_line: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 0,
+                signature: if hit.signature.is_empty() {
+                    None
+                } else {
+                    Some(hit.signature.clone())
+                },
+                doc_comment: if hit.doc_comment.is_empty() {
+                    None
+                } else {
+                    Some(hit.doc_comment.clone())
+                },
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(hit.tantivy_score),
+                code_context: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            })
+        };
+
+        Self {
+            name,
+            file: hit.file_path,
+            line,
+            kind: hit.kind,
+            language: hit.language,
+            score: hit.tantivy_score,
+            snippet,
+            workspace,
+            symbol_id,
+            backing,
+        }
+    }
+
+    pub fn as_symbol(&self) -> Option<&Symbol> {
+        match &self.backing {
+            SearchHitBacking::Symbol(symbol) => Some(symbol),
+            SearchHitBacking::LineMatch(_) => None,
+            SearchHitBacking::File(_) => None,
+        }
+    }
+
+    pub fn as_line_match(&self) -> Option<&LineMatch> {
+        match &self.backing {
+            SearchHitBacking::Symbol(_) => None,
+            SearchHitBacking::LineMatch(line_match) => Some(line_match),
+            SearchHitBacking::File(_) => None,
+        }
+    }
+
+    pub fn as_file_result(&self) -> Option<&FileSearchResult> {
+        match &self.backing {
+            SearchHitBacking::Symbol(_) => None,
+            SearchHitBacking::LineMatch(_) => None,
+            SearchHitBacking::File(file_result) => Some(file_result),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchHitSummary {
+    pub rank: usize,
+    pub symbol_id: Option<String>,
+    pub name: String,
+    pub kind: String,
+    pub file: String,
+    pub line: Option<u32>,
+    pub score: f32,
+    pub workspace: String,
+}
+
+/// Attribution for a zero-hit search outcome. Populated by per-stage
+/// instrumentation and surfaced through `SearchTrace.zero_hit_reason` so
+/// telemetry can classify empty results without log-scraping.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ZeroHitReason {
+    /// Tantivy returned no candidate documents before any filtering.
+    TantivyNoCandidates,
+    /// Candidates existed but were eliminated by the `file_pattern` filter.
+    FilePatternFiltered,
+    /// Candidates existed but were eliminated by the `language` filter.
+    LanguageFiltered,
+    /// Candidates existed but were eliminated by the `exclude_tests` filter.
+    TestFiltered,
+    /// File content could not be loaded (blob missing, storage unavailable).
+    FileContentUnavailable,
+    /// Line-level post-processing did not match any content lines.
+    LineMatchMiss,
+}
+
+/// Root-cause diagnostics for `file_pattern`-specific content zero-hits.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FilePatternDiagnostic {
+    /// Pattern looks like multiple globs separated by whitespace instead of a
+    /// supported top-level separator.
+    WhitespaceSeparatedMultiGlob,
+    /// No candidate paths matching the requested `file_pattern` exist in the
+    /// wider scoped probe.
+    NoInScopeCandidates,
+    /// The initial fetch window missed in-scope candidates that a wider probe
+    /// can see.
+    CandidateStarvation,
+}
+
+/// Outcome of the line-mode enrichment pass that adds exact line snippets or
+/// line locations after unified search has selected candidate files/symbols.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LineEnrichmentStatus {
+    /// Line-mode found matches and enriched the returned execution trace.
+    Applied,
+    /// Line-mode was attempted but found no line-level matches.
+    NoMatches,
+    /// Line-mode failed and the caller fell back to unified search output.
+    Failed,
+}
+
+/// Categorizes the kind of hint prepended to an agent-facing search response.
+/// Persisted through `SearchTrace.hint_kind` so the "without-recourse" rate is
+/// measurable from `tool_calls.metadata`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HintKind {
+    /// `file_pattern` appears to be multiple globs joined with whitespace
+    /// instead of `,` or `|`.
+    FilePatternSyntaxHint,
+    /// Content search found no candidate files inside the requested
+    /// `file_pattern` scope.
+    OutOfScopeContentHint,
+    /// Query shape looks like a path or file name, so `files` is the better
+    /// search target.
+    FileTargetHint,
+    /// Query shape looks like a symbol lookup, so `definitions` is the better
+    /// search target.
+    DefinitionsTargetHint,
+    /// Multi-token content search produced zero hits; formatter prepended a
+    /// per-token breakdown hint.
+    MultiTokenHint,
+}
+
+pub fn target_hint_label(hint_kind: &HintKind) -> Option<&'static str> {
+    match hint_kind {
+        HintKind::FileTargetHint => Some("files"),
+        HintKind::DefinitionsTargetHint => Some("definitions"),
+        _ => None,
+    }
+}
+
+/// Trace describing the executed search strategy, result count, and diagnostic
+/// metadata.
+///
+/// The following fields are populated by downstream stages and default to
+/// `None`:
+///
+/// - `zero_hit_reason` is set by per-stage attribution when
+///   `result_count == 0`. Paths that intentionally leave it `None`:
+///     * content hit with `result_count > 0`,
+///     * definitions search that returned hits.
+/// - `file_pattern_diagnostic` is set for `file_pattern`-specific root causes
+///   on content zero-hits. It stays `None` for runs without that diagnosis.
+/// - `hint_kind` is set by the zero-hit hint formatter. It stays `None` for
+///   responses that carry no prepended hint.
+/// - `line_match_strategy` records the content line-match strategy label used
+///   by line-mode searches.
+/// - `line_enrichment_status` records whether post-unified line enrichment was
+///   applied, found no line matches, or failed before caller-facing fallback.
+///   `line_enrichment_match_count` is the raw number of line-mode matches, not
+///   the number of unified hits decorated with snippets. Companion fields
+///   carry any no-match/failure detail.
+/// - `definition_exact_match` is true when the definitions result set would
+///   render the promoted exact-match formatter path.
+/// - `target_hint` records the search target hinted by a zero-hit content
+///   response. It stays `None` for hints that do not steer toward files or
+///   definitions.
+/// - `scope_relaxed` and its companion fields describe searches that found no
+///   hits inside the requested `file_pattern`, then returned labeled results
+///   from the wider codebase.
+/// - `scope_rescue_count` is the number of workspace searches that triggered
+///   that rescue path. It is not a result count.
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchTrace {
+    pub strategy_id: String,
+    pub result_count: usize,
+    pub top_hits: Vec<SearchHitSummary>,
+    pub zero_hit_reason: Option<ZeroHitReason>,
+    pub file_pattern_diagnostic: Option<FilePatternDiagnostic>,
+    pub hint_kind: Option<HintKind>,
+    pub line_match_strategy: Option<String>,
+    pub line_enrichment_status: Option<LineEnrichmentStatus>,
+    pub line_enrichment_match_count: Option<usize>,
+    pub line_enrichment_zero_hit_reason: Option<ZeroHitReason>,
+    pub line_enrichment_file_pattern_diagnostic: Option<FilePatternDiagnostic>,
+    pub line_enrichment_error: Option<String>,
+    pub definition_exact_match: bool,
+    pub target_hint: Option<String>,
+    pub scope_relaxed: bool,
+    pub original_file_pattern: Option<String>,
+    pub original_zero_hit_reason: Option<ZeroHitReason>,
+    pub scope_rescue_count: usize,
+    pub or_disjunction_detected: bool,
+    pub backend_fallback: bool,
+}
+
+impl SearchTrace {
+    pub fn from_hits(strategy_id: impl Into<String>, hits: &[SearchHit]) -> Self {
+        let strategy_id = strategy_id.into();
+        let top_hits = summarize_top_hits(hits);
+
+        Self {
+            strategy_id,
+            result_count: hits.len(),
+            top_hits,
+            zero_hit_reason: None,
+            file_pattern_diagnostic: None,
+            hint_kind: None,
+            line_match_strategy: None,
+            line_enrichment_status: None,
+            line_enrichment_match_count: None,
+            line_enrichment_zero_hit_reason: None,
+            line_enrichment_file_pattern_diagnostic: None,
+            line_enrichment_error: None,
+            definition_exact_match: false,
+            target_hint: None,
+            scope_relaxed: false,
+            original_file_pattern: None,
+            original_zero_hit_reason: None,
+            scope_rescue_count: 0,
+            or_disjunction_detected: false,
+            backend_fallback: false,
+        }
+    }
+
+    pub fn refresh_hits(&mut self, hits: &[SearchHit]) {
+        self.result_count = hits.len();
+        self.top_hits = summarize_top_hits(hits);
+    }
+
+    pub fn record_line_enrichment_applied(
+        &mut self,
+        strategy: impl Into<String>,
+        match_count: usize,
+    ) {
+        self.line_match_strategy = Some(strategy.into());
+        self.line_enrichment_status = Some(LineEnrichmentStatus::Applied);
+        self.line_enrichment_match_count = Some(match_count);
+        self.line_enrichment_zero_hit_reason = None;
+        self.line_enrichment_file_pattern_diagnostic = None;
+        self.line_enrichment_error = None;
+    }
+
+    pub fn record_line_enrichment_no_matches(
+        &mut self,
+        strategy: impl Into<String>,
+        zero_hit_reason: Option<ZeroHitReason>,
+        file_pattern_diagnostic: Option<FilePatternDiagnostic>,
+    ) {
+        self.line_match_strategy = Some(strategy.into());
+        self.line_enrichment_status = Some(LineEnrichmentStatus::NoMatches);
+        self.line_enrichment_match_count = Some(0);
+        self.line_enrichment_zero_hit_reason = zero_hit_reason;
+        self.line_enrichment_file_pattern_diagnostic = file_pattern_diagnostic;
+        self.line_enrichment_error = None;
+    }
+
+    pub fn record_line_enrichment_failed(&mut self, error: impl Into<String>) {
+        self.line_match_strategy = None;
+        self.line_enrichment_status = Some(LineEnrichmentStatus::Failed);
+        self.line_enrichment_match_count = Some(0);
+        self.line_enrichment_zero_hit_reason = None;
+        self.line_enrichment_file_pattern_diagnostic = None;
+        self.line_enrichment_error = Some(error.into());
+    }
+}
+
+fn summarize_top_hits(hits: &[SearchHit]) -> Vec<SearchHitSummary> {
+    hits.iter()
+        .take(3)
+        .enumerate()
+        .map(|(idx, hit)| SearchHitSummary {
+            rank: idx + 1,
+            symbol_id: hit.symbol_id.clone(),
+            name: hit.name.clone(),
+            kind: hit.kind.clone(),
+            file: hit.file.clone(),
+            line: hit.line,
+            score: hit.score,
+            workspace: hit.workspace.clone(),
+        })
+        .collect()
+}
+
+impl SearchExecutionResult {
+    pub fn input_diagnostic(
+        strategy_id: impl Into<String>,
+        kind: SearchExecutionKind,
+        file_pattern_diagnostic: FilePatternDiagnostic,
+        hint_kind: HintKind,
+    ) -> Self {
+        let mut trace = SearchTrace::from_hits(strategy_id, &[]);
+        trace.file_pattern_diagnostic = Some(file_pattern_diagnostic);
+        trace.target_hint = target_hint_label(&hint_kind).map(str::to_string);
+        trace.hint_kind = Some(hint_kind);
+
+        Self {
+            hits: Vec::new(),
+            relaxed: false,
+            total_results: 0,
+            trace,
+            kind,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SearchExecutionKind {
+    Definitions,
+    Content {
+        workspace_label: Option<String>,
+        file_level: bool,
+    },
+    Files,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchExecutionResult {
+    pub hits: Vec<SearchHit>,
+    pub relaxed: bool,
+    pub total_results: usize,
+    pub trace: SearchTrace,
+    #[serde(skip_serializing)]
+    pub kind: SearchExecutionKind,
+}
+
+impl SearchExecutionResult {
+    pub fn new(
+        hits: Vec<SearchHit>,
+        relaxed: bool,
+        total_results: usize,
+        strategy_id: impl Into<String>,
+        kind: SearchExecutionKind,
+    ) -> Self {
+        let trace = SearchTrace::from_hits(strategy_id, &hits);
+        Self {
+            hits,
+            relaxed,
+            total_results,
+            trace,
+            kind,
+        }
+    }
+
+    pub fn definition_symbols(&self) -> Vec<Symbol> {
+        self.hits
+            .iter()
+            .filter_map(|hit| hit.as_symbol().cloned())
+            .collect()
+    }
+
+    pub fn file_hits(&self) -> Vec<FileSearchResult> {
+        self.hits
+            .iter()
+            .filter_map(|hit| hit.as_file_result().cloned())
+            .collect()
+    }
+}

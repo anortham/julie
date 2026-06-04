@@ -17,8 +17,9 @@ use crate::tests::helpers::mcp::{
     answer_next_list_roots_request, call_tool_result_text as extract_text_from_result,
 };
 use crate::tools::FastSearchTool;
+use crate::handler::workspace_resolution::resolve_workspace_filter;
 use crate::tools::navigation::resolution::{
-    WorkspaceResolutionFailureKind, resolve_workspace_filter, workspace_resolution_failure_kind,
+    WorkspaceResolutionFailureKind, workspace_resolution_failure_kind,
 };
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;

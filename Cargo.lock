@@ -1691,11 +1691,13 @@ dependencies = [
  "hex",
  "ignore",
  "include_dir",
+ "julie-context",
  "julie-core",
  "julie-extractors",
  "julie-index",
  "julie-pipeline",
  "julie-test-support",
+ "julie-tools",
  "libc",
  "md5",
  "notify",
@@ -1730,6 +1732,17 @@ dependencies = [
  "uuid",
  "windows-sys 0.60.2",
  "zerocopy 0.7.35",
+]
+
+[[package]]
+name = "julie-context"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "julie-core",
+ "julie-index",
 ]
 
 [[package]]
@@ -1855,7 +1868,40 @@ dependencies = [
 name = "julie-test-support"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "julie-context",
  "julie-core",
+ "julie-index",
+ "tokio",
+]
+
+[[package]]
+name = "julie-tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "diff-match-patch-rs",
+ "julie-context",
+ "julie-core",
+ "julie-extractors",
+ "julie-index",
+ "julie-pipeline",
+ "julie-test-support",
+ "regex",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tantivy",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tree-sitter",
+ "uuid",
 ]
 
 [[package]]

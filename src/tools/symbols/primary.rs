@@ -9,11 +9,11 @@ use tracing::{debug, info};
 use super::body_extraction::extract_code_bodies;
 use super::filtering::apply_all_filters;
 use super::formatting::format_symbol_response;
-use crate::handler::JulieServerHandler;
+use julie_context::ToolContext;
 
 /// Get symbols from the primary workspace
 pub async fn get_symbols_from_primary(
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
     file_path: &str,
     max_depth: u32,
     target: Option<&str>,
@@ -25,8 +25,7 @@ pub async fn get_symbols_from_primary(
         file_path, max_depth
     );
 
-    let binding = handler.require_primary_workspace_binding()?;
-    let current_workspace_root = binding.workspace_root;
+    let current_workspace_root = handler.require_primary_workspace_root()?;
     let db = handler
         .primary_pooled_database()
         .await?

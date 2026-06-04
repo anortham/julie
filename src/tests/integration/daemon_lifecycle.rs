@@ -550,7 +550,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = tool.call_tool(&handler).await;
+        let result = tool.call_tool(handler.as_ref()).await;
         assert!(
             result.is_ok(),
             "fast_search should succeed: {:?}",

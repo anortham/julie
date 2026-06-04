@@ -47,8 +47,8 @@ pub fn compute_line_changes(old_content: &str, new_content: &str) -> Vec<RenameC
     changes
 }
 
-use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction;
+use julie_context::ToolContext;
 
 fn default_dry_run() -> bool {
     true
@@ -172,32 +172,20 @@ fn default_empty_json() -> String {
 /// Returns the primary workspace root for "primary"/None, or the explicit workspace path.
 pub(crate) async fn resolve_workspace_root(
     workspace_param: Option<&str>,
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<PathBuf> {
-    let workspace_param = workspace_param.unwrap_or("primary");
-
-    if workspace_param == "primary" {
-        return handler.require_primary_workspace_root();
+    match handler.resolve_workspace_target(workspace_param).await? {
+        julie_context::WorkspaceTarget::Primary => handler.require_primary_workspace_root(),
+        julie_context::WorkspaceTarget::Target(id) => {
+            handler.get_workspace_root_for_target(&id).await
+        }
     }
-
-    // Explicit workspace lookup through the daemon registry.
-    if let Some(ref db) = handler.daemon_db {
-        let row = db
-            .get_workspace(workspace_param)?
-            .ok_or_else(|| anyhow::anyhow!("Workspace not found: {}", workspace_param))?;
-        return Ok(PathBuf::from(&row.path));
-    }
-
-    Err(anyhow::anyhow!(
-        "Workspace '{}' not found: daemon mode is required for workspace routing",
-        workspace_param
-    ))
 }
 
 // ===== RENAME SYMBOL TOOL IMPLEMENTATION =====
 
 impl RenameSymbolTool {
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         // Validation
         if self.old_name.is_empty() || self.new_name.is_empty() {
             return Err(rename_symbol_error(

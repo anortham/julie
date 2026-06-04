@@ -6,13 +6,13 @@ use anyhow::Result;
 
 use crate::embeddings::EmbeddingProvider;
 use crate::extractors::{Symbol, SymbolKind};
-use crate::handler::JulieServerHandler;
 use crate::search::{SearchFilter, SymbolSearchResult};
+
+use julie_context::ToolContext;
 
 use super::backend::{ResolvedSearchBackend, SearchBackend};
 use super::hint_formatter;
 use super::line_mode;
-use super::nl_embeddings;
 use super::query;
 use super::text_search;
 use super::trace::{
@@ -47,7 +47,7 @@ impl SearchExecutionWorkspace {
 pub async fn execute_search(
     params: SearchExecutionParams<'_>,
     workspaces: &[SearchExecutionWorkspace],
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<SearchExecutionResult> {
     // Normalize empty/whitespace-only file_pattern to None so every caller
     // (FastSearchTool, dashboard route, compare bench, …) gets the same
@@ -93,7 +93,7 @@ fn sort_hits_by_score_desc(hits: &mut [SearchHit]) {
 pub async fn execute_search_unified(
     params: SearchExecutionParams<'_>,
     workspaces: &[SearchExecutionWorkspace],
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<SearchExecutionResult> {
     // Normalize empty/whitespace-only file_pattern to None so callers that
     // bypass `execute_search` (e.g., `FastSearchTool::execute_with_trace`)
@@ -118,8 +118,7 @@ pub async fn execute_search_unified(
     );
     let backend_fallback = if params.backend.value != SearchBackend::Lexical {
         if let Some(provider) =
-            nl_embeddings::wait_for_embedding_provider_settled(handler, Duration::from_secs(3))
-                .await
+            handler.ensure_embedding_provider(Duration::from_secs(3)).await
         {
             if workspaces_have_embeddings(workspaces, handler).await? {
                 let mut execution = run_symbol_backend_pass(
@@ -314,7 +313,7 @@ struct UnifiedPassResult {
 
 async fn workspaces_have_embeddings(
     workspaces: &[SearchExecutionWorkspace],
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<bool> {
     for workspace in workspaces {
         let db = handler
@@ -337,7 +336,7 @@ async fn run_symbol_backend_pass(
     limit: u32,
     effective_exclude_tests: bool,
     workspaces: &[SearchExecutionWorkspace],
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
     provider: Arc<dyn EmbeddingProvider>,
 ) -> Result<SearchExecutionResult> {
     let mut hits = Vec::new();
@@ -501,7 +500,7 @@ async fn run_unified_pass(
     limit: u32,
     effective_exclude_tests: bool,
     workspaces: &[SearchExecutionWorkspace],
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<UnifiedPassResult> {
     use crate::search::SearchFilter;
 

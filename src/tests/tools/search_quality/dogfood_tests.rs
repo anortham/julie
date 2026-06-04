@@ -737,7 +737,7 @@ async fn test_fast_refs_finds_identifier_based_references() {
             reference_kind: None,
         };
 
-        let result = tool.call_tool(&handler).await.expect("fast_refs failed");
+        let result = tool.call_tool(handler.as_ref()).await.expect("fast_refs failed");
 
         // Extract text content to check results
         let text = result
@@ -821,7 +821,7 @@ async fn test_fast_refs_reference_kind_filter_with_identifiers() {
             reference_kind: Some("call".to_string()),
         };
 
-        let result = tool.call_tool(&handler).await.expect("fast_refs failed");
+        let result = tool.call_tool(handler.as_ref()).await.expect("fast_refs failed");
         let text = result
             .content
             .iter()

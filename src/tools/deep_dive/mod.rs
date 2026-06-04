@@ -11,9 +11,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::handler::JulieServerHandler;
+use julie_context::ToolContext;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use crate::tools::navigation::resolution::WorkspaceTarget;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -77,12 +77,12 @@ fn ref_caps(depth: &str) -> (usize, usize) {
 }
 
 impl DeepDiveTool {
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         let depth = self.depth.as_str();
         debug!("Deep dive: {} (depth: {})", self.symbol, depth);
 
         // Resolve workspace parameter
-        let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        let workspace_target = handler.resolve_workspace_target(self.workspace.as_deref()).await?;
 
         let symbol_name = self.symbol.clone();
         let context_file = self.context_file.clone();

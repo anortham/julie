@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::debug;
 
-use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResultExt;
-use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::utils::file_utils::secure_path_resolution;
+use julie_context::ToolContext;
 use rmcp::model::{CallToolResult, Content};
 
 use super::EditingTransaction;
@@ -490,9 +490,9 @@ impl EditFileTool {
 
     async fn resolve_workspace_root(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
     ) -> Result<std::path::PathBuf> {
-        match resolve_workspace_filter(self.workspace.as_deref(), handler).await? {
+        match handler.resolve_workspace_target(self.workspace.as_deref()).await? {
             WorkspaceTarget::Primary => handler.require_primary_workspace_root(),
             WorkspaceTarget::Target(workspace_id) => {
                 handler.get_workspace_root_for_target(&workspace_id).await
@@ -500,7 +500,7 @@ impl EditFileTool {
         }
     }
 
-    pub(crate) async fn prepare_edit(&self, handler: &JulieServerHandler) -> Result<PreparedEdit> {
+    pub(crate) async fn prepare_edit(&self, handler: &dyn ToolContext) -> Result<PreparedEdit> {
         if self.old_text.is_empty() {
             return Err(edit_file_error(
                 "validation",
@@ -606,7 +606,7 @@ impl EditFileTool {
         Ok(CallToolResult::text_content(vec![Content::text(msg)]))
     }
 
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         let prepared = self.prepare_edit(handler).await?;
         self.call_prepared(prepared)
     }

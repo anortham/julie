@@ -64,8 +64,8 @@ pub mod tools {
     pub mod editing; // EditingTransaction tests (used by rename_symbol)
 
     pub mod deep_dive_primary_rebind_tests; // DeepDiveTool current-primary rebound routing tests
-    pub mod deep_dive_regression_tests; // DeepDiveTool regression tests from deep-dive review
-    pub mod deep_dive_tests; // DeepDiveTool tests (formatting + data layer)
+    // deep_dive_regression_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // deep_dive_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     pub mod search; // Search tool tests (line mode, quality, race conditions)
     pub mod search_context_lines;
     pub mod search_quality; // Search quality dogfooding tests (regression suite) // FastSearchTool context_lines parameter tests (token optimization)
@@ -92,36 +92,36 @@ pub mod tools {
         pub mod utils; // Workspace utilities tests // Registry service tests
     }
 
-    pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
+    // phase4_token_savings relocated to crates/julie-tools/src/tests/ (T2b.6)
 
     pub mod blast_radius_determinism_tests; // blast_radius identifier-walk + deterministic output tests (2026-04-21 fixup)
-    pub mod blast_radius_formatting_tests; // blast_radius readable output formatting tests
+    // blast_radius_formatting_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     pub mod blast_radius_tests; // blast_radius impact ranking and revision-range tests
     pub mod call_path_disambiguation_tests; // call_path per-endpoint file-path disambiguation tests
     pub mod call_path_tests; // call_path shortest-path navigation tests
-    pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
+    // filtering_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
 
-    pub mod get_context_allocation_tests; // get_context token allocation tests
-    pub mod get_context_formatting_tests; // get_context output formatting tests
-    pub mod get_context_graph_expansion_tests; // get_context graph expansion tests
-    pub mod get_context_pipeline_relevance_tests;
-    pub mod get_context_pipeline_tests; // get_context pipeline integration tests
+    // get_context_allocation_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // get_context_formatting_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // get_context_graph_expansion_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // get_context_pipeline_relevance_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // get_context_pipeline_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     pub mod get_context_primary_rebind_tests; // GetContextTool current-primary rebound routing tests
-    pub mod get_context_quality_tests; // get_context fixed-query quality regression tests
-    pub mod get_context_relevance_tests; // get_context fallback relevance guardrail tests
-    pub mod get_context_scoring_tests; // get_context namespace/module de-boost scoring tests
+    // get_context_quality_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // get_context_relevance_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // get_context_scoring_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     pub mod get_context_target_workspace_metrics_tests; // get_context target-workspace telemetry attribution tests
-    pub mod get_context_task_inputs_tests; // get_context task-shaped scoring, second-hop, and spillover tests
-    pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
-    pub mod get_context_token_budget_tests; // get_context token truncation tests // get_context run_pipeline fallback relevance tests
+    // get_context_task_inputs_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // get_context_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // get_context_token_budget_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
 
-    pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
-    pub mod query_classification_tests; // QueryIntent classification heuristics (symbol, conceptual, mixed)
+    // hybrid_search_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    // query_classification_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     pub mod spillover_tests; // Spillover store and spillover_get paging tests
 
     pub mod fast_refs_primary_rebind_tests; // FastRefsTool current-primary rebound routing tests
-    pub mod formatting_tests; // Navigation formatting tests (lean refs, qualified name parsing)
-    pub mod metrics; // Search metrics tests
+    // formatting_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    pub mod metrics; // Search metrics tests (session_metrics stays handler-bound)
     pub mod target_workspace_fast_refs_tests; // Target-workspace fast_refs parity (limit, reference_kind, identifiers)
 }
 

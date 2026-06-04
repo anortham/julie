@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "xtask", "crates/julie-core", "crates/julie-index", "crates/julie-pipeline", "crates/julie-test-support"]
+members = [".", "xtask", "crates/julie-core", "crates/julie-index", "crates/julie-pipeline", "crates/julie-context", "crates/julie-test-support", "crates/julie-tools"]
 resolver = "2"
 
 [workspace.package]
@@ -51,6 +51,12 @@ julie-index = { path = "crates/julie-index" }
 
 # Julie pipeline crate (indexing engine + embeddings, above julie-index)
 julie-pipeline = { path = "crates/julie-pipeline", features = ["embeddings-sidecar"] }
+
+# Julie context crate (ToolContext facade trait + SpilloverStore + WorkspaceTarget)
+julie-context = { path = "crates/julie-context" }
+
+# Julie tools crate (handler-free MCP tool implementations)
+julie-tools = { path = "crates/julie-tools" }
 
 # MCP Server SDK - Official Anthropic SDK
 rmcp = { version = "1.6", features = ["server", "client", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "macros"] }
@@ -153,6 +159,7 @@ windows-sys = { version = "0.60", features = [
 [dev-dependencies]
 julie-test-support = { path = "crates/julie-test-support" }
 julie-index = { path = "crates/julie-index", features = ["test-support"] }
+julie-tools = { path = "crates/julie-tools", features = ["test-support"] }
 tokio-test = "0.4"
 cargo-tarpaulin = "0.31"
 serial_test = { version = "3.2", features = ["file_locks"] }

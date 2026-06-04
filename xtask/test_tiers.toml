@@ -67,53 +67,53 @@ commands = [
 ]
 
 [buckets.tools-get-context-pipeline]
-# Pipeline, scoring, relevance, and quality slices.
+# Pipeline, scoring, relevance, and quality slices. (T2b.6: relocated to julie-tools)
 expected_seconds = 15
 timeout_seconds = 60
 scope_label = "tooling"
 notes = "get_context pipeline + scoring/relevance/quality"
 commands = [
-  "cargo nextest run --lib tests::tools::get_context_pipeline_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_context_pipeline_relevance_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_context_relevance_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_context_scoring_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_context_quality_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::get_context_pipeline_tests",
+  "cargo nextest run -p julie-tools --lib tests::get_context_pipeline_relevance_tests",
+  "cargo nextest run -p julie-tools --lib tests::get_context_relevance_tests",
+  "cargo nextest run -p julie-tools --lib tests::get_context_scoring_tests",
+  "cargo nextest run -p julie-tools --lib tests::get_context_quality_tests",
 ]
 
 [buckets.tools-get-context-format]
-# Allocation, formatting, token-budget, and base get_context_tests.rs.
+# Allocation, formatting, token-budget, and base get_context_tests.rs. (T2b.6: relocated to julie-tools)
 expected_seconds = 12
 timeout_seconds = 45
 scope_label = "tooling"
 notes = "get_context formatting + token budget"
 commands = [
-  "cargo nextest run --lib tests::tools::get_context_allocation_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_context_formatting_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_context_token_budget_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_context_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::get_context_allocation_tests",
+  "cargo nextest run -p julie-tools --lib tests::get_context_formatting_tests",
+  "cargo nextest run -p julie-tools --lib tests::get_context_token_budget_tests",
+  "cargo nextest run -p julie-tools --lib tests::get_context_tests",
 ]
 
 [buckets.tools-get-context-graph]
-# Graph expansion, task inputs, primary rebind, target-workspace metrics.
+# Graph expansion, task inputs: relocated to julie-tools (T2b.6). Primary rebind + target-workspace metrics: STAYS top-crate (JulieServerHandler).
 expected_seconds = 12
 timeout_seconds = 45
 scope_label = "tooling"
 notes = "get_context graph expansion + cross-workspace coverage"
 commands = [
-  "cargo nextest run --lib tests::tools::get_context_graph_expansion_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_context_task_inputs_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::get_context_graph_expansion_tests",
+  "cargo nextest run -p julie-tools --lib tests::get_context_task_inputs_tests",
   "cargo nextest run --lib tests::tools::get_context_primary_rebind_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_context_target_workspace_metrics_tests -- --skip search_quality",
 ]
 
 [buckets.tools-search-tantivy]
-# Tantivy-backed search tests are the biggest search slice, so keep them isolated.
+# Tantivy-backed search tests relocated to julie-tools (T2b.6).
 expected_seconds = 35
 timeout_seconds = 120
 scope_label = "tooling"
 notes = "tantivy-backed search coverage"
 commands = [
-  "cargo nextest run --lib tests::tools::search::tantivy_ -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::tantivy_",
 ]
 
 [buckets.tools-search-line]
@@ -138,39 +138,38 @@ commands = [
 ]
 
 [buckets.tools-search-zero-hit]
-# Zero-hit reason and primary-workspace bug regression tests.
+# zero_hit_reason_tests relocated to julie-tools (T2b.6); primary_workspace_bug + propagation_tests STAY (handler-bound).
 expected_seconds = 40
 timeout_seconds = 90
 scope_label = "tooling"
 notes = "zero-hit reason and primary-workspace regression coverage"
 commands = [
   "cargo nextest run --lib tests::tools::search::primary_workspace_bug -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::zero_hit_reason_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::search_zero_hit_reason_tests",
   "cargo nextest run --lib tests::tools::search::zero_hit_reason_propagation_tests -- --skip search_quality",
 ]
 
 [buckets.tools-search-promotion]
-# Promotion regression tests (definition-specific tests were folded into the
-# unified path; their dedicated buckets were retired after Phase 2 cutover).
+# Promotion regression tests relocated to julie-tools (T2b.6).
 expected_seconds = 15
 timeout_seconds = 60
 scope_label = "tooling"
 notes = "promotion ranking coverage for the unified search path"
 commands = [
-  "cargo nextest run --lib tests::tools::search::promotion_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::search_promotion_tests",
 ]
 
 [buckets.tools-search-format-quality]
-# Annotation, content scoring, lean format, regression, quality, and race-condition coverage.
+# annotation/lean_format relocated to julie-tools (T2b.6); content_scoring/regression/quality/race STAY (handler-bound).
 expected_seconds = 100
 timeout_seconds = 180
 scope_label = "tooling"
 notes = "search formatting, scoring, quality, and race coverage"
 commands = [
-  "cargo nextest run --lib tests::tools::search::annotation_search_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::search_annotation_search_tests",
   "cargo nextest run --lib tests::tools::search::content_scoring_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::fast_search_regression_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::lean_format_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::search_lean_format_tests",
   "cargo nextest run --lib tests::tools::search::quality -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::race_condition -- --skip search_quality",
 ]
@@ -195,7 +194,7 @@ timeout_seconds = 120
 scope_label = "tooling"
 notes = "hybrid search coverage"
 commands = [
-  "cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::hybrid_search_tests",
   "cargo nextest run --lib tests::tools::search::backend_param_tests -- --skip search_quality",
 ]
 
@@ -205,21 +204,24 @@ timeout_seconds = 45
 scope_label = "tooling"
 notes = "search query parsing and preprocessing"
 commands = [
-  "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib search::query_preprocessor::tests",
 ]
 
 [buckets.tools-search-unified]
+# nl_path_prior_pipeline/nl_symbol_latency/pretokenized_emit/title_exact_boost relocated to julie-tools (T2b.6).
+# fast_search_unified_cutover/nl_embeddings_daemon/relationship_text/unified_ STAY (handler-bound).
 expected_seconds = 60
 timeout_seconds = 120
 scope_label = "tooling"
 notes = "unified search schema, ranking, reranker, and query-path coverage"
 commands = [
   "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::nl_path_prior_pipeline_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::nl_symbol_query_latency_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::pretokenized_emit_test -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::nl_embeddings_daemon_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::search_nl_path_prior_pipeline_tests",
+  "cargo nextest run -p julie-tools --lib tests::search_nl_symbol_query_latency_tests",
+  "cargo nextest run -p julie-tools --lib tests::search_pretokenized_emit_test",
   "cargo nextest run --lib tests::tools::search::relationship_text_test -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::title_exact_boost_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::search_title_exact_boost_tests",
   "cargo nextest run --lib tests::tools::search::unified_ -- --skip search_quality",
 ]
 
@@ -270,6 +272,8 @@ commands = [
 ]
 
 [buckets.tools-editing]
+# security/transactional/validation/markdown_section relocated to julie-tools (T2b.6).
+# edit_file/rewrite_symbol_* STAY (JulieServerHandler); commit_creates_temp_file stays in editing/mod.rs (top-crate).
 expected_seconds = 200
 timeout_seconds = 300
 scope_label = "tooling"
@@ -278,18 +282,23 @@ commands = [
   "cargo nextest run --lib tests::tools::editing::edit_file_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::editing::rewrite_symbol_cross_language_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::editing::rewrite_symbol_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::editing::security_tests tests::tools::editing::transactional_editing_tests tests::tools::editing::validation_tests tests::tools::editing::markdown_section_tests commit_creates_temp_file_in_same_directory_for_relative_paths -- --skip search_quality",
+  "cargo nextest run --lib commit_creates_temp_file_in_same_directory_for_relative_paths -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::editing_markdown_section_tests",
+  "cargo nextest run -p julie-tools --lib tests::editing_security_tests",
+  "cargo nextest run -p julie-tools --lib tests::editing_transactional_editing_tests",
+  "cargo nextest run -p julie-tools --lib tests::editing_validation_tests",
 ]
 
 [buckets.tools-deep-dive]
+# deep_dive_tests + regression_tests relocated to julie-tools (T2b.6); primary_rebind STAYS (JulieServerHandler).
 expected_seconds = 12
 timeout_seconds = 60
 scope_label = "tooling"
 notes = "deep_dive tool coverage"
 commands = [
-  "cargo nextest run --lib tests::tools::deep_dive_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::deep_dive_tests",
   "cargo nextest run --lib tests::tools::deep_dive_primary_rebind_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::deep_dive_regression_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::deep_dive_regression_tests",
 ]
 
 [buckets.tools-call-path]
@@ -319,33 +328,48 @@ scope_label = "tooling"
 notes = "blast_radius and spillover coverage"
 commands = [
   "cargo nextest run --lib tests::tools::blast_radius -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::blast_radius_formatting_tests",
   "cargo nextest run --lib tests::tools::spillover_tests -- --skip search_quality",
 ]
 
 [buckets.tools-refactoring]
+# ast_aware/compute_line_changes/import_update relocated to julie-tools (T2b.6); rename_symbol/smart_refactor STAY.
 expected_seconds = 45
 timeout_seconds = 90
 scope_label = "tooling"
 notes = "refactoring tools"
-commands = ["cargo nextest run --lib tests::tools::refactoring:: -- --skip search_quality"]
+commands = [
+  "cargo nextest run --lib tests::tools::refactoring::rename_symbol tests::tools::refactoring::smart_refactor -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::refactoring_ast_aware",
+  "cargo nextest run -p julie-tools --lib tests::refactoring_compute_line_changes_tests",
+  "cargo nextest run -p julie-tools --lib tests::refactoring_import_update_tests",
+]
 
 [buckets.tools-metrics]
+# file_size_query/migration/tool_calls_db relocated to julie-tools (T2b.6); session_metrics/query_tests STAY.
+# query_tests has #[path] binding to src/tools/metrics/query.rs (uses top-crate crate:: paths).
 expected_seconds = 10
 timeout_seconds = 45
 scope_label = "tooling"
 notes = "metrics tools"
-commands = ["cargo nextest run --lib tests::tools::metrics:: -- --skip search_quality"]
+commands = [
+  "cargo nextest run --lib tests::tools::metrics::session_metrics_tests tests::tools::metrics::query_tests -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::metrics_file_size_query_tests",
+  "cargo nextest run -p julie-tools --lib tests::metrics_migration_tests",
+  "cargo nextest run -p julie-tools --lib tests::metrics_tool_calls_db_tests",
+]
 
 [buckets.tools-format-filter]
+# formatting_tests relocated to julie-tools (T2b.6); filtering/query_classification/phase4 were already in julie-tools.
 expected_seconds = 15
 timeout_seconds = 60
 scope_label = "tooling"
 notes = "formatting, filtering, and token budget helpers"
 commands = [
-  "cargo nextest run --lib tests::tools::filtering_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::formatting_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::query_classification_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::phase4_token_savings -- --skip search_quality",
+  "cargo nextest run -p julie-tools --lib tests::filtering_tests",
+  "cargo nextest run -p julie-tools --lib tests::formatting_tests",
+  "cargo nextest run -p julie-tools --lib tests::query_classification_tests",
+  "cargo nextest run -p julie-tools --lib tests::phase4_token_savings",
 ]
 
 [buckets.core-fast]

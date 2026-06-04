@@ -8,6 +8,8 @@
 use anyhow::{Context, Result};
 use std::path::{MAIN_SEPARATOR, Path, PathBuf};
 
+use crate::workspace_errors::{WorkspaceResolutionFailure, WorkspaceResolutionFailureKind};
+
 // ──────────────────────────────────────────────────────────────────────────────
 // strip_unc_prefix
 // ──────────────────────────────────────────────────────────────────────────────
@@ -143,4 +145,68 @@ fn strip_normalized_prefix<'a>(path: &'a str, root: &str) -> Option<&'a str> {
     }
 
     path.strip_prefix(&format!("{root}/"))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// resolve_workspace_file_input
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// The two path forms that tool handlers need after resolving a file input.
+#[derive(Debug)]
+pub struct WorkspaceFileInputResolution {
+    pub absolute_path: PathBuf,
+    pub relative_query_path: String,
+    pub canonicalized: bool,
+}
+
+/// Resolve a tool file input into the two path forms tool handlers need.
+///
+/// Tool inputs may be absolute, relative, contain `.` / `..`, or point at a
+/// file that does not exist yet. This canonicalizes the input path when
+/// possible, otherwise keeps the absolute candidate path, then computes a
+/// relative Unix-style path for database queries.
+///
+/// # Strict contract — no raw-input fallback
+///
+/// If the resolved absolute path is **outside the workspace root**, this
+/// function returns an `Err` wrapping [`WorkspaceResolutionFailure`] with
+/// kind [`WorkspaceResolutionFailureKind::FileOutsideWorkspace`]. Callers
+/// MUST propagate the error — they must not fall back to raw string
+/// normalization of the input, which would let outside-workspace paths
+/// silently reach the database as if they were workspace-relative.
+///
+/// At the MCP boundary, route this error through
+/// `classify_tool_failure` in `handler::tools::error`, which downcasts to
+/// [`WorkspaceResolutionFailure`] and surfaces the result as
+/// `McpError::invalid_params` so the user sees a clear "outside workspace"
+/// message instead of an opaque internal error.
+pub fn resolve_workspace_file_input(
+    input: &str,
+    workspace_root: &Path,
+) -> Result<WorkspaceFileInputResolution> {
+    let input_path = Path::new(input);
+    let absolute_candidate = if input_path.is_absolute() {
+        input_path.to_path_buf()
+    } else {
+        workspace_root.join(input_path)
+    };
+
+    let (absolute_path, canonicalized) = match absolute_candidate.canonicalize() {
+        Ok(canonical) => (canonical, true),
+        Err(_) => (absolute_candidate, false),
+    };
+
+    let relative_query_path =
+        to_relative_unix_style(&absolute_path, workspace_root).map_err(|_| {
+            WorkspaceResolutionFailure::new(
+                WorkspaceResolutionFailureKind::FileOutsideWorkspace,
+                format!("file path is outside the workspace: {}", input),
+            )
+        })?;
+
+    Ok(WorkspaceFileInputResolution {
+        absolute_path,
+        relative_query_path,
+        canonicalized,
+    })
 }

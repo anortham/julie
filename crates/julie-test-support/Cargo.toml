@@ -9,3 +9,12 @@ description = "Thin re-export of julie_core::test_support — handler-free helpe
 [dependencies]
 # Re-export the helpers that live in julie-core (ADR-0006: single source, no dep cycle).
 julie-core = { path = "../julie-core", features = ["test-support"] }
+
+# FakeToolContext: implement the ToolContext facade for handler-free tool tests.
+julie-context = { path = "../julie-context" }
+julie-index = { path = "../julie-index" }
+async-trait = "0.1"
+anyhow = "1.0"
+
+[dev-dependencies]
+tokio = { version = "1.47.1", features = ["full"] }

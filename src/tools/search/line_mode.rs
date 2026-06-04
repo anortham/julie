@@ -8,12 +8,13 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 
 use crate::database::SymbolDatabase;
-use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
 use crate::search::index::SearchIndex;
 use crate::search::query_parse::{QueryIntent, parse_query};
 use crate::search::scoring::{is_nl_like_query, is_test_path};
 use crate::tools::navigation::resolution::WorkspaceTarget;
+
+use julie_context::ToolContext;
 
 use super::query::{
     line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
@@ -574,7 +575,7 @@ pub(crate) async fn line_mode_matches(
     limit: u32,
     exclude_tests: Option<bool>,
     workspace_target: &WorkspaceTarget,
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
 ) -> Result<LineModeSearchResult> {
     debug!("📄 Line-level search for: '{}'", query);
 
@@ -585,14 +586,8 @@ pub(crate) async fn line_mode_matches(
     let scoped_outcome = match workspace_target {
         WorkspaceTarget::Primary => {
             // Pooled DB: read-only, no mutation gate required.
-            let pooled_db = handler.primary_pooled_database().await?;
-            // search_index still lives behind Arc<Mutex<>>; not pool-migrated.
-            let primary_snapshot = handler.primary_workspace_snapshot().await?;
-            let search_index = primary_snapshot.search_index.ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first."
-                    )
-                })?;
+            let (pooled_db, search_index) =
+                handler.primary_pooled_database_and_search_index().await?;
 
             let query = query.to_string();
             let match_strategy = match_strategy.clone();

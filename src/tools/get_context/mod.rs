@@ -18,7 +18,7 @@ use anyhow::Result;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::handler::JulieServerHandler;
+use julie_context::ToolContext;
 use crate::mcp_compat::{CallToolResult, Content};
 
 fn default_workspace() -> Option<String> {
@@ -94,7 +94,7 @@ pub struct GetContextTool {
 }
 
 impl GetContextTool {
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         let result = pipeline::run(self, handler).await?;
         Ok(CallToolResult::success(vec![Content::text(result)]))
     }
@@ -104,7 +104,7 @@ impl GetContextTool {
     /// workspace is resolved exactly once per request.
     pub async fn call_tool_with_target(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         workspace_target: crate::tools::navigation::resolution::WorkspaceTarget,
     ) -> Result<CallToolResult> {
         let result = pipeline::run_with_target(self, handler, workspace_target).await?;

@@ -1,0 +1,793 @@
+//! Tests for get_context graph expansion behavior.
+
+#[cfg(test)]
+mod graph_expansion_tests {
+    use tempfile::TempDir;
+
+    use julie_core::database::{FileInfo, SymbolDatabase};
+    use julie_extractors::{
+        IdentifierKind,
+        base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility},
+    };
+    use julie_index::search::index::SymbolSearchResult;
+    use julie_test_support::db::identifier_builder;
+    use crate::get_context::pipeline::{NeighborDirection, Pivot, expand_graph};
+
+    fn setup_db() -> (TempDir, SymbolDatabase) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        for file in &[
+            "src/main.rs",
+            "src/engine.rs",
+            "src/handler.rs",
+            "src/utils.rs",
+        ] {
+            db.store_file_info(&FileInfo {
+                path: file.to_string(),
+                language: "rust".to_string(),
+                hash: format!("hash_{}", file),
+                size: 500,
+                last_modified: 1000000,
+                last_indexed: 0,
+                symbol_count: 2,
+                line_count: 0,
+                content: None,
+            })
+            .unwrap();
+        }
+
+        (temp_dir, db)
+    }
+
+    fn make_symbol(id: &str, name: &str, kind: SymbolKind, file: &str, line: u32) -> Symbol {
+        Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind,
+            language: "rust".to_string(),
+            file_path: file.to_string(),
+            start_line: line,
+            end_line: line + 10,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            parent_id: None,
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: None,
+            visibility: Some(Visibility::Public),
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(0.9),
+            code_context: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        }
+    }
+
+    fn make_rel(
+        id: &str,
+        from: &str,
+        to: &str,
+        kind: RelationshipKind,
+        file: &str,
+        line: u32,
+    ) -> Relationship {
+        Relationship {
+            id: id.to_string(),
+            from_symbol_id: from.to_string(),
+            to_symbol_id: to.to_string(),
+            kind,
+            file_path: file.to_string(),
+            line_number: line,
+            confidence: 0.9,
+            metadata: None,
+        }
+    }
+
+    fn make_pivot(id: &str, name: &str, score: f32) -> Pivot {
+        Pivot {
+            result: SymbolSearchResult {
+                id: id.to_string(),
+                name: name.to_string(),
+                signature: format!("fn {}()", name),
+                doc_comment: String::new(),
+                file_path: format!("src/{}.rs", name),
+                kind: "function".to_string(),
+                language: "rust".to_string(),
+                start_line: 1,
+                score,
+                role: String::new(),
+                test_role: String::new(),
+            },
+            combined_score: score,
+        }
+    }
+
+    #[test]
+    fn test_expand_graph_basic_incoming_and_outgoing() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol(
+                "sym_engine",
+                "engine_run",
+                SymbolKind::Function,
+                "src/engine.rs",
+                10,
+            ),
+            make_symbol("sym_main", "main", SymbolKind::Function, "src/main.rs", 1),
+            make_symbol(
+                "sym_utils",
+                "helper",
+                SymbolKind::Function,
+                "src/utils.rs",
+                5,
+            ),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let rels = vec![
+            make_rel(
+                "r1",
+                "sym_main",
+                "sym_engine",
+                RelationshipKind::Calls,
+                "src/main.rs",
+                5,
+            ),
+            make_rel(
+                "r2",
+                "sym_engine",
+                "sym_utils",
+                RelationshipKind::Calls,
+                "src/engine.rs",
+                15,
+            ),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        let pivots = vec![make_pivot("sym_engine", "engine_run", 10.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(expansion.neighbors.len(), 2);
+        let names: Vec<&str> = expansion
+            .neighbors
+            .iter()
+            .map(|n| n.symbol.name.as_str())
+            .collect();
+        assert!(names.contains(&"main"));
+        assert!(names.contains(&"helper"));
+
+        let main_neighbor = expansion
+            .neighbors
+            .iter()
+            .find(|n| n.symbol.name == "main")
+            .unwrap();
+        assert_eq!(main_neighbor.direction, NeighborDirection::Incoming);
+        assert_eq!(main_neighbor.relationship_kind, RelationshipKind::Calls);
+
+        let helper_neighbor = expansion
+            .neighbors
+            .iter()
+            .find(|n| n.symbol.name == "helper")
+            .unwrap();
+        assert_eq!(helper_neighbor.direction, NeighborDirection::Outgoing);
+        assert_eq!(helper_neighbor.relationship_kind, RelationshipKind::Calls);
+    }
+
+    #[test]
+    fn test_expand_graph_deduplicates_shared_neighbors() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol(
+                "sym_engine",
+                "engine_run",
+                SymbolKind::Function,
+                "src/engine.rs",
+                10,
+            ),
+            make_symbol(
+                "sym_handler",
+                "handle",
+                SymbolKind::Function,
+                "src/handler.rs",
+                1,
+            ),
+            make_symbol(
+                "sym_utils",
+                "helper",
+                SymbolKind::Function,
+                "src/utils.rs",
+                5,
+            ),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let rels = vec![
+            make_rel(
+                "r1",
+                "sym_engine",
+                "sym_utils",
+                RelationshipKind::Calls,
+                "src/engine.rs",
+                15,
+            ),
+            make_rel(
+                "r2",
+                "sym_handler",
+                "sym_utils",
+                RelationshipKind::Calls,
+                "src/handler.rs",
+                10,
+            ),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        let pivots = vec![
+            make_pivot("sym_engine", "engine_run", 10.0),
+            make_pivot("sym_handler", "handle", 8.0),
+        ];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(expansion.neighbors.len(), 1);
+        assert_eq!(expansion.neighbors[0].symbol.name, "helper");
+    }
+
+    #[test]
+    fn test_expand_graph_ranks_by_reference_score() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol(
+                "sym_engine",
+                "engine_run",
+                SymbolKind::Function,
+                "src/engine.rs",
+                10,
+            ),
+            make_symbol("sym_main", "main", SymbolKind::Function, "src/main.rs", 1),
+            make_symbol(
+                "sym_utils",
+                "helper",
+                SymbolKind::Function,
+                "src/utils.rs",
+                5,
+            ),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let rels = vec![
+            make_rel(
+                "r1",
+                "sym_main",
+                "sym_engine",
+                RelationshipKind::Calls,
+                "src/main.rs",
+                5,
+            ),
+            make_rel(
+                "r2",
+                "sym_utils",
+                "sym_engine",
+                RelationshipKind::Calls,
+                "src/utils.rs",
+                8,
+            ),
+            make_rel(
+                "r3",
+                "sym_utils",
+                "sym_main",
+                RelationshipKind::Calls,
+                "src/utils.rs",
+                9,
+            ),
+            make_rel(
+                "r4",
+                "sym_engine",
+                "sym_main",
+                RelationshipKind::Calls,
+                "src/engine.rs",
+                20,
+            ),
+        ];
+        db.store_relationships(&rels).unwrap();
+        db.compute_reference_scores().unwrap();
+
+        let pivots = vec![make_pivot("sym_engine", "engine_run", 10.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(expansion.neighbors.len(), 2);
+        assert_eq!(expansion.neighbors[0].symbol.name, "main");
+        assert!(expansion.neighbors[0].reference_score > expansion.neighbors[1].reference_score);
+    }
+
+    #[test]
+    fn test_expand_graph_no_relationships() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![make_symbol(
+            "sym_lonely",
+            "lonely_fn",
+            SymbolKind::Function,
+            "src/main.rs",
+            1,
+        )];
+        db.store_symbols(&symbols).unwrap();
+
+        let pivots = vec![make_pivot("sym_lonely", "lonely_fn", 5.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+        assert!(expansion.neighbors.is_empty());
+    }
+
+    #[test]
+    fn test_expand_graph_propagates_identifier_lookup_errors() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![make_symbol(
+            "sym_target",
+            "target_fn",
+            SymbolKind::Function,
+            "src/main.rs",
+            1,
+        )];
+        db.store_symbols(&symbols).unwrap();
+        db.conn.execute("DROP TABLE identifiers", []).unwrap();
+
+        let pivots = vec![make_pivot("sym_target", "target_fn", 5.0)];
+        let err = match expand_graph(&pivots, &db) {
+            Ok(_) => panic!("identifier read failures should not be hidden"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.to_string().contains("identifiers"),
+            "error should mention the failed identifier lookup: {err}"
+        );
+    }
+
+    #[test]
+    fn test_expand_graph_orders_equal_scores_by_location_and_name() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol(
+                "sym_target",
+                "target_fn",
+                SymbolKind::Function,
+                "src/main.rs",
+                1,
+            ),
+            make_symbol(
+                "sym_zeta",
+                "zeta_handler",
+                SymbolKind::Function,
+                "src/utils.rs",
+                20,
+            ),
+            make_symbol(
+                "sym_alpha",
+                "alpha_handler",
+                SymbolKind::Function,
+                "src/handler.rs",
+                10,
+            ),
+            make_symbol(
+                "sym_engine",
+                "engine_handler",
+                SymbolKind::Function,
+                "src/engine.rs",
+                30,
+            ),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let rels = vec![
+            make_rel(
+                "r_zeta",
+                "sym_zeta",
+                "sym_target",
+                RelationshipKind::Calls,
+                "src/utils.rs",
+                20,
+            ),
+            make_rel(
+                "r_alpha",
+                "sym_alpha",
+                "sym_target",
+                RelationshipKind::Calls,
+                "src/handler.rs",
+                10,
+            ),
+            make_rel(
+                "r_engine",
+                "sym_engine",
+                "sym_target",
+                RelationshipKind::Calls,
+                "src/engine.rs",
+                30,
+            ),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        let pivots = vec![make_pivot("sym_target", "target_fn", 5.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+        let names: Vec<&str> = expansion
+            .neighbors
+            .iter()
+            .map(|neighbor| neighbor.symbol.name.as_str())
+            .collect();
+
+        assert_eq!(
+            names,
+            vec!["engine_handler", "alpha_handler", "zeta_handler"],
+            "equal reference scores should use stable file/line/name ordering"
+        );
+    }
+
+    #[test]
+    fn test_expand_graph_excludes_pivots_from_neighbors() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol(
+                "sym_engine",
+                "engine_run",
+                SymbolKind::Function,
+                "src/engine.rs",
+                10,
+            ),
+            make_symbol(
+                "sym_handler",
+                "handle",
+                SymbolKind::Function,
+                "src/handler.rs",
+                1,
+            ),
+            make_symbol(
+                "sym_utils",
+                "helper",
+                SymbolKind::Function,
+                "src/utils.rs",
+                5,
+            ),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let rels = vec![
+            make_rel(
+                "r1",
+                "sym_engine",
+                "sym_handler",
+                RelationshipKind::Calls,
+                "src/engine.rs",
+                15,
+            ),
+            make_rel(
+                "r2",
+                "sym_handler",
+                "sym_engine",
+                RelationshipKind::Calls,
+                "src/handler.rs",
+                5,
+            ),
+            make_rel(
+                "r3",
+                "sym_engine",
+                "sym_utils",
+                RelationshipKind::Calls,
+                "src/engine.rs",
+                20,
+            ),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        let pivots = vec![
+            make_pivot("sym_engine", "engine_run", 10.0),
+            make_pivot("sym_handler", "handle", 8.0),
+        ];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(expansion.neighbors.len(), 1);
+        assert_eq!(expansion.neighbors[0].symbol.name, "helper");
+
+        let neighbor_ids: Vec<&str> = expansion
+            .neighbors
+            .iter()
+            .map(|n| n.symbol.id.as_str())
+            .collect();
+        assert!(!neighbor_ids.contains(&"sym_engine"));
+        assert!(!neighbor_ids.contains(&"sym_handler"));
+    }
+
+    #[test]
+    fn test_expand_graph_empty_pivots() {
+        let (_tmp, db) = setup_db();
+        let expansion = expand_graph(&[], &db).unwrap();
+        assert!(expansion.neighbors.is_empty());
+    }
+
+    /// When no relationships exist but identifier refs do (the TypeScript case), expand_graph
+    /// must find neighbors via identifiers. A pivot with 0 relationships but N type_usage
+    /// identifier refs from other symbols should produce N neighbor entries.
+    #[test]
+    fn test_expand_graph_finds_neighbors_via_identifiers_when_no_relationships() {
+        let (_tmp, mut db) = setup_db();
+
+        // Pivot: an interface with no relationship edges
+        let pivot_sym = make_symbol(
+            "sym_iface",
+            "ZodInterface",
+            SymbolKind::Interface,
+            "src/main.rs",
+            1,
+        );
+        // Two symbols that reference the interface via type_usage identifiers
+        let caller_a = make_symbol(
+            "sym_validator",
+            "validate_input",
+            SymbolKind::Function,
+            "src/handler.rs",
+            5,
+        );
+        let caller_b = make_symbol(
+            "sym_processor",
+            "process_data",
+            SymbolKind::Function,
+            "src/utils.rs",
+            10,
+        );
+        db.store_symbols(&[pivot_sym, caller_a, caller_b]).unwrap();
+
+        // Insert type_usage identifiers (no relationships)
+        let identifiers = [
+            ("sym_validator", "src/handler.rs", 6u32),
+            ("sym_processor", "src/utils.rs", 11),
+        ]
+        .into_iter()
+        .map(|(sym_id, file, line)| {
+            identifier_builder(format!("ident_{sym_id}_{line}"), "ZodInterface", file)
+                .kind(IdentifierKind::TypeUsage)
+                .language("typescript")
+                .line(line)
+                .column(0, 10)
+                .bytes(0, 100)
+                .containing_symbol_id(sym_id)
+                .confidence(0.9)
+                .build()
+        })
+        .collect::<Vec<_>>();
+        db.bulk_store_identifiers(&identifiers, "").unwrap();
+
+        let pivots = vec![make_pivot("sym_iface", "ZodInterface", 9.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(
+            expansion.neighbors.len(),
+            2,
+            "Expected 2 identifier-based neighbors; got {:?}",
+            expansion
+                .neighbors
+                .iter()
+                .map(|n| &n.symbol.name)
+                .collect::<Vec<_>>()
+        );
+        let names: Vec<&str> = expansion
+            .neighbors
+            .iter()
+            .map(|n| n.symbol.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&"validate_input"),
+            "validate_input should be a neighbor"
+        );
+        assert!(
+            names.contains(&"process_data"),
+            "process_data should be a neighbor"
+        );
+    }
+
+    #[test]
+    fn test_expand_graph_preserves_identifier_call_relationship_kind() {
+        let (_tmp, mut db) = setup_db();
+
+        let pivot_sym = make_symbol(
+            "sym_iface",
+            "BuildPipeline",
+            SymbolKind::Function,
+            "src/main.rs",
+            1,
+        );
+        let caller = make_symbol(
+            "sym_caller",
+            "setup_handler",
+            SymbolKind::Function,
+            "src/handler.rs",
+            5,
+        );
+        db.store_symbols(&[pivot_sym, caller]).unwrap();
+
+        db.bulk_store_identifiers(
+            &[
+                identifier_builder("ident_call", "BuildPipeline", "src/handler.rs")
+                    .language("typescript")
+                    .line(6)
+                    .column(0, 13)
+                    .bytes(0, 100)
+                    .containing_symbol_id("sym_caller")
+                    .target_symbol_id("sym_iface")
+                    .confidence(0.95)
+                    .build(),
+            ],
+            "",
+        )
+        .unwrap();
+
+        let pivots = vec![make_pivot("sym_iface", "BuildPipeline", 9.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        let caller_neighbor = expansion
+            .neighbors
+            .iter()
+            .find(|neighbor| neighbor.symbol.id == "sym_caller")
+            .expect("identifier call should surface the caller as a neighbor");
+        assert_eq!(
+            caller_neighbor.direction,
+            NeighborDirection::Incoming,
+            "identifier-based callers should remain incoming neighbors"
+        );
+        assert_eq!(
+            caller_neighbor.relationship_kind,
+            RelationshipKind::Calls,
+            "identifier kind=call should preserve call semantics for get_context ranking"
+        );
+    }
+
+    #[test]
+    fn test_identifier_incoming_edges_filters_kind_and_excluded_containers_before_expansion() {
+        let (_tmp, mut db) = setup_db();
+
+        let pivot_sym = make_symbol(
+            "sym_target",
+            "BuildPipeline",
+            SymbolKind::Function,
+            "src/main.rs",
+            1,
+        );
+        let included = make_symbol(
+            "sym_included",
+            "setup_handler",
+            SymbolKind::Function,
+            "src/handler.rs",
+            5,
+        );
+        let excluded = make_symbol(
+            "sym_excluded",
+            "test_handler",
+            SymbolKind::Function,
+            "src/utils.rs",
+            5,
+        );
+        db.store_symbols(&[pivot_sym.clone(), included, excluded])
+            .unwrap();
+
+        let identifiers = [
+            ("ident_call", IdentifierKind::Call, "sym_included"),
+            ("ident_member", IdentifierKind::MemberAccess, "sym_included"),
+            ("ident_excluded", IdentifierKind::Call, "sym_excluded"),
+        ]
+        .into_iter()
+        .map(|(id, kind, container_id)| {
+            identifier_builder(id, "BuildPipeline", "src/handler.rs")
+                .kind(kind)
+                .line(6)
+                .column(0, 13)
+                .bytes(0, 100)
+                .containing_symbol_id(container_id)
+                .target_symbol_id("sym_target")
+                .confidence(0.95)
+                .build()
+        })
+        .collect::<Vec<_>>();
+        db.bulk_store_identifiers(&identifiers, "").unwrap();
+
+        let excluded_container_ids = std::collections::HashSet::from(["sym_excluded".to_string()]);
+        let edges = julie_core::database::impact_graph::identifier_incoming_edges(
+            &db,
+            &[pivot_sym],
+            &excluded_container_ids,
+        )
+        .unwrap();
+
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].container_id, "sym_included");
+        assert_eq!(edges[0].relationship_kind, RelationshipKind::Calls);
+        assert_eq!(edges[0].target_symbol_id, Some("sym_target".to_string()));
+    }
+
+    /// Identifiers with names containing SQL wildcard chars (`_`, `%`) must NOT
+    /// match unrelated identifiers. Regression test for the unescaped LIKE bug in
+    /// `build_name_match_clause`.
+    #[test]
+    fn test_expand_graph_identifier_names_with_sql_wildcards_do_not_overmatch() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol(
+                "sym_foo_bar",
+                "Foo_Bar",
+                SymbolKind::Interface,
+                "src/main.rs",
+                1,
+            ),
+            make_symbol(
+                "sym_caller_good",
+                "good_caller",
+                SymbolKind::Function,
+                "src/handler.rs",
+                5,
+            ),
+            make_symbol(
+                "sym_caller_bad",
+                "bad_caller",
+                SymbolKind::Function,
+                "src/utils.rs",
+                10,
+            ),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let identifiers = [
+            // "Foo_Bar::method" — qualified ref, should match pivot "Foo_Bar" via LIKE prefix
+            (
+                "ident_good",
+                "Foo_Bar::method",
+                "src/handler.rs",
+                6u32,
+                "sym_caller_good",
+            ),
+            // "FooXBar::method" — should NOT match pivot "Foo_Bar" (the _ in Foo_Bar must not wildcard-match X)
+            (
+                "ident_bad",
+                "FooXBar::method",
+                "src/utils.rs",
+                11,
+                "sym_caller_bad",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, name, file, line, containing_symbol_id)| {
+            identifier_builder(id, name, file)
+                .line(line)
+                .column(0, 10)
+                .bytes(0, 100)
+                .containing_symbol_id(containing_symbol_id)
+                .confidence(0.9)
+                .build()
+        })
+        .collect::<Vec<_>>();
+        db.bulk_store_identifiers(&identifiers, "").unwrap();
+
+        let pivots = vec![make_pivot("sym_foo_bar", "Foo_Bar", 9.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        let names: Vec<&str> = expansion
+            .neighbors
+            .iter()
+            .map(|n| n.symbol.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&"good_caller"),
+            "Foo_Bar::method should match pivot Foo_Bar"
+        );
+        assert!(
+            !names.contains(&"bad_caller"),
+            "FooXBar::method must NOT match pivot Foo_Bar (SQL wildcard bug)"
+        );
+    }
+}

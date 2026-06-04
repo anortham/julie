@@ -254,7 +254,7 @@ mod tests {
                     mode: Some("structure".to_string()),
                     workspace: None,
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("get_symbols_primary", result))
             });
@@ -268,7 +268,7 @@ mod tests {
                     context_file: None,
                     workspace: None,
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("deep_dive_primary", result))
             });
@@ -287,7 +287,7 @@ mod tests {
                     format: Some("compact".to_string()),
                     workspace: None,
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("blast_radius_primary", result))
             });
@@ -309,7 +309,7 @@ mod tests {
                     max_hops: Some(1),
                     prefer_tests: Some(false),
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("get_context_primary", result))
             });
@@ -333,7 +333,7 @@ mod tests {
                     workspace: None,
                     return_format: "locations".to_string(),
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("fast_search_primary", result))
             });
@@ -459,7 +459,7 @@ mod tests {
                     workspace: Some(ws),
                     ..Default::default()
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("fast_search", r))
             });
@@ -478,7 +478,7 @@ mod tests {
                     mode: Some("structure".to_string()),
                     workspace: Some(ws),
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("get_symbols", r))
             });
@@ -495,7 +495,7 @@ mod tests {
                     context_file: None,
                     workspace: Some(ws),
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("deep_dive", r))
             });
@@ -513,7 +513,7 @@ mod tests {
                     workspace: Some(ws),
                     reference_kind: None,
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("fast_refs", r))
             });
@@ -536,7 +536,7 @@ mod tests {
                     dry_run: true,
                     occurrence: EditOccurrence::First,
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("edit_file_dry_run", r))
             });
@@ -577,7 +577,7 @@ mod tests {
                     dry_run: true,
                     workspace: Some(ws),
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("rename_symbol_dry_run", r))
             });
@@ -601,7 +601,7 @@ mod tests {
                     dry_run: false,
                     occurrence: EditOccurrence::First,
                 }
-                .call_tool(&h)
+                .call_tool(h.as_ref())
                 .await?;
                 Ok(("edit_file_real_mutation", r))
             });

@@ -13,11 +13,9 @@ use tracing::debug;
 
 use crate::database::SymbolDatabase;
 use crate::extractors::{ExtractorManager, Symbol};
-use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResultExt;
-use crate::tools::navigation::resolution::{
-    WorkspaceTarget, file_path_matches_suffix, resolve_workspace_filter,
-};
+use crate::tools::navigation::resolution::{WorkspaceTarget, file_path_matches_suffix};
+use julie_context::ToolContext;
 use crate::utils::file_utils::secure_path_resolution;
 use rmcp::model::{CallToolResult, Content};
 use tree_sitter::{Node, Parser, Tree};
@@ -126,7 +124,7 @@ struct WorkspaceEditTarget {
 }
 
 impl WorkspaceEditTarget {
-    async fn pooled_db(&self, handler: &JulieServerHandler) -> Result<SymbolDatabase> {
+    async fn pooled_db(&self, handler: &dyn ToolContext) -> Result<SymbolDatabase> {
         handler
             .get_pooled_database_for_workspace(&self.workspace_id)
             .await
@@ -573,14 +571,15 @@ impl RewriteSymbolTool {
 
     async fn resolve_workspace_target(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
     ) -> Result<WorkspaceEditTarget> {
-        match resolve_workspace_filter(self.workspace.as_deref(), handler).await? {
+        match handler.resolve_workspace_target(self.workspace.as_deref()).await? {
             WorkspaceTarget::Primary => {
-                let primary_snapshot = handler.primary_workspace_snapshot().await?;
+                let workspace_id = handler.require_primary_workspace_identity()?;
+                let workspace_root = handler.require_primary_workspace_root()?;
                 Ok(WorkspaceEditTarget {
-                    workspace_id: primary_snapshot.binding.workspace_id,
-                    workspace_root: primary_snapshot.binding.workspace_root,
+                    workspace_id,
+                    workspace_root,
                 })
             }
             WorkspaceTarget::Target(workspace_id) => {
@@ -595,7 +594,7 @@ impl RewriteSymbolTool {
 
     pub(crate) async fn prepare_rewrite(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
     ) -> Result<PreparedRewrite> {
         let requested_symbol = self.symbol.clone();
         let (parsed_symbol_name, line_hint) = parse_symbol_line_hint(&requested_symbol);
@@ -928,7 +927,7 @@ impl RewriteSymbolTool {
         Ok(CallToolResult::text_content(vec![Content::text(message)]))
     }
 
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         let application = self.prepare_rewrite(handler).await?;
         self.call_prepared(application)
     }

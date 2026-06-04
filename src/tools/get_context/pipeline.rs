@@ -15,8 +15,8 @@ use super::task_signals::{
     TaskSignals, hydrate_failing_test_links, merge_task_signal_seed_results,
 };
 use crate::database::SymbolDatabase;
-use crate::handler::JulieServerHandler;
-use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use julie_context::ToolContext;
+use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::tools::spillover::{SpilloverFormat, SpilloverStore};
 
 /// Run the full get_context pipeline: search → rank → expand → allocate → format.
@@ -188,8 +188,8 @@ pub fn run_pipeline_with_options(
 }
 
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
-pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<String> {
-    let workspace_target = resolve_workspace_filter(tool.workspace.as_deref(), handler).await?;
+pub async fn run(tool: &GetContextTool, handler: &dyn ToolContext) -> Result<String> {
+    let workspace_target = handler.resolve_workspace_target(tool.workspace.as_deref()).await?;
     run_with_target(tool, handler, workspace_target).await
 }
 
@@ -199,7 +199,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
 /// tool call).
 pub async fn run_with_target(
     tool: &GetContextTool,
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
     workspace_target: WorkspaceTarget,
 ) -> Result<String> {
     let query = tool.query.clone();
@@ -208,8 +208,8 @@ pub async fn run_with_target(
     let file_pattern = tool.file_pattern.clone();
     let format = tool.format.clone();
     let task_signals = TaskSignals::from_tool(tool);
-    let spillover_store = handler.spillover_store.clone();
-    let session_id = handler.session_metrics.session_id.clone();
+    let spillover_store = handler.spillover_store();
+    let session_id = handler.session_id().to_string();
     let spillover_format = SpilloverFormat::from_option(tool.format.as_deref());
 
     match workspace_target {

@@ -26,7 +26,7 @@ pub(crate) mod formatting; // Exposed for testing
 pub(crate) mod hint_formatter;
 pub(crate) mod input_diagnostics;
 pub(crate) mod line_mode;
-mod nl_embeddings;
+pub(crate) mod nl_embeddings;
 pub(crate) mod query;
 pub mod query_preprocessor; // Public for testing
 pub mod text_search;
@@ -40,10 +40,11 @@ use serde::de::{Deserializer, Error as DeError, IntoDeserializer};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::handler::JulieServerHandler;
-use crate::health::SystemStatus;
+use julie_core::health_types::SystemStatus;
 use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::tools::shared::OptimizedResponse;
+
+use julie_context::ToolContext;
 
 const MIN_LIMIT: u32 = 1;
 const MAX_LIMIT: u32 = 500;
@@ -236,13 +237,13 @@ impl FastSearchTool {
         format!("NOTE: backend={backend} unavailable; fell back to lexical search\n\n{text}")
     }
 
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         self.execute_with_trace(handler).await.map(|run| run.result)
     }
 
     pub async fn execute_with_trace(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
     ) -> Result<FastSearchExecution> {
         // Validate file_pattern syntax and emit early diagnostic if it looks like
         // whitespace-separated globs. Run before resolution so a bad
@@ -265,7 +266,7 @@ impl FastSearchTool {
     /// this so the workspace is resolved exactly once per request.
     pub async fn execute_with_trace_with_target(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         workspace_target: WorkspaceTarget,
     ) -> Result<FastSearchExecution> {
         debug!("🔍 Fast search (unified): {}", self.query);
@@ -283,8 +284,7 @@ impl FastSearchTool {
 
         if let WorkspaceTarget::Target(target_workspace_id) = &workspace_target {
             if let Some(index_error) =
-                Self::ensure_target_workspace_indexed_if_pending(handler, target_workspace_id)
-                    .await?
+                handler.ensure_target_workspace_indexed_if_pending(target_workspace_id).await?
             {
                 return Ok(FastSearchExecution {
                     result: index_error,
@@ -300,17 +300,13 @@ impl FastSearchTool {
         };
 
         // Check system readiness
-        let readiness = crate::health::HealthChecker::check_system_readiness(
-            handler,
-            target_workspace_id.as_deref(),
-        )
-        .await?;
+        let readiness = handler.system_readiness(target_workspace_id.as_deref()).await?;
 
         match readiness {
             SystemStatus::NotReady => {
                 if let WorkspaceTarget::Primary = &workspace_target {
                     if !handler.is_primary_workspace_swap_in_progress()
-                        && handler.get_workspace().await?.is_none()
+                        && handler.require_primary_workspace_identity().is_err()
                     {
                         let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
                         return Ok(FastSearchExecution {
@@ -648,55 +644,15 @@ impl FastSearchTool {
         })
     }
 
-    async fn ensure_target_workspace_indexed_if_pending(
-        handler: &JulieServerHandler,
-        workspace_id: &str,
-    ) -> Result<Option<CallToolResult>> {
-        let Some(daemon_db) = handler.daemon_db.as_ref() else {
-            return Ok(None);
-        };
-        let Some(row) = daemon_db.get_workspace(workspace_id)? else {
-            return Ok(None);
-        };
-        if row.status == "ready" {
-            return Ok(None);
-        }
-
-        let session_target_is_active = handler.is_workspace_active(workspace_id).await
-            || handler.loaded_workspace_id().as_deref() == Some(workspace_id);
-        if !session_target_is_active {
-            return Ok(None);
-        }
-
-        let index_tool = crate::tools::ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(row.path),
-            name: None,
-            workspace_id: None,
-            force: Some(false),
-            detailed: None,
-        };
-        let result = index_tool.call_tool_with_options(handler, true).await?;
-        if result.is_error.unwrap_or(false) {
-            return Ok(Some(result));
-        }
-
-        Ok(None)
-    }
-
     /// Resolve workspace filtering parameter to a WorkspaceTarget.
     ///
-    /// Delegates to the canonical `resolve_workspace_filter` in `resolution.rs`.
-    /// FastSearchTool keeps this as a convenience method since it accesses `self.workspace`.
+    /// Delegates through the ToolContext trait method which encapsulates workspace
+    /// resolution including the daemon-mode activate_workspace_with_root mutation.
     async fn resolve_workspace_filter(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
     ) -> Result<WorkspaceTarget> {
-        crate::tools::navigation::resolution::resolve_workspace_filter(
-            self.workspace.as_deref(),
-            handler,
-        )
-        .await
+        handler.resolve_workspace_target(self.workspace.as_deref()).await
     }
 
     /// Try to produce content-style locations output (file:line per match) by
@@ -710,7 +666,7 @@ impl FastSearchTool {
     /// bubble up so the caller can choose to fall back gracefully.
     async fn try_line_mode_locations(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         workspace_target: &WorkspaceTarget,
         execution: &mut SearchExecutionResult,
     ) -> Result<Option<String>> {
@@ -826,7 +782,7 @@ impl FastSearchTool {
 
     async fn try_enrich_with_line_mode_snippets(
         &self,
-        handler: &JulieServerHandler,
+        handler: &dyn ToolContext,
         workspace_target: &WorkspaceTarget,
         execution: &mut SearchExecutionResult,
     ) -> Result<()> {

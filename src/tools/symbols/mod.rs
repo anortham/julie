@@ -21,8 +21,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::handler::JulieServerHandler;
-use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use crate::tools::navigation::resolution::WorkspaceTarget;
+use julie_context::ToolContext;
 
 fn default_max_depth() -> u32 {
     1
@@ -103,11 +103,11 @@ pub struct GetSymbolsTool {
 }
 
 impl GetSymbolsTool {
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         let mode = validated_mode(self.mode.as_deref())?;
 
         // Resolve workspace parameter (primary vs explicit workspace)
-        let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        let workspace_target = handler.resolve_workspace_target(self.workspace.as_deref()).await?;
 
         match workspace_target {
             WorkspaceTarget::Target(target_workspace_id) => {

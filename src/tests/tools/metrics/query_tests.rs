@@ -1,6 +1,6 @@
-use crate::database::SymbolDatabase;
-use crate::extractors::SymbolKind;
-use crate::tests::helpers::db::{file_info_builder, set_symbol_reference_scores, symbol_builder};
+use julie_core::database::SymbolDatabase;
+use julie_extractors::SymbolKind;
+use julie_test_support::db::{file_info_builder, set_symbol_reference_scores, symbol_builder};
 
 use std::collections::HashMap;
 use tempfile::TempDir;

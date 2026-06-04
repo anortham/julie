@@ -1,0 +1,463 @@
+//! Smart Refactoring Tools - Semantic code transformations
+//!
+//! This module provides intelligent refactoring operations that combine:
+//! - Code understanding (tree-sitter parsing, symbol analysis)
+//! - Global code intelligence (fast_refs, search)
+//! - Precise text manipulation
+//!
+//! Unlike simple text editing, these tools understand code semantics and
+//! can perform complex transformations safely across entire codebases.
+
+mod rename;
+mod utils;
+
+use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use anyhow::Result;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+/// A single line-level change from a rename operation.
+#[derive(Debug, Clone)]
+pub struct RenameChange {
+    pub line_number: usize,
+    pub old_line: String,
+    pub new_line: String,
+}
+
+/// Compare old and new content line-by-line, returning changed lines.
+pub fn compute_line_changes(old_content: &str, new_content: &str) -> Vec<RenameChange> {
+    let old_lines: Vec<&str> = old_content.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
+    let mut changes = Vec::new();
+    let max_len = old_lines.len().max(new_lines.len());
+    for i in 0..max_len {
+        let old = old_lines.get(i).copied().unwrap_or("");
+        let new = new_lines.get(i).copied().unwrap_or("");
+        if old != new {
+            changes.push(RenameChange {
+                line_number: i + 1,
+                old_line: old.to_string(),
+                new_line: new.to_string(),
+            });
+        }
+    }
+    changes
+}
+
+use crate::editing::EditingTransaction;
+use julie_context::ToolContext;
+
+fn default_dry_run() -> bool {
+    true
+}
+
+fn is_valid_rename_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+
+    if !(first == '_' || first == '$' || first.is_alphabetic()) {
+        return false;
+    }
+
+    chars.all(|ch| ch == '_' || ch == '$' || ch.is_alphanumeric())
+}
+
+#[derive(Debug)]
+pub struct RenameSymbolFailure {
+    pub kind: &'static str,
+    pub message: String,
+}
+
+impl std::fmt::Display for RenameSymbolFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RenameSymbolFailure {}
+
+fn rename_symbol_error(kind: &'static str, message: impl Into<String>) -> anyhow::Error {
+    anyhow::anyhow!(RenameSymbolFailure {
+        kind,
+        message: message.into(),
+    })
+}
+
+pub fn failure_kind(error: &anyhow::Error) -> &'static str {
+    error
+        .downcast_ref::<RenameSymbolFailure>()
+        .map(|error| error.kind)
+        .unwrap_or("execution_error")
+}
+
+fn replace_text_on_allowed_lines(
+    content: &str,
+    old_name: &str,
+    new_name: &str,
+    allowed_lines: Option<&HashSet<u32>>,
+) -> String {
+    let Some(allowed_lines) = allowed_lines else {
+        return content.replace(old_name, new_name);
+    };
+
+    let mut result = String::with_capacity(content.len());
+    for (index, line) in content.split_inclusive('\n').enumerate() {
+        let line_number = index as u32 + 1;
+        if allowed_lines.contains(&line_number) {
+            result.push_str(&line.replace(old_name, new_name));
+        } else {
+            result.push_str(line);
+        }
+    }
+
+    result
+}
+
+/// Rename a symbol across the entire codebase with workspace-wide updates.
+///
+/// Uses `fast_refs` to find all references, then applies AST-aware replacement
+/// (tree-sitter parsing) to rename only actual code identifiers — string literals
+/// and comments are left untouched. Supports scope limiting to a single file.
+///
+/// **Always use `dry_run=true` first** to preview changes before applying.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct RenameSymbolTool {
+    /// Current symbol name
+    pub old_name: String,
+    /// New symbol name
+    pub new_name: String,
+    /// Scope limitation
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// Preview changes without applying (default: true). Always preview first, review the diff, then set to false to apply
+    #[serde(
+        default = "default_dry_run",
+        deserialize_with = "julie_core::serde_lenient::deserialize_bool_lenient"
+    )]
+    pub dry_run: bool,
+    /// Workspace filter: "primary" (default) or workspace ID
+    #[serde(default)]
+    pub workspace: Option<String>,
+}
+
+/// Internal refactoring engine used by RenameSymbolTool.
+/// Not exposed as an MCP tool — only used internally for rename operations.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct SmartRefactorTool {
+    /// The refactoring operation to perform
+    pub operation: String,
+
+    /// Operation-specific parameters as JSON string
+    #[serde(default = "default_empty_json")]
+    pub params: String,
+
+    /// Preview changes without applying them (default: false).
+    #[serde(
+        default,
+        deserialize_with = "julie_core::serde_lenient::deserialize_bool_lenient"
+    )]
+    pub dry_run: bool,
+}
+
+fn default_empty_json() -> String {
+    "{}".to_string()
+}
+
+/// Resolve the filesystem root path for a workspace.
+/// Returns the primary workspace root for "primary"/None, or the explicit workspace path.
+pub async fn resolve_workspace_root(
+    workspace_param: Option<&str>,
+    handler: &dyn ToolContext,
+) -> Result<PathBuf> {
+    match handler.resolve_workspace_target(workspace_param).await? {
+        julie_context::WorkspaceTarget::Primary => handler.require_primary_workspace_root(),
+        julie_context::WorkspaceTarget::Target(id) => {
+            handler.get_workspace_root_for_target(&id).await
+        }
+    }
+}
+
+// ===== RENAME SYMBOL TOOL IMPLEMENTATION =====
+
+impl RenameSymbolTool {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
+        // Validation
+        if self.old_name.is_empty() || self.new_name.is_empty() {
+            return Err(rename_symbol_error(
+                "validation",
+                "old_name and new_name are required and cannot be empty",
+            ));
+        }
+
+        if self.old_name == self.new_name {
+            return Err(rename_symbol_error(
+                "validation",
+                "old_name and new_name are identical - no rename needed",
+            ));
+        }
+
+        if !is_valid_rename_identifier(&self.new_name) {
+            return Err(rename_symbol_error(
+                "validation",
+                format!(
+                    "invalid identifier for new_name '{}'. Use a single code identifier with no whitespace or punctuation.",
+                    self.new_name
+                ),
+            ));
+        }
+
+        // Delegate to SmartRefactorTool's rename logic
+        let smart_refactor = SmartRefactorTool {
+            operation: "rename_symbol".to_string(),
+            params: serde_json::json!({
+                "old_name": self.old_name,
+                "new_name": self.new_name,
+                "scope": self.scope,
+                "workspace": self.workspace,
+            })
+            .to_string(),
+            dry_run: self.dry_run,
+        };
+
+        smart_refactor.handle_rename_symbol(handler).await
+    }
+}
+
+impl SmartRefactorTool {
+    /// Create result for refactoring operations.
+    /// For dry_run: returns before/after preview as text.
+    /// For applied: returns confirmation summary as text.
+    pub fn create_result(
+        &self,
+        operation: &str,
+        _success: bool,
+        files_modified: Vec<String>,
+        changes_count: usize,
+        preview: Option<String>,
+    ) -> Result<CallToolResult> {
+        let file_list = files_modified.join(", ");
+        let text = if let Some(preview) = preview {
+            // Dry run: show before/after preview
+            preview
+        } else {
+            // Applied: confirmation summary
+            format!(
+                "rename_symbol {} — applied {} change(s) to {}",
+                operation, changes_count, file_list
+            )
+        };
+
+        Ok(CallToolResult::text_content(vec![Content::text(text)]))
+    }
+
+    /// Rename symbol occurrences in a single file using tree-sitter AST-aware replacement
+    async fn rename_in_file(
+        &self,
+        workspace_root: &Path,
+        file_path: &str,
+        old_name: &str,
+        new_name: &str,
+        allowed_lines: &[u32],
+    ) -> Result<Vec<RenameChange>> {
+        // Resolve file path relative to workspace root
+        let absolute_path = if Path::new(file_path).is_absolute() {
+            file_path.to_string()
+        } else {
+            workspace_root.join(file_path).to_string_lossy().to_string()
+        };
+
+        // Read file content
+        let content = fs::read_to_string(&absolute_path)?;
+
+        // Tree-sitter AST-aware replacement: only renames identifiers, skips strings/comments
+        let allowed_lines: HashSet<u32> = allowed_lines.iter().copied().collect();
+        let updated_content = self.smart_text_replace_on_lines(
+            &content,
+            old_name,
+            new_name,
+            file_path,
+            false,
+            &allowed_lines,
+        )?;
+
+        if updated_content == content {
+            return Ok(Vec::new()); // No changes
+        }
+
+        // Write back using atomic operations (skip if dry-run)
+        if !self.dry_run {
+            let tx = EditingTransaction::begin(&absolute_path)?;
+            tx.commit_if_unchanged(&updated_content, &content)?;
+        }
+
+        Ok(compute_line_changes(&content, &updated_content))
+    }
+
+    /// Uses tree-sitter AST to find ONLY actual code symbols, skipping strings/comments.
+    pub fn smart_text_replace(
+        &self,
+        content: &str,
+        old_name: &str,
+        new_name: &str,
+        file_path: &str,
+        _update_comments: bool,
+    ) -> Result<String> {
+        self.smart_text_replace_with_line_filter(content, old_name, new_name, file_path, None)
+    }
+
+    pub fn smart_text_replace_on_lines(
+        &self,
+        content: &str,
+        old_name: &str,
+        new_name: &str,
+        file_path: &str,
+        _update_comments: bool,
+        allowed_lines: &HashSet<u32>,
+    ) -> Result<String> {
+        self.smart_text_replace_with_line_filter(
+            content,
+            old_name,
+            new_name,
+            file_path,
+            Some(allowed_lines),
+        )
+    }
+
+    fn smart_text_replace_with_line_filter(
+        &self,
+        content: &str,
+        old_name: &str,
+        new_name: &str,
+        file_path: &str,
+        allowed_lines: Option<&HashSet<u32>>,
+    ) -> Result<String> {
+        use tree_sitter::Parser;
+
+        if old_name.is_empty() || old_name == new_name {
+            return Ok(content.to_string());
+        }
+
+        let language = julie_extractors::language::detect_language_for_source(file_path, content)
+            .map(str::to_string)
+            .unwrap_or_else(|| self.detect_language(file_path));
+        let ts_language = match self.get_tree_sitter_language(&language) {
+            Ok(lang) => lang,
+            Err(_) => {
+                // No tree-sitter parser for this language (e.g. .env, .cfg, .ini files that
+                // Julie indexes but has no grammar for). Fall back to plain text replacement.
+                return Ok(replace_text_on_allowed_lines(
+                    content,
+                    old_name,
+                    new_name,
+                    allowed_lines,
+                ));
+            }
+        };
+
+        let mut parser = Parser::new();
+        parser.set_language(&ts_language)?;
+
+        let tree = parser
+            .parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse {} file", language))?;
+        let parse_diagnostics = julie_extractors::pipeline::parse_diagnostics_for_tree(&tree);
+        if let Some(diagnostic) = parse_diagnostics.first() {
+            return Err(rename_symbol_error(
+                "parse_error",
+                format!(
+                    "AST-aware rename refused {} because the live tree has a parse error at {}:{}-{}:{}",
+                    file_path,
+                    diagnostic.start_line,
+                    diagnostic.start_column,
+                    diagnostic.end_line,
+                    diagnostic.end_column
+                ),
+            ));
+        }
+
+        // AST-AWARE REPLACEMENT: Walk tree to find identifier nodes
+        let mut replacements: Vec<(usize, usize, String)> = Vec::new();
+        let content_bytes = content.as_bytes();
+
+        self.collect_identifier_replacements(
+            tree.root_node(),
+            content_bytes,
+            old_name,
+            new_name,
+            &mut replacements,
+            allowed_lines,
+        );
+
+        // Apply replacements in reverse order (end to start) to preserve byte positions
+        replacements.sort_by(|a, b| b.0.cmp(&a.0));
+
+        let mut result = content.to_string();
+        for (start, end, replacement) in replacements {
+            result.replace_range(start..end, &replacement);
+        }
+
+        Ok(result)
+    }
+
+    /// Recursively walk tree and collect identifier nodes to replace
+    fn collect_identifier_replacements(
+        &self,
+        node: tree_sitter::Node,
+        content_bytes: &[u8],
+        old_name: &str,
+        new_name: &str,
+        replacements: &mut Vec<(usize, usize, String)>,
+        allowed_lines: Option<&HashSet<u32>>,
+    ) {
+        let node_kind = node.kind();
+
+        // Skip string literals and comments - these should NOT be renamed
+        if node_kind.contains("string")
+            || node_kind.contains("comment")
+            || node_kind == "template_string"
+            || node_kind == "string_fragment"
+        {
+            return;
+        }
+
+        // Check if this node is an identifier matching old_name
+        if node_kind == "identifier" || node_kind == "type_identifier" {
+            let start = node.start_byte();
+            let end = node.end_byte();
+            let line_number = node.start_position().row as u32 + 1;
+
+            if let Ok(text) = std::str::from_utf8(&content_bytes[start..end]) {
+                let line_allowed = allowed_lines
+                    .map(|lines| lines.contains(&line_number))
+                    .unwrap_or(true);
+                if text == old_name && line_allowed {
+                    replacements.push((start, end, new_name.to_string()));
+                    return; // Don't recurse into children of identifiers
+                }
+            }
+        }
+
+        // Recurse into children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.collect_identifier_replacements(
+                child,
+                content_bytes,
+                old_name,
+                new_name,
+                replacements,
+                allowed_lines,
+            );
+        }
+    }
+
+    /// Get tree-sitter language for file type (delegates to shared language module)
+    fn get_tree_sitter_language(&self, language: &str) -> Result<tree_sitter::Language> {
+        julie_extractors::language::get_tree_sitter_language(language)
+    }
+}

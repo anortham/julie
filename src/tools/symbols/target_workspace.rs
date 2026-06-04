@@ -9,11 +9,11 @@ use tracing::{debug, info};
 use super::body_extraction::extract_code_bodies;
 use super::filtering::apply_all_filters;
 use super::formatting::format_symbol_response;
-use crate::handler::JulieServerHandler;
+use julie_context::ToolContext;
 
 /// Get symbols from a target workspace.
 pub async fn get_symbols_from_target_workspace(
-    handler: &JulieServerHandler,
+    handler: &dyn ToolContext,
     file_path: &str,
     max_depth: u32,
     target: Option<&str>,

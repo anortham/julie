@@ -3,18 +3,16 @@
 // Handles conversion between absolute native paths and relative Unix-style paths
 // for token-efficient storage and cross-platform compatibility.
 
-use anyhow::Result;
 use std::path::{Path, PathBuf};
-
-use julie_core::workspace_errors::{WorkspaceResolutionFailure, WorkspaceResolutionFailureKind};
 
 // strip_unc_prefix lives in julie-core; imported privately so
 // relative_within_workspace can keep calling it unchanged.
 use julie_core::paths::strip_unc_prefix;
 
-// to_relative_unix_style lives in julie-core; re-exported publicly so all
-// crate::utils::paths::to_relative_unix_style call sites compile unchanged.
-pub use julie_core::paths::to_relative_unix_style;
+// to_relative_unix_style, WorkspaceFileInputResolution, and
+// resolve_workspace_file_input live in julie-core; re-exported publicly so all
+// crate::utils::paths::* callers compile unchanged.
+pub use julie_core::paths::{WorkspaceFileInputResolution, resolve_workspace_file_input, to_relative_unix_style};
 
 /// Convert a path to a user-friendly display string.
 ///
@@ -33,65 +31,6 @@ pub fn display_path(path: &Path) -> String {
     } else {
         s.into_owned()
     }
-}
-
-#[derive(Debug)]
-pub struct WorkspaceFileInputResolution {
-    pub absolute_path: PathBuf,
-    pub relative_query_path: String,
-    pub canonicalized: bool,
-}
-
-/// Resolve a tool file input into the two path forms tool handlers need.
-///
-/// Tool inputs may be absolute, relative, contain `.` / `..`, or point at a
-/// file that does not exist yet. This canonicalizes the input path when
-/// possible, otherwise keeps the absolute candidate path, then computes a
-/// relative Unix-style path for database queries.
-///
-/// # Strict contract — no raw-input fallback
-///
-/// If the resolved absolute path is **outside the workspace root**, this
-/// function returns an `Err` wrapping [`WorkspaceResolutionFailure`] with
-/// kind [`WorkspaceResolutionFailureKind::FileOutsideWorkspace`]. Callers
-/// MUST propagate the error — they must not fall back to raw string
-/// normalization of the input, which would let outside-workspace paths
-/// silently reach the database as if they were workspace-relative.
-///
-/// At the MCP boundary, route this error through
-/// `crate::handler::tools::error::classify_tool_failure`, which downcasts to
-/// [`WorkspaceResolutionFailure`] and surfaces the result as
-/// `McpError::invalid_params` so the user sees a clear "outside workspace"
-/// message instead of an opaque internal error.
-pub fn resolve_workspace_file_input(
-    input: &str,
-    workspace_root: &Path,
-) -> Result<WorkspaceFileInputResolution> {
-    let input_path = Path::new(input);
-    let absolute_candidate = if input_path.is_absolute() {
-        input_path.to_path_buf()
-    } else {
-        workspace_root.join(input_path)
-    };
-
-    let (absolute_path, canonicalized) = match absolute_candidate.canonicalize() {
-        Ok(canonical) => (canonical, true),
-        Err(_) => (absolute_candidate, false),
-    };
-
-    let relative_query_path =
-        to_relative_unix_style(&absolute_path, workspace_root).map_err(|_| {
-            WorkspaceResolutionFailure::new(
-                WorkspaceResolutionFailureKind::FileOutsideWorkspace,
-                format!("file path is outside the workspace: {}", input),
-            )
-        })?;
-
-    Ok(WorkspaceFileInputResolution {
-        absolute_path,
-        relative_query_path,
-        canonicalized,
-    })
 }
 
 /// Strip `workspace_root` from `path`, tolerating symlinked workspace roots
