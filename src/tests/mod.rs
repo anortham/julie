@@ -44,6 +44,7 @@ pub mod core {
     pub mod performance_indexes; // SQLite performance guardrail indexes
     pub mod revision_changes; // Canonical revision file-delta persistence tests
     pub mod serde_lenient_tests; // Lenient MCP param deserializers (u32, bool, Vec<String>)
+    pub mod sidecar_embedding_tests; // Top-crate-only: sidecar_root_path CARGO_MANIFEST_DIR branch
     pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests // bulk_store_types integration tests (TDD)
 }
 

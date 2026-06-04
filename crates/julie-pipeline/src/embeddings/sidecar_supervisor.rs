@@ -84,12 +84,17 @@ pub fn sidecar_root_path() -> Result<PathBuf> {
         }
     }
 
-    // Priority 3: Source checkout (dev mode)
-    let source_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("python")
-        .join("embeddings_sidecar");
-    if source_dir.join("pyproject.toml").exists() {
-        return Ok(source_dir);
+    // Priority 3: Source checkout (dev mode). This crate may be a nested workspace
+    // member (e.g. `crates/julie-pipeline`), so walk up from the crate manifest dir to
+    // find the workspace-root `python/embeddings_sidecar` source. Before the Phase-2
+    // crate split this code lived in the top crate, where `CARGO_MANIFEST_DIR` was the
+    // workspace root directly; a plain join now resolves to the pipeline crate dir and
+    // would miss the source tree entirely.
+    for ancestor in PathBuf::from(env!("CARGO_MANIFEST_DIR")).ancestors() {
+        let source_dir = ancestor.join("python").join("embeddings_sidecar");
+        if source_dir.join("pyproject.toml").exists() {
+            return Ok(source_dir);
+        }
     }
 
     // Priority 4: Extract embedded files to cache
