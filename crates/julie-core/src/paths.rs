@@ -166,9 +166,20 @@ pub struct WorkspaceFileInputResolution {
 /// possible, otherwise keeps the absolute candidate path, then computes a
 /// relative Unix-style path for database queries.
 ///
-/// If the resolved absolute path is outside the workspace root, returns
-/// `Err` wrapping [`WorkspaceResolutionFailure`] with kind
-/// [`WorkspaceResolutionFailureKind::FileOutsideWorkspace`].
+/// # Strict contract — no raw-input fallback
+///
+/// If the resolved absolute path is **outside the workspace root**, this
+/// function returns an `Err` wrapping [`WorkspaceResolutionFailure`] with
+/// kind [`WorkspaceResolutionFailureKind::FileOutsideWorkspace`]. Callers
+/// MUST propagate the error — they must not fall back to raw string
+/// normalization of the input, which would let outside-workspace paths
+/// silently reach the database as if they were workspace-relative.
+///
+/// At the MCP boundary, route this error through
+/// `classify_tool_failure` in `handler::tools::error`, which downcasts to
+/// [`WorkspaceResolutionFailure`] and surfaces the result as
+/// `McpError::invalid_params` so the user sees a clear "outside workspace"
+/// message instead of an opaque internal error.
 pub fn resolve_workspace_file_input(
     input: &str,
     workspace_root: &Path,
