@@ -251,6 +251,20 @@ impl RpcEmbeddingProvider {
             .get()
             .ok_or_else(|| anyhow!("health cache not populated after connect"))
     }
+
+    /// Force the health handshake and return an error if it fails or if the
+    /// host reports `ready=false`.
+    ///
+    /// The `dyn EmbeddingProvider` getters (`device_info`, `accelerated`,
+    /// `degraded_reason`, `dimensions`) silently swallow errors by returning
+    /// defaults when the health handshake fails. Callers that need a hard gate
+    /// — such as the daemon's host-path init — should call `ensure_ready()`
+    /// before promoting the provider to `Arc<dyn EmbeddingProvider>`, so that
+    /// a host that accepts connections but can't answer health (or reports
+    /// `ready=false`) is routed to `publish_unavailable` rather than `Ready`.
+    pub fn ensure_ready(&self) -> Result<()> {
+        self.get_cached().map(|_| ())
+    }
 }
 
 /// Returns `true` if the I/O error kind indicates the peer closed or reset

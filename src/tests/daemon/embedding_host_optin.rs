@@ -168,4 +168,74 @@ mod tests {
             ),
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Test 3: host answers health with ready=false → daemon settles Unavailable
+    // Proves that ensure_ready() surfaces ready=false before the provider is
+    // promoted to Arc<dyn EmbeddingProvider>, preventing a spurious Ready.
+    // -----------------------------------------------------------------------
+
+    #[cfg(unix)]
+    #[tokio::test]
+    #[serial(embedding_host_optin_env)]
+    async fn host_path_publishes_unavailable_when_host_not_ready() {
+        use julie_pipeline::embeddings::host_transport::{HostAddress, HostListener};
+        use julie_pipeline::embeddings::{
+            HealthResult, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
+        };
+
+        let (_dir, paths) = temp_paths();
+        let addr = HostAddress::from_paths(&paths);
+        let listener = HostListener::bind(&addr).await.expect("bind listener");
+
+        // Fake host: probe + health with ready=false (host still warming up).
+        let server = tokio::spawn(async move {
+            let _ = listener.accept().await.expect("accept probe");
+
+            let mut conn = listener.accept().await.expect("accept health conn");
+            let line = conn
+                .read_line()
+                .await
+                .expect("read health req")
+                .expect("health req line");
+            let req: serde_json::Value =
+                serde_json::from_str(&line).expect("parse health request");
+            let request_id = req["request_id"].as_str().unwrap_or("1").to_string();
+
+            let resp = serde_json::to_string(&ResponseEnvelope {
+                schema: SIDECAR_PROTOCOL_SCHEMA.to_string(),
+                version: SIDECAR_PROTOCOL_VERSION,
+                request_id,
+                result: Some(HealthResult {
+                    ready: false, // <-- host not ready yet
+                    dims: None,
+                    device: None,
+                    runtime: None,
+                    model_id: None,
+                    resolved_backend: None,
+                    accelerated: None,
+                    degraded_reason: Some("model still loading".to_string()),
+                    capabilities: None,
+                    load_policy: None,
+                }),
+                error: None,
+            })
+            .expect("serialize health response");
+            conn.write_line(&resp).await.expect("write health response");
+        });
+
+        let _guard_host = with_env("JULIE_EMBEDDING_USE_HOST", "1");
+
+        let svc = Arc::new(EmbeddingService::initializing());
+        let pool = Arc::new(WatcherPool::new(Duration::from_secs(30)));
+        let _handle = spawn_embedding_init(Arc::clone(&svc), None, Arc::clone(&pool), paths);
+
+        let outcome = svc.wait_until_settled(Duration::from_secs(5)).await;
+
+        assert!(
+            matches!(outcome, EmbeddingServiceSettled::Unavailable { .. }),
+            "expected Unavailable when host reports ready=false",
+        );
+        server.await.expect("fake host server task");
+    }
 }

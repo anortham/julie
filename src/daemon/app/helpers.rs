@@ -422,10 +422,24 @@ pub(crate) fn spawn_embedding_init(
                 // the tokio runtime and deadlock with the async server task.
                 match crate::embedding_host_launch::connect_or_spawn_host(&paths) {
                     Ok(rpc) => {
+                        // Hard-gate: ensure_ready() runs the health handshake
+                        // and surfaces errors + ready=false that the
+                        // dyn-trait getters (accelerated/degraded_reason/
+                        // dimensions/device_info) would otherwise swallow by
+                        // returning silent defaults.
+                        if let Err(e) = rpc.ensure_ready() {
+                            let status = crate::embeddings::EmbeddingRuntimeStatus {
+                                requested_backend: crate::embeddings::EmbeddingBackend::Sidecar,
+                                resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+                                accelerated: false,
+                                degraded_reason: Some(format!("embedding-host not ready: {e}")),
+                            };
+                            return (None, Some(status));
+                        }
                         let provider: Arc<dyn crate::embeddings::EmbeddingProvider> =
                             Arc::new(rpc);
-                        // accelerated() / degraded_reason() → get_cached() →
-                        // ensure_connected() → health handshake (blocking I/O).
+                        // OnceLock already populated by ensure_ready() — cache
+                        // hits below, no extra I/O.
                         let status = crate::embeddings::EmbeddingRuntimeStatus {
                             requested_backend: crate::embeddings::EmbeddingBackend::Sidecar,
                             resolved_backend: crate::embeddings::EmbeddingBackend::Sidecar,
