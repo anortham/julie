@@ -36,7 +36,7 @@ cargo build                    # Debug build
 cargo build --release          # Release build (for live MCP testing)
 cargo nextest run --lib <test_name>  # Default: narrowest test first
 cargo xtask test nano          # Minimal regression check (~25s)
-cargo xtask test bucket parser-upgrade  # Parser dependency upgrade gate
+cargo xtask test bucket extractor-dep-integration  # Parser/extractor dependency upgrade gate
 cargo xtask test changed       # After a localized change (diff-scoped buckets)
 cargo xtask test dev           # Batch gate before handoff — not per edit
 cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)

@@ -175,6 +175,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             identifiers: Vec::new(),
             type_argument_usages: Vec::new(),
             literals: Vec::new(),
+            source_regions: Vec::new(),
             parse_diagnostics: Vec::new(),
         },
     };
