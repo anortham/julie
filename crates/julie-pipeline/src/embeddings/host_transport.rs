@@ -93,33 +93,35 @@ pub struct HostClientConn {
     reader: BufReader<std::fs::File>,
 }
 
-/// Default per-request socket timeout (seconds).
+/// Default per-request socket timeout.
 ///
-/// 120 s is generous: on a CPU-only machine (no GPU/MPS), or on the first
-/// batch right after model load, a single `round_trip` can legitimately
-/// exceed 30 s.  A shorter default would abort real embedding work and
-/// introduce a new failure mode.  Operators who want fail-fast behaviour
-/// can lower it via `JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS`.
-const DEFAULT_RPC_TIMEOUT_SECS: u64 = 120;
+/// Generous: a legitimate cold batch embed can take a while, but an infinite
+/// hang is never acceptable.  Override via `JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS`.
+const DEFAULT_RPC_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Parse a raw env-var string into an RPC timeout duration.
+/// Parse a raw env-var string into an RPC timeout.
 ///
-/// - `Some("<positive integer>")` → `Duration::from_secs(n)`.
-/// - `Some("<invalid>")` | `None` → `Duration::from_secs(default_secs)`.
+/// - `Some("0")` → `None` (no timeout — escape hatch for unusual deployments).
+/// - `Some("<positive integer>")` → `Some(Duration::from_secs(n))`.
+/// - `Some("<invalid>")` | `None` → `Some(DEFAULT_RPC_TIMEOUT)`.
 ///
 /// Exposed as `pub(crate)` so `host_transport_test.rs` can unit-test this
 /// function directly without touching the environment.
-pub(crate) fn parse_rpc_timeout(raw: Option<String>, default_secs: u64) -> Duration {
-    raw.and_then(|v| v.trim().parse::<u64>().ok())
-        .map(Duration::from_secs)
-        .unwrap_or(Duration::from_secs(default_secs))
+pub(crate) fn parse_rpc_timeout(raw: Option<String>) -> Option<Duration> {
+    match raw.map(|s| s.trim().to_string()) {
+        Some(s) if s == "0" => None,
+        Some(s) => Some(
+            s.parse::<u64>()
+                .ok()
+                .map(Duration::from_secs)
+                .unwrap_or(DEFAULT_RPC_TIMEOUT),
+        ),
+        None => Some(DEFAULT_RPC_TIMEOUT),
+    }
 }
 
-fn default_rpc_timeout() -> Duration {
-    parse_rpc_timeout(
-        std::env::var("JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS").ok(),
-        DEFAULT_RPC_TIMEOUT_SECS,
-    )
+fn resolve_rpc_timeout() -> Option<Duration> {
+    parse_rpc_timeout(std::env::var("JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS").ok())
 }
 
 impl HostClientConn {
@@ -128,22 +130,22 @@ impl HostClientConn {
     ///
     /// Errors if the host is not listening (socket/pipe absent or refused).
     pub fn connect(addr: &HostAddress) -> io::Result<Self> {
-        Self::connect_with_timeout(addr, default_rpc_timeout())
+        Self::connect_with_timeout(addr, resolve_rpc_timeout())
     }
 
     /// Open a blocking connection and apply `timeout` as both the read and
     /// write timeout on the underlying socket.
     ///
-    /// Use a short `Duration` in tests for deterministic failure paths.
-    /// The env-configurable default is `JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS`
-    /// (default: 120 s — generous enough for a cold CPU-only `embed_batch`).
-    pub fn connect_with_timeout(addr: &HostAddress, timeout: Duration) -> io::Result<Self> {
+    /// `timeout = None` means no timeout (block indefinitely) — legacy
+    /// behaviour or escape hatch; prefer the env-configurable default.
+    /// Use a short `Some(...)` in tests for deterministic failure paths.
+    pub fn connect_with_timeout(addr: &HostAddress, timeout: Option<Duration>) -> io::Result<Self> {
         #[cfg(unix)]
         {
             let writer = StdUnixStream::connect(&addr.socket)?;
-            writer.set_write_timeout(Some(timeout))?;
+            writer.set_write_timeout(timeout)?;
             let reader_stream = writer.try_clone()?;
-            reader_stream.set_read_timeout(Some(timeout))?;
+            reader_stream.set_read_timeout(timeout)?;
             let reader = BufReader::new(reader_stream);
             Ok(Self { writer, reader })
         }
