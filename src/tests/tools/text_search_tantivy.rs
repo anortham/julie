@@ -426,7 +426,7 @@ pub fn lookup_user_profile(id: u32) -> String {
         workspace.embedding_runtime_status = None;
     }
 
-    let _ = crate::tools::search::text_search::take_nl_definition_embedding_init_attempts(
+    let _ = crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(
         &workspace_path,
     );
 
@@ -499,7 +499,7 @@ pub fn lookup_user_profile(id: u32) -> String {
         "NL definitions query should trigger deferred embedding init attempt"
     );
 
-    let init_count = crate::tools::search::text_search::take_nl_definition_embedding_init_attempts(
+    let init_count = crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(
         &workspace_path,
     );
     assert_eq!(

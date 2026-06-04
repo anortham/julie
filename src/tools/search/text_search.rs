@@ -6,10 +6,6 @@ use crate::extractors::{Symbol, SymbolKind};
 
 use julie_context::ToolContext;
 
-// Re-export for tests
-#[cfg(test)]
-pub(crate) use super::nl_embeddings::take_nl_definition_embedding_init_attempts;
-
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------

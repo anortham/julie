@@ -8,10 +8,6 @@ use std::time::Duration;
 
 use julie_context::ToolContext;
 
-// Re-export for test consumers that import from this module path.
-#[cfg(test)]
-pub(crate) use crate::handler::embedding_init::take_nl_definition_embedding_init_attempts;
-
 /// If this query looks like natural language (multi-word, no special chars)
 /// and no embedding provider exists yet, attempt a deferred one-shot
 /// initialization (single-flighted).
