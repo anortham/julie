@@ -31,13 +31,8 @@ pub mod external_extract;
 // ============================================================================
 pub mod core {
     pub mod annotation_storage;
-    pub mod batch_resolver;
     pub mod early_warning_report_cache;
-    pub mod embedding_deps; // Embedding dependency smoke tests (sqlite-vec + zerocopy)
-    pub mod embedding_metadata; // Symbol metadata formatting for embeddings
-    pub mod embedding_metadata_enrichment; // Variable budget, callee/field enrichment, doc excerpt
     pub mod embedding_provider; // EmbeddingProvider trait and factory tests
-    pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
     pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
     pub mod engine_version; // Phase 5.3 — extractor contract / engine version composition
     pub mod handler; // MCP handler tests
@@ -49,8 +44,6 @@ pub mod core {
     pub mod performance_indexes; // SQLite performance guardrail indexes
     pub mod revision_changes; // Canonical revision file-delta persistence tests
     pub mod serde_lenient_tests; // Lenient MCP param deserializers (u32, bool, Vec<String>)
-    pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
-    pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
     pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests // bulk_store_types integration tests (TDD)
 }
 
