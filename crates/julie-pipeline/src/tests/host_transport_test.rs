@@ -87,7 +87,7 @@ mod unix {
         // Generous 5 s timeout — server responds immediately.
         let reply = tokio::task::spawn_blocking(move || {
             let mut client =
-                HostClientConn::connect_with_timeout(&addr, Some(Duration::from_secs(5)))
+                HostClientConn::connect_with_timeout(&addr, Duration::from_secs(5))
                     .expect("connect");
             client.round_trip("ping")
         })
@@ -115,7 +115,7 @@ mod unix {
         // 200 ms read timeout — server never responds, so round_trip must error.
         let result = tokio::task::spawn_blocking(move || {
             let mut client =
-                HostClientConn::connect_with_timeout(&addr, Some(Duration::from_millis(200)))
+                HostClientConn::connect_with_timeout(&addr, Duration::from_millis(200))
                     .expect("connect");
             client.round_trip("{}")
         })
@@ -135,22 +135,20 @@ mod unix {
     fn parse_rpc_timeout_values() {
         use crate::embeddings::host_transport::parse_rpc_timeout;
 
-        // "0" → None (infinite — escape hatch).
-        assert_eq!(parse_rpc_timeout(Some("0".into())), None);
-        // None (env var absent) → Some(default = 120 s).
+        // None (env var absent) → default (120 s).
         assert_eq!(
-            parse_rpc_timeout(None),
-            Some(Duration::from_secs(120))
+            parse_rpc_timeout(None, 120),
+            Duration::from_secs(120)
         );
-        // Valid positive integer → Some(that many seconds).
+        // Valid positive integer → that many seconds.
         assert_eq!(
-            parse_rpc_timeout(Some("3".into())),
-            Some(Duration::from_secs(3))
+            parse_rpc_timeout(Some("5".into()), 120),
+            Duration::from_secs(5)
         );
-        // Invalid string → Some(default).
+        // Invalid string → default.
         assert_eq!(
-            parse_rpc_timeout(Some("bad".into())),
-            Some(Duration::from_secs(120))
+            parse_rpc_timeout(Some("garbage".into()), 120),
+            Duration::from_secs(120)
         );
     }
 }
