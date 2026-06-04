@@ -1694,6 +1694,7 @@ dependencies = [
  "julie-core",
  "julie-extractors",
  "julie-index",
+ "julie-pipeline",
  "julie-test-support",
  "libc",
  "md5",
@@ -1741,6 +1742,7 @@ dependencies = [
  "dirs",
  "fs2",
  "globset",
+ "ignore",
  "julie-extractors",
  "md5",
  "rmcp",
@@ -1824,6 +1826,29 @@ dependencies = [
  "thiserror 2.0.18",
  "toml 0.8.23",
  "tracing",
+]
+
+[[package]]
+name = "julie-pipeline"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "fs2",
+ "futures",
+ "include_dir",
+ "julie-core",
+ "julie-extractors",
+ "julie-index",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "sqlite-vec",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "zerocopy 0.7.35",
 ]
 
 [[package]]

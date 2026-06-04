@@ -1,0 +1,49 @@
+[package]
+name = "julie-pipeline"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Indexing and embedding pipeline layer above julie-index"
+
+[features]
+default = ["embeddings-sidecar"]
+embeddings-sidecar = []
+
+[dependencies]
+# Julie workspace crates
+julie-core = { path = "../julie-core" }
+julie-index = { path = "../julie-index" }
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.1.0" }
+
+# Async runtime
+tokio = { version = "1.47.1", features = ["full"] }
+
+# Async futures
+futures = "0.3"
+
+# Error handling
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# File locking (sidecar bootstrap)
+fs2 = "0.4"
+
+# Embedded sidecar source (sidecar_embedded.rs)
+include_dir = "0.7"
+
+# Platform directories (sidecar root path)
+dirs = "6"
+
+[dev-dependencies]
+tempfile = "3.13"
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+zerocopy = { version = "0.7", features = ["derive"] }
+sqlite-vec = "0.1"
+serial_test = { version = "3.2", features = ["file_locks"] }

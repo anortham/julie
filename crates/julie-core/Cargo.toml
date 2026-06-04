@@ -57,6 +57,9 @@ chrono = { version = "0.4.42", features = ["serde"] }
 # Platform directories (workspace root safety)
 dirs = "6"
 
+# File walker (walk.rs)
+ignore = "0.4"
+
 # Tilde expansion (external extract paths)
 shellexpand = "3.1"
 

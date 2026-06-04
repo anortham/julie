@@ -1,6 +1,2 @@
-pub mod analysis;
-pub mod batch;
-pub mod discovery;
-pub mod extraction;
-mod paths;
-pub mod persistence;
+//! Indexing pipeline modules — relocated to `julie_pipeline::indexing_core`.
+pub use julie_pipeline::indexing_core::{analysis, batch, discovery, extraction, persistence};

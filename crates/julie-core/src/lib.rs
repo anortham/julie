@@ -21,6 +21,7 @@ pub mod serde_lenient;
 pub mod shared;
 pub mod string_similarity;
 pub mod token_estimation;
+pub mod walk;
 pub mod workspace;
 pub mod workspace_errors;
 
