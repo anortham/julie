@@ -88,6 +88,28 @@ const JULIE_INDEX_SEARCH_BUCKETS: &[&str] = &[
     "search-quality",
 ];
 
+/// Buckets for `crates/julie-pipeline/src/indexing_core/**`, `src/resolver*`, and
+/// `src/finalize.rs` edits (Phase 2 PR 2a crate split). Editing the indexing /
+/// relationship-resolution engine compiles + runs the crate's own binary
+/// (`core-pipeline`, which holds the ~142 relocated pipeline unit tests + the
+/// dep-direction tripwire) PLUS the top-crate behavioral buckets whose RETAINED
+/// tests still drive the moved indexing pipeline end-to-end. Without these
+/// co-targets a localized edit to moved indexing code would silently skip its
+/// behavioral regression coverage (Phase 0/1 lesson, R6).
+const JULIE_PIPELINE_INDEXING_BUCKETS: &[&str] = &[
+    "core-pipeline",
+    "workspace-init",
+    "integration",
+    "tools-workspace",
+];
+
+/// Buckets for `crates/julie-pipeline/src/embeddings/**` edits. The embedding
+/// stack's behavioral tests (`tests::core::embedding_provider`,
+/// `embedding_sidecar_provider`, `sidecar_embedding_tests`) stayed in the top
+/// crate and exercise the moved embedding code via the shim re-exports, so an
+/// embeddings edit co-targets `core-embeddings` alongside `core-pipeline` (R6).
+const JULIE_PIPELINE_EMBEDDINGS_BUCKETS: &[&str] = &["core-pipeline", "core-embeddings"];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangedSelectionMode {
     NoChanges,
@@ -520,6 +542,30 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     if matches_prefix(path, &["crates/julie-index/src/"]) {
         // lib.rs, tests/**, other top-level files — covered by `-p julie-index`.
         return &["core-index"];
+    }
+
+    // julie-pipeline crate (Phase 2 PR 2a crate split). Editing any pipeline source
+    // compiles + runs the crate's own test binary via `core-pipeline` (`cargo
+    // nextest run -p julie-pipeline`, which holds the ~142 relocated tests + the
+    // dep-direction tripwire). The two engine subpaths whose behavioral tests still
+    // live in top-crate buckets ALSO pull those buckets (Phase 0/1 lesson — a
+    // localized edit to moved code must not silently skip its behavioral coverage):
+    //   crates/julie-pipeline/src/embeddings/**    -> core-pipeline + core-embeddings
+    //   crates/julie-pipeline/src/indexing_core/** -> core-pipeline + workspace-init + integration + tools-workspace
+    //   crates/julie-pipeline/src/{resolver*,finalize.rs} -> same indexing behavioral set
+    // Subpath checks must precede the catch-all prefix (first match wins).
+    if matches_prefix(path, &["crates/julie-pipeline/src/embeddings/"]) {
+        return JULIE_PIPELINE_EMBEDDINGS_BUCKETS;
+    }
+    if matches_prefix(path, &["crates/julie-pipeline/src/indexing_core/"])
+        || matches_prefix(path, &["crates/julie-pipeline/src/resolver"])
+        || path == "crates/julie-pipeline/src/finalize.rs"
+    {
+        return JULIE_PIPELINE_INDEXING_BUCKETS;
+    }
+    if matches_prefix(path, &["crates/julie-pipeline/src/"]) {
+        // lib.rs, tests/**, other top-level files — covered by `-p julie-pipeline`.
+        return &["core-pipeline"];
     }
 
     if path == "src/tests/core/handler_telemetry.rs" {
@@ -994,6 +1040,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "core-database",
         "core-embeddings",
         "core-index",
+        "core-pipeline",
         "extractor-dep-integration",
         "projection",
         "tools-get-context-pipeline",
@@ -1202,6 +1249,80 @@ mod tests {
         assert!(
             selection.fallback_paths.is_empty(),
             "watcher filtering tests should not force integration/dev fallback; rationale={:?}",
+            selection.rationale
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_pipeline_embeddings_to_core_pipeline_and_embeddings() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["crates/julie-pipeline/src/embeddings/sidecar_supervisor.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        // Embedding behavioral tests stayed in the top crate (core-embeddings) and
+        // exercise the moved code via shim re-exports, so both buckets must run.
+        assert_eq!(
+            selection.bucket_names,
+            vec!["core-embeddings", "core-pipeline"],
+            "rationale={:?}",
+            selection.rationale
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_pipeline_indexing_core_to_behavioral_buckets() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["crates/julie-pipeline/src/indexing_core/extraction.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        // indexing engine: crate unit tests (core-pipeline) + the retained
+        // end-to-end indexing guards (R6 co-targeting).
+        assert_eq!(
+            selection.bucket_names,
+            vec!["core-pipeline", "tools-workspace", "workspace-init", "integration"],
+            "rationale={:?}",
+            selection.rationale
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_pipeline_resolver_and_finalize_to_behavioral_buckets() {
+        let manifest = manifest();
+        for path in [
+            "crates/julie-pipeline/src/resolver.rs",
+            "crates/julie-pipeline/src/resolver/pending.rs",
+            "crates/julie-pipeline/src/finalize.rs",
+        ] {
+            let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+            assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "path={path}");
+            assert_eq!(
+                selection.bucket_names,
+                vec!["core-pipeline", "tools-workspace", "workspace-init", "integration"],
+                "path={path} rationale={:?}",
+                selection.rationale
+            );
+        }
+    }
+
+    #[test]
+    fn changed_tests_route_pipeline_catch_all_to_core_pipeline_only() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["crates/julie-pipeline/src/lib.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(
+            selection.bucket_names,
+            vec!["core-pipeline"],
+            "rationale={:?}",
             selection.rationale
         );
     }

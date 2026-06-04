@@ -57,11 +57,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 60,
                 commands: &[
                     "cargo nextest run --lib tests::core::embedding_provider -- --skip search_quality",
-                    "cargo nextest run --lib tests::core::embedding_metadata -- --skip search_quality",
-                    "cargo nextest run --lib tests::core::embedding_deps -- --skip search_quality",
-                    "cargo nextest run --lib tests::core::embedding_sidecar_protocol -- --skip search_quality",
                     "cargo nextest run --lib tests::core::embedding_sidecar_provider -- --skip search_quality",
-                    "cargo nextest run --lib tests::core::sidecar_supervisor_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::core::sidecar_embedding_tests -- --skip search_quality",
                 ],
             },
@@ -73,6 +69,16 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 60,
                 commands: &[
                     "cargo nextest run -p julie-index",
+                ],
+            },
+        ),
+        (
+            "core-pipeline",
+            ExpectedBucket {
+                expected_seconds: 10,
+                timeout_seconds: 60,
+                commands: &[
+                    "cargo nextest run -p julie-pipeline",
                 ],
             },
         ),
@@ -561,7 +567,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "core",
                 owner: "lead",
                 expensive: false,
-                notes: Some("embedding stack"),
+                notes: Some("embedding stack (top-crate survivors; bulk moved to core-pipeline)"),
             },
         ),
         (
@@ -571,6 +577,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("julie-index crate: search + analysis layer above julie-core"),
+            },
+        ),
+        (
+            "core-pipeline",
+            ExpectedBucketMetadata {
+                scope_label: "core",
+                owner: "lead",
+                expensive: false,
+                notes: Some("julie-pipeline crate: indexing + embedding engine above julie-index"),
             },
         ),
         (

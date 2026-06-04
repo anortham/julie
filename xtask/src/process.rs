@@ -1,3 +1,4 @@
+#[cfg(windows)]
 use std::ffi::OsString;
 use std::io;
 use std::process::{Command, ExitStatus};
