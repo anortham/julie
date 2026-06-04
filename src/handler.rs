@@ -8,6 +8,10 @@ pub(crate) mod tool_targets;
 pub(crate) mod tools;
 #[path = "handler/tool_context_impl.rs"]
 mod tool_context_impl;
+#[path = "handler/embedding_init.rs"]
+pub(crate) mod embedding_init;
+#[path = "handler/workspace_resolution.rs"]
+pub(crate) mod workspace_resolution;
 
 use std::collections::{HashMap, HashSet};
 

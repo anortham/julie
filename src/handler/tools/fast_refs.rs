@@ -10,7 +10,7 @@ use crate::handler::tools::error::classify_tool_failure;
 use crate::handler::{JulieServerHandler, tool_targets};
 use crate::tools::FastRefsTool;
 use crate::tools::metrics::session::ToolCallReport;
-use crate::tools::navigation::resolution::resolve_workspace_filter;
+use crate::handler::workspace_resolution::resolve_workspace_filter;
 
 #[tool_router(router = tool_router_fast_refs, vis = "pub(crate)")]
 impl JulieServerHandler {

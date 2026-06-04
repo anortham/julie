@@ -40,7 +40,7 @@ use serde::de::{Deserializer, Error as DeError, IntoDeserializer};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::health::SystemStatus;
+use julie_core::health_types::SystemStatus;
 use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::tools::shared::OptimizedResponse;
 

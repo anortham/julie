@@ -112,7 +112,7 @@ impl ToolContext for JulieServerHandler {
         &self,
         timeout: Duration,
     ) -> Option<Arc<dyn EmbeddingProvider>> {
-        crate::tools::search::nl_embeddings::wait_for_embedding_provider_settled(self, timeout)
+        crate::handler::embedding_init::wait_for_embedding_provider_settled(self, timeout)
             .await
     }
 
@@ -124,7 +124,7 @@ impl ToolContext for JulieServerHandler {
         &self,
         workspace_param: Option<&str>,
     ) -> Result<WorkspaceTarget> {
-        crate::tools::navigation::resolution::resolve_workspace_filter(workspace_param, self).await
+        crate::handler::workspace_resolution::resolve_workspace_filter(workspace_param, self).await
     }
 
     /// Encapsulates the `ManageWorkspaceTool` invocation (Blocker B1):
