@@ -6,6 +6,8 @@ pub(crate) mod tool_metrics;
 #[path = "handler/tool_targets.rs"]
 pub(crate) mod tool_targets;
 pub(crate) mod tools;
+#[path = "handler/tool_context_impl.rs"]
+mod tool_context_impl;
 
 use std::collections::{HashMap, HashSet};
 

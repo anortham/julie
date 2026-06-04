@@ -56,7 +56,7 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
     let _ = wait_for_embedding_provider_settled(handler, Duration::from_secs(3)).await;
 }
 
-pub(super) async fn wait_for_embedding_provider_settled(
+pub(crate) async fn wait_for_embedding_provider_settled(
     handler: &JulieServerHandler,
     daemon_timeout: Duration,
 ) -> Option<Arc<dyn EmbeddingProvider>> {
