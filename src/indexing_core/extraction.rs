@@ -315,11 +315,7 @@ pub(crate) async fn process_file_with_parser(
         language,
         workspace_root,
         |relative_path, content, workspace_root_path| {
-            crate::tools::workspace::ManageWorkspaceTool::extract_symbols_static(
-                &relative_path,
-                &content,
-                &workspace_root_path,
-            )
+            crate::extractors::extract_canonical(&relative_path, &content, &workspace_root_path)
         },
     )
     .await

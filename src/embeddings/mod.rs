@@ -12,6 +12,7 @@
 
 pub mod factory;
 pub mod init;
+pub(crate) mod log_fields;
 pub mod metadata;
 pub mod pipeline;
 #[cfg(feature = "embeddings-sidecar")]
