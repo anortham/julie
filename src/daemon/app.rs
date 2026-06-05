@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::dashboard::state::DashboardEvent;
 use crate::paths::DaemonPaths;
@@ -36,6 +36,36 @@ mod runtime;
 
 pub use handle::DaemonHandle;
 pub use runtime::DaemonRuntimeContext;
+
+/// Whether the dashboard browser auto-open is suppressed by the environment.
+///
+/// `julie-daemon` auto-opens the dashboard in a browser on startup as an
+/// interactive convenience. The test suite, however, spawns REAL daemons (both
+/// directly via `julie-daemon start` and indirectly via the adapter's
+/// `spawn_daemon`), so without a guard every daemon-spawning test pops a browser
+/// window — dozens during a full run. Suppress the auto-open under the test
+/// runner (`NEXTEST`, set by `cargo nextest` / `cargo xtask test`), in CI (`CI`),
+/// or when an operator opts out (`JULIE_NO_BROWSER`). A human running
+/// `julie daemon` in a terminal (none of these set) still gets the dashboard.
+pub(crate) fn dashboard_browser_open_suppressed_by_env() -> bool {
+    browser_open_suppressed_from(
+        std::env::var_os("NEXTEST").is_some(),
+        std::env::var_os("CI").is_some(),
+        std::env::var_os("JULIE_NO_BROWSER").is_some(),
+    )
+}
+
+/// Pure suppression policy: the dashboard browser auto-open is suppressed when
+/// ANY of the signals is present. Split out from
+/// [`dashboard_browser_open_suppressed_by_env`] so the policy is unit-testable
+/// without mutating process-global environment state.
+pub(crate) fn browser_open_suppressed_from(
+    nextest: bool,
+    ci: bool,
+    explicit_opt_out: bool,
+) -> bool {
+    nextest || ci || explicit_opt_out
+}
 
 /// Configuration for constructing a `DaemonApp`.
 pub struct DaemonConfig {
@@ -403,13 +433,25 @@ impl DaemonApp {
 
         // Auto-open browser unless suppressed. Background task: `opener::open`
         // can shell out for 1-3s on a cold Windows system.
-        if !self.no_dashboard {
+        //
+        // The env guard (`dashboard_browser_open_suppressed_by_env`) is what stops
+        // the browser-window flood during test runs: the suite spawns REAL daemons
+        // (directly and via the adapter), so without it every daemon-spawning test
+        // pops a browser window. Suppressed under the test runner / CI / explicit
+        // opt-out; the dashboard HTTP server below still runs regardless.
+        if !self.no_dashboard && !dashboard_browser_open_suppressed_by_env() {
             let url = dashboard_url.clone();
             tokio::spawn(async move {
                 if let Err(e) = opener::open(&url) {
                     warn!("Failed to open browser: {}", e);
                 }
             });
+        } else if !self.no_dashboard {
+            debug!(
+                url = %dashboard_url,
+                "Dashboard browser auto-open suppressed by environment \
+                 (NEXTEST / CI / JULIE_NO_BROWSER); dashboard is still served"
+            );
         }
 
         // Spawn dashboard server as a background task.
