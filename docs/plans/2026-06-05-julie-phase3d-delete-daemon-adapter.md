@@ -227,6 +227,25 @@ Gate authority: per [[feedback_prefer_fast_per_crate_gates]] the `cargo xtask te
 
 External review: codex (gpt-5.5, escalation tier) @ 5fd9c1ea, verdict needs-attention, 1 medium finding (F1) — verified real, fixed @ 6944029d. No dangling deleted symbols (codex-confirmed clean builds).
 
+#### 3d.2b-i Verification Ledger
+
+Gate authority: same per-crate superset as 3d.2a ([[feedback_prefer_fast_per_crate_gates]]) — the bucket tiers timeout-flake under load. 3d.2b-i is xtask-only code (i1) + one redundant-test deletion (i2) + docs; **the julie test crate does not depend on xtask, so i1 cannot affect any julie test**, and i2 deleted a test (`embedding_host_optin`) unrelated to either gate failure.
+
+| Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
+|---|---|---|---|---|---|---|
+| i1: dev-restart parse contract (takes no args; `--force` rejected) | `cargo nextest run -p xtask dev_restart` | worker | 99c68a2c | pass (3/3) | no |
+| i1: xtask compiles without `lifecycle`/`DaemonPaths` (cross-crate gate) | `cargo build --workspace --bins` | branch-gate (cross-crate) | 5c6d45a0 | pass | 2026-06-05 | no |
+| i2: test crate compiles after `embedding_host_optin` deletion | `cargo nextest run -p julie --no-run` | branch-gate (compile) | 5c6d45a0 | pass (only deferred `fd_limit` dead-code warns) | 2026-06-05 | no |
+| i2: surviving coverage intact (host opt-in + `ensure_ready` invariant) | `cargo nextest run -p julie --lib inprocess_embedding` | worker | 5c6d45a0 | pass (3/3) | no |
+| Whole-crate regression: 3d.2b-i introduces no new failures | `cargo nextest run -p julie --no-fail-fast -- --skip search_quality` | branch-gate (superset) | 5c6d45a0 | 1654/1656 pass; 2 fails BOTH pre-existing (isolate-verified), none from 3d.2b-i | 2026-06-05 | no |
+| Exit invariant: doomed daemon-controller + `spawn_embedding_init` have zero live kept-code callers | grep/`fast_refs` on `lifecycle::{stop_daemon,check_status,DaemonStatus}` + `spawn_embedding_init` | branch-gate (exit) | 5c6d45a0 | pass (only -ii delete-set test files + defs remain; xtask consumer severed; `spawn_embedding_init` zero outside `app/**`) | no |
+
+**The 2 superset failures @ 5c6d45a0 — both pre-existing (identical to the 3d.2a ledger #2/#3), neither reachable by 3d.2b-i:**
+1. `harness::in_process::test_in_process_daemon_starts_and_shuts_down` — deterministic pre-existing (FAILS in isolation): `in_process.rs:231` asserts the transport wrote a bearer token to `daemon.token`, but the post-3c.3 in-process server serves over rmcp stdio and writes no bearer token. Self-resolves in 3d.2b-ii (deletes the `InProcessDaemon` harness).
+2. `daemon::restart_listener::daemon_reaps_idle_session...` — load flake (PASSES in isolation, single-threaded). Documented daemon-reaper timing budget under load.
+
+External review: codex pre-merge — pending (3d.2b-i HEAD 5c6d45a0).
+
 ---
 
 ## 3d.2b — Server-core kill (DETAILED — reshaped 2026-06-05 after the server-core mapping workflow)
