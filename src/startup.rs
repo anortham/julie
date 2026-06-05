@@ -77,6 +77,16 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 pub(crate) async fn run_primary_workspace_repair(
     handler: &JulieServerHandler,
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
+    // Defense-in-depth (codex 3c.2 F-A follow-up): in-process FOLLOWERS are
+    // pure readers — the leader owns every SQLite/Tantivy write. The deferred
+    // path already guards this in `complete_deferred_auto_index_if_needed`, but
+    // the non-deferred `on_initialized` → `run_auto_indexing` path reaches here
+    // with NO follower guard. Refuse repair/index for followers on EVERY entry
+    // path so a second process can never race the leader's writes.
+    if handler.is_in_process_follower() {
+        return Ok(None);
+    }
+
     match handler.require_primary_workspace_identity() {
         Ok(workspace_id) => {
             let guard = handler.acquire_mutation_gate(&workspace_id).await;

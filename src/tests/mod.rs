@@ -151,10 +151,12 @@ pub mod integration {
     pub mod concurrent_mcp; // A2.3 concurrent MCP regression test (deadlock detector across pool + gate + watcher)
     pub mod daemon_lifecycle;
     pub mod documentation_indexing;
+    pub mod in_process_boundary; // T12: in-process boundary tripwire (cutover bypasses, not deletes, daemon/adapter)
     pub mod indexing_pipeline;
     pub mod legacy_migration; // Daemon legacy-migration gate tests (A1.5) // Documentation indexing E2E tests (RAG POC)
     pub mod lock_contention; // Lock contention regression tests
     pub mod projection_repair;
+    pub mod t11_kill_writer; // T11: kill-the-writer HARD GATE (lock kernel-release + crash-gap recovery)
     pub mod t9_handoff_recovery; // T9: leader handoff recovery + follower structural gate
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
