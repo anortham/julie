@@ -493,6 +493,44 @@ impl JulieWorkspace {
         self.index_root_override = Some(path);
     }
 
+    /// Initialize a workspace with db/tantivy redirected to `index_root`.
+    ///
+    /// Mirrors the pattern in `WorkspacePool::init_workspace`: constructs the
+    /// `JulieWorkspace` struct directly (bypassing the full
+    /// `JulieWorkspace::initialize` which writes config under `.julie/`) and
+    /// then calls `initialize_database` + `initialize_search_index` so storage
+    /// always lands under the caller-supplied `index_root`.
+    ///
+    /// Used by the in-process serve path (T8/F2) to make the leader lock and
+    /// the workspace db/tantivy share the same `~/.julie/indexes/{ws}/` tree.
+    pub async fn initialize_with_index_root(root: PathBuf, index_root: PathBuf) -> Result<Self> {
+        // `julie_dir` stays project-local (for config/logs/gitignore);
+        // db and tantivy are redirected to `index_root` via the override.
+        let julie_dir = root.join(".julie");
+        std::fs::create_dir_all(&julie_dir).with_context(|| {
+            format!("Failed to create workspace dir at {}", julie_dir.display())
+        })?;
+
+        let mut workspace = JulieWorkspace {
+            root,
+            julie_dir,
+            db: None,
+            search_index: None,
+            watcher: None,
+            embedding_provider: None,
+            embedding_runtime_status: None,
+            config: Default::default(),
+            index_root_override: Some(index_root),
+            indexing_runtime: julie_core::indexing_state::IndexingRuntimeState::shared(),
+        };
+
+        // These use indexes_root_path() → the override → db/tantivy land in index_root.
+        workspace.initialize_database()?;
+        workspace.initialize_search_index()?;
+
+        Ok(workspace)
+    }
+
     /// Get the shared indexes parent directory.
     ///
     /// When `index_root_override` is set (daemon mode), the override points to
@@ -728,8 +766,17 @@ impl JulieWorkspace {
         }
     }
 
-    /// Start file watching if initialized
-    pub async fn start_file_watching(&mut self) -> Result<()> {
+    /// Start file watching if initialized.
+    ///
+    /// `should_watch` is a defense-in-depth gate: only the sole writer for this
+    /// workspace may run the OS notify watcher. Callers pass
+    /// `!handler.is_in_process_follower()` — true for stdio/daemon handlers and
+    /// the in-process leader, false for an in-process follower (a read-only
+    /// process that must never start a watcher and race the leader).
+    pub async fn start_file_watching(&mut self, should_watch: bool) -> Result<()> {
+        if !should_watch {
+            return Ok(());
+        }
         if let Some(ref mut watcher) = self.watcher {
             watcher.start_watching().await?;
             info!("File watching started");

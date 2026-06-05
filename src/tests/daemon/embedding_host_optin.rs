@@ -120,7 +120,11 @@ mod tests {
         let pool = Arc::new(WatcherPool::new(Duration::from_secs(30)));
         let _handle = spawn_embedding_init(Arc::clone(&svc), None, Arc::clone(&pool), paths);
 
-        let outcome = svc.wait_until_settled(Duration::from_secs(5)).await;
+        // 30s ceiling (not a fixed sleep — returns as soon as the service
+        // settles). Generous headroom so this background connect+health
+        // handshake isn't starved into a spurious Timeout when the full test
+        // tier saturates the CPU and oversubscribes the tokio runtime.
+        let outcome = svc.wait_until_settled(Duration::from_secs(30)).await;
 
         assert!(
             matches!(outcome, EmbeddingServiceSettled::Ready { .. }),
@@ -149,7 +153,11 @@ mod tests {
         let pool = Arc::new(WatcherPool::new(Duration::from_secs(30)));
         let _handle = spawn_embedding_init(Arc::clone(&svc), None, Arc::clone(&pool), paths);
 
-        let outcome = svc.wait_until_settled(Duration::from_secs(5)).await;
+        // 30s ceiling (not a fixed sleep — returns as soon as the service
+        // settles). Generous headroom so this background connect+health
+        // handshake isn't starved into a spurious Timeout when the full test
+        // tier saturates the CPU and oversubscribes the tokio runtime.
+        let outcome = svc.wait_until_settled(Duration::from_secs(30)).await;
 
         // Must be Unavailable (provider=none disables embeddings).
         // Reason must NOT mention "embedding-host" — that's the host path's
@@ -230,7 +238,11 @@ mod tests {
         let pool = Arc::new(WatcherPool::new(Duration::from_secs(30)));
         let _handle = spawn_embedding_init(Arc::clone(&svc), None, Arc::clone(&pool), paths);
 
-        let outcome = svc.wait_until_settled(Duration::from_secs(5)).await;
+        // 30s ceiling (not a fixed sleep — returns as soon as the service
+        // settles). Generous headroom so this background connect+health
+        // handshake isn't starved into a spurious Timeout when the full test
+        // tier saturates the CPU and oversubscribes the tokio runtime.
+        let outcome = svc.wait_until_settled(Duration::from_secs(30)).await;
 
         match &outcome {
             EmbeddingServiceSettled::Unavailable { reason, .. } => {

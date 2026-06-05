@@ -7,6 +7,7 @@ pub mod discovery_test;
 pub mod drain_timeout;
 pub mod embedding_host_multi_session;
 pub mod embedding_host_optin;
+pub mod inprocess_embedding;
 pub mod embedding_service;
 pub mod embedding_service_shutdown;
 pub mod handler;

@@ -155,6 +155,7 @@ pub mod integration {
     pub mod legacy_migration; // Daemon legacy-migration gate tests (A1.5) // Documentation indexing E2E tests (RAG POC)
     pub mod lock_contention; // Lock contention regression tests
     pub mod projection_repair;
+    pub mod t9_handoff_recovery; // T9: leader handoff recovery + follower structural gate
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
     pub mod real_world_validation; // Real-world code validation tests

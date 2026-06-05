@@ -50,7 +50,7 @@ async fn test_new_in_process_preserves_startup_hint_source() {
         source: Some(WorkspaceStartupSource::Cwd),
     };
     let handler_cwd =
-        JulieServerHandler::new_in_process(hint_cwd, None, LeadershipState::none())
+        JulieServerHandler::new_in_process(hint_cwd, None, LeadershipState::none(), None)
             .await
             .unwrap();
     assert_eq!(
@@ -66,7 +66,7 @@ async fn test_new_in_process_preserves_startup_hint_source() {
         source: Some(WorkspaceStartupSource::Cli),
     };
     let handler_cli =
-        JulieServerHandler::new_in_process(hint_cli, None, LeadershipState::none())
+        JulieServerHandler::new_in_process(hint_cli, None, LeadershipState::none(), None)
             .await
             .unwrap();
     assert_eq!(
@@ -88,7 +88,7 @@ async fn test_new_in_process_no_leader_is_not_leader() {
         path: dir.path().to_path_buf(),
         source: Some(WorkspaceStartupSource::Cli),
     };
-    let handler = JulieServerHandler::new_in_process(hint, None, LeadershipState::none())
+    let handler = JulieServerHandler::new_in_process(hint, None, LeadershipState::none(), None)
         .await
         .unwrap();
     assert!(!handler.is_leader(), "no lock → is_leader must be false");
@@ -106,7 +106,7 @@ async fn test_new_in_process_with_leader_is_leader() {
         source: Some(WorkspaceStartupSource::Cli),
     };
     let handler =
-        JulieServerHandler::new_in_process(hint, None, LeadershipState::leader(guard))
+        JulieServerHandler::new_in_process(hint, None, LeadershipState::leader(guard), None)
             .await
             .unwrap();
     assert!(handler.is_leader(), "with lock → is_leader must be true");
@@ -131,6 +131,7 @@ async fn test_new_in_process_injected_provider_returned() {
         hint,
         Some(Arc::clone(&provider)),
         LeadershipState::none(),
+        None,
     )
     .await
     .unwrap();

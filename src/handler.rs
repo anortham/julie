@@ -107,11 +107,18 @@ impl PrimarySwapRollback {
             (_, None) => self.workspace,
         };
 
-        if handler.workspace_pool.is_none() && handler.daemon_db.is_none() {
+        // Gate the watcher on `!is_in_process_follower()`, NOT `is_leader()`:
+        // stdio/daemon handlers use `LeadershipState::none()` (is_leader()==false)
+        // but ARE the sole writer and must restore their watcher. Only an
+        // in-process FOLLOWER must skip it (the leader owns writes).
+        if handler.workspace_pool.is_none()
+            && handler.daemon_db.is_none()
+            && !handler.is_in_process_follower()
+        {
             if let Some(workspace) = restored_workspace.as_mut() {
                 if workspace.config.incremental_updates {
                     workspace.initialize_file_watcher()?;
-                    workspace.start_file_watching().await?;
+                    workspace.start_file_watching(true).await?;
                 }
             }
         }
@@ -251,6 +258,14 @@ pub struct JulieServerHandler {
     /// Single-flight gate for deferred auto-index repair so primary requests can
     /// wait behind an already-started background repair instead of racing it.
     deferred_auto_index_gate: Arc<tokio::sync::Mutex<()>>,
+    /// In-flight claim for the F1 background repair spawn (codex pre-merge F-C).
+    /// The leader's `call_tool` envelope spawns a non-cancellable repair task
+    /// when `deferred_auto_index_pending` is set; without a claim, every
+    /// concurrent in-process read would spawn its own task, and on persistent
+    /// repair failure each queued task re-runs the (failed) repair in turn.
+    /// A `compare_exchange(false → true)` claim ensures at most ONE repair task
+    /// is outstanding per release cycle.
+    deferred_auto_index_in_flight: Arc<AtomicBool>,
     /// Certification/replay handlers can index external repos without writing
     /// helper files such as `.julieignore` into those repos.
     pub(crate) suppress_workspace_file_writes: Arc<AtomicBool>,
@@ -281,6 +296,11 @@ pub struct JulieServerHandler {
     /// Embedding provider injected by `new_in_process`. When `Some`, takes
     /// priority over `embedding_service` and the per-workspace provider.
     injected_embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    /// Index root override for in-process sessions (T8/F2).  When `Some`, the
+    /// non-pool branch of `initialize_workspace_with_force` routes db/tantivy
+    /// to the daemon shared directory (`~/.julie/indexes/{ws}/`) so storage
+    /// and the leader lock share one inode tree.
+    pub(crate) in_process_index_root: Option<PathBuf>,
     /// Keeps isolated temp roots alive for test-only handlers.
     #[cfg(test)]
     test_temp_guard: Option<Arc<tempfile::TempDir>>,
@@ -434,8 +454,45 @@ impl JulieServerHandler {
             .store(pending, Ordering::Release);
     }
 
+    /// Claim the single in-flight deferred-repair slot (codex pre-merge F-C).
+    ///
+    /// Returns `true` for exactly ONE caller per release cycle — the caller that
+    /// flips the flag `false → true` owns the slot and must spawn the background
+    /// repair, then call [`Self::release_deferred_repair_slot`] when the spawned
+    /// task finishes. Concurrent callers lose the `compare_exchange` and get
+    /// `false`, so they skip spawning. This bounds a persistently-failing repair
+    /// to one outstanding task at a time instead of one per concurrent in-process
+    /// read.
+    pub(crate) fn try_claim_deferred_repair_slot(&self) -> bool {
+        use std::sync::atomic::Ordering;
+
+        self.deferred_auto_index_in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
+    /// Release the in-flight deferred-repair slot claimed by
+    /// [`Self::try_claim_deferred_repair_slot`]. Call exactly once after the
+    /// spawned repair task completes (success or failure), so the next pending
+    /// cycle can spawn a fresh task.
+    pub(crate) fn release_deferred_repair_slot(&self) {
+        use std::sync::atomic::Ordering;
+
+        self.deferred_auto_index_in_flight
+            .store(false, Ordering::Release);
+    }
+
     async fn complete_deferred_auto_index_if_needed(&self) -> Result<()> {
         use std::sync::atomic::Ordering;
+
+        // In-process FOLLOWER: skip all writing recovery. The leader owns
+        // SQLite/Tantivy writes; followers are pure readers. Running repair
+        // here would race the leader (Risk #2, T9/Part A). Daemon/stdio
+        // handlers use `LeadershipState::none()` so is_in_process_follower()
+        // is false — they take the full repair path below unchanged.
+        if self.is_in_process_follower() {
+            return Ok(());
+        }
 
         let _deferred_guard = self.deferred_auto_index_gate.lock().await;
         if !self
@@ -727,6 +784,7 @@ impl JulieServerHandler {
             restart_pending: None,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool: None,
@@ -737,6 +795,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: None,
+            in_process_index_root: None,
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -846,6 +905,7 @@ impl JulieServerHandler {
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool,
@@ -856,6 +916,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: None,
+            in_process_index_root: None,
             #[cfg(test)]
             test_temp_guard: None,
         };
@@ -957,6 +1018,7 @@ impl JulieServerHandler {
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
             session_lifecycle: None,
             watcher_pool,
@@ -967,6 +1029,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: None,
+            in_process_index_root: None,
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -987,11 +1050,16 @@ impl JulieServerHandler {
     ///   `mark_standalone_embedding_skipped` when passing a provider here.
     /// * `leader` — result of the workspace leader election (T2 primitive).
     ///   Pass `LeadershipState::leader(guard)` when this process won the lock;
-    ///   pass `LeadershipState::none()` for follower / uncontested cases.
+    ///   pass `LeadershipState::follower()` when another process won (write-refusing reader);
+    ///   pass `LeadershipState::none()` for handlers not in the in-process model.
+    /// * `index_root` — when `Some`, `initialize_workspace_with_force` routes
+    ///   db/tantivy to this directory so the leader lock and storage share one
+    ///   inode tree (T8/F2).  Pass `None` for the traditional project-local path.
     pub async fn new_in_process(
         startup_hint: WorkspaceStartupHint,
         embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
         leader: LeadershipState,
+        index_root: Option<PathBuf>,
     ) -> Result<Self> {
         // Build on top of the deferred-startup path, which wires up everything
         // except the project-log and sets startup_hint on the session state.
@@ -1007,9 +1075,10 @@ impl JulieServerHandler {
         )
         .await?;
 
-        // Override the leadership and injected-provider fields.
+        // Override the leadership, injected-provider, and index-root fields.
         handler.leadership = Arc::new(leader);
         handler.injected_embedding_provider = embedding_provider;
+        handler.in_process_index_root = index_root;
 
         Ok(handler)
     }
@@ -1088,6 +1157,31 @@ impl JulieServerHandler {
     /// (`new`, `new_with_shared_workspace_startup_hint`, etc.) return `false`.
     pub fn is_leader(&self) -> bool {
         self.leadership.is_leader()
+    }
+
+    /// Returns `true` when this handler is a read-only follower in an in-process
+    /// leader election (created via `new_in_process` with `LeadershipState::follower()`).
+    ///
+    /// D1 write-mutating operations (index, register, remove, refresh, editing
+    /// tools) MUST be refused on followers to prevent cross-process
+    /// SQLite/Tantivy data races (T7, Risk #2).
+    ///
+    /// Unlike `!is_leader()`, this gate does NOT fire for regular pre-3c
+    /// constructors (daemon mode, stdio mode) — those use `LeadershipState::none()`
+    /// and are not subject to write-refusal gating.
+    pub fn is_in_process_follower(&self) -> bool {
+        self.leadership.is_follower()
+    }
+
+    /// Returns `true` when this handler is participating in an in-process
+    /// leader election (either leader or follower). `false` for all pre-3c
+    /// constructors (daemon mode, stdio mode — `LeadershipState::none()`).
+    ///
+    /// Gates the F1 bounded read envelope in `call_tool`: only in-process
+    /// handlers get the bounded envelope; daemon/stdio take the existing
+    /// path byte-for-byte unchanged.
+    pub fn is_in_process(&self) -> bool {
+        self.leadership.is_in_process()
     }
 
     pub fn workspace_startup_hint(&self) -> WorkspaceStartupHint {
@@ -1491,6 +1585,43 @@ impl JulieServerHandler {
                 Ok(self
                     .acquire_pooled_workspace_for_rebind(workspace_id, target_canonical.clone())
                     .await?)
+            } else if let Some(index_root) = &self.in_process_index_root {
+                // In-process force reindex (codex pre-merge F-B): the leader's
+                // db/tantivy AND the held `leader.lock` all live under the shared
+                // `index_root` (~/.julie/indexes/{ws}/). The non-force branch
+                // already redirects storage there (T8/F2); the force branch MUST
+                // too, or a force reindex (incl. an auto-triggered semantic-engine
+                // version bump) would silently rebuild project-local storage while
+                // the leader lock sits in the daemon path — breaking the F2 inode
+                // coupling and letting a second process "lead" the same workspace.
+                //
+                // Clear ONLY db/ and tantivy/ under index_root (a full rebuild
+                // follows via index_workspace_files force=true). NEVER remove
+                // `index_root` wholesale: that would unlink the leader.lock file
+                // this process holds on Unix, letting another process acquire a
+                // duplicate leader lock.
+                for derived in ["db", "tantivy"] {
+                    let dir = index_root.join(derived);
+                    if dir.exists() {
+                        if let Err(e) = std::fs::remove_dir_all(&dir) {
+                            warn!(
+                                "Failed to clear in-process {} for force reindex at {}: {}",
+                                derived,
+                                dir.display(),
+                                e
+                            );
+                        }
+                    }
+                }
+                info!(
+                    "🗑️ Cleared in-process db+tantivy for force reindex under {} (leader.lock preserved)",
+                    index_root.display()
+                );
+                JulieWorkspace::initialize_with_index_root(
+                    target_path.clone(),
+                    index_root.clone(),
+                )
+                .await
             } else {
                 // For force reindex, we only clear derived data, NOT the database (source of truth)
                 let julie_dir = target_path.join(".julie");
@@ -1577,6 +1708,18 @@ impl JulieServerHandler {
                 Ok(self
                     .acquire_pooled_workspace_for_rebind(workspace_id, target_canonical.clone())
                     .await?)
+            } else if let Some(index_root) = &self.in_process_index_root {
+                // In-process mode (T8/F2): redirect db/tantivy to the shared daemon
+                // index directory so the leader lock and workspace storage share one
+                // inode tree (`~/.julie/indexes/{ws}/`).  This is the F2 hard gate —
+                // without this branch, `initialize` would create project-local storage
+                // while the leader lock sits in the daemon path, letting two processes
+                // silently "lead" the same workspace.
+                JulieWorkspace::initialize_with_index_root(
+                    target_path,
+                    index_root.clone(),
+                )
+                .await
             } else {
                 // Try to load existing workspace first
                 match JulieWorkspace::detect_and_load(target_path.clone()).await? {
@@ -1606,8 +1749,14 @@ impl JulieServerHandler {
             }
         };
 
-        // Start file watching BEFORE storing workspace (to avoid clone issue)
-        if let Err(e) = workspace.start_file_watching().await {
+        // Start file watching BEFORE storing workspace (to avoid clone issue).
+        // Gate on `!is_in_process_follower()`: stdio/daemon (none()) and the
+        // in-process leader watch; only an in-process follower skips (it is a
+        // read-only process and must not race the leader's writes).
+        if let Err(e) = workspace
+            .start_file_watching(!self.is_in_process_follower())
+            .await
+        {
             warn!("Failed to start file watching: {}", e);
         }
 
@@ -2581,16 +2730,96 @@ impl ServerHandler for JulieServerHandler {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        // Compute tool_name and exempt early — both needed before request/context
+        // are moved into the in-process bounded future below.
+        let tool_name = request.name.as_ref().to_string();
+        let exempt = is_write_exempt(&tool_name, request.arguments.as_ref());
+
         if Self::tool_request_targets_primary(request.name.as_ref(), request.arguments.as_ref()) {
             let complete_deferred_auto_index = !(request.name.as_ref() == "manage_workspace"
                 && Self::manage_workspace_primary_index_request(request.arguments.as_ref()));
+
+            // F1: In-process handlers (leader or follower) get a bounded read
+            // envelope. Without it, `list_roots_from_peer` (unbounded peer
+            // round-trip) or the deferred auto-index running inline on the first
+            // request can hang the session indefinitely.
+            //
+            // Gate strictly on `is_in_process()`: daemon/stdio handlers use
+            // `LeadershipState::none()` (is_in_process()==false) and MUST take
+            // the existing path byte-for-byte unchanged.
+            //
+            // Write-exempt tools (edit_file, rename_symbol, rewrite_symbol,
+            // manage_workspace mutating ops) fall through to the existing path —
+            // aborting a canonical write mid-transaction would corrupt state.
+            if self.is_in_process() && !exempt {
+                // Leader only: if the deferred auto-index is pending, spawn a
+                // NON-CANCELLABLE background task. The timeout below cancels the
+                // read envelope but NEVER the spawned repair — that task holds
+                // its own `deferred_auto_index_gate` lock and runs to completion.
+                // Followers skip (their write gate in complete_deferred_auto_index
+                // returns Ok(()) immediately — no write races).
+                if self.is_leader() {
+                    use std::sync::atomic::Ordering;
+                    // Spawn ONLY when a repair is pending AND we win the
+                    // single-flight claim (codex pre-merge F-C). Losing the
+                    // claim means a repair task is already outstanding — piling
+                    // on a duplicate would re-run a persistently-failing repair
+                    // once per concurrent read. The spawned task releases the
+                    // slot when it finishes so the next pending cycle can retry.
+                    if self.deferred_auto_index_pending.load(Ordering::Acquire)
+                        && self.try_claim_deferred_repair_slot()
+                    {
+                        let h = self.clone();
+                        tokio::spawn(async move {
+                            let _ = h.complete_deferred_auto_index_if_needed().await;
+                            h.release_deferred_repair_slot();
+                        });
+                    }
+                }
+
+                // Bound the WHOLE read path (workspace resolution + tool call)
+                // in a single timeout. On expiry → bounded McpError, not a hang.
+                let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
+                let handler = self.clone();
+                let bounded_fut = async move {
+                    // Pass complete_deferred_auto_index=false: the repair was
+                    // spawned above (leader) or skipped by gate (follower).
+                    // Running it inline here would re-introduce the hang risk.
+                    handler
+                        .ensure_primary_workspace_for_request(&context.peer, false)
+                        .await
+                        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                    handler
+                        .tool_router
+                        .call(ToolCallContext::new(&handler, request, context))
+                        .await
+                };
+
+                return match deadline {
+                    Some(d) => match tokio::time::timeout(d, bounded_fut).await {
+                        Ok(result) => result,
+                        Err(_elapsed) => Err(McpError::internal_error(
+                            format!(
+                                "in-process workspace not ready within {s}s; \
+                                 indexing in progress — retry shortly \
+                                 (tool: '{tool_name}')",
+                                s = d.as_secs()
+                            ),
+                            None,
+                        )),
+                    },
+                    None => bounded_fut.await,
+                };
+            }
+
+            // Non-in-process path OR in-process write path: existing behavior
+            // unchanged. Writes are unbounded by design (T3 / dispatch_with_deadline
+            // exemption); daemon/stdio take this path for all tools.
             self.ensure_primary_workspace_for_request(&context.peer, complete_deferred_auto_index)
                 .await
                 .map_err(|err| McpError::internal_error(err.to_string(), None))?;
         }
 
-        let tool_name = request.name.as_ref().to_string();
-        let exempt = is_write_exempt(&tool_name, request.arguments.as_ref());
         let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
         let fut = self.tool_router.call(ToolCallContext::new(self, request, context));
         dispatch_with_deadline(&tool_name, exempt, fut, deadline).await

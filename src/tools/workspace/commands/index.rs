@@ -21,6 +21,14 @@ impl ManageWorkspaceTool {
         force: bool,
         skip_embeddings: bool,
     ) -> Result<CallToolResult> {
+        // T7 (Risk #2): refuse index writes on in-process followers.
+        // handle_index_command_internal also acquires the mutation gate, but
+        // that gate is per-process and gives no cross-process serialization.
+        if handler.is_in_process_follower() {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "another session owns writes for this workspace; this is a read-only follower",
+            )]));
+        }
         self.handle_index_command_internal(handler, path, force, skip_embeddings, None)
             .await
     }

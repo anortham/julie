@@ -30,6 +30,7 @@ pub mod dashboard;
 pub mod embedding_host_launch;
 pub mod migration;
 pub mod paths;
+pub mod server_in_process;
 
 #[cfg(test)]
 pub mod tests;

@@ -193,6 +193,13 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         info!("Refreshing workspace: {}", workspace_id);
 
+        // T7 (Risk #2): refuse writes on in-process followers.
+        if handler.is_in_process_follower() {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "another session owns writes for this workspace; this is a read-only follower",
+            )]));
+        }
+
         // Refuse all refresh work while a primary workspace swap is mid-flight.
         // Rationale (Findings #28/#29): both the force=true primary reindex branch
         // and the post-refresh `initialize_workspace_with_force` rebind below
