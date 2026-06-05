@@ -184,3 +184,111 @@ async fn test_inprocess_handler_f2_storage_under_index_root() {
         "handler built with leader guard must report is_leader() == true"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 3: F-B (codex pre-merge) — force reindex preserves F2 storage coupling
+// ---------------------------------------------------------------------------
+
+/// A FORCE reindex on an in-process leader must keep db/tantivy under the
+/// daemon-shared `index_root` (NOT fall back to project-local `.julie/indexes`)
+/// and must preserve the held `leader.lock` file.
+///
+/// Before the F-B fix the force branch of `initialize_workspace_with_force`
+/// ignored `in_process_index_root` and called `JulieWorkspace::initialize`,
+/// writing project-local storage while the leader lock sat in the daemon path —
+/// silently breaking the F2 inode coupling that the non-force branch establishes.
+#[tokio::test]
+async fn test_inprocess_force_reindex_keeps_f2_storage_and_preserves_lock() {
+    let home_dir = tempfile::tempdir().unwrap();
+    let paths = DaemonPaths::with_home(home_dir.path().to_path_buf());
+
+    let project_dir = tempfile::tempdir().unwrap();
+    let workspace_id = generate_workspace_id(&project_dir.path().to_string_lossy()).unwrap();
+
+    let index_root = paths.workspace_index_dir(&workspace_id);
+    std::fs::create_dir_all(&index_root).unwrap();
+
+    let lock_path = paths.workspace_leader_lock(&workspace_id);
+    let guard =
+        DaemonLockGuard::try_acquire(&lock_path).expect("lock must be acquirable on fresh path");
+
+    let startup_hint = WorkspaceStartupHint {
+        path: project_dir.path().to_path_buf(),
+        source: Some(WorkspaceStartupSource::Cli),
+    };
+
+    let handler = JulieServerHandler::new_in_process(
+        startup_hint.clone(),
+        None,
+        LeadershipState::leader(guard),
+        Some(index_root.clone()),
+    )
+    .await
+    .expect("handler must build via new_in_process");
+
+    // Initial (non-force) init lands storage under the daemon-shared index_root.
+    handler
+        .initialize_workspace_with_force(
+            Some(project_dir.path().to_string_lossy().to_string()),
+            /*force=*/ false,
+        )
+        .await
+        .expect("initial workspace init must succeed");
+
+    let expected_db = paths.workspace_db_path(&workspace_id);
+    assert!(
+        expected_db.exists(),
+        "db must exist under index_root after the initial init;\n  db: {}",
+        expected_db.display()
+    );
+    assert!(
+        lock_path.exists(),
+        "leader.lock must exist after the initial init;\n  lock: {}",
+        lock_path.display()
+    );
+
+    // FORCE reindex — the path that regressed before the F-B fix.
+    handler
+        .initialize_workspace_with_force(
+            Some(project_dir.path().to_string_lossy().to_string()),
+            /*force=*/ true,
+        )
+        .await
+        .expect("force reindex must succeed");
+
+    // F-B assertion 1: storage STAYS under the daemon-shared index_root.
+    assert!(
+        expected_db.starts_with(&index_root) && expected_db.exists(),
+        "after force reindex, db must still exist under the daemon index_root (F2);\n  db:   {}\n  root: {}",
+        expected_db.display(),
+        index_root.display()
+    );
+
+    // F-B assertion 2: force must NOT create project-local storage.
+    let project_local_db = project_dir
+        .path()
+        .join(".julie")
+        .join("indexes")
+        .join(&workspace_id)
+        .join("db")
+        .join("symbols.db");
+    assert!(
+        !project_local_db.exists(),
+        "force reindex must NOT write project-local storage (F2 violated);\n  path: {}",
+        project_local_db.display()
+    );
+
+    // F-B assertion 3: the held leader.lock survives the force clear (the clear
+    // targets db/tantivy only — never index_root wholesale, which would orphan
+    // the lock and let a second process acquire a duplicate leader lock).
+    assert!(
+        lock_path.exists(),
+        "force reindex must preserve the held leader.lock file;\n  lock: {}",
+        lock_path.display()
+    );
+
+    assert!(
+        handler.is_leader(),
+        "handler must still report is_leader() after a force reindex"
+    );
+}

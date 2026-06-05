@@ -258,6 +258,14 @@ pub struct JulieServerHandler {
     /// Single-flight gate for deferred auto-index repair so primary requests can
     /// wait behind an already-started background repair instead of racing it.
     deferred_auto_index_gate: Arc<tokio::sync::Mutex<()>>,
+    /// In-flight claim for the F1 background repair spawn (codex pre-merge F-C).
+    /// The leader's `call_tool` envelope spawns a non-cancellable repair task
+    /// when `deferred_auto_index_pending` is set; without a claim, every
+    /// concurrent in-process read would spawn its own task, and on persistent
+    /// repair failure each queued task re-runs the (failed) repair in turn.
+    /// A `compare_exchange(false → true)` claim ensures at most ONE repair task
+    /// is outstanding per release cycle.
+    deferred_auto_index_in_flight: Arc<AtomicBool>,
     /// Certification/replay handlers can index external repos without writing
     /// helper files such as `.julieignore` into those repos.
     pub(crate) suppress_workspace_file_writes: Arc<AtomicBool>,
@@ -444,6 +452,34 @@ impl JulieServerHandler {
 
         self.deferred_auto_index_pending
             .store(pending, Ordering::Release);
+    }
+
+    /// Claim the single in-flight deferred-repair slot (codex pre-merge F-C).
+    ///
+    /// Returns `true` for exactly ONE caller per release cycle — the caller that
+    /// flips the flag `false → true` owns the slot and must spawn the background
+    /// repair, then call [`Self::release_deferred_repair_slot`] when the spawned
+    /// task finishes. Concurrent callers lose the `compare_exchange` and get
+    /// `false`, so they skip spawning. This bounds a persistently-failing repair
+    /// to one outstanding task at a time instead of one per concurrent in-process
+    /// read.
+    pub(crate) fn try_claim_deferred_repair_slot(&self) -> bool {
+        use std::sync::atomic::Ordering;
+
+        self.deferred_auto_index_in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
+    /// Release the in-flight deferred-repair slot claimed by
+    /// [`Self::try_claim_deferred_repair_slot`]. Call exactly once after the
+    /// spawned repair task completes (success or failure), so the next pending
+    /// cycle can spawn a fresh task.
+    pub(crate) fn release_deferred_repair_slot(&self) {
+        use std::sync::atomic::Ordering;
+
+        self.deferred_auto_index_in_flight
+            .store(false, Ordering::Release);
     }
 
     async fn complete_deferred_auto_index_if_needed(&self) -> Result<()> {
@@ -748,6 +784,7 @@ impl JulieServerHandler {
             restart_pending: None,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool: None,
@@ -868,6 +905,7 @@ impl JulieServerHandler {
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool,
@@ -980,6 +1018,7 @@ impl JulieServerHandler {
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
             session_lifecycle: None,
             watcher_pool,
@@ -1546,6 +1585,43 @@ impl JulieServerHandler {
                 Ok(self
                     .acquire_pooled_workspace_for_rebind(workspace_id, target_canonical.clone())
                     .await?)
+            } else if let Some(index_root) = &self.in_process_index_root {
+                // In-process force reindex (codex pre-merge F-B): the leader's
+                // db/tantivy AND the held `leader.lock` all live under the shared
+                // `index_root` (~/.julie/indexes/{ws}/). The non-force branch
+                // already redirects storage there (T8/F2); the force branch MUST
+                // too, or a force reindex (incl. an auto-triggered semantic-engine
+                // version bump) would silently rebuild project-local storage while
+                // the leader lock sits in the daemon path — breaking the F2 inode
+                // coupling and letting a second process "lead" the same workspace.
+                //
+                // Clear ONLY db/ and tantivy/ under index_root (a full rebuild
+                // follows via index_workspace_files force=true). NEVER remove
+                // `index_root` wholesale: that would unlink the leader.lock file
+                // this process holds on Unix, letting another process acquire a
+                // duplicate leader lock.
+                for derived in ["db", "tantivy"] {
+                    let dir = index_root.join(derived);
+                    if dir.exists() {
+                        if let Err(e) = std::fs::remove_dir_all(&dir) {
+                            warn!(
+                                "Failed to clear in-process {} for force reindex at {}: {}",
+                                derived,
+                                dir.display(),
+                                e
+                            );
+                        }
+                    }
+                }
+                info!(
+                    "🗑️ Cleared in-process db+tantivy for force reindex under {} (leader.lock preserved)",
+                    index_root.display()
+                );
+                JulieWorkspace::initialize_with_index_root(
+                    target_path.clone(),
+                    index_root.clone(),
+                )
+                .await
             } else {
                 // For force reindex, we only clear derived data, NOT the database (source of truth)
                 let julie_dir = target_path.join(".julie");
@@ -2684,10 +2760,19 @@ impl ServerHandler for JulieServerHandler {
                 // returns Ok(()) immediately — no write races).
                 if self.is_leader() {
                     use std::sync::atomic::Ordering;
-                    if self.deferred_auto_index_pending.load(Ordering::Acquire) {
+                    // Spawn ONLY when a repair is pending AND we win the
+                    // single-flight claim (codex pre-merge F-C). Losing the
+                    // claim means a repair task is already outstanding — piling
+                    // on a duplicate would re-run a persistently-failing repair
+                    // once per concurrent read. The spawned task releases the
+                    // slot when it finishes so the next pending cycle can retry.
+                    if self.deferred_auto_index_pending.load(Ordering::Acquire)
+                        && self.try_claim_deferred_repair_slot()
+                    {
                         let h = self.clone();
                         tokio::spawn(async move {
                             let _ = h.complete_deferred_auto_index_if_needed().await;
+                            h.release_deferred_repair_slot();
                         });
                     }
                 }

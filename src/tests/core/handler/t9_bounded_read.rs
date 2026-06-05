@@ -219,3 +219,62 @@ async fn test_f1_is_in_process_gate_fires_for_leader_and_follower_not_none() {
         "none() handler must NOT be is_in_process() (F1 envelope must not fire for daemon/stdio)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// F-C (codex pre-merge): deferred-repair spawn is single-flight
+// ---------------------------------------------------------------------------
+
+/// The F1 leader envelope must spawn at most ONE background repair task per
+/// release cycle. `try_claim_deferred_repair_slot()` returns `true` for exactly
+/// one caller; concurrent callers lose the `compare_exchange` and return
+/// `false` (skip spawning). After `release_deferred_repair_slot()`, the slot is
+/// claimable again. This prevents a persistently-failing repair from re-running
+/// once per concurrent in-process read.
+#[tokio::test]
+async fn test_deferred_repair_slot_is_single_flight() {
+    use crate::daemon::discovery::DaemonLockGuard;
+    use crate::handler::JulieServerHandler;
+    use crate::leadership::LeadershipState;
+    use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
+
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join(".leader.lock");
+    let guard = DaemonLockGuard::try_acquire(&lock_path)
+        .expect("lock must be acquirable on fresh path");
+    let handler = JulieServerHandler::new_in_process(
+        WorkspaceStartupHint {
+            path: dir.path().to_path_buf(),
+            source: Some(WorkspaceStartupSource::Cli),
+        },
+        None,
+        LeadershipState::leader(guard),
+        None,
+    )
+    .await
+    .unwrap();
+
+    // First claim wins (false → true).
+    assert!(
+        handler.try_claim_deferred_repair_slot(),
+        "first claim must win the single-flight slot"
+    );
+
+    // While the slot is held, every concurrent claim loses — so no duplicate
+    // repair task is spawned even under many concurrent in-process reads.
+    assert!(
+        !handler.try_claim_deferred_repair_slot(),
+        "second claim must lose while the slot is held (no duplicate spawn)"
+    );
+    assert!(
+        !handler.try_claim_deferred_repair_slot(),
+        "third concurrent claim must also lose while the slot is held"
+    );
+
+    // After the spawned task releases the slot, the next pending cycle can
+    // spawn a fresh repair task.
+    handler.release_deferred_repair_slot();
+    assert!(
+        handler.try_claim_deferred_repair_slot(),
+        "claim must win again after release_deferred_repair_slot()"
+    );
+}
