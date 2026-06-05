@@ -410,7 +410,7 @@ mod tests {
         let mut out = Vec::new();
         let report = run_dev_link(&workspace, false, &cache, &mut out).expect("dev-link succeeds");
 
-        assert_eq!(report.linked.len(), 3, "all split binaries are linked");
+        assert_eq!(report.linked.len(), 2, "all split binaries are linked");
         assert_eq!(report.already_linked.len(), 0);
         assert_eq!(report.skipped.len(), 0);
 
@@ -444,7 +444,7 @@ mod tests {
 
         assert_eq!(
             report.linked.len(),
-            3,
+            2,
             "only the architecture dir is linked"
         );
         for binary in split_binary_names() {
@@ -470,7 +470,7 @@ mod tests {
         let mut out = Vec::new();
         let report = run_dev_link(&workspace, false, &cache, &mut out).expect("dev-link succeeds");
 
-        assert_eq!(report.linked.len(), 3, "all split binaries linked");
+        assert_eq!(report.linked.len(), 2, "all split binaries linked");
         let server_action = report
             .linked
             .iter()
@@ -483,8 +483,8 @@ mod tests {
                 .iter()
                 .filter(|action| action.previous_kind == PreviousKind::Missing)
                 .count(),
-            2,
-            "adapter and daemon links were created from missing cache entries"
+            1,
+            "the embedding-host link was created from a missing cache entry"
         );
         assert_eq!(report.already_linked.len(), 0);
         assert_eq!(report.skipped.len(), 0);
@@ -516,7 +516,7 @@ mod tests {
         assert_eq!(report.linked.len(), 0, "second run links nothing");
         assert_eq!(
             report.already_linked.len(),
-            3,
+            2,
             "second run sees existing symlinks"
         );
     }
@@ -533,7 +533,7 @@ mod tests {
         let report = run_dev_link(&workspace, true, &cache, &mut out)
             .expect("dry-run succeeds even without release binary");
 
-        assert_eq!(report.linked.len(), 3);
+        assert_eq!(report.linked.len(), 2);
         assert!(report.dry_run);
 
         let meta = fs::symlink_metadata(&cache_bin).unwrap();
