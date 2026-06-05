@@ -198,7 +198,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 35,
                 timeout_seconds: 90,
                 commands: &[
-                    "cargo nextest run --lib tests::adapter -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::transport -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::http_transport -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::mcp_session -- --skip search_quality",
@@ -719,7 +718,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some(
-                    "adapter + HTTP transport coverage (backed by adapter/daemon transport tests)",
+                    "HTTP transport coverage (backed by daemon transport tests)",
                 ),
             },
         ),
