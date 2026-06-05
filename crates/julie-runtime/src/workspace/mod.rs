@@ -768,11 +768,13 @@ impl JulieWorkspace {
 
     /// Start file watching if initialized.
     ///
-    /// `is_leader` is a defense-in-depth gate: non-leader (follower/loser)
-    /// processes must never start the OS notify watcher or spawn watcher
-    /// tasks, even if a caller forgets the outer `handler.is_leader()` check.
-    pub async fn start_file_watching(&mut self, is_leader: bool) -> Result<()> {
-        if !is_leader {
+    /// `should_watch` is a defense-in-depth gate: only the sole writer for this
+    /// workspace may run the OS notify watcher. Callers pass
+    /// `!handler.is_in_process_follower()` — true for stdio/daemon handlers and
+    /// the in-process leader, false for an in-process follower (a read-only
+    /// process that must never start a watcher and race the leader).
+    pub async fn start_file_watching(&mut self, should_watch: bool) -> Result<()> {
+        if !should_watch {
             return Ok(());
         }
         if let Some(ref mut watcher) = self.watcher {

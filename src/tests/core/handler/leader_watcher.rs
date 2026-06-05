@@ -43,8 +43,11 @@ async fn test_leader_watcher_started_loser_watcher_not_started() {
         path: workspace_dir.path().to_path_buf(),
         source: Some(WorkspaceStartupSource::Cli),
     };
+    // A real in-process loser is a FOLLOWER (not none()): none() is the
+    // stdio/daemon state, which legitimately watches. The watcher gate is
+    // `!is_in_process_follower()`, so only follower() suppresses the watcher.
     let loser =
-        JulieServerHandler::new_in_process(loser_hint, None, LeadershipState::none(), None)
+        JulieServerHandler::new_in_process(loser_hint, None, LeadershipState::follower(), None)
             .await
             .unwrap();
 
@@ -67,12 +70,12 @@ async fn test_leader_watcher_started_loser_watcher_not_started() {
         "leader must have its file watcher running after initialize_workspace_with_force"
     );
 
-    // Loser: watcher must NOT be running (is_leader() == false → start_file_watching
-    // returns early, so IncrementalIndexer.start_watching() is never called and
-    // no Tantivy IndexWriter is ever requested).
+    // Loser (follower): watcher must NOT be running (is_in_process_follower() ==
+    // true → start_file_watching returns early, so IncrementalIndexer.start_watching()
+    // is never called and no Tantivy IndexWriter is ever requested).
     assert!(
         !loser.loaded_workspace_file_watcher_running_for_test().await,
-        "loser must NOT have its file watcher running — no leader lock means no watcher"
+        "in-process follower must NOT have its file watcher running"
     );
 
     // Loser must still have a workspace loaded (reads must be valid).

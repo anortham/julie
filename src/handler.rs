@@ -107,7 +107,14 @@ impl PrimarySwapRollback {
             (_, None) => self.workspace,
         };
 
-        if handler.workspace_pool.is_none() && handler.daemon_db.is_none() && handler.is_leader() {
+        // Gate the watcher on `!is_in_process_follower()`, NOT `is_leader()`:
+        // stdio/daemon handlers use `LeadershipState::none()` (is_leader()==false)
+        // but ARE the sole writer and must restore their watcher. Only an
+        // in-process FOLLOWER must skip it (the leader owns writes).
+        if handler.workspace_pool.is_none()
+            && handler.daemon_db.is_none()
+            && !handler.is_in_process_follower()
+        {
             if let Some(workspace) = restored_workspace.as_mut() {
                 if workspace.config.incremental_updates {
                     workspace.initialize_file_watcher()?;
@@ -1667,9 +1674,13 @@ impl JulieServerHandler {
         };
 
         // Start file watching BEFORE storing workspace (to avoid clone issue).
-        // Non-leaders skip watching at both the call-site guard and inside
-        // `start_file_watching(is_leader)` for defense-in-depth.
-        if let Err(e) = workspace.start_file_watching(self.is_leader()).await {
+        // Gate on `!is_in_process_follower()`: stdio/daemon (none()) and the
+        // in-process leader watch; only an in-process follower skips (it is a
+        // read-only process and must not race the leader's writes).
+        if let Err(e) = workspace
+            .start_file_watching(!self.is_in_process_follower())
+            .await
+        {
             warn!("Failed to start file watching: {}", e);
         }
 
