@@ -1171,6 +1171,22 @@ impl JulieServerHandler {
         self.leadership.is_follower()
     }
 
+    /// Whether this handler may rebuild a recreated-empty Tantivy projection on
+    /// the search-index OPEN/read path (`repair_recreated_open_if_needed`, which
+    /// runs `clear_all` + `apply_documents` — a Tantivy WRITE).
+    ///
+    /// In-process followers (losers) MUST NOT — that would make a non-leader a
+    /// Tantivy writer, violating the single-writer invariant (T7, Risk #2) that
+    /// the cutover establishes. A follower instead serves the (possibly empty)
+    /// opened index read-only and relies on the leader's rebuild becoming visible
+    /// via the Tantivy poll-reload (~500ms; the part-(d) freshness-only degrade).
+    ///
+    /// Leaders and daemon/stdio handlers (`LeadershipState::none()`) repair as
+    /// before — `none()` returns `true` here, so the pre-3c paths are unchanged.
+    pub(crate) fn may_repair_recreated_projection(&self) -> bool {
+        !self.is_in_process_follower()
+    }
+
     /// Returns `true` when this handler is participating in an in-process
     /// leader election (either leader or follower). `false` for all pre-3c
     /// constructors (daemon mode, stdio mode — `LeadershipState::none()`).
@@ -2049,6 +2065,10 @@ impl JulieServerHandler {
             let workspace_id = binding.workspace_id.clone();
             let database_for_projection = Arc::clone(&database);
             let indexing_status = Arc::clone(&self.indexing_status);
+            // T7 single-writer gate (codex 3c.3 pre-merge): recreated-open repair
+            // is a Tantivy WRITE. In-process followers must skip it — the leader
+            // owns the rebuild; the follower picks it up via the poll-reload.
+            let may_repair = self.may_repair_recreated_projection();
             Some(
                 tokio::task::spawn_blocking(move || {
                     let configs = crate::search::LanguageConfigs::load_embedded();
@@ -2057,7 +2077,7 @@ impl JulieServerHandler {
                     let repair_required = open_outcome.repair_required();
                     let index = open_outcome.into_index();
 
-                    if repair_required {
+                    if repair_required && may_repair {
                         warn!(
                             "Tantivy index for workspace '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
                             workspace_id,
@@ -2074,6 +2094,12 @@ impl JulieServerHandler {
                             repair_required,
                             Some(&indexing_status.search_ready),
                         )?;
+                    } else if repair_required {
+                        debug!(
+                            "Tantivy index for workspace '{}' at {} was recreated empty during open; in-process follower skipping projection repair (leader owns the rebuild)",
+                            workspace_id,
+                            tantivy_path.display()
+                        );
                     }
 
                     Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(index)))
@@ -2520,6 +2546,11 @@ impl JulieServerHandler {
 
         let db_path = self.workspace_db_file_path_for(workspace_id).await?;
 
+        // T7 single-writer gate (codex 3c.3 pre-merge): recreated-open repair is a
+        // Tantivy WRITE. In-process followers must skip it — the leader owns the
+        // rebuild; the follower serves the (empty) opened index read-only and picks
+        // up the leader's rebuild via the poll-reload.
+        let may_repair = self.may_repair_recreated_projection();
         let workspace_id = workspace_id.to_string();
         tokio::task::spawn_blocking(move || {
             let configs = crate::search::LanguageConfigs::load_embedded();
@@ -2528,7 +2559,7 @@ impl JulieServerHandler {
             let repair_required = open_outcome.repair_required();
             let index = open_outcome.into_index();
 
-            if repair_required {
+            if repair_required && may_repair {
                 warn!(
                     "Tantivy index for workspace '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
                     workspace_id,
@@ -2538,6 +2569,12 @@ impl JulieServerHandler {
                 let mut db = SymbolDatabase::new(&db_path)?;
                 let projection = SearchProjection::tantivy(workspace_id.clone());
                 projection.repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
+            } else if repair_required {
+                debug!(
+                    "Tantivy index for workspace '{}' at {} was recreated empty during open; in-process follower skipping projection repair (leader owns the rebuild)",
+                    workspace_id,
+                    tantivy_path.display()
+                );
             }
 
             Ok(Some(Arc::new(std::sync::Mutex::new(index))))
