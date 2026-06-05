@@ -64,4 +64,15 @@ impl LeadershipState {
     pub fn is_follower(&self) -> bool {
         self.in_process && self.lock.is_none()
     }
+
+    /// Returns `true` when this handler is participating in an in-process
+    /// leader election (either as leader or as follower). `false` for all
+    /// pre-3c constructors (`none()`) — daemon mode, stdio mode.
+    ///
+    /// Used to gate the F1 bounded in-process read envelope: only in-process
+    /// handlers get the bounded envelope; daemon/stdio take the existing path
+    /// byte-for-byte unchanged.
+    pub fn is_in_process(&self) -> bool {
+        self.in_process
+    }
 }

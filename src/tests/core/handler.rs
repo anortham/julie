@@ -18,4 +18,5 @@ mod metrics_recording;
 mod path_helpers;
 mod public_surface;
 mod startup_checkpoint;
+mod t9_bounded_read;
 mod workspace_binding_metrics;

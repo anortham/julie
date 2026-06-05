@@ -442,6 +442,15 @@ impl JulieServerHandler {
     async fn complete_deferred_auto_index_if_needed(&self) -> Result<()> {
         use std::sync::atomic::Ordering;
 
+        // In-process FOLLOWER: skip all writing recovery. The leader owns
+        // SQLite/Tantivy writes; followers are pure readers. Running repair
+        // here would race the leader (Risk #2, T9/Part A). Daemon/stdio
+        // handlers use `LeadershipState::none()` so is_in_process_follower()
+        // is false — they take the full repair path below unchanged.
+        if self.is_in_process_follower() {
+            return Ok(());
+        }
+
         let _deferred_guard = self.deferred_auto_index_gate.lock().await;
         if !self
             .deferred_auto_index_pending
@@ -1116,6 +1125,17 @@ impl JulieServerHandler {
     /// and are not subject to write-refusal gating.
     pub fn is_in_process_follower(&self) -> bool {
         self.leadership.is_follower()
+    }
+
+    /// Returns `true` when this handler is participating in an in-process
+    /// leader election (either leader or follower). `false` for all pre-3c
+    /// constructors (daemon mode, stdio mode — `LeadershipState::none()`).
+    ///
+    /// Gates the F1 bounded read envelope in `call_tool`: only in-process
+    /// handlers get the bounded envelope; daemon/stdio take the existing
+    /// path byte-for-byte unchanged.
+    pub fn is_in_process(&self) -> bool {
+        self.leadership.is_in_process()
     }
 
     pub fn workspace_startup_hint(&self) -> WorkspaceStartupHint {
@@ -2623,16 +2643,87 @@ impl ServerHandler for JulieServerHandler {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        // Compute tool_name and exempt early — both needed before request/context
+        // are moved into the in-process bounded future below.
+        let tool_name = request.name.as_ref().to_string();
+        let exempt = is_write_exempt(&tool_name, request.arguments.as_ref());
+
         if Self::tool_request_targets_primary(request.name.as_ref(), request.arguments.as_ref()) {
             let complete_deferred_auto_index = !(request.name.as_ref() == "manage_workspace"
                 && Self::manage_workspace_primary_index_request(request.arguments.as_ref()));
+
+            // F1: In-process handlers (leader or follower) get a bounded read
+            // envelope. Without it, `list_roots_from_peer` (unbounded peer
+            // round-trip) or the deferred auto-index running inline on the first
+            // request can hang the session indefinitely.
+            //
+            // Gate strictly on `is_in_process()`: daemon/stdio handlers use
+            // `LeadershipState::none()` (is_in_process()==false) and MUST take
+            // the existing path byte-for-byte unchanged.
+            //
+            // Write-exempt tools (edit_file, rename_symbol, rewrite_symbol,
+            // manage_workspace mutating ops) fall through to the existing path —
+            // aborting a canonical write mid-transaction would corrupt state.
+            if self.is_in_process() && !exempt {
+                // Leader only: if the deferred auto-index is pending, spawn a
+                // NON-CANCELLABLE background task. The timeout below cancels the
+                // read envelope but NEVER the spawned repair — that task holds
+                // its own `deferred_auto_index_gate` lock and runs to completion.
+                // Followers skip (their write gate in complete_deferred_auto_index
+                // returns Ok(()) immediately — no write races).
+                if self.is_leader() {
+                    use std::sync::atomic::Ordering;
+                    if self.deferred_auto_index_pending.load(Ordering::Acquire) {
+                        let h = self.clone();
+                        tokio::spawn(async move {
+                            let _ = h.complete_deferred_auto_index_if_needed().await;
+                        });
+                    }
+                }
+
+                // Bound the WHOLE read path (workspace resolution + tool call)
+                // in a single timeout. On expiry → bounded McpError, not a hang.
+                let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
+                let handler = self.clone();
+                let bounded_fut = async move {
+                    // Pass complete_deferred_auto_index=false: the repair was
+                    // spawned above (leader) or skipped by gate (follower).
+                    // Running it inline here would re-introduce the hang risk.
+                    handler
+                        .ensure_primary_workspace_for_request(&context.peer, false)
+                        .await
+                        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                    handler
+                        .tool_router
+                        .call(ToolCallContext::new(&handler, request, context))
+                        .await
+                };
+
+                return match deadline {
+                    Some(d) => match tokio::time::timeout(d, bounded_fut).await {
+                        Ok(result) => result,
+                        Err(_elapsed) => Err(McpError::internal_error(
+                            format!(
+                                "in-process workspace not ready within {s}s; \
+                                 indexing in progress — retry shortly \
+                                 (tool: '{tool_name}')",
+                                s = d.as_secs()
+                            ),
+                            None,
+                        )),
+                    },
+                    None => bounded_fut.await,
+                };
+            }
+
+            // Non-in-process path OR in-process write path: existing behavior
+            // unchanged. Writes are unbounded by design (T3 / dispatch_with_deadline
+            // exemption); daemon/stdio take this path for all tools.
             self.ensure_primary_workspace_for_request(&context.peer, complete_deferred_auto_index)
                 .await
                 .map_err(|err| McpError::internal_error(err.to_string(), None))?;
         }
 
-        let tool_name = request.name.as_ref().to_string();
-        let exempt = is_write_exempt(&tool_name, request.arguments.as_ref());
         let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
         let fut = self.tool_router.call(ToolCallContext::new(self, request, context));
         dispatch_with_deadline(&tool_name, exempt, fut, deadline).await
