@@ -32,9 +32,11 @@ mod tests {
         };
         index_tool.call_tool(&handler).await?;
 
-        // Target a child method with mode="minimal"
+        // Target a child method with mode="minimal".
+        // GetSymbolsTool lives in crates/julie-tools/ since the Phase 2 crate split
+        // (was src/tools/symbols/mod.rs pre-split).
         let tool = GetSymbolsTool {
-            file_path: "src/tools/symbols/mod.rs".to_string(),
+            file_path: "crates/julie-tools/src/symbols/mod.rs".to_string(),
             max_depth: 2,
             target: Some("call_tool".to_string()),
             limit: None,
@@ -64,10 +66,10 @@ mod tests {
         );
 
         // The body should be present — this is the key assertion.
-        // call_tool contains "resolve_workspace_filter" in its implementation,
-        // which would only appear if the code body is extracted.
+        // call_tool calls "resolve_workspace_target" in its implementation (body-only,
+        // not in the signature), which would only appear if the code body is extracted.
         assert!(
-            text.contains("resolve_workspace_filter"),
+            text.contains("resolve_workspace_target"),
             "Mode 'minimal' with target set should include code body for child symbols.\nGot: {}",
             text
         );

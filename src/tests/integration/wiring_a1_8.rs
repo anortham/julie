@@ -45,7 +45,7 @@ fn binary_path(name: &str) -> PathBuf {
     }
     panic!(
         "binary `{}` not found in target/debug or target/release. \
-         Run `cargo build --bin julie-server --bin julie-daemon` first.",
+         Run `cargo build --bin julie-server` first.",
         name
     );
 }

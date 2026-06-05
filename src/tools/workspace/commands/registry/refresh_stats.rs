@@ -31,7 +31,7 @@ impl ManageWorkspaceTool {
     ) -> Result<RefreshWorkspaceOutcome> {
         let Some(ref db) = handler.daemon_db else {
             let message = format!(
-                "Workspace refresh requires daemon mode. Start the daemon with `julie daemon`.\n\
+                "Workspace refresh requires the workspace registry, which is not available in the in-process server.\n\
                  (Workspace ID: {})",
                 workspace_id
             );
@@ -357,8 +357,9 @@ impl ManageWorkspaceTool {
             }
         }
 
-        // Stdio mode: workspace statistics require daemon mode
-        let message = "No workspace statistics available. Start the daemon with `julie daemon`.";
+        // The in-process server does not wire a workspace registry.
+        let message =
+            "No workspace statistics available: the in-process server has no workspace registry.";
         Ok(CallToolResult::error(vec![Content::text(message)]))
     }
 }

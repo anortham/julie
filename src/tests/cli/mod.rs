@@ -60,7 +60,7 @@ struct Config {
 
 #[test]
 #[ignore] // requires pre-built binary
-fn test_help_shows_lifecycle_and_tool_commands() {
+fn test_help_shows_tool_and_dashboard_commands() {
     let output = Command::new(julie_binary())
         .arg("--help")
         .output()
@@ -70,11 +70,9 @@ fn test_help_shows_lifecycle_and_tool_commands() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Lifecycle commands
-    assert!(stdout.contains("daemon"), "help should list 'daemon'");
-    assert!(stdout.contains("stop"), "help should list 'stop'");
-    assert!(stdout.contains("status"), "help should list 'status'");
-    assert!(stdout.contains("restart"), "help should list 'restart'");
+    // Dashboard is the only non-tool subcommand remaining after the daemon
+    // entry (daemon/stop/status/restart) was removed in Phase 3d.2a.
+    assert!(stdout.contains("dashboard"), "help should list 'dashboard'");
 
     // Tool commands (named wrappers)
     assert!(stdout.contains("search"), "help should list 'search'");

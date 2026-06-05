@@ -12,7 +12,8 @@
 //!      — bypassed, not deleted (deletion is 3d.2/3d.3).
 //!   3. **The bypassed daemon code still compiles.** This test lives in the `julie`
 //!      lib crate, whose `lib.rs` declares `pub mod daemon;`. The explicit
-//!      `start_daemon` path reference below keeps the daemon CLI entry load-bearing.
+//!      `DaemonApp` reference below keeps the daemon HTTP server code load-bearing
+//!      until it is deleted in 3d.2b.
 
 use std::fs;
 use std::path::Path;
@@ -27,13 +28,13 @@ fn code_part(line: &str) -> &str {
     }
 }
 
-/// Guarantee 3 (compile-time): force the bypassed daemon entry symbol to still resolve.
-/// If `start_daemon` is removed before Phase 3d.2, this fails to COMPILE — a louder,
+/// Guarantee 3 (compile-time): force the bypassed daemon server code to still resolve.
+/// If `DaemonApp` is removed before Phase 3d.2b, this fails to COMPILE — a louder,
 /// earlier signal than the runtime assertions below.
 #[allow(dead_code)]
 fn _bypassed_entry_points_still_compile() {
-    // The daemon lifecycle entry is still reachable via the `daemon` subcommand.
-    let _daemon_entry = crate::daemon::cli::start_daemon;
+    // DaemonApp (HTTP server) still compiles — deletion is Phase 3d.2b.
+    let _: Option<crate::daemon::DaemonApp> = None;
 }
 
 /// Guarantee 1: the no-args (`None =>`) arm of `main.rs` serves in-process and
@@ -109,9 +110,8 @@ fn section7_dag_files_are_bypassed_not_deleted() {
         // daemon HTTP transport
         "src/daemon/http_transport.rs",
         "src/daemon/transport.rs",
-        // singleton / legacy / pid
+        // singleton / pid
         "src/daemon/singleton.rs",
-        "src/daemon/legacy_migration.rs",
         "src/daemon/pid.rs",
         // search_compare
         "src/daemon/database/search_compare.rs",

@@ -81,36 +81,6 @@ fn test_workspace_flag_parsed() {
 // ============================================================================
 
 #[test]
-fn test_daemon_subcommand_default_port() {
-    let cli = Cli::parse_from(["julie-server", "daemon"]);
-    match cli.command {
-        Some(Command::Daemon { port, .. }) => assert_eq!(port, 7890),
-        other => panic!("Expected Daemon subcommand, got {:?}", other.is_some()),
-    }
-}
-
-#[test]
-fn test_daemon_subcommand_custom_port() {
-    let cli = Cli::parse_from(["julie-server", "daemon", "--port", "8080"]);
-    match cli.command {
-        Some(Command::Daemon { port, .. }) => assert_eq!(port, 8080),
-        other => panic!("Expected Daemon subcommand, got {:?}", other.is_some()),
-    }
-}
-
-#[test]
-fn test_stop_subcommand() {
-    let cli = Cli::parse_from(["julie-server", "stop"]);
-    assert!(matches!(cli.command, Some(Command::Stop)));
-}
-
-#[test]
-fn test_status_subcommand() {
-    let cli = Cli::parse_from(["julie-server", "status"]);
-    assert!(matches!(cli.command, Some(Command::Status)));
-}
-
-#[test]
 fn test_dashboard_rejects_invalid_port_file_contents_before_url_construction() {
     let err = dashboard_url_from_port_file_contents("80@example.com\n")
         .expect_err("invalid port-file content must not produce a URL");
@@ -129,30 +99,21 @@ fn test_dashboard_builds_url_only_after_u16_port_parse() {
 }
 
 #[test]
-fn test_workspace_startup_hint_is_adapter_only() {
-    let adapter = Cli::parse_from(["julie-server"]);
-    let tool = Cli::parse_from(["julie-server", "--workspace", "/tmp/ignored", "status"]);
+fn test_workspace_startup_hint_is_in_process_only() {
+    let in_process = Cli::parse_from(["julie-server"]);
+    let tool = Cli::parse_from(["julie-server", "--workspace", "/tmp/ignored", "dashboard"]);
 
-    assert!(cli_command_needs_workspace_startup_hint(&adapter.command));
+    assert!(cli_command_needs_workspace_startup_hint(&in_process.command));
     assert!(!cli_command_needs_workspace_startup_hint(&tool.command));
 
-    assert!(matches!(tool.command, Some(Command::Status)));
-}
-
-#[test]
-fn test_restart_subcommand() {
-    let cli = Cli::parse_from(["julie-server", "restart"]);
-    assert!(matches!(cli.command, Some(Command::Restart)));
+    assert!(matches!(tool.command, Some(Command::Dashboard)));
 }
 
 #[test]
 fn test_workspace_flag_global_with_subcommand() {
-    let cli = Cli::parse_from(["julie-server", "--workspace", "/tmp/proj", "daemon"]);
+    let cli = Cli::parse_from(["julie-server", "--workspace", "/tmp/proj", "dashboard"]);
     assert_eq!(cli.workspace, Some(PathBuf::from("/tmp/proj")));
-    assert!(matches!(
-        cli.command,
-        Some(Command::Daemon { port: 7890, .. })
-    ));
+    assert!(matches!(cli.command, Some(Command::Dashboard)));
 }
 
 // ============================================================================
