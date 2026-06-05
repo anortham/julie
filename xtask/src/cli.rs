@@ -135,19 +135,16 @@ pub struct DevLinkCommand {
     pub dry_run: bool,
 }
 
-/// `cargo xtask dev-restart [--force]`.
+/// `cargo xtask dev-restart`.
 ///
-/// Default (`force == false`): report daemon status and binary mtime, but do
-/// not SIGTERM. The daemon's existing stale-binary detection will pick up the
-/// new binary on the next session disconnect or new session, so the calling
-/// MCP session stays alive.
-///
-/// `--force`: legacy SIGTERM behavior. Kills any in-flight sessions on drain
-/// timeout — use only when the calling session is expendable.
+/// Advisory command (post Phase 3c.3 in-process cutover). There is no longer a
+/// shared daemon to soft-restart or SIGTERM: each MCP session runs its own
+/// in-process `julie-server`, leader-locked per workspace. `dev-restart` just
+/// prints how to load a freshly built binary (restart the MCP client / start a
+/// new session). Takes no arguments — the legacy `--force` SIGTERM path was
+/// removed with the daemon (Phase 3d.2b).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DevRestartCommand {
-    pub force: bool,
-}
+pub struct DevRestartCommand;
 
 /// `cargo xtask eval ablation [options]`.
 ///
@@ -224,14 +221,12 @@ fn parse_dev_link_command(args: Vec<String>) -> Result<DevLinkCommand> {
 }
 
 fn parse_dev_restart_command(args: Vec<String>) -> Result<CliCommand> {
-    let mut force = false;
-    for arg in args.into_iter().skip(2) {
-        match arg.as_str() {
-            "--force" => force = true,
-            other => bail!("unexpected argument for `dev-restart`: {other}"),
-        }
+    // `dev-restart` is advisory and takes no arguments. The legacy `--force`
+    // SIGTERM path was removed with the daemon (Phase 3d.2b).
+    if let Some(arg) = args.into_iter().nth(2) {
+        bail!("unexpected argument for `dev-restart`: {arg}");
     }
-    Ok(CliCommand::DevRestart(DevRestartCommand { force }))
+    Ok(CliCommand::DevRestart(DevRestartCommand))
 }
 
 fn parse_sync_plugin_command(args: Vec<String>) -> Result<SyncPluginCommand> {
@@ -683,20 +678,19 @@ commands = ["cargo test --lib tests::cli_tests"]
     }
 
     #[test]
-    fn cli_tests_dev_restart_defaults_to_soft_mode() {
+    fn cli_tests_dev_restart_takes_no_args() {
         let parsed = parse_cli_command(["xtask", "dev-restart"]).unwrap();
-        assert_eq!(
-            parsed,
-            CliCommand::DevRestart(DevRestartCommand { force: false })
-        );
+        assert_eq!(parsed, CliCommand::DevRestart(DevRestartCommand));
     }
 
     #[test]
-    fn cli_tests_dev_restart_accepts_force_flag() {
-        let parsed = parse_cli_command(["xtask", "dev-restart", "--force"]).unwrap();
-        assert_eq!(
-            parsed,
-            CliCommand::DevRestart(DevRestartCommand { force: true })
+    fn cli_tests_dev_restart_rejects_force_flag() {
+        // `--force` was removed with the daemon (Phase 3d.2b); it is now an
+        // unknown argument like any other.
+        let err = parse_cli_command(["xtask", "dev-restart", "--force"]).unwrap_err();
+        assert!(
+            err.to_string().contains("--force"),
+            "expected error to mention `--force`, got: {err}"
         );
     }
 
