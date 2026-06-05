@@ -188,38 +188,7 @@ impl Default for IndexingStatus {
     }
 }
 
-// ---------------------------------------------------------------------------
-// LeadershipState
-// ---------------------------------------------------------------------------
-
-/// Carries an optional OS-level leader lock for in-process server mode.
-///
-/// A `LeadershipState::leader(guard)` value means this handler won the
-/// workspace leader-election and holds the exclusive advisory lock for
-/// the duration of the server's lifetime.  `LeadershipState::none()`
-/// is used for follower handlers and for all existing constructors.
-///
-/// Wrapped in `Arc` on the handler so `JulieServerHandler::clone()` works.
-pub struct LeadershipState {
-    lock: Option<julie_core::workspace::leader_lock::DaemonLockGuard>,
-}
-
-impl LeadershipState {
-    /// Construct a leader state backed by an OS advisory lock guard.
-    pub fn leader(guard: julie_core::workspace::leader_lock::DaemonLockGuard) -> Self {
-        Self { lock: Some(guard) }
-    }
-
-    /// Construct a non-leader (follower / uncontested) state.
-    pub fn none() -> Self {
-        Self { lock: None }
-    }
-
-    /// Returns `true` when this process won the leader election.
-    pub fn is_leader(&self) -> bool {
-        self.lock.is_some()
-    }
-}
+use crate::leadership::LeadershipState;
 
 // ---------------------------------------------------------------------------
 // JulieServerHandler

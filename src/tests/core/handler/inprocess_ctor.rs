@@ -1,4 +1,5 @@
-use crate::handler::{JulieServerHandler, LeadershipState};
+use crate::handler::JulieServerHandler;
+use crate::leadership::LeadershipState;
 use crate::daemon::discovery::DaemonLockGuard;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 use std::sync::Arc;
@@ -27,6 +28,52 @@ impl crate::embeddings::EmbeddingProvider for MockProvider {
             dimensions: 1,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// startup_hint source-preservation tests (load-bearing invariant)
+//
+// new_in_process exists specifically because new() drops startup_hint.source
+// to None, which would break on_initialized's Cwd auto-index deferral.
+// These tests prove the source survives the ctor round-trip.
+// ---------------------------------------------------------------------------
+
+/// Cwd source (the deferral trigger) must survive new_in_process unchanged.
+/// startup_source_prefers_request_roots returns true only for Some(Cwd).
+#[tokio::test]
+async fn test_new_in_process_preserves_startup_hint_source() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // Cwd — the variant that triggers on_initialized deferral.
+    let hint_cwd = WorkspaceStartupHint {
+        path: dir.path().to_path_buf(),
+        source: Some(WorkspaceStartupSource::Cwd),
+    };
+    let handler_cwd =
+        JulieServerHandler::new_in_process(hint_cwd, None, LeadershipState::none())
+            .await
+            .unwrap();
+    assert_eq!(
+        handler_cwd.workspace_startup_hint().source,
+        Some(WorkspaceStartupSource::Cwd),
+        "Cwd source must survive new_in_process (new() drops it to None, breaking deferral)"
+    );
+
+    // Cli — eager-index path; also must round-trip.
+    let dir2 = tempfile::tempdir().unwrap();
+    let hint_cli = WorkspaceStartupHint {
+        path: dir2.path().to_path_buf(),
+        source: Some(WorkspaceStartupSource::Cli),
+    };
+    let handler_cli =
+        JulieServerHandler::new_in_process(hint_cli, None, LeadershipState::none())
+            .await
+            .unwrap();
+    assert_eq!(
+        handler_cli.workspace_startup_hint().source,
+        Some(WorkspaceStartupSource::Cli),
+        "Cli source must also survive new_in_process"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -69,8 +116,9 @@ async fn test_new_in_process_with_leader_is_leader() {
 // injected embedding_provider() test
 // ---------------------------------------------------------------------------
 
-/// An injected EmbeddingProvider must be returned by embedding_provider(),
-/// taking priority over the workspace and embedding-service paths.
+/// The injected EmbeddingProvider must be returned by embedding_provider() as
+/// the SAME Arc instance (not just any Some), taking priority over the
+/// workspace and embedding-service paths.
 #[tokio::test]
 async fn test_new_in_process_injected_provider_returned() {
     let dir = tempfile::tempdir().unwrap();
@@ -86,9 +134,12 @@ async fn test_new_in_process_injected_provider_returned() {
     )
     .await
     .unwrap();
-    let got = handler.embedding_provider().await;
+    let got = handler
+        .embedding_provider()
+        .await
+        .expect("injected provider must be returned by embedding_provider()");
     assert!(
-        got.is_some(),
-        "injected provider must be returned by embedding_provider()"
+        Arc::ptr_eq(&got, &provider),
+        "embedding_provider() must return the injected Arc, not a different provider"
     );
 }

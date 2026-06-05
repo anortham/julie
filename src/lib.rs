@@ -14,6 +14,7 @@ pub mod handler;
 pub mod health;
 pub mod indexing_core;
 pub mod language;
+pub mod leadership;
 pub mod logging;
 pub mod mcp_compat;
 pub use julie_index::search;
