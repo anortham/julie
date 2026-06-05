@@ -482,13 +482,12 @@ notes = "projection repair gate (backed by integration::projection_repair)"
 commands = ["cargo nextest run --lib tests::integration::projection_repair -- --skip search_quality"]
 
 [buckets.transport]
-# Transport specialist gate for adapter and HTTP transport slices.
+# Transport specialist gate for HTTP transport slices (adapter deleted in 3d.1).
 expected_seconds = 35
 timeout_seconds = 90
 scope_label = "system"
-notes = "adapter + HTTP transport coverage (backed by adapter/daemon transport tests)"
+notes = "HTTP transport coverage (backed by daemon transport tests)"
 commands = [
-  "cargo nextest run --lib tests::adapter -- --skip search_quality",
   "cargo nextest run --lib tests::daemon::transport -- --skip search_quality",
   "cargo nextest run --lib tests::daemon::http_transport -- --skip search_quality",
   "cargo nextest run --lib tests::daemon::mcp_session -- --skip search_quality",

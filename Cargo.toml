@@ -24,10 +24,6 @@ name = "julie-server"
 path = "src/main.rs"
 
 [[bin]]
-name = "julie-adapter"
-path = "src/bin/julie-adapter.rs"
-
-[[bin]]
 name = "julie-daemon"
 path = "src/bin/julie-daemon.rs"
 

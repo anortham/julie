@@ -378,19 +378,19 @@ impl CliToolCommand for WorkspaceArgs {
     fn validate_standalone(&self) -> Result<()> {
         match self.operation.as_str() {
             "open" => anyhow::bail!(
-                "Workspace open requires daemon mode. Start the daemon with `julie daemon`."
+                "Workspace `open` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
             ),
             "register" => anyhow::bail!(
-                "Workspace registration requires daemon mode. Start the daemon with `julie daemon`."
+                "Workspace `register` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
             ),
             "remove" => anyhow::bail!(
-                "Workspace removal requires daemon mode. Start the daemon with `julie daemon`."
+                "Workspace `remove` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
             ),
             "refresh" => anyhow::bail!(
-                "Workspace refresh requires daemon mode. Start the daemon with `julie daemon`."
+                "Workspace `refresh` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
             ),
             "stats" => anyhow::bail!(
-                "Workspace statistics require daemon mode. Start the daemon with `julie daemon`."
+                "Workspace `stats` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
             ),
             _ => Ok(()),
         }

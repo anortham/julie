@@ -11,7 +11,6 @@ pub mod connection_pool;
 pub mod discovery;
 pub mod embedding_service;
 pub(crate) mod fd_limit;
-pub mod http_client;
 pub mod http_transport;
 pub mod legacy_migration;
 pub mod lifecycle;

@@ -1,11 +1,12 @@
 //! Tests for the A1.5 legacy migration gate.
 //!
 //! Unit tests cover the per-file classification logic in `check_or_refuse`
-//! and `detect_and_attach`. End-to-end tests spawn a real legacy
-//! `julie-server daemon` subprocess in an isolated `HOME` and verify that
-//! `julie-daemon start` refuses to coexist (exit code 2) and that
-//! `julie-adapter` attaches to the legacy HTTP endpoint instead of
-//! spawning a duplicate daemon.
+//! and `detect_and_attach`. End-to-end tests spawn a real `julie-daemon`
+//! subprocess in an isolated `HOME` and verify that `julie-daemon start`
+//! refuses to coexist with a legacy daemon (exit code 2).
+//!
+//! The adapter E2E test (`test_e2e_legacy_daemon_attached_by_adapter`) was
+//! deleted in Phase 3d.1 when `julie-adapter` was removed.
 
 #![cfg(test)]
 
@@ -241,21 +242,21 @@ fn test_detect_and_attach_dead_pid_with_port_returns_none() {
 // End-to-end tests: real subprocesses
 // ---------------------------------------------------------------------------
 //
-// These tests spawn real `julie-server daemon`, `julie-daemon`, and
-// `julie-adapter` processes against an isolated `HOME=<tempdir>`. They
-// require the binaries to already be built (see binary_path() below). If
-// any test in this module fails because a binary is missing, run:
+// These tests spawn real `julie-daemon` processes against an isolated
+// `HOME=<tempdir>`. They require the binary to already be built (see
+// binary_path() below). If any test in this module fails because a binary
+// is missing, run:
 //
-//     cargo build --bin julie-server --bin julie-daemon --bin julie-adapter
+//     cargo build --bin julie-daemon
 //
-// before re-running the suite. The binaries are tiny shims around the lib
+// before re-running the suite. The binary is a tiny shim around the lib
 // crate, so the incremental rebuild cost is small.
 
 #[cfg(unix)]
 mod e2e {
     use std::env;
     use std::fs;
-    use std::io::{BufRead, BufReader, Read, Write};
+    use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
@@ -289,7 +290,7 @@ mod e2e {
         }
         panic!(
             "binary `{}` not found in target/debug or target/release. \
-             Run `cargo build --bin julie-server --bin julie-daemon --bin julie-adapter` first.",
+             Run `cargo build --bin julie-daemon` first.",
             name
         );
     }
@@ -543,82 +544,4 @@ mod e2e {
         );
     }
 
-    /// End-to-end: live legacy daemon + new `julie-adapter` →
-    /// adapter attaches to legacy HTTP endpoint, basic MCP request succeeds.
-    /// No new daemon process is spawned (legacy daemon.pid is preserved).
-    #[test]
-    fn test_e2e_legacy_daemon_attached_by_adapter() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let home = tmp.path().to_path_buf();
-
-        let fixture = LegacyDaemonFixture::spawn(&home);
-
-        assert!(
-            fixture.wait_ready(Duration::from_secs(5)),
-            "legacy fixture must reach readiness within 5s"
-        );
-
-        // Snapshot the legacy PID before starting the adapter.
-        let legacy_pid = crate::daemon::pid::PidFile::read_pid(&fixture.paths.daemon_pid())
-            .expect("legacy daemon.pid must be readable");
-
-        // Spawn julie-adapter against the same HOME. Pipe stdin/stdout so we
-        // can send a minimal MCP initialize request.
-        let adapter_bin = binary_path("julie-adapter");
-        let mut adapter = Command::new(&adapter_bin)
-            .env("HOME", &home)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("failed to spawn julie-adapter");
-
-        // Send a minimal MCP initialize request.
-        let initialize = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"legacy-migration-test","version":"0.0.1"}}}"#;
-        let mut stdin = adapter.stdin.take().expect("adapter stdin");
-        writeln!(stdin, "{}", initialize).expect("write initialize");
-        stdin.flush().expect("flush initialize");
-        drop(stdin); // EOF signals "no more requests"; adapter exits gracefully.
-
-        // Read a single response line. The adapter should forward the
-        // initialize through to the legacy daemon and pipe back the response.
-        let stdout = adapter.stdout.take().expect("adapter stdout");
-        let mut reader = BufReader::new(stdout);
-        let mut response = String::new();
-
-        // Bounded wait: read with a timeout. tokio/async isn't in scope here,
-        // so we use a join handle + sleep loop.
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = reader.read_line(&mut response);
-            let _ = tx.send(response);
-        });
-
-        let response = rx
-            .recv_timeout(Duration::from_secs(30))
-            .expect("adapter must respond to initialize within 30s");
-
-        // Ensure adapter is dead before further checks.
-        let _ = adapter.kill();
-        let _ = adapter.wait();
-
-        assert!(
-            response.contains("\"jsonrpc\"") && response.contains("\"id\":1"),
-            "adapter must forward initialize response back from legacy daemon; got: {}",
-            response.trim()
-        );
-
-        // The legacy daemon must still be alive and the same PID. The adapter
-        // must NOT have spawned a replacement.
-        let post_pid = crate::daemon::pid::PidFile::read_pid(&fixture.paths.daemon_pid())
-            .expect("legacy daemon.pid must still be readable after adapter exit");
-        assert_eq!(
-            post_pid, legacy_pid,
-            "adapter must attach to legacy daemon — not spawn a replacement"
-        );
-        assert!(
-            crate::daemon::pid::PidFile::is_process_alive(legacy_pid),
-            "legacy daemon must still be alive after adapter session"
-        );
-    }
 }

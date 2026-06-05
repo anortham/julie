@@ -2,14 +2,12 @@
 //!
 //! Validates:
 //! - Standalone handler bootstrap (workspace creation, indexing)
-//! - Daemon detection and connection fallback
 //! - Error handling (missing workspace, unindexed workspace)
 //! - `CliToolCommand` trait implementations
-//! - Helper functions (summarize_error, serialize_call_tool_result, etc.)
+//! - Helper functions (serialize_call_tool_result, etc.)
 
 use std::path::PathBuf;
 
-use crate::cli_tools::daemon;
 use crate::cli_tools::subcommands::*;
 use crate::cli_tools::{
     CliExecutionMode, CliToolCommand, bootstrap_standalone_handler, render_execution_mode_evidence,
@@ -21,21 +19,8 @@ use crate::cli_tools::{
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_execution_mode_display_daemon() {
-    assert_eq!(CliExecutionMode::Daemon.to_string(), "daemon");
-}
-
-#[test]
 fn test_execution_mode_display_standalone() {
     assert_eq!(CliExecutionMode::Standalone.to_string(), "standalone");
-}
-
-#[test]
-fn test_execution_mode_display_fallback() {
-    assert_eq!(
-        CliExecutionMode::DaemonFallback.to_string(),
-        "standalone (daemon unavailable)"
-    );
 }
 
 #[test]
@@ -558,84 +543,6 @@ async fn test_run_cli_tool_standalone_definition_search_uses_bootstrapped_index(
 }
 
 // ---------------------------------------------------------------------------
-// Daemon detection
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_daemon_appears_running_returns_bool() {
-    // This is a quick sanity check: the function should return without panic.
-    // Whether it returns true or false depends on whether a daemon is running,
-    // which is environment-dependent. We verify it's callable.
-    let _running = daemon::daemon_appears_running();
-}
-
-#[test]
-fn test_build_startup_hint_sets_cli_source() {
-    use crate::workspace::startup_hint::WorkspaceStartupSource;
-
-    let hint = daemon::build_startup_hint(PathBuf::from("/some/path"));
-    assert_eq!(hint.path, PathBuf::from("/some/path"));
-    assert_eq!(hint.source, Some(WorkspaceStartupSource::Cli));
-}
-
-#[test]
-fn test_cli_http_client_config_uses_workspace_headers_and_token() {
-    use axum::http::HeaderName;
-
-    use crate::daemon::http_client::http_client_config_for_endpoint;
-    use crate::daemon::mcp_session::{
-        HEADER_JULIE_VERSION, HEADER_JULIE_WORKSPACE, HEADER_JULIE_WORKSPACE_SOURCE,
-    };
-    use crate::daemon::transport::TransportEndpoint;
-
-    let dir = tempfile::tempdir().unwrap();
-    let token_path = dir.path().join("daemon-mcp.token");
-    std::fs::write(&token_path, "cli-secret\n").unwrap();
-    let endpoint = TransportEndpoint::streamable_http(
-        "127.0.0.1",
-        9123,
-        "/mcp",
-        "/mcp/ready",
-        Some(token_path),
-    )
-    .unwrap();
-    let startup_hint = daemon::build_startup_hint(dir.path().join("workspace"));
-
-    let config = http_client_config_for_endpoint(&endpoint, &startup_hint)
-        .expect("HTTP endpoint should produce CLI daemon client config");
-
-    assert_eq!(config.uri.as_ref(), "http://127.0.0.1:9123/mcp");
-    assert_eq!(config.auth_header.as_deref(), Some("cli-secret"));
-    assert_eq!(
-        config
-            .custom_headers
-            .get(&HeaderName::from_static(HEADER_JULIE_WORKSPACE))
-            .unwrap()
-            .to_str()
-            .unwrap(),
-        startup_hint.path.to_string_lossy()
-    );
-    assert_eq!(
-        config
-            .custom_headers
-            .get(&HeaderName::from_static(HEADER_JULIE_WORKSPACE_SOURCE))
-            .unwrap()
-            .to_str()
-            .unwrap(),
-        "cli"
-    );
-    assert_eq!(
-        config
-            .custom_headers
-            .get(&HeaderName::from_static(HEADER_JULIE_VERSION))
-            .unwrap()
-            .to_str()
-            .unwrap(),
-        env!("CARGO_PKG_VERSION")
-    );
-}
-
-// ---------------------------------------------------------------------------
 // run_cli_tool: standalone with missing workspace
 // ---------------------------------------------------------------------------
 
@@ -670,7 +577,7 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
 }
 
 #[tokio::test]
-async fn test_run_cli_tool_standalone_workspace_stats_requires_daemon() {
+async fn test_run_cli_tool_standalone_workspace_stats_not_available_via_cli() {
     let temp = tempfile::Builder::new()
         .prefix("julie_cli_workspace_stats_")
         .tempdir()
@@ -689,49 +596,11 @@ async fn test_run_cli_tool_standalone_workspace_stats_requires_daemon() {
     let result = run_cli_tool(&args, Some(temp.path().to_path_buf()), true).await;
 
     let err = result.expect_err("workspace stats should refuse standalone mode");
+    let msg = err.to_string();
     assert!(
-        err.to_string().contains("daemon mode"),
-        "Expected daemon-mode guidance, got: {}",
+        msg.contains("not available from the standalone CLI") && msg.contains("manage_workspace"),
+        "Expected post-daemon CLI guidance pointing at manage_workspace, got: {}",
         err
-    );
-}
-
-// ---------------------------------------------------------------------------
-// run_cli_tool: daemon fallback to standalone (no daemon running)
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_run_cli_tool_daemon_fallback_missing_workspace() {
-    let temp = tempfile::TempDir::new().unwrap();
-    let missing_workspace = temp.path().join("missing-workspace");
-
-    let args = SearchArgs {
-        query: "test".into(),
-        limit: 10,
-        language: None,
-        file_pattern: None,
-        context_lines: None,
-        exclude_tests: false,
-        target: None,
-    };
-
-    let result = run_cli_tool(
-        &args,
-        Some(missing_workspace.clone()),
-        false, // not standalone, will try daemon then fall back
-    )
-    .await;
-
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("does not exist"),
-        "Expected workspace-not-found error, got: {}",
-        err_msg
-    );
-    assert!(
-        !missing_workspace.exists(),
-        "missing workspace path must not be created by daemon fallback"
     );
 }
 
@@ -770,86 +639,6 @@ fn test_serialize_call_tool_result_error_flag() {
 
     let (_, is_error) = serialize_call_tool_result(result).unwrap();
     assert!(is_error);
-}
-
-// ---------------------------------------------------------------------------
-// DaemonCallError: transport vs tool error distinction
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_daemon_call_error_transport_displays() {
-    use crate::cli_tools::daemon::DaemonCallError;
-
-    let err = DaemonCallError::Transport(anyhow::anyhow!("connection refused"));
-    let msg = err.to_string();
-    assert_eq!(msg, "connection refused");
-}
-
-#[test]
-fn test_daemon_call_error_tool_error_displays() {
-    use crate::cli_tools::daemon::DaemonCallError;
-
-    let err = DaemonCallError::ToolError {
-        message: "Invalid params: missing 'query'".into(),
-        raw: serde_json::json!({"code": -32602, "message": "Invalid params: missing 'query'"}),
-    };
-    let msg = err.to_string();
-    assert!(
-        msg.contains("Invalid params"),
-        "Tool error message should surface the daemon's error: {}",
-        msg
-    );
-}
-
-#[test]
-fn test_daemon_call_error_transport_is_send_sync() {
-    // Verify DaemonCallError can be used across async boundaries
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<crate::cli_tools::daemon::DaemonCallError>();
-}
-
-#[test]
-fn test_daemon_mcp_error_maps_to_tool_error() {
-    use rmcp::model::{ErrorCode, ErrorData};
-    use rmcp::service::ServiceError;
-
-    use crate::cli_tools::daemon::{DaemonCallError, map_call_tool_error_for_test};
-
-    let error = ErrorData::new(
-        ErrorCode::INVALID_PARAMS,
-        "missing query",
-        Some(serde_json::json!({"field": "query"})),
-    );
-
-    let mapped = map_call_tool_error_for_test(ServiceError::McpError(error));
-
-    match mapped {
-        DaemonCallError::ToolError { message, raw } => {
-            assert_eq!(message, "missing query");
-            assert_eq!(raw["data"]["field"], "query");
-        }
-        DaemonCallError::Transport(error) => {
-            panic!("daemon MCP errors must not be treated as fallback transport errors: {error}")
-        }
-    }
-}
-
-#[test]
-fn test_daemon_transport_error_stays_transport_error() {
-    use rmcp::service::ServiceError;
-
-    use crate::cli_tools::daemon::{DaemonCallError, map_call_tool_error_for_test};
-
-    let mapped = map_call_tool_error_for_test(ServiceError::TransportClosed);
-
-    match mapped {
-        DaemonCallError::Transport(error) => {
-            assert_eq!(error.to_string(), "Transport closed");
-        }
-        DaemonCallError::ToolError { message, .. } => {
-            panic!("transport failure must remain eligible for standalone fallback: {message}")
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

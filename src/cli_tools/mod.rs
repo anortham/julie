@@ -7,18 +7,10 @@
 //! ## Architecture
 //!
 //! `run_cli_tool` is the single entry point for all CLI tool invocations.
-//! It supports two modes:
-//!
-//! - **Daemon mode** (default): connects to a running daemon via IPC, sends
-//!   a JSON-RPC `tools/call` request, and returns the result.
-//! - **Standalone mode** (`--standalone`): creates a local handler, indexes
-//!   the workspace, and executes the tool in-process.
-//!
-//! If daemon connection fails (and `--standalone` was not specified), the
-//! execution core falls back to standalone mode with a stderr warning.
+//! It runs every tool in standalone mode: creates a local handler, indexes
+//! the workspace in-process, and executes the tool.
 
 pub mod commands;
-pub mod daemon;
 pub mod generic;
 pub mod output;
 pub mod subcommands;
@@ -36,8 +28,6 @@ use crate::cli::resolve_workspace_root;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 
-use self::daemon::{DaemonCallError, DaemonClient};
-
 // ---------------------------------------------------------------------------
 // Execution mode tracking
 // ---------------------------------------------------------------------------
@@ -45,20 +35,14 @@ use self::daemon::{DaemonCallError, DaemonClient};
 /// Which execution mode the CLI tool ran in. Reported on stderr for diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliExecutionMode {
-    /// Connected to the daemon over IPC.
-    Daemon,
     /// Running standalone with a local handler.
     Standalone,
-    /// Daemon connection failed; fell back to standalone.
-    DaemonFallback,
 }
 
 impl std::fmt::Display for CliExecutionMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CliExecutionMode::Daemon => write!(f, "daemon"),
             CliExecutionMode::Standalone => write!(f, "standalone"),
-            CliExecutionMode::DaemonFallback => write!(f, "standalone (daemon unavailable)"),
         }
     }
 }
@@ -124,26 +108,25 @@ pub trait CliToolCommand: Send + Sync {
 // Execution core
 // ---------------------------------------------------------------------------
 
-/// Execute a CLI tool command.
+/// Execute a CLI tool command in standalone mode.
 ///
 /// This is the single entry point for all tool subcommands. It resolves the
-/// workspace, picks daemon or standalone mode, executes the tool, and returns
-/// the result for formatting.
+/// workspace, creates a local handler, indexes the workspace in-process, and
+/// returns the result for formatting.
 ///
 /// `command` implements `CliToolCommand` (A3 wires each subcommand's args).
 /// `cli_workspace` is the `--workspace` flag from the CLI, if any.
-/// `standalone` is true if `--standalone` was passed.
+/// `_standalone` is accepted for CLI compatibility but ignored — execution is
+/// always standalone.
 pub async fn run_cli_tool(
     command: &dyn CliToolCommand,
     cli_workspace: Option<PathBuf>,
-    standalone: bool,
+    _standalone: bool,
 ) -> Result<CliToolOutput> {
-    if standalone {
-        command.validate_standalone()?;
-    }
+    command.validate_standalone()?;
 
     let start = Instant::now();
-    let workspace_root = resolve_workspace_root(cli_workspace.clone());
+    let workspace_root = resolve_workspace_root(cli_workspace);
 
     if !workspace_root.exists() {
         anyhow::bail!(
@@ -160,35 +143,9 @@ pub async fn run_cli_tool(
 
     eprintln!("julie: workspace {}", workspace_root.display());
 
-    let (mode, result_value, is_error) = if standalone {
-        let result = run_standalone(command, &workspace_root).await?;
-        let (value, is_err) = serialize_call_tool_result(result)?;
-        (CliExecutionMode::Standalone, value, is_err)
-    } else {
-        match run_via_daemon(command, cli_workspace.clone()).await {
-            Ok((value, is_err)) => (CliExecutionMode::Daemon, value, is_err),
-            Err(daemon_err) => {
-                if let Err(standalone_err) = command.validate_standalone() {
-                    eprintln!(
-                        "julie: daemon unavailable ({})",
-                        summarize_error(&daemon_err)
-                    );
-                    return Err(standalone_err.context(format!(
-                        "Daemon unavailable: {}",
-                        summarize_error(&daemon_err)
-                    )));
-                }
-
-                eprintln!(
-                    "julie: daemon unavailable ({}), falling back to standalone mode",
-                    summarize_error(&daemon_err)
-                );
-                let result = run_standalone(command, &workspace_root).await?;
-                let (value, is_err) = serialize_call_tool_result(result)?;
-                (CliExecutionMode::DaemonFallback, value, is_err)
-            }
-        }
-    };
+    let result = run_standalone(command, &workspace_root).await?;
+    let (result_value, is_error) = serialize_call_tool_result(result)?;
+    let mode = CliExecutionMode::Standalone;
 
     let elapsed = start.elapsed();
     eprintln!("{}", render_execution_mode_evidence(mode, elapsed));
@@ -199,63 +156,6 @@ pub async fn run_cli_tool(
         result: result_value,
         is_error,
     })
-}
-
-// ---------------------------------------------------------------------------
-// Daemon mode
-// ---------------------------------------------------------------------------
-
-/// Execute a tool via daemon IPC.
-///
-/// Ensures the daemon is running, connects, sends the tool call, and returns
-/// the result. Only transport-level failures (connection refused, timeout,
-/// I/O errors) are returned as `Err` to allow standalone fallback. Tool-level
-/// errors from the daemon (invalid params, workspace not found) are surfaced
-/// as `Ok((value, true))` so the caller exits with the error instead of
-/// silently retrying in standalone mode.
-async fn run_via_daemon(
-    command: &dyn CliToolCommand,
-    cli_workspace: Option<PathBuf>,
-) -> Result<(Value, bool)> {
-    let tool_name = command.tool_name();
-    let arguments = command.to_tool_args()?;
-
-    daemon::ensure_daemon_ready()?;
-
-    let startup_hint = build_cli_startup_hint(cli_workspace);
-    let mut client = DaemonClient::connect(&startup_hint).await?;
-
-    match client.call_tool(tool_name, arguments).await {
-        Ok(result) => {
-            let is_error = result
-                .get("isError")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            Ok((result, is_error))
-        }
-        Err(DaemonCallError::ToolError { message, raw }) => {
-            // The daemon processed the request and returned an error.
-            // Surface it as a successful daemon call with is_error=true so
-            // the CLI prints the error and exits 1 (no standalone fallback).
-            let error_detail = raw
-                .get("data")
-                .map(|d| format!("\n{}", d))
-                .unwrap_or_default();
-            let error_value = serde_json::json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!("{}{}", message, error_detail),
-                }],
-                "isError": true,
-            });
-            Ok((error_value, true))
-        }
-        Err(DaemonCallError::Transport(e)) => {
-            // Transport failure: connection refused, handshake timeout, etc.
-            // The caller should fall back to standalone mode.
-            Err(e.context("Tool call via daemon failed"))
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -403,24 +303,6 @@ pub fn serialize_call_tool_result(result: CallToolResult) -> Result<(Value, bool
     Ok((value, is_error))
 }
 
-/// Build a `WorkspaceStartupHint` from CLI arguments.
-fn build_cli_startup_hint(
-    cli_workspace: Option<PathBuf>,
-) -> crate::workspace::startup_hint::WorkspaceStartupHint {
-    let workspace_root = resolve_workspace_root(cli_workspace);
-    daemon::build_startup_hint(workspace_root)
-}
-
-/// Summarize an error chain into a short single-line message for stderr.
-fn summarize_error(err: &anyhow::Error) -> String {
-    let root = err.root_cause();
-    let msg = root.to_string();
-    if msg.len() > 120 {
-        format!("{}...", &msg[..117])
-    } else {
-        msg
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -432,27 +314,7 @@ mod tests {
 
     #[test]
     fn test_cli_execution_mode_display() {
-        assert_eq!(CliExecutionMode::Daemon.to_string(), "daemon");
         assert_eq!(CliExecutionMode::Standalone.to_string(), "standalone");
-        assert_eq!(
-            CliExecutionMode::DaemonFallback.to_string(),
-            "standalone (daemon unavailable)"
-        );
-    }
-
-    #[test]
-    fn test_summarize_error_short() {
-        let err = anyhow::anyhow!("connection refused");
-        assert_eq!(summarize_error(&err), "connection refused");
-    }
-
-    #[test]
-    fn test_summarize_error_truncation() {
-        let long_msg = "x".repeat(200);
-        let err = anyhow::anyhow!("{}", long_msg);
-        let summary = summarize_error(&err);
-        assert!(summary.len() <= 120);
-        assert!(summary.ends_with("..."));
     }
 
     #[test]

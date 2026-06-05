@@ -4,7 +4,7 @@
 //! the plugin and never run these. They assume:
 //!
 //! - You build the dev binaries at `target/release/julie-server`,
-//!   `target/release/julie-adapter`, and `target/release/julie-daemon`.
+//!   `target/release/julie-daemon`, and `target/release/julie-embedding-host`.
 //! - You want every installed Julie plugin variant on this machine to point at
 //!   those binaries so a single `cargo build --release --bins` rebuilds for
 //!   every harness.
@@ -245,9 +245,13 @@ fn binary_name() -> &'static str {
 
 fn split_binary_names() -> &'static [&'static str] {
     if cfg!(windows) {
-        &["julie-server.exe", "julie-adapter.exe", "julie-daemon.exe"]
+        &[
+            "julie-server.exe",
+            "julie-daemon.exe",
+            "julie-embedding-host.exe",
+        ]
     } else {
-        &["julie-server", "julie-adapter", "julie-daemon"]
+        &["julie-server", "julie-daemon", "julie-embedding-host"]
     }
 }
 
