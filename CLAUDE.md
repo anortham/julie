@@ -12,7 +12,7 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 - **Language**: Rust (native performance, cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: Tantivy full-text search + SQLite structured storage + KNN vector search (embeddings)
-- **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout) + optional background daemon for shared workspaces
+- **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout). Since the Phase 3c.3 cutover the no-args `julie-server` serves **in-process** over rmcp stdio (leader-locked per workspace), not via a forked daemon. The daemon/adapter path is being deleted across Phase 3d; daemon-specific sections below are legacy until that completes.
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 34 tree-sitter extractors with comprehensive test suites, now maintained in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo and consumed here as a pinned git dependency
 
@@ -325,6 +325,8 @@ builds after `cargo clean`.
 
 Julie has TWO log locations depending on mode:
 
+> **⚠️ In transition (Phase 3d):** the shared daemon is being deleted. Since the Phase 3c.3 cutover the default no-args `julie-server` serves in-process per session and writes the **project-level** logs (`.julie/logs/`, shown below). The `~/.julie/daemon.log` paths apply only to the legacy daemon, which is being removed across Phase 3d.
+
 **Daemon mode logs** (the daemon process, shared across sessions):
 ```bash
 # Daemon log (rotated daily)
@@ -394,6 +396,7 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
 1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
 2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
 3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`. In stdio mode: under `{project}/.julie/indexes/`. In daemon mode: under `~/.julie/indexes/` (shared across all sessions).
+   - **⚠️ Architecture in transition (Phase 3d):** the daemon + adapter described in the next four bullets are being **deleted** across Phase 3d. Since the Phase 3c.3 cutover the default no-args `julie-server` serves **in-process** over rmcp stdio (no daemon fork, no HTTP bridge, no `julie daemon` subcommand), leader-locked per workspace — the lock winner is the sole watcher + Tantivy writer, losers are read-only followers. It still uses `~/.julie/indexes/{workspace_id}/` for storage. The bullets below describe the legacy daemon path retained only until 3d.3 finishes the teardown; they will be rewritten then.
    - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables cross-workspace targeting (via `manage_workspace(operation="open")`), symbol/file count snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` ensures one sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
    - **Adapter mode** (default): when `julie-server` is run without arguments, it auto-starts the daemon (if not already running) and bridges stdio JSON-RPC to the daemon's localhost Streamable HTTP endpoint. This is the standard MCP client integration path.
    - **Stale binary auto-restart**: the daemon captures its binary's mtime at startup. On each new connection and session disconnect, it compares the current binary mtime. If the daemon is idle (0 sessions) when a stale binary is detected, it shuts down immediately before accepting the connection. If sessions are active, it sets `restart_pending` and exits after the last session disconnects. The adapter restarts it automatically with the new binary.
