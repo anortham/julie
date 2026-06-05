@@ -394,6 +394,35 @@ impl DaemonPaths {
         self.julie_home.join("daemon.lock")
     }
 
+    /// Unix domain socket for the resident embedding-host (Phase 3b).
+    ///
+    /// One host per `$JULIE_HOME` serves embeddings to every Julie process,
+    /// mirroring the process-global lifetime of the daemon's `EmbeddingService`.
+    #[cfg(unix)]
+    pub fn embedding_host_socket(&self) -> PathBuf {
+        self.julie_home.join("embedding-host.sock")
+    }
+
+    /// Kernel-held singleton lock for the running embedding-host (Phase 3b).
+    ///
+    /// Ensures exactly one host process per `$JULIE_HOME`; a second launch
+    /// fails to acquire the lock and yields to the incumbent.
+    pub fn embedding_host_lock(&self) -> PathBuf {
+        self.julie_home.join("embedding-host.lock")
+    }
+
+    /// Named pipe for the resident embedding-host (Windows, Phase 3b).
+    ///
+    /// Reuses the same FNV-1a `julie_home` hash as [`daemon_shutdown_event`] so
+    /// the name is stable per `$JULIE_HOME`.
+    #[cfg(windows)]
+    pub fn embedding_host_pipe_name(&self) -> String {
+        format!(
+            "\\\\.\\pipe\\julie-embedding-host-{:016x}",
+            self.julie_home_hash()
+        )
+    }
+
     /// Short-lived adapter lock for serializing spawn attempts only.
     pub fn daemon_startup_lock(&self) -> PathBuf {
         self.julie_home.join("daemon-startup.lock")

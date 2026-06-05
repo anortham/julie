@@ -404,11 +404,76 @@ pub(crate) fn spawn_embedding_init(
     embedding_service: Arc<EmbeddingService>,
     daemon_db: Option<Arc<DaemonDatabase>>,
     watcher_pool: Arc<WatcherPool>,
+    paths: DaemonPaths,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         info!("Background embedding init task started");
-        let init_result =
-            tokio::task::spawn_blocking(|| crate::embeddings::create_embedding_provider()).await;
+
+        // Single init_result computed from whichever path is active; both
+        // branches produce the same type so the existing match below is
+        // byte-for-byte unchanged — ensure_ready() gates Ready on a real
+        // health handshake, and the daemon_db model-sync runs for both paths.
+        let init_result = if use_embedding_host() {
+            tokio::task::spawn_blocking(move || {
+                // All blocking work — including the health round-trip triggered
+                // by ensure_ready() — must stay inside this closure. Calling
+                // blocking I/O outside (e.g. in a .map()) would block the
+                // tokio runtime and deadlock with the async server task.
+                match crate::embedding_host_launch::connect_or_spawn_host(&paths) {
+                    Ok(rpc) => {
+                        // Hard-gate: ensure_ready() runs the health handshake
+                        // and surfaces errors + ready=false that the
+                        // dyn-trait getters (accelerated/degraded_reason/
+                        // dimensions/device_info) would otherwise swallow by
+                        // returning silent defaults.
+                        match rpc.ensure_ready() {
+                            Ok(()) => {
+                                let provider: Arc<dyn crate::embeddings::EmbeddingProvider> =
+                                    Arc::new(rpc);
+                                // OnceLock already populated by ensure_ready()
+                                // — cache hits below, no extra I/O.
+                                let status = crate::embeddings::EmbeddingRuntimeStatus {
+                                    requested_backend:
+                                        crate::embeddings::EmbeddingBackend::Sidecar,
+                                    resolved_backend:
+                                        crate::embeddings::EmbeddingBackend::Sidecar,
+                                    accelerated: provider.accelerated().unwrap_or(false),
+                                    degraded_reason: provider.degraded_reason(),
+                                };
+                                (Some(provider), Some(status))
+                            }
+                            Err(e) => {
+                                let status = crate::embeddings::EmbeddingRuntimeStatus {
+                                    requested_backend:
+                                        crate::embeddings::EmbeddingBackend::Sidecar,
+                                    resolved_backend:
+                                        crate::embeddings::EmbeddingBackend::Unresolved,
+                                    accelerated: false,
+                                    degraded_reason: Some(format!(
+                                        "embedding-host health handshake failed: {e}"
+                                    )),
+                                };
+                                (None, Some(status))
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let status = crate::embeddings::EmbeddingRuntimeStatus {
+                            requested_backend: crate::embeddings::EmbeddingBackend::Sidecar,
+                            resolved_backend: crate::embeddings::EmbeddingBackend::Sidecar,
+                            accelerated: false,
+                            degraded_reason: Some(format!(
+                                "embedding-host connect/spawn failed: {e}"
+                            )),
+                        };
+                        (None, Some(status))
+                    }
+                }
+            })
+            .await
+        } else {
+            tokio::task::spawn_blocking(|| crate::embeddings::create_embedding_provider()).await
+        };
 
         match init_result {
             Ok((Some(provider), Some(status))) => {
@@ -500,4 +565,19 @@ pub(crate) fn spawn_embedding_init(
             }
         }
     })
+}
+
+/// Returns `true` when `JULIE_EMBEDDING_USE_HOST` is set to a truthy value
+/// (`1`, `true`, or `on`, case-insensitive). Any other value, or the variable
+/// being absent, returns `false`.
+///
+/// `pub(crate)` so the test suite can drive it directly without spinning a
+/// real host process.
+pub(crate) fn use_embedding_host() -> bool {
+    std::env::var("JULIE_EMBEDDING_USE_HOST")
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            v == "1" || v == "true" || v == "on"
+        })
+        .unwrap_or(false)
 }

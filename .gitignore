@@ -29,6 +29,7 @@ julie-server
 *.db-wal
 *.db-journal
 .julie/
+.miller/
 .coa/
 .clawpatch/
 
