@@ -29,6 +29,13 @@ impl JulieServerHandler {
         Parameters(params): Parameters<RenameSymbolTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("✏️ Rename symbol: {:?}", params);
+        // T7 (Risk #2): refuse writes on in-process followers.
+        if self.is_in_process_follower() {
+            let e = anyhow::anyhow!(
+                "another session owns writes for this workspace; this is a read-only follower"
+            );
+            return Err(classify_tool_failure("rename_symbol", &e));
+        }
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = params

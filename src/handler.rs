@@ -1090,6 +1090,20 @@ impl JulieServerHandler {
         self.leadership.is_leader()
     }
 
+    /// Returns `true` when this handler is a read-only follower in an in-process
+    /// leader election (created via `new_in_process` with `LeadershipState::follower()`).
+    ///
+    /// D1 write-mutating operations (index, register, remove, refresh, editing
+    /// tools) MUST be refused on followers to prevent cross-process
+    /// SQLite/Tantivy data races (T7, Risk #2).
+    ///
+    /// Unlike `!is_leader()`, this gate does NOT fire for regular pre-3c
+    /// constructors (daemon mode, stdio mode) — those use `LeadershipState::none()`
+    /// and are not subject to write-refusal gating.
+    pub fn is_in_process_follower(&self) -> bool {
+        self.leadership.is_follower()
+    }
+
     pub fn workspace_startup_hint(&self) -> WorkspaceStartupHint {
         self.session_workspace
             .read()

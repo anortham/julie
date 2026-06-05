@@ -31,6 +31,13 @@ impl JulieServerHandler {
             "✏️ rewrite_symbol: {} {} (dry_run={})",
             params.operation, params.symbol, params.dry_run
         );
+        // T7 (Risk #2): refuse writes on in-process followers.
+        if self.is_in_process_follower() {
+            let e = anyhow::anyhow!(
+                "another session owns writes for this workspace; this is a read-only follower"
+            );
+            return Err(classify_tool_failure("rewrite_symbol", &e));
+        }
         let start = std::time::Instant::now();
         let workspace_snapshot = if params.workspace.as_deref().unwrap_or("primary") == "primary" {
             self.require_primary_workspace_binding().ok()

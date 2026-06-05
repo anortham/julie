@@ -12,6 +12,7 @@ mod deadline;
 mod editing_metrics;
 mod inprocess_ctor;
 mod leader_watcher;
+mod loser_refuses;
 mod metrics_recording;
 mod path_helpers;
 mod public_surface;

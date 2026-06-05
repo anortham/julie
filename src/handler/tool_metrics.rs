@@ -218,28 +218,34 @@ impl JulieServerHandler {
             });
         }
 
-        let metadata = report.metadata.to_string();
-        let _ = self.metrics_tx.try_send(MetricsTask {
-            workspace: self.workspace.clone(),
-            workspace_pool: self.workspace_pool.clone(),
-            current_workspace_root: workspace_root,
-            session_metrics: self.session_metrics.clone(),
-            session_id: self.session_metrics.session_id.clone(),
-            tool_name: tool_name.to_string(),
-            duration_ms: duration.as_secs_f64() * 1000.0,
-            result_count: report.result_count,
-            source_file_paths: report.source_file_paths.clone(),
-            input_bytes: report.input_bytes,
-            output_bytes,
-            success,
-            metadata_str: if metadata == "null" {
-                None
-            } else {
-                Some(metadata)
-            },
-            daemon_db: self.daemon_db.clone(),
-            workspace_id,
-        });
+        // T7 (D3): suppress the persistent metrics write on in-process followers.
+        // The in-memory parts above (session_metrics, project_log, dashboard_tx) are
+        // safe for followers. The try_send writes to the shared daemon DB and can
+        // cause SQLITE_BUSY against the leader that owns the write path.
+        if !self.is_in_process_follower() {
+            let metadata = report.metadata.to_string();
+            let _ = self.metrics_tx.try_send(MetricsTask {
+                workspace: self.workspace.clone(),
+                workspace_pool: self.workspace_pool.clone(),
+                current_workspace_root: workspace_root,
+                session_metrics: self.session_metrics.clone(),
+                session_id: self.session_metrics.session_id.clone(),
+                tool_name: tool_name.to_string(),
+                duration_ms: duration.as_secs_f64() * 1000.0,
+                result_count: report.result_count,
+                source_file_paths: report.source_file_paths.clone(),
+                input_bytes: report.input_bytes,
+                output_bytes,
+                success,
+                metadata_str: if metadata == "null" {
+                    None
+                } else {
+                    Some(metadata)
+                },
+                daemon_db: self.daemon_db.clone(),
+                workspace_id,
+            });
+        }
     }
 
     pub(crate) fn record_tool_failure(
