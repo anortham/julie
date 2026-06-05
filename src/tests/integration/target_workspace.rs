@@ -501,19 +501,21 @@ mod target_workspace_tests {
     #[test]
     fn test_live_workspace_surface_has_no_legacy_workspace_language() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        // Tool sources moved to the julie-tools crate during the Phase 2
+        // crate split; paths are relative to CARGO_MANIFEST_DIR (julie root).
         let files = [
             "docs/WORKSPACE_ARCHITECTURE.md",
-            "src/tools/navigation/mod.rs",
-            "src/tools/navigation/resolution.rs",
-            "src/tools/navigation/fast_refs.rs",
-            "src/tools/navigation/target_workspace.rs",
-            "src/tools/symbols/mod.rs",
-            "src/tools/symbols/target_workspace.rs",
-            "src/tools/get_context/mod.rs",
-            "src/tools/get_context/pipeline.rs",
-            "src/tools/search/mod.rs",
-            "src/tools/search/text_search.rs",
-            "src/tools/refactoring/mod.rs",
+            "crates/julie-tools/src/navigation/mod.rs",
+            "crates/julie-tools/src/navigation/resolution.rs",
+            "crates/julie-tools/src/navigation/fast_refs.rs",
+            "crates/julie-tools/src/navigation/target_workspace.rs",
+            "crates/julie-tools/src/symbols/mod.rs",
+            "crates/julie-tools/src/symbols/target_workspace.rs",
+            "crates/julie-tools/src/get_context/mod.rs",
+            "crates/julie-tools/src/get_context/pipeline.rs",
+            "crates/julie-tools/src/search/mod.rs",
+            "crates/julie-tools/src/search/text_search.rs",
+            "crates/julie-tools/src/refactoring/mod.rs",
         ];
 
         for relative_path in files {
