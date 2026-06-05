@@ -10,6 +10,7 @@ pub(crate) use common::*;
 
 mod deadline;
 mod editing_metrics;
+mod fa_pin_hint;
 mod inprocess_ctor;
 mod inprocess_serve;
 mod leader_watcher;

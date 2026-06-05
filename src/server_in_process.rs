@@ -177,8 +177,21 @@ pub async fn run_in_process_server(
     // 1. Resolve the daemon paths (respects $JULIE_HOME).
     let paths = DaemonPaths::try_new().context("Failed to resolve Julie home directory")?;
 
-    // 2. Derive workspace ID from the startup hint path.
-    let workspace_id = generate_workspace_id(&startup_hint.path.to_string_lossy())
+    // 2. Canonicalize the startup-hint path, then derive the workspace ID from
+    //    the CANONICAL form (codex 3c.2 F-A). The request-time primary binding
+    //    also canonicalizes (`primary_binding_for_root` →
+    //    `canonicalize_workspace_path`), so deriving the leader lock + index
+    //    root from the same canonical path guarantees lock id == storage id ==
+    //    binding id. Pinning the binding to this hint (no `list_roots` rebind)
+    //    is enforced by `JulieServerHandler::request_prefers_client_roots()`
+    //    returning false for in-process handlers.
+    let canonical_path =
+        JulieServerHandler::canonicalize_workspace_path(startup_hint.path.clone());
+    let startup_hint = crate::workspace::startup_hint::WorkspaceStartupHint {
+        path: canonical_path.clone(),
+        source: startup_hint.source,
+    };
+    let workspace_id = generate_workspace_id(&canonical_path.to_string_lossy())
         .context("Failed to generate workspace ID")?;
 
     // 3. Create the per-workspace index directory BEFORE acquiring the lock —

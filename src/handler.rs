@@ -307,7 +307,7 @@ pub struct JulieServerHandler {
 }
 
 impl JulieServerHandler {
-    fn canonicalize_workspace_path(path: PathBuf) -> PathBuf {
+    pub(crate) fn canonicalize_workspace_path(path: PathBuf) -> PathBuf {
         path.canonicalize().unwrap_or(path)
     }
 
@@ -605,9 +605,7 @@ impl JulieServerHandler {
             Err(err) if self.is_primary_workspace_swap_in_progress() => return Err(err),
             Err(_) => None,
         };
-        let prefers_request_roots = crate::startup::startup_source_prefers_request_roots(
-            self.workspace_startup_hint().source,
-        );
+        let prefers_request_roots = self.request_prefers_client_roots();
 
         if !prefers_request_roots {
             if self.roots_dirty() || existing_binding.is_none() {
@@ -1182,6 +1180,28 @@ impl JulieServerHandler {
     /// path byte-for-byte unchanged.
     pub fn is_in_process(&self) -> bool {
         self.leadership.is_in_process()
+    }
+
+    /// Whether a request-time primary resolution should prefer the client's
+    /// `list_roots` over the startup hint.
+    ///
+    /// **In-process handlers always return `false`** (codex 3c.2 F-A): the
+    /// leader lock + index storage are acquired at STARTUP from the
+    /// hint-derived `workspace_id`, before any client roots are known. If the
+    /// binding then rebound to a different `list_roots` root, the lock/storage
+    /// (hint-keyed) and the binding (client-root-keyed) would diverge — two
+    /// processes launched from different cwds but reporting the same client
+    /// root would each win a *different* lock and maintain divergent index
+    /// trees for one logical workspace. Pinning the binding to the canonical
+    /// startup hint keeps lock id == storage id == binding id.
+    ///
+    /// Daemon/stdio (`LeadershipState::none()`) keep the source-driven
+    /// behavior unchanged, so multi-root clients still rebind there.
+    pub(crate) fn request_prefers_client_roots(&self) -> bool {
+        !self.is_in_process()
+            && crate::startup::startup_source_prefers_request_roots(
+                self.workspace_startup_hint().source,
+            )
     }
 
     pub fn workspace_startup_hint(&self) -> WorkspaceStartupHint {

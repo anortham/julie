@@ -111,26 +111,29 @@ async fn main() -> anyhow::Result<()> {
         None => {
             debug_assert!(needs_workspace_startup_hint);
             let startup_hint = resolve_workspace_startup_hint(cli.workspace);
-            // Adapter mode: auto-start daemon (via launcher → `julie-daemon
-            // start` per A1.8), forward stdio to HTTP MCP.
+            // THE CUTOVER (Phase 3c.3, T10): serve `JulieServerHandler` directly
+            // over rmcp stdio — IN-PROCESS. No daemon fork, no stdio↔HTTP bridge,
+            // no `discovery.json`. Each process wins or loses a per-workspace OS
+            // leader lock; the winner is the sole file watcher + Tantivy writer,
+            // losers are pure SQLite-WAL + Tantivy-mmap readers
+            // (`run_in_process_server`). The daemon/adapter code paths remain
+            // compiled and reachable via the other subcommands — bypassed, not
+            // deleted (T12 tripwire pins this boundary).
             //
-            // Install adapter-side file tracing before run_adapter so all
-            // launcher info!/warn!/error! land in ~/.julie/adapter.log.
-            // Without this, the adapter is silent — operators have no way
-            // to see why a cold-start spawn is slow, retried, or failing.
-            // Logs go to a separate file from the daemon so the daemon's
-            // own subscriber (installed in start_daemon) is not affected.
-            let paths = julie::paths::DaemonPaths::new();
-            if let Err(e) = julie::logging::install_file_tracing(
-                &paths.julie_home(),
-                "adapter.log",
-                "julie=info",
-            ) {
-                // Never fail the adapter over logging — stderr is fine for
-                // this last-resort signal; MCP protocol owns stdout only.
-                eprintln!("Julie adapter: failed to install file tracing: {}", e);
+            // Install per-project file tracing at `<project>/.julie/logs/julie.log`
+            // BEFORE serving so startup/indexing diagnostics are captured. The
+            // in-process server is the project's OWN server now, so its log lives
+            // with the project (not the shared `~/.julie/adapter.log` the old
+            // adapter used). Logging must NEVER fail startup — MCP owns stdout, so
+            // a logging error is reported to stderr and otherwise ignored.
+            let log_dir = startup_hint.path.join(".julie").join("logs");
+            let _ = std::fs::create_dir_all(&log_dir);
+            if let Err(e) =
+                julie::logging::install_file_tracing(&log_dir, "julie.log", "julie=info")
+            {
+                eprintln!("Julie in-process server: failed to install file tracing: {e}");
             }
-            julie::adapter::run_adapter(startup_hint).await?;
+            julie::server_in_process::run_in_process_server(startup_hint).await?;
         }
     }
 
