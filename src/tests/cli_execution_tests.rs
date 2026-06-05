@@ -577,7 +577,7 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
 }
 
 #[tokio::test]
-async fn test_run_cli_tool_standalone_workspace_stats_requires_daemon() {
+async fn test_run_cli_tool_standalone_workspace_stats_not_available_via_cli() {
     let temp = tempfile::Builder::new()
         .prefix("julie_cli_workspace_stats_")
         .tempdir()
@@ -596,9 +596,10 @@ async fn test_run_cli_tool_standalone_workspace_stats_requires_daemon() {
     let result = run_cli_tool(&args, Some(temp.path().to_path_buf()), true).await;
 
     let err = result.expect_err("workspace stats should refuse standalone mode");
+    let msg = err.to_string();
     assert!(
-        err.to_string().contains("daemon mode"),
-        "Expected daemon-mode guidance, got: {}",
+        msg.contains("not available from the standalone CLI") && msg.contains("manage_workspace"),
+        "Expected post-daemon CLI guidance pointing at manage_workspace, got: {}",
         err
     );
 }

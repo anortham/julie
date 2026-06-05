@@ -1,17 +1,17 @@
-//! `julie-server` — legacy entry point preserved as a compatibility shim.
+//! `julie-server` — the MCP entry point.
 //!
-//! A1.8: the new world ships two binaries: `julie-adapter` (stdio↔HTTP forward)
-//! and `julie-daemon` (lifecycle).  `julie-server` is kept as a single-binary
-//! shim so existing plugin manifests, scripts, and operator muscle-memory
-//! continue to work during the transition.
+//! Post-cutover (Phase 3c.3) the no-args invocation serves the MCP handler
+//! IN-PROCESS over stdio (leader-locked; no daemon fork). The `julie-adapter`
+//! stdio↔HTTP bridge was removed in Phase 3d.1; the `julie daemon` subcommands
+//! remain during the 3d daemon-teardown transition.
 //!
 //! Argv dispatch:
-//!   - no args                 → adapter codepath (forward stdio to daemon)
+//!   - no args                 → in-process MCP server (run_in_process_server)
 //!   - `daemon`                → `julie-daemon start` codepath (start_daemon)
 //!   - `stop` / `restart`      → `julie-daemon stop` codepath  (stop_daemon)
 //!   - `status`                → `julie-daemon status` codepath (status_daemon)
 //!   - `dashboard`             → open dashboard URL in browser (unchanged)
-//!   - tool subcommands        → run_cli_tool (unchanged from today)
+//!   - tool subcommands        → run_cli_tool (standalone, in-process)
 //!
 //! All daemon lifecycle paths route through
 //! `julie::daemon::cli::{start_daemon, stop_daemon, status_daemon}` so the
