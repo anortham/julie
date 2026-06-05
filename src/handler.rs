@@ -281,6 +281,11 @@ pub struct JulieServerHandler {
     /// Embedding provider injected by `new_in_process`. When `Some`, takes
     /// priority over `embedding_service` and the per-workspace provider.
     injected_embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    /// Index root override for in-process sessions (T8/F2).  When `Some`, the
+    /// non-pool branch of `initialize_workspace_with_force` routes db/tantivy
+    /// to the daemon shared directory (`~/.julie/indexes/{ws}/`) so storage
+    /// and the leader lock share one inode tree.
+    pub(crate) in_process_index_root: Option<PathBuf>,
     /// Keeps isolated temp roots alive for test-only handlers.
     #[cfg(test)]
     test_temp_guard: Option<Arc<tempfile::TempDir>>,
@@ -737,6 +742,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: None,
+            in_process_index_root: None,
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -856,6 +862,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: None,
+            in_process_index_root: None,
             #[cfg(test)]
             test_temp_guard: None,
         };
@@ -967,6 +974,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: None,
+            in_process_index_root: None,
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -987,11 +995,16 @@ impl JulieServerHandler {
     ///   `mark_standalone_embedding_skipped` when passing a provider here.
     /// * `leader` — result of the workspace leader election (T2 primitive).
     ///   Pass `LeadershipState::leader(guard)` when this process won the lock;
-    ///   pass `LeadershipState::none()` for follower / uncontested cases.
+    ///   pass `LeadershipState::follower()` when another process won (write-refusing reader);
+    ///   pass `LeadershipState::none()` for handlers not in the in-process model.
+    /// * `index_root` — when `Some`, `initialize_workspace_with_force` routes
+    ///   db/tantivy to this directory so the leader lock and storage share one
+    ///   inode tree (T8/F2).  Pass `None` for the traditional project-local path.
     pub async fn new_in_process(
         startup_hint: WorkspaceStartupHint,
         embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
         leader: LeadershipState,
+        index_root: Option<PathBuf>,
     ) -> Result<Self> {
         // Build on top of the deferred-startup path, which wires up everything
         // except the project-log and sets startup_hint on the session state.
@@ -1007,9 +1020,10 @@ impl JulieServerHandler {
         )
         .await?;
 
-        // Override the leadership and injected-provider fields.
+        // Override the leadership, injected-provider, and index-root fields.
         handler.leadership = Arc::new(leader);
         handler.injected_embedding_provider = embedding_provider;
+        handler.in_process_index_root = index_root;
 
         Ok(handler)
     }
@@ -1591,6 +1605,18 @@ impl JulieServerHandler {
                 Ok(self
                     .acquire_pooled_workspace_for_rebind(workspace_id, target_canonical.clone())
                     .await?)
+            } else if let Some(index_root) = &self.in_process_index_root {
+                // In-process mode (T8/F2): redirect db/tantivy to the shared daemon
+                // index directory so the leader lock and workspace storage share one
+                // inode tree (`~/.julie/indexes/{ws}/`).  This is the F2 hard gate —
+                // without this branch, `initialize` would create project-local storage
+                // while the leader lock sits in the daemon path, letting two processes
+                // silently "lead" the same workspace.
+                JulieWorkspace::initialize_with_index_root(
+                    target_path,
+                    index_root.clone(),
+                )
+                .await
             } else {
                 // Try to load existing workspace first
                 match JulieWorkspace::detect_and_load(target_path.clone()).await? {

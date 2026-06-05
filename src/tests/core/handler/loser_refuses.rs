@@ -29,7 +29,7 @@ async fn make_leader(workspace_dir: &tempfile::TempDir) -> JulieServerHandler {
         path: workspace_dir.path().to_path_buf(),
         source: Some(WorkspaceStartupSource::Cli),
     };
-    JulieServerHandler::new_in_process(hint, None, LeadershipState::leader(guard))
+    JulieServerHandler::new_in_process(hint, None, LeadershipState::leader(guard), None)
         .await
         .expect("leader handler construction must succeed")
 }
@@ -40,7 +40,7 @@ async fn make_follower(workspace_dir: &tempfile::TempDir) -> JulieServerHandler 
         path: workspace_dir.path().to_path_buf(),
         source: Some(WorkspaceStartupSource::Cli),
     };
-    JulieServerHandler::new_in_process(hint, None, LeadershipState::follower())
+    JulieServerHandler::new_in_process(hint, None, LeadershipState::follower(), None)
         .await
         .expect("follower handler construction must succeed")
 }

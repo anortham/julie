@@ -34,7 +34,7 @@ async fn test_leader_watcher_started_loser_watcher_not_started() {
         source: Some(WorkspaceStartupSource::Cli),
     };
     let leader =
-        JulieServerHandler::new_in_process(leader_hint, None, LeadershipState::leader(guard))
+        JulieServerHandler::new_in_process(leader_hint, None, LeadershipState::leader(guard), None)
             .await
             .unwrap();
 
@@ -44,7 +44,7 @@ async fn test_leader_watcher_started_loser_watcher_not_started() {
         source: Some(WorkspaceStartupSource::Cli),
     };
     let loser =
-        JulieServerHandler::new_in_process(loser_hint, None, LeadershipState::none())
+        JulieServerHandler::new_in_process(loser_hint, None, LeadershipState::none(), None)
             .await
             .unwrap();
 

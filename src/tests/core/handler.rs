@@ -11,6 +11,7 @@ pub(crate) use common::*;
 mod deadline;
 mod editing_metrics;
 mod inprocess_ctor;
+mod inprocess_serve;
 mod leader_watcher;
 mod loser_refuses;
 mod metrics_recording;
