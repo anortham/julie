@@ -162,8 +162,8 @@ fn main() -> anyhow::Result<()> {
             let cache = cache_root.unwrap_or_else(xtask::dev_workflow::default_cache_root);
             xtask::dev_workflow::run_dev_link(&workspace, dry_run, &cache, &mut stdout)?;
         }
-        CliCommand::DevRestart(DevRestartCommand { force }) => {
-            xtask::dev_workflow::run_dev_restart(&mut stdout, force)?;
+        CliCommand::DevRestart(DevRestartCommand) => {
+            xtask::dev_workflow::run_dev_restart(&mut stdout)?;
         }
     }
 

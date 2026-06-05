@@ -12,7 +12,7 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 - **Language**: Rust (native performance, cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: Tantivy full-text search + SQLite structured storage + KNN vector search (embeddings)
-- **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout) + optional background daemon for shared workspaces
+- **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout). Since the Phase 3c.3 cutover the no-args `julie-server` serves **in-process** over rmcp stdio (leader-locked per workspace), not via a forked daemon. The daemon/adapter path is being deleted across Phase 3d; daemon-specific sections below are legacy until that completes.
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 34 tree-sitter extractors with comprehensive test suites, now maintained in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo and consumed here as a pinned git dependency
 
@@ -41,7 +41,7 @@ cargo xtask test changed       # After a localized change (diff-scoped buckets)
 cargo xtask test dev           # Batch gate before handoff — not per edit
 cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)
 cargo xtask dev-link           # (maintainer-only) Symlink installed plugin binaries → target/release (`--dry-run` to preview)
-cargo xtask dev-restart        # (maintainer-only) Soft restart — leaves daemon alive so calling MCP session survives; --force to SIGTERM
+cargo xtask dev-restart        # (maintainer-only) Advisory — prints how to load a new binary (in-process server is per-session; no daemon to restart)
 cargo fmt                      # Format code
 cargo clippy                  # Lint
 ```
@@ -307,10 +307,10 @@ builds after `cargo clean`.
    - Test features in live MCP session
 4. **Maintainer dev loop (`dev-link` + `dev-restart`)**: One-time and per-iteration commands that make the dev loop survive plugin installs:
    - **One-time setup**: `cargo build --release && cargo xtask dev-link` — replaces the bundled `julie-server` inside `~/.claude/plugins/cache/julie-plugin/julie/<v>/bin/<arch>/` with a symlink to `target/release/julie-server`. After this, every harness that points at the plugin (Claude Code) and every harness configured to point at `target/release/julie-server` directly (Codex CLI, OpenCode per their `~/.codex/config.toml` / `~/.config/opencode/opencode.json`) all run the same dev binary.
-   - **Per-edit loop**: `cargo build --release && cargo xtask dev-restart` — soft restart by default. Does NOT SIGTERM the daemon; leaves it alive so the calling MCP session (Claude Code, etc.) is not interrupted. The daemon's stale-binary detection will pick up the new binary on the next session disconnect or new session connect. Pass `--force` to SIGTERM immediately (legacy behavior — drains in-flight requests for 10s then force-aborts; will likely kill the calling session because the adapter classifies post-output transport errors as `Terminal`).
+   - **Per-edit loop**: `cargo build --release`, then restart your MCP client (or start a new session) to load the new binary. Post Phase 3c.3 there is no shared daemon: each MCP session runs its own in-process `julie-server`, leader-locked per workspace, so a new binary is picked up when a fresh session re-acquires the leader lock. `cargo xtask dev-restart` is now advisory — it prints this guidance and performs no process control (the legacy `--force` SIGTERM path was removed with the daemon in Phase 3d.2b).
    - **Idempotent**: re-run `dev-link` after any plugin update; it'll relink in place. Reports `already-linked` for entries that are still pointing at the dev binary.
    - **Maintainer-only**: regular users install the plugin and never run these. Codex CLI and OpenCode users typically point their MCP `command` at a chosen path themselves; this just means dev-link mostly affects the Claude Code plugin cache. (`xtask/src/dev_workflow.rs`)
-5. **🔴 Windows Binary Lock**: On Windows, the running `julie-server.exe` process (spawned by the MCP client) holds an exclusive file lock on the release binary. **Do NOT attempt `cargo build --release` while a session is active** — it will fail with "Access is denied" (os error 5). Only `cargo build` (debug) works while the release binary is running. The user must exit their MCP client (Claude Code, VS Code, etc.) before rebuilding release. On Windows, soft `dev-restart` won't help (the file lock prevents the rebuild itself); use `cargo xtask dev-restart --force` after closing the MCP client.
+5. **🔴 Windows Binary Lock**: On Windows, the running `julie-server.exe` process (spawned by the MCP client) holds an exclusive file lock on the release binary. **Do NOT attempt `cargo build --release` while a session is active** — it will fail with "Access is denied" (os error 5). Only `cargo build` (debug) works while the release binary is running. The user must exit their MCP client (Claude Code, VS Code, etc.) before rebuilding release. On Windows, `dev-restart` is advisory and cannot help (and the file lock prevents the rebuild itself anyway); close the MCP client, rebuild, then reopen it to load the new binary.
 6. **Backward Compatibility**: We don't need it (stdio MCP server, not a public API)
 7. **Target User**: YOU (Claude) and other AI coding agents are the target user
    - Review code from standpoint of you being the user
@@ -324,6 +324,8 @@ builds after `cargo clean`.
 ### 🚨 LOG LOCATIONS
 
 Julie has TWO log locations depending on mode:
+
+> **⚠️ In transition (Phase 3d):** the shared daemon is being deleted. Since the Phase 3c.3 cutover the default no-args `julie-server` serves in-process per session and writes the **project-level** logs (`.julie/logs/`, shown below). The `~/.julie/daemon.log` paths apply only to the legacy daemon, which is being removed across Phase 3d.
 
 **Daemon mode logs** (the daemon process, shared across sessions):
 ```bash
@@ -394,6 +396,7 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
 1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
 2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
 3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`. In stdio mode: under `{project}/.julie/indexes/`. In daemon mode: under `~/.julie/indexes/` (shared across all sessions).
+   - **⚠️ Architecture in transition (Phase 3d):** the daemon + adapter described in the next four bullets are being **deleted** across Phase 3d. Since the Phase 3c.3 cutover the default no-args `julie-server` serves **in-process** over rmcp stdio (no daemon fork, no HTTP bridge, no `julie daemon` subcommand), leader-locked per workspace — the lock winner is the sole watcher + Tantivy writer, losers are read-only followers. It still uses `~/.julie/indexes/{workspace_id}/` for storage. The bullets below describe the legacy daemon path retained only until 3d.3 finishes the teardown; they will be rewritten then.
    - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables cross-workspace targeting (via `manage_workspace(operation="open")`), symbol/file count snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` ensures one sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
    - **Adapter mode** (default): when `julie-server` is run without arguments, it auto-starts the daemon (if not already running) and bridges stdio JSON-RPC to the daemon's localhost Streamable HTTP endpoint. This is the standard MCP client integration path.
    - **Stale binary auto-restart**: the daemon captures its binary's mtime at startup. On each new connection and session disconnect, it compares the current binary mtime. If the daemon is idle (0 sessions) when a stale binary is detected, it shuts down immediately before accepting the connection. If sessions are active, it sets `restart_pending` and exits after the last session disconnects. The adapter restarts it automatically with the new binary.
