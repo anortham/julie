@@ -2,6 +2,7 @@ pub mod admit_initialize_short_circuit;
 pub mod app_test;
 pub mod connection_pool_test;
 pub mod daemon_state_atomic;
+pub mod dashboard_browser_open;
 pub mod database;
 pub mod discovery_test;
 pub mod drain_timeout;
