@@ -28,6 +28,7 @@ use rmcp::{
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock as StdRwLock};
+use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
@@ -187,6 +188,12 @@ impl Default for IndexingStatus {
     }
 }
 
+use crate::leadership::LeadershipState;
+
+// ---------------------------------------------------------------------------
+// JulieServerHandler
+// ---------------------------------------------------------------------------
+
 /// Julie's custom handler for MCP messages
 ///
 /// This handler manages the core Julie functionality including:
@@ -267,6 +274,13 @@ pub struct JulieServerHandler {
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     /// Mutation-gate registry used by workspace writer paths in this handler.
     mutation_gate_registry: Arc<MutationGateRegistry>,
+    /// In-process leadership state. Holds the OS-level advisory lock when this
+    /// handler is the elected workspace leader (see `new_in_process`). Wrapped
+    /// in `Arc` so the `Clone` derive works across sessions.
+    pub(crate) leadership: Arc<LeadershipState>,
+    /// Embedding provider injected by `new_in_process`. When `Some`, takes
+    /// priority over `embedding_service` and the per-workspace provider.
+    injected_embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
     /// Keeps isolated temp roots alive for test-only handlers.
     #[cfg(test)]
     test_temp_guard: Option<Arc<tempfile::TempDir>>,
@@ -721,6 +735,8 @@ impl JulieServerHandler {
             workspace_pool: None,
             dashboard_tx: None,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
+            leadership: Arc::new(LeadershipState::none()),
+            injected_embedding_provider: None,
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -838,6 +854,8 @@ impl JulieServerHandler {
             workspace_pool,
             dashboard_tx,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
+            leadership: Arc::new(LeadershipState::none()),
+            injected_embedding_provider: None,
             #[cfg(test)]
             test_temp_guard: None,
         };
@@ -947,16 +965,59 @@ impl JulieServerHandler {
             workspace_pool,
             dashboard_tx,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
+            leadership: Arc::new(LeadershipState::none()),
+            injected_embedding_provider: None,
             #[cfg(test)]
             test_temp_guard: None,
         })
     }
 
+    /// Create a handler for the in-process MCP server path.
+    ///
+    /// Unlike the daemon constructors, `new_in_process` preserves the full
+    /// `startup_hint.source` so that `on_initialized` can correctly defer
+    /// auto-indexing when the source is `Cwd` (IDE-injected path) and index
+    /// eagerly when the source is `Cli` or `Env`.
+    ///
+    /// # Parameters
+    /// * `startup_hint` — workspace root and source, passed through unchanged.
+    /// * `embedding_provider` — optional pre-constructed provider.  When `Some`,
+    ///   `embedding_provider()` returns it directly, bypassing both the daemon
+    ///   embedding-service and the per-workspace sidecar path. Do **not** call
+    ///   `mark_standalone_embedding_skipped` when passing a provider here.
+    /// * `leader` — result of the workspace leader election (T2 primitive).
+    ///   Pass `LeadershipState::leader(guard)` when this process won the lock;
+    ///   pass `LeadershipState::none()` for follower / uncontested cases.
+    pub async fn new_in_process(
+        startup_hint: WorkspaceStartupHint,
+        embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+        leader: LeadershipState,
+    ) -> Result<Self> {
+        // Build on top of the deferred-startup path, which wires up everything
+        // except the project-log and sets startup_hint on the session state.
+        let mut handler = Self::new_deferred_daemon_startup_hint_with_project_log(
+            startup_hint,
+            /*daemon_db=*/ None,
+            /*embedding_service=*/ None,
+            /*restart_pending=*/ None,
+            /*dashboard_tx=*/ None,
+            /*watcher_pool=*/ None,
+            /*workspace_pool=*/ None,
+            /*enable_project_writes=*/ true,
+        )
+        .await?;
+
+        // Override the leadership and injected-provider fields.
+        handler.leadership = Arc::new(leader);
+        handler.injected_embedding_provider = embedding_provider;
+
+        Ok(handler)
+    }
+
     /// Test-only convenience: create a handler rooted in an isolated temp dir.
     ///
-    /// Using `current_dir()` here lets tests spray `.julie/indexes` under the
-    /// repo when they forget to bind a temp workspace first. Keep the anchor in
-    /// temp storage so path=None stays isolated by default.
+    /// Uses an isolated temp root so tests do not spray `.julie/indexes` under
+    /// the repo checkout.
     #[cfg(test)]
     pub async fn new_for_test() -> Result<Self> {
         let temp_root = Arc::new(
@@ -1018,6 +1079,15 @@ impl JulieServerHandler {
 
     pub(crate) fn mark_session_closing(&self) {
         self.update_session_workspace(|state| state.mark_closing());
+    }
+
+    /// Returns `true` when this handler holds the OS-level workspace leader lock.
+    ///
+    /// The lock is acquired during `new_in_process` via the T2 leader-election
+    /// primitive (`DaemonLockGuard::try_acquire`). All existing constructors
+    /// (`new`, `new_with_shared_workspace_startup_hint`, etc.) return `false`.
+    pub fn is_leader(&self) -> bool {
+        self.leadership.is_leader()
     }
 
     pub fn workspace_startup_hint(&self) -> WorkspaceStartupHint {
@@ -1288,6 +1358,10 @@ impl JulieServerHandler {
     pub(crate) async fn embedding_provider(
         &self,
     ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
+        // In-process mode: injected provider takes priority.
+        if let Some(ref p) = self.injected_embedding_provider {
+            return Some(Arc::clone(p));
+        }
         // Daemon mode: use shared service
         if let Some(ref service) = self.embedding_service {
             return service.provider();
@@ -2376,6 +2450,104 @@ impl JulieServerHandler {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Per-request deadline / hang guard
+// ---------------------------------------------------------------------------
+
+/// Default per-request deadline for read/query tools when the env var is unset.
+const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 120;
+
+/// Override with this env var. Set to `"0"` to disable the deadline entirely.
+const REQUEST_TIMEOUT_ENV: &str = "JULIE_INPROCESS_REQUEST_TIMEOUT_SECS";
+
+/// Parse the per-request deadline from an optional raw env-var string.
+///
+/// - `Some("0")` → `None` (disabled; the tool is awaited without any ceiling).
+/// - `None | Some("<invalid>")` → `Some(DEFAULT_REQUEST_TIMEOUT_SECS s)`.
+/// - `Some("N")` (N > 0) → `Some(Duration::from_secs(N))`.
+pub(crate) fn parse_request_timeout(raw: Option<String>) -> Option<Duration> {
+    const DEFAULT: Duration = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS);
+    match raw.as_deref().map(str::trim) {
+        Some("0") => None,
+        Some(s) => match s.parse::<u64>() {
+            Ok(0) => None,
+            Ok(n) => Some(Duration::from_secs(n)),
+            Err(_) => Some(DEFAULT),
+        },
+        None => Some(DEFAULT),
+    }
+}
+
+/// Returns `true` when a tool call must not be bounded by the per-request deadline.
+///
+/// Pure editing writers (`edit_file`, `rename_symbol`, `rewrite_symbol`) are
+/// always exempt — aborting a canonical write mid-transaction would corrupt
+/// workspace state.
+///
+/// For `manage_workspace` the exemption is operation-aware:
+/// - **Exempt (mutating / long-running):** Index, Register, Remove, Clean, Refresh, Open.
+/// - **Deadline-bounded (read-only):** List, Stats, Health — a hung stats or health
+///   query has no write-safety concern, so it must not escape the hang guard.
+/// - **Unparseable operation:** not exempt (safely bounded; no mutation risk).
+pub(crate) fn is_write_exempt(
+    tool_name: &str,
+    arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> bool {
+    if matches!(tool_name, "edit_file" | "rename_symbol" | "rewrite_symbol") {
+        return true;
+    }
+    if tool_name == "manage_workspace" {
+        let op = arguments
+            .and_then(|m| m.get("operation"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| ManageWorkspaceOperation::parse(s).ok());
+        return matches!(
+            op,
+            Some(
+                ManageWorkspaceOperation::Index
+                    | ManageWorkspaceOperation::Register
+                    | ManageWorkspaceOperation::Remove
+                    | ManageWorkspaceOperation::Clean
+                    | ManageWorkspaceOperation::Refresh
+                    | ManageWorkspaceOperation::Open
+            )
+        );
+    }
+    false
+}
+
+/// Dispatch a tool call with an optional per-request deadline.
+///
+/// `exempt` must be computed by [`is_write_exempt`] before `request` is moved
+/// into the `ToolCallContext`. When `true`, the future is awaited unboundedly.
+/// All other tools are bounded by `deadline` when it is `Some`.
+///
+/// On expiry, returns `Err(McpError)` naming the tool and the elapsed ceiling
+/// so the caller gets a JSON-RPC error rather than a session hang.
+pub(crate) async fn dispatch_with_deadline(
+    tool_name: &str,
+    exempt: bool,
+    fut: impl std::future::Future<Output = Result<CallToolResult, McpError>>,
+    deadline: Option<Duration>,
+) -> Result<CallToolResult, McpError> {
+    if exempt || deadline.is_none() {
+        return fut.await;
+    }
+    let d = deadline.unwrap();
+    match tokio::time::timeout(d, fut).await {
+        Ok(result) => result,
+        Err(_elapsed) => Err(McpError::internal_error(
+            format!(
+                "tool '{}' did not respond within {}s; \
+                 request timed out to prevent session hang",
+                tool_name,
+                d.as_secs()
+            ),
+            None,
+        )),
+    }
+}
+
 /// ServerHandler implementation
 impl ServerHandler for JulieServerHandler {
     fn get_info(&self) -> ServerInfo {
@@ -2417,9 +2589,11 @@ impl ServerHandler for JulieServerHandler {
                 .map_err(|err| McpError::internal_error(err.to_string(), None))?;
         }
 
-        self.tool_router
-            .call(ToolCallContext::new(self, request, context))
-            .await
+        let tool_name = request.name.as_ref().to_string();
+        let exempt = is_write_exempt(&tool_name, request.arguments.as_ref());
+        let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
+        let fut = self.tool_router.call(ToolCallContext::new(self, request, context));
+        dispatch_with_deadline(&tool_name, exempt, fut, deadline).await
     }
 
     async fn list_tools(

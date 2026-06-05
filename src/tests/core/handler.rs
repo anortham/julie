@@ -8,7 +8,9 @@ mod common;
 #[allow(unused_imports)]
 pub(crate) use common::*;
 
+mod deadline;
 mod editing_metrics;
+mod inprocess_ctor;
 mod metrics_recording;
 mod path_helpers;
 mod public_surface;
