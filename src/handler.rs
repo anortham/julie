@@ -2460,11 +2460,6 @@ const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 120;
 /// Override with this env var. Set to `"0"` to disable the deadline entirely.
 const REQUEST_TIMEOUT_ENV: &str = "JULIE_INPROCESS_REQUEST_TIMEOUT_SECS";
 
-/// Tools that must never be deadline-bounded: they perform canonical writes
-/// or long-running workspace mutations that would corrupt state if interrupted.
-const EXEMPT_WRITER_TOOLS: &[&str] =
-    &["edit_file", "rename_symbol", "rewrite_symbol", "manage_workspace"];
-
 /// Parse the per-request deadline from an optional raw env-var string.
 ///
 /// - `Some("0")` → `None` (disabled; the tool is awaited without any ceiling).
@@ -2483,22 +2478,59 @@ pub(crate) fn parse_request_timeout(raw: Option<String>) -> Option<Duration> {
     }
 }
 
+/// Returns `true` when a tool call must not be bounded by the per-request deadline.
+///
+/// Pure editing writers (`edit_file`, `rename_symbol`, `rewrite_symbol`) are
+/// always exempt — aborting a canonical write mid-transaction would corrupt
+/// workspace state.
+///
+/// For `manage_workspace` the exemption is operation-aware:
+/// - **Exempt (mutating / long-running):** Index, Register, Remove, Clean, Refresh, Open.
+/// - **Deadline-bounded (read-only):** List, Stats, Health — a hung stats or health
+///   query has no write-safety concern, so it must not escape the hang guard.
+/// - **Unparseable operation:** not exempt (safely bounded; no mutation risk).
+pub(crate) fn is_write_exempt(
+    tool_name: &str,
+    arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> bool {
+    if matches!(tool_name, "edit_file" | "rename_symbol" | "rewrite_symbol") {
+        return true;
+    }
+    if tool_name == "manage_workspace" {
+        let op = arguments
+            .and_then(|m| m.get("operation"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| ManageWorkspaceOperation::parse(s).ok());
+        return matches!(
+            op,
+            Some(
+                ManageWorkspaceOperation::Index
+                    | ManageWorkspaceOperation::Register
+                    | ManageWorkspaceOperation::Remove
+                    | ManageWorkspaceOperation::Clean
+                    | ManageWorkspaceOperation::Refresh
+                    | ManageWorkspaceOperation::Open
+            )
+        );
+    }
+    false
+}
+
 /// Dispatch a tool call with an optional per-request deadline.
 ///
-/// Writer tools (`edit_file`, `rename_symbol`, `rewrite_symbol`,
-/// `manage_workspace`) are always awaited unboundedly — aborting a canonical
-/// write mid-transaction would corrupt workspace state. All other tools are
-/// bounded by `deadline` when it is `Some`.
+/// `exempt` must be computed by [`is_write_exempt`] before `request` is moved
+/// into the `ToolCallContext`. When `true`, the future is awaited unboundedly.
+/// All other tools are bounded by `deadline` when it is `Some`.
 ///
 /// On expiry, returns `Err(McpError)` naming the tool and the elapsed ceiling
 /// so the caller gets a JSON-RPC error rather than a session hang.
 pub(crate) async fn dispatch_with_deadline(
     tool_name: &str,
+    exempt: bool,
     fut: impl std::future::Future<Output = Result<CallToolResult, McpError>>,
     deadline: Option<Duration>,
 ) -> Result<CallToolResult, McpError> {
-    let is_exempt = EXEMPT_WRITER_TOOLS.contains(&tool_name);
-    if is_exempt || deadline.is_none() {
+    if exempt || deadline.is_none() {
         return fut.await;
     }
     let d = deadline.unwrap();
@@ -2558,9 +2590,10 @@ impl ServerHandler for JulieServerHandler {
         }
 
         let tool_name = request.name.as_ref().to_string();
+        let exempt = is_write_exempt(&tool_name, request.arguments.as_ref());
         let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
         let fut = self.tool_router.call(ToolCallContext::new(self, request, context));
-        dispatch_with_deadline(&tool_name, fut, deadline).await
+        dispatch_with_deadline(&tool_name, exempt, fut, deadline).await
     }
 
     async fn list_tools(
