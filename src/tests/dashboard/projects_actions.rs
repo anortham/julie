@@ -282,7 +282,13 @@ async fn test_projects_register_action_renders_tool_error_as_danger_notice() {
 
     assert_eq!(response.status().as_u16(), 200);
     let html = body_to_string(response.into_body()).await;
-    assert!(html.contains("Workspace registration requires daemon mode"));
+    assert!(html.contains("Workspace registration requires the workspace registry"));
+    // Guard: the registry-unavailable error must not point users at the
+    // `julie daemon` subcommand, which Phase 3d.2a removed.
+    assert!(
+        !html.contains("julie daemon"),
+        "registry errors must not reference the removed `julie daemon` subcommand, html={html}"
+    );
     assert!(
         html.contains("rgba(212, 70, 88, 0.35)"),
         "tool-level errors must render as danger notices, html={html}"

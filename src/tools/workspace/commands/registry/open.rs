@@ -39,7 +39,7 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         let Some(registry_store) = registry_store_for_handler(handler)? else {
             let message =
-                "Workspace open requires daemon mode. Start the daemon with `julie daemon`.";
+                "Workspace open requires the workspace registry, which is not available in the in-process server.";
             return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
         let cleanup_activity = cleanup_activity_for_handler(handler);

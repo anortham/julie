@@ -26,7 +26,7 @@ impl ManageWorkspaceTool {
             )]));
         }
         let Some(registry_store) = registry_store_for_handler(handler)? else {
-            let message = "Workspace registration requires daemon mode. Start the daemon with `julie daemon`.";
+            let message = "Workspace registration requires the workspace registry, which is not available in the in-process server.";
             return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
         let cleanup_activity = cleanup_activity_for_handler(handler);
@@ -210,9 +210,9 @@ impl ManageWorkspaceTool {
             );
         }
 
-        // Stdio mode: workspace registry requires daemon mode
+        // The in-process server does not wire a workspace registry.
         let message =
-            "Workspace removal requires daemon mode. Start the daemon with `julie daemon`.";
+            "Workspace removal requires the workspace registry, which is not available in the in-process server.";
         Ok(CallToolResult::error(vec![Content::text(message)]))
     }
 }
