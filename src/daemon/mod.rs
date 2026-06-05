@@ -3,7 +3,6 @@
 //! The canonical adapter path is Streamable HTTP over localhost.
 
 pub mod app;
-pub mod cli;
 
 pub mod database;
 
@@ -283,58 +282,29 @@ pub(crate) fn migrate_stale_workspace_ids(daemon_db: &DaemonDatabase, indexes_di
 
 /// Run the Julie daemon: bind HTTP transport, accept connections, serve MCP.
 ///
-/// This function blocks until a shutdown signal (SIGTERM/SIGINT) is received.
-/// HTTP is the daemon MCP transport.
-/// Run the Julie daemon: bind HTTP transport, accept connections, serve MCP.
-///
 /// Thin wrapper around `DaemonApp::new` + `serve`. Blocks until a shutdown
 /// signal (SIGTERM/SIGINT on POSIX, ctrl_c on Windows) is received. HTTP is
 /// the daemon MCP transport.
 ///
-/// Retained as the public entry point so existing callers (`julie daemon`,
-/// `julie-server daemon`, the integration test suite) keep working without
-/// modification. New callers should construct a `DaemonApp` directly and
-/// drive `serve`/`shutdown` themselves.
-pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Result<()> {
+/// Not a public entry point (Phase 3d.2a removed the `julie daemon` subcommand
+/// and `julie-daemon` binary). Retained for daemon server tests that survive
+/// until the HTTP server code is deleted in Phase 3d.2b.
+pub(crate) async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Result<()> {
     paths
         .ensure_dirs()
         .context("Failed to create daemon directories")?;
 
-    // Acquire the daemon singleton lock BEFORE binding any listener. When
-    // multiple `julie-server daemon` invocations race (the typical case when
-    // 3+ MCP harnesses fire session-start hooks in parallel), this gate
-    // collapses the thundering herd to one winner — losers exit silently
-    // with status 0 before doing any init work or binding any sockets.
     let daemon_lock = match self::app::acquire_or_yield_to_existing_daemon(&paths)? {
         Some(guard) => guard,
         None => {
-            // Another daemon is already up for this JULIE_HOME. Not an
-            // error — this is the expected outcome when an adapter spawns
-            // a daemon and one is already running. Stay silent on stderr;
-            // the adapter will discover the existing daemon via
-            // discovery.json on its next request.
             return Ok(());
         }
     };
 
-    // Port fallback: try requested port, fall back to auto-assign on
-    // EADDRINUSE. The listener we hand to DaemonApp::serve is the MCP HTTP
-    // listener; the dashboard binds its own port internally. With the lock
-    // held above, a fallback here would indicate a real problem (e.g. a
-    // leftover socket in TIME_WAIT from a crashed daemon) and is logged
-    // accordingly inside `bind_mcp_listener_with_fallback`.
     let listener = self::app::bind_mcp_listener_with_fallback(port).await?;
     let local_addr = listener.local_addr()?;
     let actual_port = local_addr.port();
 
-    // Publish discovery.json with phase="starting" BEFORE `DaemonApp::new`
-    // runs slow DB migrations + workspace backfill. Closes the cold-start
-    // race where the kernel `daemon.lock` is held but no liveness file is
-    // visible — concurrent adapters would otherwise see `Dead` and spawn
-    // duplicates. The publish at the end of `DaemonApp::serve` later
-    // overwrites this record atomically with phase="running". See
-    // `publish_starting_discovery` in `app/helpers.rs` for the full
-    // rationale and Codex's 2026-05-27 review (QW1).
     self::app::publish_starting_discovery(&paths, &local_addr.ip().to_string(), actual_port)
         .with_context(|| {
             format!(
@@ -349,16 +319,12 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         no_dashboard,
         runtime: DaemonRuntimeContext::default(),
         daemon_lock: Some(daemon_lock),
-        // Production: read live binary mtime via super::binary_mtime.
         current_binary_mtime: None,
     };
 
     let handle = DaemonApp::new(config)?.serve(listener).await?;
     let stop_notify = handle.stop_notify();
 
-    // Block on either the platform signal path or the Windows named-event
-    // stop path. On Unix, setup_stop_notify returns an unused Notify so this
-    // remains signal-driven.
     tokio::select! {
         signal = self::app::shutdown_signal() => {
             if let Err(e) = signal {

@@ -2,22 +2,13 @@
 //!
 //! Post-cutover (Phase 3c.3) the no-args invocation serves the MCP handler
 //! IN-PROCESS over stdio (leader-locked; no daemon fork). The `julie-adapter`
-//! stdio↔HTTP bridge was removed in Phase 3d.1; the `julie daemon` subcommands
-//! remain during the 3d daemon-teardown transition.
+//! stdio↔HTTP bridge was removed in Phase 3d.1; the `julie daemon` entry and
+//! `julie-daemon` binary were removed in Phase 3d.2a.
 //!
 //! Argv dispatch:
 //!   - no args                 → in-process MCP server (run_in_process_server)
-//!   - `daemon`                → `julie-daemon start` codepath (start_daemon)
-//!   - `stop` / `restart`      → `julie-daemon stop` codepath  (stop_daemon)
-//!   - `status`                → `julie-daemon status` codepath (status_daemon)
-//!   - `dashboard`             → open dashboard URL in browser (unchanged)
+//!   - `dashboard`             → open dashboard URL in browser
 //!   - tool subcommands        → run_cli_tool (standalone, in-process)
-//!
-//! All daemon lifecycle paths route through
-//! `julie::daemon::cli::{start_daemon, stop_daemon, status_daemon}` so the
-//! shim and `julie-daemon` share a single implementation. This is load-bearing:
-//! `start_daemon` enforces the A1.5 legacy-migration gate, and skipping it
-//! would re-open the silent-corruption window the gate exists to close.
 
 use clap::Parser;
 use julie::cli::{
@@ -32,13 +23,6 @@ async fn main() -> anyhow::Result<()> {
     let needs_workspace_startup_hint = cli_command_needs_workspace_startup_hint(&cli.command);
 
     match cli.command {
-        Some(Command::Daemon { port, no_dashboard }) => {
-            // Route through the shared helper used by `julie-daemon start`.
-            // Logging + legacy-migration gate + blocking run_daemon all live
-            // in one place to keep the two entry points behaviorally identical.
-            let paths = julie::paths::DaemonPaths::new();
-            julie::daemon::cli::start_daemon(paths, port, no_dashboard).await?;
-        }
         Some(Command::Dashboard) => {
             let paths = julie::paths::DaemonPaths::new();
             let port_file = paths.daemon_port();
@@ -62,20 +46,6 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Some(Command::Stop) => {
-            let paths = julie::paths::DaemonPaths::new();
-            julie::daemon::cli::stop_daemon(&paths)?;
-        }
-        Some(Command::Status) => {
-            let paths = julie::paths::DaemonPaths::new();
-            julie::daemon::cli::status_daemon(&paths);
-        }
-        Some(Command::Restart) => {
-            let paths = julie::paths::DaemonPaths::new();
-            julie::daemon::cli::stop_daemon(&paths)?;
-            println!("Daemon stopped. Will auto-restart on next tool call.");
-        }
-
         // Tool commands: routed through the CLI execution core
         Some(Command::Search(args)) => {
             run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;

@@ -24,10 +24,6 @@ name = "julie-server"
 path = "src/main.rs"
 
 [[bin]]
-name = "julie-daemon"
-path = "src/bin/julie-daemon.rs"
-
-[[bin]]
 name = "julie-embedding-host"
 path = "src/bin/julie-embedding-host.rs"
 

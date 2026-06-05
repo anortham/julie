@@ -30,23 +30,8 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
     // -- Lifecycle commands --------------------------------------------------
-    /// Run as persistent daemon (HTTP + IPC transport)
-    Daemon {
-        /// MCP HTTP port for the daemon (default: 7890, fallback to auto if taken). Dashboard auto-assigns its own port.
-        #[arg(long, default_value = "7890")]
-        port: u16,
-        /// Disable auto-opening dashboard in browser
-        #[arg(long)]
-        no_dashboard: bool,
-    },
     /// Open the dashboard in the default browser
     Dashboard,
-    /// Stop the running daemon
-    Stop,
-    /// Check daemon status
-    Status,
-    /// Stop daemon; it will auto-restart on next tool call
-    Restart,
 
     // -- Tool commands (named wrappers) --------------------------------------
     /// Search code, symbols, or file paths
