@@ -1,23 +1,18 @@
-//! T12 — in-process boundary tripwire (Phase 3c.3).
+//! T12 — in-process boundary tripwire (Phase 3d.1).
 //!
-//! Pins the 3c/3d boundary so a reviewer can prove the cutover **bypassed** the
-//! daemon/adapter rather than **deleting** it (deletion is Phase 3d). Three
-//! guarantees, all cheap and source-level:
+//! Updated from 3c.3: adapter module, `http_client.rs`, and `julie-adapter` binary
+//! deleted in 3d.1. Remaining §7-DAG daemon server files stay bypassed until 3d.2/3d.3.
+//! Two guarantees:
 //!
 //!   1. **No-args path serves in-process.** `src/main.rs`'s `None =>` arm calls
 //!      `run_in_process_server` and NEVER `run_adapter` / `DaemonLauncher`. The
 //!      old fork-daemon-and-bridge-stdio path is gone from the default entry.
-//!   2. **The §7-DAG files still exist.** Every file the 3d deletion DAG will
-//!      eventually remove (adapter/**, `bin/julie-adapter.rs`, the daemon HTTP
-//!      transport, singleton/legacy/pid, search_compare, migration.rs) is still
-//!      present on the 3c branch — bypassed, not deleted.
-//!   3. **The bypassed code still compiles.** This test lives in the `julie` lib
-//!      crate, whose `lib.rs` declares `pub mod adapter;` and `pub mod daemon;`.
-//!      If any file under those modules were deleted (while still `mod`-declared)
-//!      or stopped compiling, this test would fail to BUILD. The explicit
-//!      `run_adapter` / `start_daemon` path references below make that guard
-//!      load-bearing for the two entry symbols most likely to be pruned by
-//!      mistake.
+//!   2. **The remaining §7-DAG files still exist.** The daemon HTTP transport,
+//!      singleton/legacy/pid, search_compare, and migration.rs are still present
+//!      — bypassed, not deleted (deletion is 3d.2/3d.3).
+//!   3. **The bypassed daemon code still compiles.** This test lives in the `julie`
+//!      lib crate, whose `lib.rs` declares `pub mod daemon;`. The explicit
+//!      `start_daemon` path reference below keeps the daemon CLI entry load-bearing.
 
 use std::fs;
 use std::path::Path;
@@ -32,13 +27,11 @@ fn code_part(line: &str) -> &str {
     }
 }
 
-/// Guarantee 3 (compile-time): force the bypassed entry symbols to still resolve.
-/// If the adapter module or `run_adapter` is removed before Phase 3d, this fails
-/// to COMPILE — a louder, earlier signal than the runtime assertions below.
+/// Guarantee 3 (compile-time): force the bypassed daemon entry symbol to still resolve.
+/// If `start_daemon` is removed before Phase 3d.2, this fails to COMPILE — a louder,
+/// earlier signal than the runtime assertions below.
 #[allow(dead_code)]
 fn _bypassed_entry_points_still_compile() {
-    // `run_adapter` — the old no-args entry, now bypassed by the cutover.
-    let _adapter_entry = crate::adapter::run_adapter;
     // The daemon lifecycle entry is still reachable via the `daemon` subcommand.
     let _daemon_entry = crate::daemon::cli::start_daemon;
 }
@@ -104,26 +97,18 @@ fn no_args_main_serves_in_process_not_adapter() {
     );
 }
 
-/// Guarantee 2: every file the Phase 3d deletion DAG (§7) will remove is still
-/// present on the 3c branch. Bypassed, not deleted.
+/// Guarantee 2: every file the later 3d sub-PRs (3d.2/3d.3) will remove is still
+/// present on the 3d.1 branch. Bypassed, not deleted.
+/// (adapter/**, http_client.rs, julie-adapter.rs were deleted in 3d.1.)
 #[test]
 fn section7_dag_files_are_bypassed_not_deleted() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
-    // The §7 deletion DAG, by concrete path (verified against the tree on the
-    // 3c branch). Grouped by the design-doc shorthand for reviewer clarity.
+    // Remaining §7-DAG files after 3d.1 deletions. Grouped by design-doc shorthand.
     let section7_files: &[&str] = &[
-        // adapter/**
-        "src/adapter/mod.rs",
-        "src/adapter/forwarder.rs",
-        "src/adapter/http_stdio.rs",
-        "src/adapter/launcher.rs",
-        // bin/julie-adapter.rs
-        "src/bin/julie-adapter.rs",
         // daemon HTTP transport
         "src/daemon/http_transport.rs",
         "src/daemon/transport.rs",
-        "src/daemon/http_client.rs",
         // singleton / legacy / pid
         "src/daemon/singleton.rs",
         "src/daemon/legacy_migration.rs",
@@ -142,7 +127,7 @@ fn section7_dag_files_are_bypassed_not_deleted() {
 
     assert!(
         missing.is_empty(),
-        "Phase 3c bypasses but MUST NOT delete the §7-DAG daemon/adapter files \
-         (deletion is Phase 3d). Missing: {missing:?}"
+        "Phase 3d.1 deleted adapter/http_client but MUST NOT delete the remaining \
+         §7-DAG daemon server files (deletion is 3d.2/3d.3). Missing: {missing:?}"
     );
 }

@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 
-use crate::adapter::launcher::{DaemonLauncher, DaemonReadiness};
 use crate::daemon::discovery::{AcquireError, DaemonLockGuard, DiscoveryFile, DiscoveryState};
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::mcp_session::{DaemonMcpSession, DaemonSessionDependencies};
@@ -111,13 +110,6 @@ async fn test_daemon_app_serve_and_shutdown() {
         }
         other => panic!("expected live discovery.json after serve, got {other:?}"),
     }
-    let launcher = DaemonLauncher::new(paths.clone());
-    assert_eq!(
-        launcher.daemon_readiness(),
-        DaemonReadiness::Ready,
-        "adapter launcher must be able to probe the discovery.json endpoint"
-    );
-
     // Probe MCP readiness via the discovery file the daemon wrote. This proves
     // the listener is reachable AND that the bearer token / discovery wiring
     // matches what a real client would observe.

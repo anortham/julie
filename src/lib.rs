@@ -24,7 +24,6 @@ pub mod utils;
 pub use julie_runtime::watcher;
 pub use julie_runtime::workspace;
 
-pub mod adapter;
 pub mod daemon;
 pub mod dashboard;
 pub mod embedding_host_launch;
