@@ -207,6 +207,26 @@ A mapping workflow classified every `src/daemon` file and proved the keep-set is
 
 Same as 3d.1's Task 4: `cargo xtask test dev` + `system` + `reliability` GREEN at the 3d.2a HEAD (these run the daemon integration tripwires `--no-run` skips); record the ledger; codex pre-merge review; push; PR for **human merge**.
 
+#### 3d.2a Verification Ledger
+
+Gate authority: per [[feedback_prefer_fast_per_crate_gates]] the `cargo xtask test dev/system/reliability` bucket runner flakes on per-bucket timeouts under cold-compile/load, so the branch gate is the **per-crate superset** `cargo nextest run -p julie --no-fail-fast -- --skip search_quality` (runs all 1659 tests incl. the daemon integration tripwires that `--no-run` skips and the daemon-harness tests the buckets exclude) plus a focused re-verify of the F1-changed path and the 3d.2a structural tripwires.
+
+| Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
+|---|---|---|---|---|---|---|
+| 3d.2a structural tripwires: no-args serves in-process (not daemon), §7 DAG files bypassed-not-deleted, e2e no-fork | `cargo nextest run -p julie -E 'test(/in_process_boundary/) | test(/wiring_a1_8/)'` | branch-gate (tripwires) | 6944029d | pass (3/3) | no |
+| F1 fix: registry errors no longer reference removed `julie daemon`; dashboard register-error renders new message + guard | `cargo nextest run -p julie -E 'test(/dashboard::projects_actions/) | test(/in_process_boundary/) | test(/wiring_a1_8/)'` | affected-change | 6944029d | pass (15/15) | no |
+| Whole-crate regression: 3d.2a introduces no new failures | `cargo nextest run -p julie --no-fail-fast -- --skip search_quality` | branch-gate (superset) | 6944029d | 1655/1659 pass; 4 fails ALL pre-existing/env (see below), none from 3d.2a | 2026-06-05T17:02:35Z | no |
+| Compile authority (cfg(test) included) | `cargo nextest run -p julie --no-run` | branch-gate (compile) | 6944029d | pass (clean; only deferred `fd_limit` dead-code warns) | 2026-06-05T17:02:35Z | no |
+| No dangling deleted symbols in live builds | codex: `cargo build --bins` + `cargo nextest run -p julie --no-run` + `cargo check -p xtask` | escalation review | 5fd9c1ea | pass (codex-confirmed) | no |
+
+**The 4 whole-crate failures @ 6944029d — all root-caused, none introduced by 3d.2a (registry strings + daemon-entry deletion), all OUTSIDE the documented gate tiers:**
+1. `daemon::embedding_host_optin::host_unavailable_when_health_not_ready` — **flake** (passes in isolation). Binary-resolution: test spawns `julie-embedding-host` "next to current executable" (= `target/debug/deps/`), missing under parallel load; [[project_e2e_daemon_tests_stale_binary_flake]]. Untouched by branch; passed at 5fd9c1ea.
+2. `daemon::restart_listener::daemon_reaps_idle_session...` — **flake** (passes in isolation). Documented daemon-reaper timing budget under load.
+3. `harness::in_process::test_in_process_daemon_starts_and_shuts_down` — **deterministic pre-existing test bug** (since `781884b7`, ancestor of base). Reads `daemon_mcp_token()` = `daemon-mcp.token`, but the HTTP transport writes `token_file()` = `daemon.token` (nothing writes `daemon-mcp.token`). Product fine (readiness probe passes). Self-resolves in 3d.2b (deletes the `InProcessDaemon` harness).
+4. `tools::get_symbols_target_filtering_dogfood::test_target_minimal_mode_includes_body_for_child_symbols` — **deterministic pre-existing test bug** (since `5f086d10`, ancestor of base). Hardcodes `src/tools/symbols/mod.rs` (line 37), refactored away. Unrelated dogfood-fixture path drift; flagged for separate maintenance fix.
+
+External review: codex (gpt-5.5, escalation tier) @ 5fd9c1ea, verdict needs-attention, 1 medium finding (F1) — verified real, fixed @ 6944029d. No dangling deleted symbols (codex-confirmed clean builds).
+
 ---
 
 ## 3d.2b — Server-core kill (OUTLINE — detail when reached)
