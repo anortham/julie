@@ -728,8 +728,15 @@ impl JulieWorkspace {
         }
     }
 
-    /// Start file watching if initialized
-    pub async fn start_file_watching(&mut self) -> Result<()> {
+    /// Start file watching if initialized.
+    ///
+    /// `is_leader` is a defense-in-depth gate: non-leader (follower/loser)
+    /// processes must never start the OS notify watcher or spawn watcher
+    /// tasks, even if a caller forgets the outer `handler.is_leader()` check.
+    pub async fn start_file_watching(&mut self, is_leader: bool) -> Result<()> {
+        if !is_leader {
+            return Ok(());
+        }
         if let Some(ref mut watcher) = self.watcher {
             watcher.start_watching().await?;
             info!("File watching started");
