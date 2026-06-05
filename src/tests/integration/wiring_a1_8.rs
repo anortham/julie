@@ -2,11 +2,14 @@
 //!
 //! These tests exercise the integrated `julie-server` compat shim,
 //! `julie-adapter`, and `julie-daemon` binaries against a freshly built
-//! target tree. They verify the four acceptance scenarios from the plan:
+//! target tree. They verify the acceptance scenarios from the plan:
 //!
-//!   1. `julie-server` (no args) on a clean `JULIE_HOME` spawns the daemon
-//!      and round-trips an MCP `initialize` request.
-//!   2. `julie-adapter` invoked directly does the same.
+//!   1. `julie-server` (no args) serves the MCP session **IN-PROCESS** and
+//!      round-trips an `initialize` request **WITHOUT** forking a daemon
+//!      (Phase 3c.3 cutover — the no-args path no longer publishes
+//!      `discovery.json`). The daemon/adapter binaries below are bypassed,
+//!      not deleted, so scenarios 2–5 still drive them directly.
+//!   2. `julie-adapter` invoked directly spawns the daemon and round-trips.
 //!   3. `julie-adapter` against an already-running daemon attaches without
 //!      spawning a duplicate.
 //!   4. The daemon survives adapter exit (detached spawn); the adapter
@@ -164,11 +167,12 @@ impl Drop for DaemonGuard {
 }
 
 // ---------------------------------------------------------------------------
-// Test #1: julie-server (no args) spawns daemon, round-trips initialize
+// Test #1: julie-server (no args) serves IN-PROCESS — no daemon fork
+//          (Phase 3c.3 cutover; was test_e2e_julie_server_no_args_spawns_daemon)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_e2e_julie_server_no_args_spawns_daemon() {
+fn test_e2e_julie_server_no_args_serves_in_process() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let home = tmp.path().to_path_buf();
     let julie_home = home.join(".julie");
@@ -177,9 +181,13 @@ fn test_e2e_julie_server_no_args_spawns_daemon() {
 
     let mut guard = DaemonGuard::new(paths.clone());
 
+    // Run the no-args server with its CWD pinned to the temp dir so the
+    // in-process server resolves an isolated, empty workspace (logs + index
+    // land under {home}/.julie/) instead of indexing the real repo root.
     let server_bin = binary_path("julie-server");
-    let adapter = Command::new(&server_bin)
+    let server = Command::new(&server_bin)
         .env("HOME", &home)
+        .current_dir(&home)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -187,21 +195,27 @@ fn test_e2e_julie_server_no_args_spawns_daemon() {
         .expect("spawn julie-server (no args)");
 
     // Keep the child for guard cleanup, but pull stdio first.
-    let mut adapter = adapter;
-    let response = round_trip_initialize(&mut adapter, Duration::from_secs(60));
-    let _ = adapter.kill();
-    let _ = adapter.wait();
-    guard.push(adapter);
+    let mut server = server;
+    let response = round_trip_initialize(&mut server, Duration::from_secs(60));
+    let _ = server.kill();
+    let _ = server.wait();
+    guard.push(server);
 
+    // The cutover serves MCP directly over stdio, so the round-trip still works.
     assert!(
         response.contains("\"jsonrpc\"") && response.contains("\"id\":1"),
-        "julie-server (no args) must round-trip MCP initialize; got: {}",
+        "julie-server (no args) must round-trip MCP initialize IN-PROCESS; got: {}",
         response.trim()
     );
 
+    // The defining cutover invariant: the no-args path does NOT fork a daemon,
+    // so NO discovery.json is ever published. (The daemon/adapter binaries are
+    // bypassed, not deleted — tests #2–5 still drive them directly.)
     assert!(
-        live_discovery_pid(&paths).is_some(),
-        "daemon must have published a live discovery.json at {}",
+        live_discovery_pid(&paths).is_none(),
+        "julie-server (no args) must serve IN-PROCESS and NOT spawn a daemon — \
+         a live discovery.json appeared at {}, meaning the cutover regressed to \
+         the fork-daemon path",
         paths.discovery_file().display()
     );
 }
