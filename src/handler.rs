@@ -28,6 +28,7 @@ use rmcp::{
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock as StdRwLock};
+use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
@@ -2376,6 +2377,72 @@ impl JulieServerHandler {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Per-request deadline / hang guard
+// ---------------------------------------------------------------------------
+
+/// Default per-request deadline for read/query tools when the env var is unset.
+const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 120;
+
+/// Override with this env var. Set to `"0"` to disable the deadline entirely.
+const REQUEST_TIMEOUT_ENV: &str = "JULIE_INPROCESS_REQUEST_TIMEOUT_SECS";
+
+/// Tools that must never be deadline-bounded: they perform canonical writes
+/// or long-running workspace mutations that would corrupt state if interrupted.
+const EXEMPT_WRITER_TOOLS: &[&str] =
+    &["edit_file", "rename_symbol", "rewrite_symbol", "manage_workspace"];
+
+/// Parse the per-request deadline from an optional raw env-var string.
+///
+/// - `Some("0")` → `None` (disabled; the tool is awaited without any ceiling).
+/// - `None | Some("<invalid>")` → `Some(DEFAULT_REQUEST_TIMEOUT_SECS s)`.
+/// - `Some("N")` (N > 0) → `Some(Duration::from_secs(N))`.
+pub(crate) fn parse_request_timeout(raw: Option<String>) -> Option<Duration> {
+    const DEFAULT: Duration = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS);
+    match raw.as_deref().map(str::trim) {
+        Some("0") => None,
+        Some(s) => match s.parse::<u64>() {
+            Ok(0) => None,
+            Ok(n) => Some(Duration::from_secs(n)),
+            Err(_) => Some(DEFAULT),
+        },
+        None => Some(DEFAULT),
+    }
+}
+
+/// Dispatch a tool call with an optional per-request deadline.
+///
+/// Writer tools (`edit_file`, `rename_symbol`, `rewrite_symbol`,
+/// `manage_workspace`) are always awaited unboundedly — aborting a canonical
+/// write mid-transaction would corrupt workspace state. All other tools are
+/// bounded by `deadline` when it is `Some`.
+///
+/// On expiry, returns `Err(McpError)` naming the tool and the elapsed ceiling
+/// so the caller gets a JSON-RPC error rather than a session hang.
+pub(crate) async fn dispatch_with_deadline(
+    tool_name: &str,
+    fut: impl std::future::Future<Output = Result<CallToolResult, McpError>>,
+    deadline: Option<Duration>,
+) -> Result<CallToolResult, McpError> {
+    let is_exempt = EXEMPT_WRITER_TOOLS.contains(&tool_name);
+    if is_exempt || deadline.is_none() {
+        return fut.await;
+    }
+    let d = deadline.unwrap();
+    match tokio::time::timeout(d, fut).await {
+        Ok(result) => result,
+        Err(_elapsed) => Err(McpError::internal_error(
+            format!(
+                "tool '{}' did not respond within {}s; \
+                 request timed out to prevent session hang",
+                tool_name,
+                d.as_secs()
+            ),
+            None,
+        )),
+    }
+}
+
 /// ServerHandler implementation
 impl ServerHandler for JulieServerHandler {
     fn get_info(&self) -> ServerInfo {
@@ -2417,9 +2484,10 @@ impl ServerHandler for JulieServerHandler {
                 .map_err(|err| McpError::internal_error(err.to_string(), None))?;
         }
 
-        self.tool_router
-            .call(ToolCallContext::new(self, request, context))
-            .await
+        let tool_name = request.name.as_ref().to_string();
+        let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
+        let fut = self.tool_router.call(ToolCallContext::new(self, request, context));
+        dispatch_with_deadline(&tool_name, fut, deadline).await
     }
 
     async fn list_tools(
