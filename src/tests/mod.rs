@@ -153,7 +153,6 @@ pub mod integration {
     pub mod documentation_indexing;
     pub mod in_process_boundary; // T12: in-process boundary tripwire (cutover bypasses, not deletes, daemon/adapter)
     pub mod indexing_pipeline;
-    pub mod legacy_migration; // Daemon legacy-migration gate tests (A1.5) // Documentation indexing E2E tests (RAG POC)
     pub mod lock_contention; // Lock contention regression tests
     pub mod projection_repair;
     pub mod t11_kill_writer; // T11: kill-the-writer HARD GATE (lock kernel-release + crash-gap recovery)

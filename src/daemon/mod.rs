@@ -11,7 +11,6 @@ pub mod discovery;
 pub mod embedding_service;
 pub(crate) mod fd_limit;
 pub mod http_transport;
-pub mod legacy_migration;
 pub mod lifecycle;
 pub mod mcp_session;
 pub mod pid;

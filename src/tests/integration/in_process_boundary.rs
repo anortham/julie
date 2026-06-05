@@ -110,9 +110,8 @@ fn section7_dag_files_are_bypassed_not_deleted() {
         // daemon HTTP transport
         "src/daemon/http_transport.rs",
         "src/daemon/transport.rs",
-        // singleton / legacy / pid
+        // singleton / pid
         "src/daemon/singleton.rs",
-        "src/daemon/legacy_migration.rs",
         "src/daemon/pid.rs",
         // search_compare
         "src/daemon/database/search_compare.rs",
