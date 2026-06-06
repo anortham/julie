@@ -154,8 +154,6 @@ pub mod integration {
     pub mod indexing_pipeline;
     pub mod lock_contention; // Lock contention regression tests
     pub mod projection_repair;
-    pub mod t11_kill_writer; // T11: kill-the-writer HARD GATE (lock kernel-release + crash-gap recovery)
-    pub mod t9_handoff_recovery; // T9: leader handoff recovery + follower structural gate
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
     pub mod real_world_validation; // Real-world code validation tests
@@ -167,10 +165,11 @@ pub mod integration {
     pub mod sidecar_test_helpers; // Shared fake-sidecar helpers for integration tests
     pub mod stale_index_detection; // Stale index detection tests
     pub mod system_health;
+    pub mod t11_kill_writer; // T11: kill-the-writer HARD GATE (lock kernel-release + crash-gap recovery)
+    pub mod t9_handoff_recovery; // T9: leader handoff recovery + follower structural gate
     pub mod target_workspace; // Target-workspace tests
     // watcher, watcher_filtering, watcher_handlers, watcher_mutation_gate,
     // watcher_observability, watcher_queue — relocated to julie-runtime (T2c.3)
-    pub mod wiring_a1_8; // A1.8 end-to-end wiring tests (adapter + daemon split)
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests) // Daemon + adapter integration tests (lifecycle, pool sharing, IPC, migration)
     pub mod zero_hit_replay_task3; // Task 3 diagnostic harness (ignored): replay content zero-hit fixture.
     pub mod zero_hit_replay_tests; // Task 12 acceptance harness (ignored): replay zero-hit fixture end-to-end and assert rates.
@@ -306,11 +305,6 @@ pub mod dashboard;
 // DAEMON TESTS - v6 daemon infrastructure (paths, PID, lifecycle)
 // ============================================================================
 pub mod daemon;
-
-// ============================================================================
-// MIGRATION TESTS - v6 index migration from per-project to centralized
-// ============================================================================
-pub mod migration;
 
 // ============================================================================
 // EXTRACTOR TESTS - Live in the external julie-extractors repo

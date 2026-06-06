@@ -29,7 +29,7 @@ impl ManageWorkspaceTool {
             let message = "Workspace registration requires the workspace registry, which is not available in the in-process server.";
             return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
-        let cleanup_activity = cleanup_activity_for_handler(handler);
+        let cleanup_activity = cleanup_activity_for_handler(handler).await;
 
         if let Err(error) = prune_missing_workspaces(&registry_store, &cleanup_activity).await {
             warn!(
@@ -175,7 +175,7 @@ impl ManageWorkspaceTool {
         info!("Removing workspace: {}", workspace_id);
 
         if let Some(registry_store) = registry_store_for_handler(handler)? {
-            let cleanup_activity = cleanup_activity_for_handler(handler);
+            let cleanup_activity = cleanup_activity_for_handler(handler).await;
             return Ok(
                 match delete_workspace_if_allowed(
                     &registry_store,
@@ -211,8 +211,7 @@ impl ManageWorkspaceTool {
         }
 
         // The in-process server does not wire a workspace registry.
-        let message =
-            "Workspace removal requires the workspace registry, which is not available in the in-process server.";
+        let message = "Workspace removal requires the workspace registry, which is not available in the in-process server.";
         Ok(CallToolResult::error(vec![Content::text(message)]))
     }
 }

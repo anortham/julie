@@ -6,16 +6,6 @@
         {% if report.from_cache %}Cached report{% else %}Fresh report{% endif %}
       </p>
     </div>
-    <form method="post"
-          action="/signals/{{ workspace_id }}/refresh"
-          hx-post="/signals/{{ workspace_id }}/refresh"
-          hx-target="#signals-summary"
-          hx-swap="innerHTML">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" class="button is-dark is-small" style="font-size: 0.78rem;">
-        Refresh
-      </button>
-    </form>
   </div>
 
   <div class="fingerprint-grid" style="margin-bottom: 1rem;">

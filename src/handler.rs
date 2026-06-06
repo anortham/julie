@@ -1,15 +1,15 @@
+#[path = "handler/embedding_init.rs"]
+pub(crate) mod embedding_init;
 #[path = "handler/search_telemetry.rs"]
 pub(crate) mod search_telemetry;
 pub mod session_workspace;
+#[path = "handler/tool_context_impl.rs"]
+mod tool_context_impl;
 #[path = "handler/tool_metrics.rs"]
 pub(crate) mod tool_metrics;
 #[path = "handler/tool_targets.rs"]
 pub(crate) mod tool_targets;
 pub(crate) mod tools;
-#[path = "handler/tool_context_impl.rs"]
-mod tool_context_impl;
-#[path = "handler/embedding_init.rs"]
-pub(crate) mod embedding_init;
 #[path = "handler/workspace_resolution.rs"]
 pub(crate) mod workspace_resolution;
 
@@ -99,9 +99,7 @@ impl PrimarySwapRollback {
         // stdio/daemon handlers use `LeadershipState::none()` (is_leader()==false)
         // but ARE the sole writer and must restore their watcher. Only an
         // in-process FOLLOWER must skip it (the leader owns writes).
-        if handler.daemon_db.is_none()
-            && !handler.is_in_process_follower()
-        {
+        if handler.daemon_db.is_none() && !handler.is_in_process_follower() {
             if let Some(workspace) = restored_workspace.as_mut() {
                 if workspace.config.incremental_updates {
                     workspace.initialize_file_watcher()?;
@@ -648,12 +646,10 @@ impl JulieServerHandler {
                     GateOutcome::AlreadyBound
                 } else {
                     match self.list_roots_from_peer(peer).await {
-                        Ok(roots) => {
-                            match self.reconcile_primary_workspace_roots(roots).await {
-                                Ok(reconciled) => GateOutcome::Reconciled(reconciled),
-                                Err(err) => GateOutcome::Failed(err),
-                            }
-                        }
+                        Ok(roots) => match self.reconcile_primary_workspace_roots(roots).await {
+                            Ok(reconciled) => GateOutcome::Reconciled(reconciled),
+                            Err(err) => GateOutcome::Failed(err),
+                        },
                         Err(err) => GateOutcome::Failed(err),
                     }
                 }
@@ -1629,11 +1625,8 @@ impl JulieServerHandler {
                     "🗑️ Cleared in-process db+tantivy for force reindex under {} (leader.lock preserved)",
                     index_root.display()
                 );
-                JulieWorkspace::initialize_with_index_root(
-                    target_path.clone(),
-                    index_root.clone(),
-                )
-                .await
+                JulieWorkspace::initialize_with_index_root(target_path.clone(), index_root.clone())
+                    .await
             } else {
                 // For force reindex, we only clear derived data, NOT the database (source of truth)
                 let julie_dir = target_path.join(".julie");
@@ -1722,11 +1715,7 @@ impl JulieServerHandler {
                 // without this branch, `initialize` would create project-local storage
                 // while the leader lock sits in the daemon path, letting two processes
                 // silently "lead" the same workspace.
-                JulieWorkspace::initialize_with_index_root(
-                    target_path,
-                    index_root.clone(),
-                )
-                .await
+                JulieWorkspace::initialize_with_index_root(target_path, index_root.clone()).await
             } else {
                 // Try to load existing workspace first
                 match JulieWorkspace::detect_and_load(target_path.clone()).await? {
@@ -1880,6 +1869,33 @@ impl JulieServerHandler {
                 })
             }
         }
+    }
+
+    pub(crate) async fn metrics_source_bytes_for_binding(
+        &self,
+        binding: Option<&PrimaryWorkspaceBinding>,
+        source_file_paths: &[String],
+    ) -> Option<u64> {
+        if source_file_paths.is_empty() {
+            return None;
+        }
+        let binding = binding?;
+        let snapshot = self
+            .primary_workspace_snapshot_from_binding_paths(binding)
+            .await
+            .ok()?;
+        let database = Arc::clone(&snapshot.database);
+        let paths = source_file_paths.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let path_refs: Vec<&str> = paths.iter().map(String::as_str).collect();
+            let db = database
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            db.get_total_file_sizes(&path_refs).ok()
+        })
+        .await
+        .ok()
+        .flatten()
     }
 
     /// Extract output byte count from a CallToolResult.
@@ -2743,7 +2759,9 @@ impl ServerHandler for JulieServerHandler {
         }
 
         let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
-        let fut = self.tool_router.call(ToolCallContext::new(self, request, context));
+        let fut = self
+            .tool_router
+            .call(ToolCallContext::new(self, request, context));
         dispatch_with_deadline(&tool_name, exempt, fut, deadline).await
     }
 

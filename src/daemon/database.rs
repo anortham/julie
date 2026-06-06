@@ -1,24 +1,20 @@
 //! Persistent daemon state: workspace registry, codehealth snapshots, tool call history.
 //!
-//! `DaemonDatabase` wraps a single SQLite connection to `~/.julie/daemon.db`.
+//! `DaemonDatabase` wraps a single SQLite connection to `~/.julie/registry.db`.
 //! It is shared across all sessions as `Arc<DaemonDatabase>`. The internal
 //! `Mutex<Connection>` makes it safe to call from multiple tokio tasks.
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::warn;
 
 mod codehealth;
 mod migrations;
-mod search_compare;
 mod tool_calls;
 mod workspaces;
 
 pub use codehealth::{CodehealthSnapshot, CodehealthSnapshotRow};
-pub use search_compare::{
-    SearchCompareCaseInput, SearchCompareCaseRow, SearchCompareRunInput, SearchCompareRunRow,
-};
 pub use tool_calls::SearchToolCallRow;
 pub use workspaces::{WorkspaceCleanupEventRow, WorkspaceRow};
 
@@ -32,19 +28,23 @@ pub struct DaemonDatabase {
 }
 
 impl DaemonDatabase {
-    /// Open (or create) the daemon database at `path`, running migrations as needed.
+    /// Open (or create) the registry database at `path`, running migrations as needed.
     ///
     /// If the database is corrupt, deletes and recreates it (corruption recovery).
     pub fn open(path: &Path) -> Result<Self> {
+        migrate_legacy_daemon_db_file(path)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let conn = match Connection::open(path) {
             Ok(c) => c,
             Err(e) => {
-                warn!("Failed to open daemon.db ({}), attempting recovery", e);
+                warn!("Failed to open registry.db ({}), attempting recovery", e);
                 if path.exists() {
                     std::fs::remove_file(path)?;
                 }
                 Connection::open(path).with_context(|| {
-                    format!("Failed to create fresh daemon.db at {}", path.display())
+                    format!("Failed to create fresh registry.db at {}", path.display())
                 })?
             }
         };
@@ -293,4 +293,57 @@ fn now_unix() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64
+}
+
+fn migrate_legacy_daemon_db_file(path: &Path) -> Result<()> {
+    if path.file_name().and_then(|name| name.to_str()) != Some("registry.db") || path.exists() {
+        return Ok(());
+    }
+
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    let legacy = parent.join("daemon.db");
+    if !legacy.exists() {
+        return Ok(());
+    }
+
+    if let Ok(conn) = Connection::open(&legacy) {
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+    }
+
+    move_file(&legacy, path)?;
+    move_file_if_exists(
+        &sqlite_sidecar_path(&legacy, "-wal"),
+        &sqlite_sidecar_path(path, "-wal"),
+    )?;
+    move_file_if_exists(
+        &sqlite_sidecar_path(&legacy, "-shm"),
+        &sqlite_sidecar_path(path, "-shm"),
+    )?;
+    Ok(())
+}
+
+fn sqlite_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut sidecar = path.as_os_str().to_os_string();
+    sidecar.push(suffix);
+    PathBuf::from(sidecar)
+}
+
+fn move_file_if_exists(from: &Path, to: &Path) -> Result<()> {
+    if from.exists() {
+        move_file(from, to)?;
+    }
+    Ok(())
+}
+
+fn move_file(from: &Path, to: &Path) -> Result<()> {
+    match std::fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            std::fs::copy(from, to)?;
+            std::fs::remove_file(from)?;
+            Ok(())
+        }
+    }
 }

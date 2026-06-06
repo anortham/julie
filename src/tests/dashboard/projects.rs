@@ -10,7 +10,7 @@ use tower::ServiceExt;
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::lifecycle::{LifecyclePhase, ShutdownCause};
 use crate::daemon::session::SessionTracker;
-use crate::dashboard::routes::projects_actions::{
+use crate::dashboard::routes::search_session::{
     cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
 };
 use crate::dashboard::state::DashboardState;
@@ -24,22 +24,14 @@ async fn body_to_string(body: Body) -> String {
     String::from_utf8(bytes.to_vec()).expect("utf8 body")
 }
 
-fn action_ready_state() -> (
-    DashboardState,
-    Arc<DaemonDatabase>,
-    tempfile::TempDir,
-) {
+fn action_ready_state() -> (DashboardState, Arc<DaemonDatabase>, tempfile::TempDir) {
     action_state_with_phase(LifecyclePhase::Ready, false)
 }
 
 fn action_state_with_phase(
     phase: LifecyclePhase,
     restart_pending: bool,
-) -> (
-    DashboardState,
-    Arc<DaemonDatabase>,
-    tempfile::TempDir,
-) {
+) -> (DashboardState, Arc<DaemonDatabase>, tempfile::TempDir) {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let daemon_db =
         Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon"));
@@ -140,9 +132,9 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
 
     assert_eq!(response.status().as_u16(), 200);
     let html = body_to_string(response.into_body()).await;
-    assert!(html.contains("Add Workspace"));
     assert!(html.contains("Recent Cleanup"));
-    assert!(html.contains("name=\"csrf_token\""));
+    assert!(!html.contains("Add Workspace"));
+    assert!(!html.contains("name=\"csrf_token\""));
     assert!(html.contains("CURRENT"));
     assert!(html.contains("ACTIVE"));
     assert!(html.contains("KNOWN"));
@@ -153,12 +145,9 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
     assert!(html.contains("auto prune"));
     assert!(html.contains("missing path"));
     assert!(html.contains("projects-table-shell"));
-    assert!(html.contains("/projects/current_ws/refresh"));
-    assert!(html.contains("/projects/stale_ws/open"));
-    assert!(
-        !html.contains("/projects/blocked_ws/open"),
-        "blocked missing workspaces should not offer an inline prune/open action"
-    );
+    assert!(!html.contains("/projects/current_ws/refresh"));
+    assert!(!html.contains("/projects/stale_ws/open"));
+    assert!(!html.contains("/projects/blocked_ws/open"));
     assert!(!html.contains("/projects/current_ws/delete"));
     assert!(
         !html.contains("Reference Workspaces"),
@@ -194,14 +183,8 @@ async fn test_projects_page_keeps_row_actions_compact() {
         html.contains("projects-table-shell"),
         "projects table should render inside the responsive shell"
     );
-    assert!(
-        html.contains(&format!("action=\"/projects/{workspace_id}/refresh\"")),
-        "healthy row should keep the quick refresh action inline"
-    );
-    assert!(
-        !html.contains(&format!("action=\"/projects/{workspace_id}/delete\"")),
-        "delete should stay out of the compact table row"
-    );
+    assert!(!html.contains(&format!("action=\"/projects/{workspace_id}/refresh\"")));
+    assert!(!html.contains(&format!("action=\"/projects/{workspace_id}/delete\"")));
 }
 
 #[tokio::test]
@@ -229,18 +212,13 @@ async fn test_projects_register_action_indexes_workspace_without_activating_it()
         .await
         .unwrap();
 
-    assert_eq!(response.status().as_u16(), 200);
-    let html = body_to_string(response.into_body()).await;
-    assert!(html.contains("Workspace Registered"));
+    assert_eq!(response.status().as_u16(), 404);
 
     let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
-    let row = daemon_db
-        .get_workspace(&workspace_id)
-        .unwrap()
-        .expect("registered row");
-    assert_eq!(row.status, "ready");
-    assert_eq!(row.session_count, 0);
-    assert!(row.symbol_count.unwrap_or(0) > 0);
+    assert!(
+        daemon_db.get_workspace(&workspace_id).unwrap().is_none(),
+        "read-only dashboard must not register workspace rows"
+    );
 }
 
 #[tokio::test]
@@ -268,19 +246,7 @@ async fn test_projects_register_action_renders_tool_error_as_danger_notice() {
         .await
         .unwrap();
 
-    assert_eq!(response.status().as_u16(), 200);
-    let html = body_to_string(response.into_body()).await;
-    assert!(html.contains("Workspace registration requires the workspace registry"));
-    // Guard: the registry-unavailable error must not point users at the
-    // `julie daemon` subcommand, which Phase 3d.2a removed.
-    assert!(
-        !html.contains("julie daemon"),
-        "registry errors must not reference the removed `julie daemon` subcommand, html={html}"
-    );
-    assert!(
-        html.contains("rgba(212, 70, 88, 0.35)"),
-        "tool-level errors must render as danger notices, html={html}"
-    );
+    assert_eq!(response.status().as_u16(), 404);
 }
 
 #[tokio::test]
@@ -363,17 +329,10 @@ async fn test_projects_refresh_action_blocks_while_daemon_is_stopping() {
         .await
         .unwrap();
 
-    assert_eq!(response.status().as_u16(), 200);
-    let html = body_to_string(response.into_body()).await;
-    assert!(html.contains("Workspace Action Blocked"));
-    assert!(html.contains("daemon STOPPING"));
-    assert!(
-        !html.contains("Workspace not found"),
-        "shutdown guard must short-circuit before workspace action dispatch"
-    );
+    assert_eq!(response.status().as_u16(), 404);
     assert!(
         daemon_db.list_workspaces().unwrap().is_empty(),
-        "blocked dashboard action must not create registry rows"
+        "read-only dashboard action route must not create registry rows"
     );
 }
 
@@ -402,9 +361,7 @@ async fn test_projects_open_action_warms_workspace_without_leaking_session_count
         .await
         .unwrap();
 
-    assert_eq!(response.status().as_u16(), 200);
-    let html = body_to_string(response.into_body()).await;
-    assert!(html.contains("Workspace Opened"));
+    assert_eq!(response.status().as_u16(), 404);
 
     let row = daemon_db
         .get_workspace(&workspace_id)
@@ -445,12 +402,10 @@ async fn test_projects_delete_action_removes_inactive_workspace() {
         .await
         .unwrap();
 
-    assert_eq!(response.status().as_u16(), 200);
-    let html = body_to_string(response.into_body()).await;
-    assert!(html.contains("Workspace Removed Successfully"));
+    assert_eq!(response.status().as_u16(), 404);
     assert!(
-        daemon_db.get_workspace(&workspace_id).unwrap().is_none(),
-        "delete should remove the registry row"
+        daemon_db.get_workspace(&workspace_id).unwrap().is_some(),
+        "read-only dashboard must not remove the registry row"
     );
 }
 
@@ -478,12 +433,10 @@ async fn test_projects_delete_action_rejects_bad_csrf_token() {
         .await
         .unwrap();
 
-    assert_eq!(response.status().as_u16(), 403);
-    let html = body_to_string(response.into_body()).await;
-    assert!(html.contains("Workspace Action Blocked"));
+    assert_eq!(response.status().as_u16(), 404);
     assert!(
         daemon_db.get_workspace(&workspace_id).unwrap().is_some(),
-        "delete should refuse requests with the wrong action token"
+        "read-only dashboard must leave registry rows untouched"
     );
 }
 
@@ -522,8 +475,8 @@ async fn test_project_detail_shows_workspace_state_without_reference_section() {
     let html = body_to_string(response.into_body()).await;
     assert!(html.contains("Workspace State"));
     assert!(html.contains("CURRENT"));
-    assert!(html.contains(&format!("/projects/{workspace_id}/refresh")));
-    assert!(html.contains(&format!("/projects/{workspace_id}/delete")));
+    assert!(!html.contains(&format!("/projects/{workspace_id}/refresh")));
+    assert!(!html.contains(&format!("/projects/{workspace_id}/delete")));
     assert!(html.contains(&format!("/metrics?workspace={workspace_id}")));
     assert!(html.contains(&format!("/intelligence/{workspace_id}")));
     assert!(html.contains(&format!("/signals/{workspace_id}")));

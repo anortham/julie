@@ -9,6 +9,9 @@ use crate::manifest::TestManifest;
 const DEV_FALLBACK_FILES: &[&str] = &[
     "Cargo.toml",
     "Cargo.lock",
+    "src/daemon/http_transport.rs",
+    "src/daemon/transport.rs",
+    "src/daemon/workspace_pool.rs",
     "src/handler.rs",
     "src/lib.rs",
     "src/main.rs",
@@ -18,6 +21,8 @@ const DEV_FALLBACK_FILES: &[&str] = &[
 
 const DEV_FALLBACK_PREFIXES: &[&str] = &[
     "fixtures/",
+    "src/adapter/",
+    "src/tests/daemon/http_transport/",
     "src/tests/fixtures/",
     "src/tests/helpers/",
 ];
@@ -495,11 +500,8 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["daemon"];
     }
 
-    // Migration and startup routing — both touch DaemonDatabase, workspace registry,
-    // and indexing; they no longer need to force the full dev tier.
-    if matches_exact(path, &["src/migration.rs", "src/tests/migration.rs"]) {
-        return &["core-database", "workspace-init"];
-    }
+    // Startup routing touches DaemonDatabase, workspace registry, and indexing;
+    // it no longer needs to force the full dev tier.
     if path == "src/startup.rs" {
         return &["lifecycle", "workspace-runtime", "tools-workspace"];
     }
@@ -895,11 +897,7 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     // crates/julie-runtime/src/ arms above.
     if matches_prefix(
         path,
-        &[
-            "src/utils/",
-            "src/tracing/",
-            "src/tests/core/handler/",
-        ],
+        &["src/utils/", "src/tracing/", "src/tests/core/handler/"],
     ) || matches_exact(
         path,
         &[
@@ -1397,7 +1395,12 @@ mod tests {
         // end-to-end indexing guards (R6 co-targeting).
         assert_eq!(
             selection.bucket_names,
-            vec!["core-pipeline", "tools-workspace", "workspace-init", "integration"],
+            vec![
+                "core-pipeline",
+                "tools-workspace",
+                "workspace-init",
+                "integration"
+            ],
             "rationale={:?}",
             selection.rationale
         );
@@ -1415,7 +1418,12 @@ mod tests {
             assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "path={path}");
             assert_eq!(
                 selection.bucket_names,
-                vec!["core-pipeline", "tools-workspace", "workspace-init", "integration"],
+                vec![
+                    "core-pipeline",
+                    "tools-workspace",
+                    "workspace-init",
+                    "integration"
+                ],
                 "path={path} rationale={:?}",
                 selection.rationale
             );
@@ -1425,10 +1433,8 @@ mod tests {
     #[test]
     fn changed_tests_route_pipeline_catch_all_to_core_pipeline_only() {
         let manifest = manifest();
-        let selection = select_changed_buckets(
-            &manifest,
-            &["crates/julie-pipeline/src/lib.rs".to_string()],
-        );
+        let selection =
+            select_changed_buckets(&manifest, &["crates/julie-pipeline/src/lib.rs".to_string()]);
 
         assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
         assert_eq!(

@@ -3,16 +3,16 @@
 //! History: adapter module, `http_client.rs`, and `julie-adapter` binary deleted
 //! in 3d.1. The daemon HTTP-server runtime (`app/**`, `http_transport`, `transport`,
 //! `mcp_session`, `token_file`, `singleton`, `fd_limit`, `shutdown_event`) and the
-//! `WorkspacePool`/`WatcherPool` were deleted in 3d.2b-ii. `pid.rs`,
-//! `database/search_compare.rs`, and `migration.rs` remain — they are excised in 3d.3.
+//! `WorkspacePool`/`WatcherPool` were deleted in 3d.2b-ii. 3d.3 deletes the
+//! pid/discovery runtime surface and the retired search-compare data surface.
 //! Two guarantees:
 //!
 //!   1. **No-args path serves in-process.** `src/main.rs`'s `None =>` arm calls
 //!      `run_in_process_server` and NEVER `run_adapter` / `DaemonLauncher`. The
 //!      old fork-daemon-and-bridge-stdio path is gone from the default entry.
-//!   2. **The 3d.2b-ii deletions actually happened, and the 3d.3 files still exist.**
-//!      The daemon HTTP-server runtime + pool files MUST be gone; `pid.rs`,
-//!      `search_compare.rs`, and `migration.rs` MUST still be present (3d.3 deletes them).
+//!   2. **The 3d.2b-ii deletions actually happened, and 3d.3 deleted surfaces are gone.**
+//!      The daemon HTTP-server runtime + pool files MUST be gone; the pid/discovery
+//!      runtime surface MUST be gone; the search-compare data surface MUST be gone.
 
 use std::fs;
 use std::path::Path;
@@ -62,7 +62,8 @@ fn no_args_main_serves_in_process_not_adapter() {
     let in_process_line = in_process_line.expect(
         "src/main.rs must call `run_in_process_server` — the no-args cutover (T10) is missing",
     );
-    let none_arm_line = none_arm_line.expect("src/main.rs must still have a `None =>` (no-args) arm");
+    let none_arm_line =
+        none_arm_line.expect("src/main.rs must still have a `None =>` (no-args) arm");
 
     // It must be wired into the no-args arm, not a helper: the call appears after
     // the `None =>` token (the None arm is the last match arm in main()).
@@ -123,28 +124,54 @@ fn daemon_http_runtime_files_are_deleted() {
     );
 }
 
-/// Guarantee 2b: the files 3d.3 will remove are still present after 3d.2b-ii.
-/// Bypassed, not deleted (deletion is 3d.3).
+/// Guarantee 2b: the pid/discovery runtime surface deleted in 3d.3 Task 2 is
+/// actually gone.
 #[test]
-fn section7_dag_files_remaining_for_3d3_are_present() {
+fn pid_and_discovery_runtime_surface_deleted_in_3d3_task2() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
-    // Files held out of 3d.2b-ii because kept code still imports them
-    // (e.g. `discovery.rs` imports `pid.rs`); excised in 3d.3.
-    let remaining_for_3d3: &[&str] = &[
-        "src/daemon/pid.rs",
-        "src/daemon/database/search_compare.rs",
-        "src/migration.rs",
-    ];
+    let deleted_in_3d3_task2: &[&str] = &["src/daemon/pid.rs"];
 
-    let missing: Vec<&str> = remaining_for_3d3
+    let still_present: Vec<&str> = deleted_in_3d3_task2
         .iter()
         .copied()
-        .filter(|rel| !root.join(rel).exists())
+        .filter(|rel| root.join(rel).exists())
         .collect();
 
     assert!(
-        missing.is_empty(),
-        "3d.2b-ii MUST NOT delete the §7-DAG files reserved for 3d.3. Missing: {missing:?}"
+        still_present.is_empty(),
+        "3d.3 Task 2 deletes the pid-file runtime; these files MUST NOT exist. \
+         Still present: {still_present:?}"
+    );
+
+    let discovery_rs = fs::read_to_string(root.join("src/daemon/discovery.rs"))
+        .expect("read src/daemon/discovery.rs");
+    for symbol in ["DiscoveryRecord", "DiscoveryState", "DiscoveryFile"] {
+        assert!(
+            !discovery_rs.contains(symbol),
+            "3d.3 Task 2 deletes the discovery.json reader/writer surface; \
+             src/daemon/discovery.rs must not contain `{symbol}`"
+        );
+    }
+}
+
+/// Guarantee 2c: the retired search-compare data surface deleted in 3d.3 Task 5
+/// is actually gone.
+#[test]
+fn search_compare_data_surface_deleted_in_3d3_task5() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+
+    let deleted_in_3d3_task5: &[&str] = &["src/daemon/database/search_compare.rs"];
+
+    let still_present: Vec<&str> = deleted_in_3d3_task5
+        .iter()
+        .copied()
+        .filter(|rel| root.join(rel).exists())
+        .collect();
+
+    assert!(
+        still_present.is_empty(),
+        "3d.3 Task 5 deletes the retired search-compare data surface; these files \
+         MUST NOT exist. Still present: {still_present:?}"
     );
 }

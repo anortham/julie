@@ -63,7 +63,7 @@ fn test_julie_home_env_override() {
     let paths = DaemonPaths::try_new().expect("try_new should succeed when JULIE_HOME is set");
     assert_eq!(paths.julie_home(), override_home);
     assert_eq!(paths.indexes_dir(), override_home.join("indexes"));
-    assert_eq!(paths.daemon_db(), override_home.join("daemon.db"));
+    assert_eq!(paths.registry_db(), override_home.join("registry.db"));
 }
 
 #[test]

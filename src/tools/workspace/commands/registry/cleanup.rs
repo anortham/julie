@@ -44,11 +44,19 @@ pub(crate) struct CleanupSweepSummary {
     pub(crate) pruned_orphan_dirs: Vec<String>,
 }
 
-pub(crate) struct WorkspaceCleanupActivity;
+pub(crate) struct WorkspaceCleanupActivity {
+    live_workspace_ids: HashSet<String>,
+}
 
 impl WorkspaceCleanupActivity {
-    pub(crate) fn new() -> Self {
-        Self
+    pub(crate) fn new(live_workspace_ids: HashSet<String>) -> Self {
+        Self { live_workspace_ids }
+    }
+
+    fn live_workspace_reason(&self, workspace_id: &str) -> Option<String> {
+        self.live_workspace_ids
+            .contains(workspace_id)
+            .then(|| "workspace is active in this in-process session".to_string())
     }
 
     async fn watcher_ref_count(&self, _workspace_id: &str) -> usize {
@@ -81,6 +89,10 @@ async fn manual_delete_block_reason(
     activity: &WorkspaceCleanupActivity,
 ) -> Option<String> {
     let mut reasons = Vec::new();
+
+    if let Some(reason) = activity.live_workspace_reason(&workspace.workspace_id) {
+        reasons.push(reason);
+    }
 
     if workspace.session_count > 0 {
         let suffix = if workspace.session_count == 1 {
@@ -119,6 +131,10 @@ async fn auto_prune_block_reason(
     workspace: &WorkspaceRow,
     activity: &WorkspaceCleanupActivity,
 ) -> Option<String> {
+    if let Some(reason) = activity.live_workspace_reason(&workspace.workspace_id) {
+        return Some(reason);
+    }
+
     if workspace.session_count > 0 {
         return Some(format!(
             "{} active session(s) remain",

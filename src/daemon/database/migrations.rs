@@ -26,17 +26,23 @@ pub(super) fn run_migrations(conn: &mut Connection) -> Result<()> {
         migration_003_cleanup_events_and_drop_workspace_references(conn)?;
     }
     if current < 4 {
-        migration_004_add_search_compare_tables(conn)?;
+        migration_004_retire_search_compare_tables(conn)?;
     }
     if current < 5 {
         migration_005_add_tool_call_input_bytes(conn)?;
+    }
+    if current < 6 {
+        migration_006_add_daemon_state(conn)?;
+    }
+    if current < 7 {
+        migration_007_drop_search_compare_tables(conn)?;
     }
 
     Ok(())
 }
 
 fn migration_001_initial_schema(conn: &mut Connection) -> Result<()> {
-    info!("daemon.db migration 001: initial schema");
+    info!("registry.db migration 001: initial schema");
     let tx = conn.transaction()?;
 
     tx.execute_batch(
@@ -98,12 +104,12 @@ fn migration_001_initial_schema(conn: &mut Connection) -> Result<()> {
     )?;
 
     tx.commit()?;
-    info!("daemon.db migration 001 complete");
+    info!("registry.db migration 001 complete");
     Ok(())
 }
 
 fn migration_002_add_index_duration(conn: &mut Connection) -> Result<()> {
-    info!("daemon.db migration 002: add index duration column");
+    info!("registry.db migration 002: add index duration column");
     let tx = conn.transaction()?;
     tx.execute_batch(
         "ALTER TABLE workspaces ADD COLUMN last_index_duration_ms INTEGER;
@@ -111,12 +117,12 @@ fn migration_002_add_index_duration(conn: &mut Connection) -> Result<()> {
          VALUES (2, unixepoch());",
     )?;
     tx.commit()?;
-    info!("daemon.db migration 002 complete");
+    info!("registry.db migration 002 complete");
     Ok(())
 }
 
 fn migration_003_cleanup_events_and_drop_workspace_references(conn: &mut Connection) -> Result<()> {
-    info!("daemon.db migration 003: add cleanup-event log and drop workspace pairings");
+    info!("registry.db migration 003: add cleanup-event log and drop workspace pairings");
     let tx = conn.transaction()?;
     tx.execute_batch(
         "CREATE TABLE IF NOT EXISTS workspace_cleanup_events (
@@ -134,57 +140,24 @@ fn migration_003_cleanup_events_and_drop_workspace_references(conn: &mut Connect
         VALUES (3, unixepoch());",
     )?;
     tx.commit()?;
-    info!("daemon.db migration 003 complete");
+    info!("registry.db migration 003 complete");
     Ok(())
 }
 
-fn migration_004_add_search_compare_tables(conn: &mut Connection) -> Result<()> {
-    info!("daemon.db migration 004: add search compare tables");
+fn migration_004_retire_search_compare_tables(conn: &mut Connection) -> Result<()> {
+    info!("registry.db migration 004: retire search compare tables");
     let tx = conn.transaction()?;
     tx.execute_batch(
-        "CREATE TABLE IF NOT EXISTS search_compare_runs (
-            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at               INTEGER NOT NULL,
-            baseline_strategy        TEXT NOT NULL,
-            candidate_strategy       TEXT NOT NULL,
-            case_count               INTEGER NOT NULL,
-            baseline_top1_hits       INTEGER NOT NULL,
-            candidate_top1_hits      INTEGER NOT NULL,
-            baseline_top3_hits       INTEGER NOT NULL,
-            candidate_top3_hits      INTEGER NOT NULL,
-            baseline_source_wins     INTEGER NOT NULL,
-            candidate_source_wins    INTEGER NOT NULL,
-            convergence_rate         REAL,
-            stall_rate               REAL
-        );
-        CREATE TABLE IF NOT EXISTS search_compare_cases (
-            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_id                INTEGER NOT NULL REFERENCES search_compare_runs(id) ON DELETE CASCADE,
-            session_id            TEXT NOT NULL,
-            workspace_id          TEXT NOT NULL,
-            query                 TEXT NOT NULL,
-            search_target         TEXT NOT NULL,
-            expected_symbol_name  TEXT,
-            expected_file_path    TEXT,
-            baseline_rank         INTEGER,
-            candidate_rank        INTEGER,
-            baseline_top_hit      TEXT,
-            candidate_top_hit     TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_search_compare_runs_created_at
-            ON search_compare_runs(created_at DESC, id DESC);
-        CREATE INDEX IF NOT EXISTS idx_search_compare_cases_run
-            ON search_compare_cases(run_id, id);
-        INSERT OR REPLACE INTO schema_version (version, applied_at)
+        "INSERT OR REPLACE INTO schema_version (version, applied_at)
         VALUES (4, unixepoch());",
     )?;
     tx.commit()?;
-    info!("daemon.db migration 004 complete");
+    info!("registry.db migration 004 complete");
     Ok(())
 }
 
 fn migration_005_add_tool_call_input_bytes(conn: &mut Connection) -> Result<()> {
-    info!("daemon.db migration 005: add input_bytes to tool_calls");
+    info!("registry.db migration 005: add input_bytes to tool_calls");
     let has_tool_calls = table_exists_in(conn, "tool_calls")?;
     let has_input_bytes: bool = {
         let mut stmt = conn.prepare("PRAGMA table_info(tool_calls)")?;
@@ -232,7 +205,45 @@ fn migration_005_add_tool_call_input_bytes(conn: &mut Connection) -> Result<()> 
         [],
     )?;
     tx.commit()?;
-    info!("daemon.db migration 005 complete");
+    info!("registry.db migration 005 complete");
+    Ok(())
+}
+
+fn migration_006_add_daemon_state(conn: &mut Connection) -> Result<()> {
+    info!("registry.db migration 006: add daemon_state");
+    let tx = conn.transaction()?;
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS daemon_state (
+            id                 INTEGER PRIMARY KEY CHECK (id = 1),
+            started_at_unix    INTEGER NOT NULL
+        );",
+    )?;
+    tx.execute(
+        "INSERT OR IGNORE INTO daemon_state (id, started_at_unix)
+         VALUES (1, unixepoch())",
+        [],
+    )?;
+    tx.execute(
+        "INSERT OR REPLACE INTO schema_version (version, applied_at)
+         VALUES (6, unixepoch())",
+        [],
+    )?;
+    tx.commit()?;
+    info!("registry.db migration 006 complete");
+    Ok(())
+}
+
+fn migration_007_drop_search_compare_tables(conn: &mut Connection) -> Result<()> {
+    info!("registry.db migration 007: drop retired search compare tables");
+    let tx = conn.transaction()?;
+    tx.execute_batch(
+        "DROP TABLE IF EXISTS search_compare_cases;
+         DROP TABLE IF EXISTS search_compare_runs;
+         INSERT OR REPLACE INTO schema_version (version, applied_at)
+         VALUES (7, unixepoch());",
+    )?;
+    tx.commit()?;
+    info!("registry.db migration 007 complete");
     Ok(())
 }
 

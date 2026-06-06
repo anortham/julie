@@ -137,7 +137,10 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
     let manifest = load_checked_in_manifest();
 
     for (path, expected_buckets) in [
-        ("crates/julie-core/src/database/connection.rs", vec!["core-database"]),
+        (
+            "crates/julie-core/src/database/connection.rs",
+            vec!["core-database"],
+        ),
         // Moved leaf files keep their pre-split behavioral coverage in addition to the
         // leaf crate's own `-p julie-core` test binary (regression guard for the
         // ADR-0006 crate split — a localized edit must not silently run only the DB
@@ -156,7 +159,7 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
         ),
         ("src/tools/editing/edit_file.rs", vec!["tools-editing"]),
         ("src/dashboard/mod.rs", vec!["dashboard"]),
-        ("src/daemon/transport.rs", vec!["transport"]),
+        ("src/daemon/lifecycle.rs", vec!["daemon"]),
         // Phase 1 T4: julie-index crate split. Editing search source pulls core-index
         // (the crate's own test binary) AND all search tool buckets whose retained
         // tests still cover the moved code (Phase 0 lesson: localized edits must not
@@ -665,19 +668,18 @@ fn changed_tests_handler_central_handler_rs_still_falls_back_to_dev() {
 }
 
 #[test]
-fn changed_tests_migration_routes_to_database_and_workspace_init() {
+fn changed_tests_deleted_migration_paths_fall_back_to_dev() {
     let manifest = sample_manifest();
 
     for path in ["src/migration.rs", "src/tests/migration.rs"] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{}", path);
         assert_eq!(
-            selection.bucket_names,
-            vec!["core-database", "workspace-init"],
+            selection.mode,
+            ChangedSelectionMode::FallbackToDev,
             "{}",
             path
         );
-        assert!(selection.fallback_paths.is_empty(), "{}", path);
+        assert_eq!(selection.fallback_paths, vec![path.to_string()], "{}", path);
     }
 }
 
@@ -728,37 +730,43 @@ fn changed_tests_routes_projection_pipeline_paths_to_projection_bucket() {
 }
 
 #[test]
-fn changed_tests_routes_lifecycle_paths_to_lifecycle_bucket() {
+fn changed_tests_routes_lifecycle_paths_to_daemon_bucket() {
     let manifest = sample_manifest();
 
     let selection = select_changed_buckets(&manifest, &["src/daemon/lifecycle.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["lifecycle"]);
+    assert_eq!(selection.bucket_names, vec!["daemon"]);
 }
 
 #[test]
-fn changed_tests_routes_daemon_mod_to_lifecycle_and_daemon_buckets() {
+fn changed_tests_routes_daemon_mod_to_daemon_bucket() {
     let manifest = sample_manifest();
 
     let selection = select_changed_buckets(&manifest, &["src/daemon/mod.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["lifecycle", "daemon"]);
+    assert_eq!(selection.bucket_names, vec!["daemon"]);
 }
 
 #[test]
-fn changed_tests_routes_transport_paths_to_transport_bucket() {
+fn changed_tests_deleted_transport_paths_fall_back_to_dev() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(&manifest, &["src/adapter/mod.rs".to_string()]);
+    for path in ["src/adapter/mod.rs", "src/daemon/transport.rs"] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
 
-    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["transport"]);
+        assert_eq!(
+            selection.mode,
+            ChangedSelectionMode::FallbackToDev,
+            "{path}"
+        );
+        assert_eq!(selection.fallback_paths, vec![path.to_string()], "{path}");
+    }
 }
 
 #[test]
-fn changed_tests_routes_http_transport_paths_to_transport_bucket() {
+fn changed_tests_deleted_http_transport_paths_fall_back_to_dev() {
     let manifest = sample_manifest();
 
     let selection = select_changed_buckets(
@@ -769,19 +777,28 @@ fn changed_tests_routes_http_transport_paths_to_transport_bucket() {
         ],
     );
 
-    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["transport"]);
+    assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
+    assert_eq!(
+        selection.fallback_paths,
+        vec![
+            "src/daemon/http_transport.rs".to_string(),
+            "src/tests/daemon/http_transport/tests/restart_pending.rs".to_string(),
+        ]
+    );
 }
 
 #[test]
-fn changed_tests_routes_workspace_runtime_paths_to_workspace_runtime_bucket() {
+fn changed_tests_deleted_workspace_pool_paths_fall_back_to_dev() {
     let manifest = sample_manifest();
 
     let selection =
         select_changed_buckets(&manifest, &["src/daemon/workspace_pool.rs".to_string()]);
 
-    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["workspace-runtime"]);
+    assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
+    assert_eq!(
+        selection.fallback_paths,
+        vec!["src/daemon/workspace_pool.rs".to_string()]
+    );
 }
 
 #[test]

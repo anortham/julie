@@ -86,48 +86,6 @@ struct ProjectsPageData {
     error_count: usize,
 }
 
-impl ProjectsNotice {
-    pub(crate) fn from_text(text: impl Into<String>) -> Self {
-        let text = text.into();
-        let mut lines = text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(ToOwned::to_owned)
-            .collect::<Vec<_>>();
-
-        let title = if lines.is_empty() {
-            "Workspace Update".to_string()
-        } else {
-            lines.remove(0)
-        };
-
-        let kind = if title.contains("Failed")
-            || title.contains("Blocked")
-            || title.contains("not found")
-            || title.contains("Missing")
-        {
-            "danger"
-        } else {
-            "info"
-        };
-
-        Self {
-            kind: kind.to_string(),
-            title,
-            lines,
-        }
-    }
-
-    pub(crate) fn error(title: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            kind: "danger".to_string(),
-            title: title.into(),
-            lines: vec![message.into()],
-        }
-    }
-}
-
 /// Map a language name to its CSS custom property name.
 /// Kept (dead) for the 3d.3 standalone-dashboard rewrite.
 #[allow(dead_code)]
@@ -233,7 +191,7 @@ async fn workspace_session_state(
 ) -> WorkspaceSessionStateView {
     let (label, base_detail, current_session_count, active_session_count) =
         base_session_state(workspace, current_workspace_counts);
-    let cleanup_activity = WorkspaceCleanupActivity::new();
+    let cleanup_activity = WorkspaceCleanupActivity::new(Default::default());
     let lifecycle =
         inspect_workspace_cleanup_state(workspace, &cleanup_activity, CLEANUP_ACTION_AUTO_PRUNE)
             .await;

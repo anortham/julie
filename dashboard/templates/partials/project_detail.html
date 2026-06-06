@@ -112,46 +112,6 @@
 {% endif %}
 
 <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-  {% if workspace.session_state.path_missing and workspace.session_state.cleanup_blocked %}
-  <button type="button"
-          class="button is-dark is-small"
-          style="font-size: 0.78rem;"
-          disabled
-          title="{{ workspace.session_state.cleanup_block_reason | default(value='Cleanup blocked') }}">
-    Blocked
-  </button>
-  {% elif workspace.session_state.path_missing %}
-  <form method="post"
-        action="/projects/{{ workspace.workspace_id }}/open"
-        onsubmit="return confirm('Prune the stale workspace registry entry and delete its index?');">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="button is-dark is-small" style="font-size: 0.78rem;"
-            title="Remove this stale workspace and delete its index">
-      Prune
-    </button>
-  </form>
-  {% else %}
-  <form method="post" action="/projects/{{ workspace.workspace_id }}/refresh">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit"
-            class="button is-dark is-small"
-            style="font-size: 0.78rem;"
-            title="Re-scan files and update the index">
-      Refresh
-    </button>
-  </form>
-  {% endif %}
-  <form method="post"
-        action="/projects/{{ workspace.workspace_id }}/delete"
-        onsubmit="return confirm('Delete this workspace registry entry and index?');">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit"
-            class="button is-small"
-            style="font-size: 0.78rem; background: rgba(212, 70, 88, 0.15); color: var(--julie-danger); border-color: rgba(212, 70, 88, 0.25);"
-            {% if workspace.session_state.cleanup_blocked %}disabled title="{{ workspace.session_state.cleanup_block_reason | default(value='Cleanup blocked') }}"{% endif %}>
-      Delete
-    </button>
-  </form>
   <a href="/metrics?workspace={{ workspace.workspace_id }}"
      class="button is-dark is-small"
      style="font-size: 0.78rem;">

@@ -72,8 +72,12 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
     let open_result = open_tool.call_tool(&handler).await.unwrap();
     let open_text = extract_text_from_result(&open_result);
     assert!(
-        open_text.contains("Workspace Pruned"),
-        "open should prune a rebound current workspace when its path is gone: {open_text}"
+        open_text.contains("Workspace Missing But Still Active"),
+        "open should block cleanup for a rebound current workspace while it is live: {open_text}"
+    );
+    assert!(
+        open_text.contains("workspace is active in this in-process session"),
+        "open should explain the in-process liveness block: {open_text}"
     );
     assert!(
         !open_text.contains("Workspace Refresh Failed"),

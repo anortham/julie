@@ -87,7 +87,7 @@ async fn test_dashboard_404_for_missing_static() {
 }
 
 #[tokio::test]
-async fn test_activity_stream_flushes_initial_frame() {
+async fn test_activity_stream_route_is_not_mounted_on_read_only_dashboard() {
     let state = test_state();
     let config = DashboardConfig::default();
     let app = create_router(state, config).unwrap();
@@ -102,19 +102,7 @@ async fn test_activity_stream_flushes_initial_frame() {
         .await
         .unwrap();
 
-    assert_eq!(response.status().as_u16(), 200);
-    let mut stream = response.into_body().into_data_stream();
-    let first_chunk = tokio::time::timeout(Duration::from_millis(100), stream.next())
-        .await
-        .expect("activity SSE should flush an initial frame")
-        .expect("activity SSE should yield a first frame")
-        .expect("activity SSE frame should be readable");
-    let frame = std::str::from_utf8(&first_chunk).expect("SSE frame should be UTF-8");
-
-    assert!(
-        frame.contains("connected"),
-        "expected initial activity SSE frame to confirm connection, got {frame:?}"
-    );
+    assert_eq!(response.status().as_u16(), 404);
 }
 
 #[tokio::test]
@@ -181,36 +169,53 @@ async fn test_dashboard_content_search_renders_line_match_preview() {
 }
 
 #[tokio::test]
-async fn test_search_and_compare_pages_do_not_link_to_search_analysis() {
+async fn test_search_page_does_not_link_to_search_analysis_or_compare() {
     let state = test_state();
     let config = DashboardConfig::default();
 
-    for path in ["/search", "/search/compare"] {
-        let app = create_router(state.clone(), config.clone()).unwrap();
-        let response = app
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
+    let app = create_router(state.clone(), config.clone()).unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/search")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
-        assert_eq!(
-            response.status().as_u16(),
-            200,
-            "GET {} returned {}",
-            path,
-            response.status()
-        );
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "GET /search returned {}",
+        response.status()
+    );
 
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("body bytes");
-        let html = String::from_utf8(body.to_vec()).expect("utf8 body");
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body bytes");
+    let html = String::from_utf8(body.to_vec()).expect("utf8 body");
 
-        assert!(
-            !html.contains("/search/analysis"),
-            "{} should not advertise the search analysis page: {html}",
-            path
-        );
-    }
+    assert!(
+        !html.contains("/search/analysis"),
+        "/search should not advertise the search analysis page: {html}"
+    );
+    assert!(
+        !html.contains("/search/compare"),
+        "/search should not advertise the deleted search compare page: {html}"
+    );
+
+    let router = create_router(state, config).unwrap();
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/search/compare")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

@@ -33,7 +33,6 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
-use super::discovery::{DiscoveryFile, DiscoveryState};
 use super::drain_sessions;
 use super::session::SessionTracker;
 use crate::paths::DaemonPaths;
@@ -188,8 +187,8 @@ pub fn clear_recovery_markers(paths: &DaemonPaths) -> Result<()> {
 ///
 /// Atomic-ish: read existing, push, write to a temp file alongside the
 /// canonical path, rename. A crash mid-write leaves either the prior file
-/// or the new one — never a partial. The temp suffix matches the recipe
-/// used by `DiscoveryFile::write_atomic`.
+/// or the new one — never a partial. The temp suffix follows the old
+/// discovery-file atomic write recipe.
 // kept for 3d.3 recovery
 #[allow(dead_code)]
 fn append_recovery_marker(paths: &DaemonPaths, marker: &RecoveryMarker) -> Result<()> {
@@ -208,8 +207,7 @@ fn append_recovery_marker(paths: &DaemonPaths, marker: &RecoveryMarker) -> Resul
     Ok(())
 }
 
-/// Atomic file write: tmp + fsync + rename. Mirrors
-/// `DiscoveryFile::write_atomic` semantics for the recovery marker file.
+/// Atomic file write for recovery markers: tmp + fsync + rename.
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write as _;
 
@@ -246,61 +244,4 @@ fn workspaces_from_counts(counts: &HashMap<String, usize>) -> Vec<String> {
     let mut ids: Vec<String> = counts.keys().cloned().collect();
     ids.sort();
     ids
-}
-
-/// Rewrite `discovery.json` so its `phase` field reflects `phase`.
-///
-/// Atomic via `DiscoveryFile::write_atomic` (the existing temp + rename +
-/// fsync recipe from A1.3). If the discovery file does not yet exist, this
-/// is a no-op: A1.7 introduces the *capability* to flip phase on shutdown;
-/// the initial publish lives in A1.8. We log a debug message and return
-/// `Ok(())` so shutdown does not error out on a fresh daemon that never
-/// reached the publish step.
-///
-/// If the file exists but is corrupt or stale, we still return `Ok(())`
-/// with a warning — the shutdown sequence must not be blocked by a bad
-/// discovery file. The corrupt record will be cleaned up by
-/// `HttpTransportServer::shutdown` removing `daemon-mcp-transport.json`
-/// (a sibling file) when the transport tears down.
-pub fn publish_discovery_phase(paths: &DaemonPaths, phase: &str) {
-    let path = paths.discovery_file();
-    match DiscoveryFile::read_and_validate(&path) {
-        DiscoveryState::Live(mut record) => {
-            record.phase = Some(phase.to_string());
-            if let Err(e) = DiscoveryFile::write_atomic(&path, &record) {
-                warn!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to rewrite discovery.json with phase={}; readers may not see lifecycle change",
-                    phase,
-                );
-            } else {
-                info!(phase, "Published discovery.json phase={}", phase);
-            }
-        }
-        DiscoveryState::Missing => {
-            // A1.8 will add the initial publish; until then this is the
-            // normal path. Debug-level so it does not spam logs.
-            tracing::debug!(
-                path = %path.display(),
-                "discovery.json not present; skipping phase={} publish",
-                phase,
-            );
-        }
-        DiscoveryState::Stale => {
-            warn!(
-                path = %path.display(),
-                "discovery.json refers to a stale process; skipping phase={} publish",
-                phase,
-            );
-        }
-        DiscoveryState::Corrupt(detail) => {
-            warn!(
-                path = %path.display(),
-                error = %detail,
-                "discovery.json is corrupt; skipping phase={} publish",
-                phase,
-            );
-        }
-    }
 }

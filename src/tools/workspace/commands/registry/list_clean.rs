@@ -14,7 +14,7 @@ impl ManageWorkspaceTool {
         info!("Listing all workspaces");
 
         if let Some(registry_store) = registry_store_for_handler(handler)? {
-            let cleanup_activity = cleanup_activity_for_handler(handler);
+            let cleanup_activity = cleanup_activity_for_handler(handler).await;
             let cleanup_warning = match run_cleanup_sweep(&registry_store, &cleanup_activity).await
             {
                 Ok(_) => None,
@@ -94,7 +94,7 @@ impl ManageWorkspaceTool {
         info!("Cleaning workspaces");
 
         if let Some(registry_store) = registry_store_for_handler(handler)? {
-            let cleanup_activity = cleanup_activity_for_handler(handler);
+            let cleanup_activity = cleanup_activity_for_handler(handler).await;
             let summary = match run_cleanup_sweep(&registry_store, &cleanup_activity).await {
                 Ok(summary) => summary,
                 Err(e) => {

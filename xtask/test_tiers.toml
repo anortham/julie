@@ -439,8 +439,9 @@ commands = ["cargo nextest run -p julie-runtime"]
 # Daemon-mode tests: handler construction, HTTP session lifecycle,
 # MCP roots flow, and SessionWorkspaceState invariants.
 #
-# The 2026-05 daemon split (A1.2-A1.8) added lock_test and discovery_test.
-# app_test, token_file_test, and shutdown_drain_test deleted in Phase 3d.2b.
+# The 2026-05 daemon split (A1.2-A1.8) added lock coverage.
+# Discovery-file tests were deleted in Phase 3d.3; app_test, token_file_test,
+# and shutdown_drain_test were deleted in Phase 3d.2b.
 expected_seconds = 60
 timeout_seconds = 180
 scope_label = "daemon"

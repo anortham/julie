@@ -27,9 +27,9 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
-- **Background daemon** — shared indexes, shared embedding provider, multi-session support with automatic lifecycle management
-- **Stale binary auto-restart** — daemon detects when the binary has been rebuilt and restarts on next session cycle
-- **Stdio MCP server** — single binary, zero configuration, works with any MCP client
+- **In-process stdio MCP server** — single binary, zero configuration, works with any MCP client
+- **Multi-session coordination** — per-workspace leader locks allow one writer and read-only followers over shared indexes
+- **Shared registry and indexes** — `$JULIE_HOME/registry.db` plus `$JULIE_HOME/indexes/` keep related workspaces available across sessions
 
 ### Performance Characteristics
 
@@ -87,7 +87,7 @@ Python 3.12 is used because it has the best PyTorch hardware acceleration compat
 
 #### Advanced configuration
 
-- `JULIE_HOME`: relocate daemon state and workspace indexes (default: `~/.julie`). Must be an absolute path; empty or relative values are rejected. Existing installs upgrade in place — set this only if you want to move Julie's storage to another drive or path. See `docs/OPERATIONS.md` for the migration checklist.
+- `JULIE_HOME`: relocate shared registry state and workspace indexes (default: `~/.julie`). Must be an absolute path; empty or relative values are rejected. Existing installs upgrade in place — set this only if you want to move Julie's storage to another drive or path. See `docs/OPERATIONS.md` for the migration checklist.
 - `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`, 768d code-optimized). Changing models automatically wipes and re-embeds all vectors on the next indexing run.
 - See `docs/operations/embedding-sidecar.md` for all environment variables and troubleshooting
 
@@ -396,7 +396,7 @@ Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patter
 
 ## External Extract (Host Integration)
 
-Beyond the MCP server, Julie ships a process-facing extractor for hosts written in Go, C#, or any runtime that owns its own process management and file watching. `julie-server extract` parses a project root and writes the canonical SQLite schema into a caller-owned database file. It does not use the daemon, MCP transport, Tantivy, or embeddings.
+Beyond the MCP server, Julie ships a process-facing extractor for hosts written in Go, C#, or any runtime that owns its own process management and file watching. `julie-server extract` parses a project root and writes the canonical SQLite schema into a caller-owned database file. It does not use MCP transport, Tantivy, shared registry state, or embeddings.
 
 ```bash
 # Full scan (incremental — only changed files are re-extracted)
@@ -494,9 +494,9 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 - **Graph centrality ranking** using pre-computed reference scores from the relationship graph
 - **SQLite storage** for symbols, identifiers, relationships, types, and file metadata
 - **Per-workspace isolation** with separate databases and indexes
-- **Daemon + adapter pattern** — `julie-server` auto-starts a background daemon and bridges stdio MCP traffic to its localhost Streamable HTTP endpoint. Multiple MCP clients share one daemon process with shared indexes, embedding provider, and file watchers
-- **MCP protocol** over stdio (JSON-RPC)
-- **Embedding pipeline** with GPU-accelerated Python sidecar (CUDA/DirectML/MPS/CPU), shared across sessions in daemon mode
+- **In-process MCP protocol** over stdio (JSON-RPC), with no background daemon or HTTP bridge
+- **Per-workspace leader locks** so one session owns writes while other sessions serve read-only requests from SQLite WAL and Tantivy mmap
+- **Embedding pipeline** with GPU-accelerated Python sidecar (CUDA/DirectML/MPS/CPU), shared through a resident embedding host per `$JULIE_HOME`
 
 ## Development
 
@@ -515,7 +515,9 @@ cargo build
 
 ### Running Locally
 
-Julie runs as a stdio MCP server with an automatic background daemon. When an MCP client starts `julie-server`, it auto-launches a daemon process that shares indexes and the embedding provider across sessions:
+Julie runs as an in-process stdio MCP server. When an MCP client starts
+`julie-server`, that process serves MCP directly and coordinates shared indexes
+through per-workspace leader locks:
 
 ```bash
 cargo run -- --workspace /path/to/your/project
@@ -527,16 +529,14 @@ To test with an MCP client, point it at your debug build:
 claude mcp add julie-dev -- /path/to/julie/target/debug/julie-server
 ```
 
-After rebuilding (`cargo build`), restart your MCP client. The daemon detects the stale binary and auto-restarts with the new build.
+After rebuilding (`cargo build`), restart your MCP client or start a new
+session so the client launches the new binary.
 
-**Daemon management** (optional, the adapter handles this automatically):
+Useful local commands:
 
 ```bash
-julie-server daemon      # Start daemon manually
-julie-server status      # Check if daemon is running
-julie-server stop        # Stop daemon
-julie-server restart     # Stop daemon; auto-restarts on next connection
 julie-server dashboard   # Open the web dashboard in your browser
+julie-server search "query" --workspace . --standalone --json
 ```
 
 ### Testing
@@ -576,19 +576,18 @@ All tiers are currently green. If a test fails, it is a real regression — inve
 
 ```
 src/
-├── main.rs          # Entry point: adapter mode or subcommand dispatch
+├── main.rs          # Entry point: in-process MCP serve or subcommand dispatch
 ├── handler.rs       # MCP tool handler (rmcp ServerHandler)
 ├── cli.rs           # CLI argument parsing and workspace resolution
 ├── startup.rs       # Workspace initialization and staleness detection
-├── adapter/         # Thin stdio adapter: auto-starts daemon, bridges to HTTP MCP
-├── daemon/          # Background daemon: shared indexes, HTTP MCP server, lifecycle management
-├── dashboard/       # Web dashboard (htmx + Tera templates, served by daemon)
+├── cli_tools/       # Standalone CLI command bootstrap
+├── daemon/          # Registry DB, leader-lock compatibility, project logging
+├── dashboard/       # Standalone read-only dashboard (htmx + Tera templates)
 ├── extractors/      # Language-specific symbol extraction (34 languages)
-├── analysis/        # Post-indexing analysis (test quality metrics)
-├── database/        # SQLite structured storage
-├── search/          # Tantivy search engine and tokenizer
+├── external_extract/ # Process-facing extractor commands
+├── health/          # Health report and diagnostics
+├── indexing_core/   # Shared indexing orchestration
 ├── embeddings/      # Embedding pipeline, sidecar supervisor and protocol
-├── watcher/         # File watcher for incremental re-indexing
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
 │   ├── editing/     # edit_file, rewrite_symbol

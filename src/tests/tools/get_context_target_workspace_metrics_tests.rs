@@ -57,7 +57,8 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
             primary_path.clone(),
             indexes_dir.join(&primary_id),
         )
-        .await?);
+        .await?,
+    );
     {
         let primary_db = primary_ws
             .db
@@ -88,7 +89,8 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
             target_path.clone(),
             indexes_dir.join(&target_id),
         )
-        .await?);
+        .await?,
+    );
     let mut seed_handler = JulieServerHandler::new_with_shared_workspace(
         seed_ws,
         target_path.clone(),
@@ -180,18 +182,15 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
         recorded.0, target_id,
         "get_context telemetry should record the requested workspace id"
     );
-    // source_bytes are looked up in the loaded primary workspace DB (task.workspace),
-    // not the target workspace DB. This is the in-process behavior post WorkspacePool
-    // removal: the metrics writer only has access to the primary workspace's DB.
     assert_eq!(
         recorded.1,
-        Some(primary_bytes),
-        "get_context source_bytes are resolved from the loaded primary workspace db"
+        Some(target_bytes),
+        "get_context source_bytes should be resolved from the requested target workspace db"
     );
     assert_eq!(
         handler.session_metrics.total_source_bytes(),
-        primary_bytes as u64,
-        "get_context session source_bytes are resolved from the loaded primary workspace db"
+        target_bytes as u64,
+        "get_context session source_bytes should be resolved from the requested target workspace db"
     );
 
     let _ = service.cancel().await;

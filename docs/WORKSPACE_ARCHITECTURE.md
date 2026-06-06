@@ -1,173 +1,177 @@
 # Workspace Architecture
 
-**Last Updated:** 2026-04-18
-**Status:** Production (v7.1, stdio + daemon modes)
+**Last Updated:** 2026-06-06
+**Status:** Production, in-process stdio runtime
 
-This document provides detailed information about Julie's workspace architecture, routing, and storage.
+This document describes Julie's workspace storage, routing, and liveness model.
 
-## Two Operating Modes
+## Runtime Model
 
-Julie runs in two modes with different storage topologies:
+The no-args `julie-server` serves MCP in-process over rmcp stdio. Each MCP
+session is its own process. Processes coordinate through shared files under
+`$JULIE_HOME` and a per-workspace OS lock:
 
-### Stdio Mode
-Each MCP session is independent. Indexes live under the project:
-
-```
-<project>/.julie/indexes/
-├── julie_316c0b08/
-│   ├── db/symbols.db            ← SQLite database
-│   └── tantivy/                 ← Tantivy search index
-│
-└── coa-mcp-framework_c77f81e4/
-    ├── db/symbols.db
-    └── tantivy/
-```
-
-Stdio mode is centered on the current workspace and has no persistent global registry. It can still index another path and accepts non-`primary` workspace IDs permissively, but the supported global registration and activation flow lives in daemon mode.
-
-### Daemon Mode (`julie daemon`)
-A background process shares indexes across all MCP sessions. Daemon state and workspace indexes live under `$JULIE_HOME` (default `~/.julie`):
-
-```
-$JULIE_HOME/                     ← Default: ~/.julie. Override via JULIE_HOME env var.
-├── daemon.db                    ← Registry: workspaces, cleanup events, snapshots, tool calls
-└── indexes/
-    ├── julie_316c0b08/
-    │   ├── db/symbols.db
-    │   └── tantivy/
-    └── coa-mcp-framework_c77f81e4/
-        ├── db/symbols.db
-        └── tantivy/
+```text
+$JULIE_HOME/                     # Default: ~/.julie
++-- registry.db                  # Workspaces, cleanup events, snapshots, tool calls
++-- indexes/
+    +-- julie_316c0b08/
+    |   +-- leader.lock
+    |   +-- db/symbols.db
+    |   +-- tantivy/
+    +-- coa-mcp-framework_c77f81e4/
+        +-- leader.lock
+        +-- db/symbols.db
+        +-- tantivy/
 ```
 
-`JULIE_HOME` overrides the daemon home directory directly — `.julie` is not appended. All Julie processes (adapter, daemon, CLI, MCP clients) must see the same `JULIE_HOME` value, or they will resolve different homes and behave as independent daemons. `JULIE_HOME` is unrelated to `JULIE_WORKSPACE`; the latter only selects the current workspace root and does not move daemon state or indexes. See `docs/OPERATIONS.md` for the migration workflow.
+There is no background daemon, stdio adapter, or HTTP MCP bridge. MCP clients
+start `julie-server`; that process handles stdio directly.
 
-`daemon.db` is the authoritative registry (replaces the old `registry.json`). It tracks:
-- All known workspaces (ID, path, status, file/symbol counts)
-- Recent cleanup events for deleted or pruned workspaces
-- Per-session codehealth snapshots
-- Tool call history (retained 7 days)
+`JULIE_HOME` overrides the shared home directory directly. The path is used
+as-is; `.julie` is not appended. All Julie processes must see the same value,
+or they will use different registries and indexes. `JULIE_HOME` is unrelated to
+`JULIE_WORKSPACE`, which only selects the startup workspace root.
 
-**Windows binary-lock caveat:** on Windows, the running `julie-server.exe` holds an exclusive
-image-section lock on its own binary, so `cargo build --release` against a live daemon fails with
-"Access is denied." The daemon's stale-binary detection fires for installer-style replacements
-(`MoveFileEx(MOVEFILE_REPLACE_EXISTING)`) or out-of-band rename sequences, but NOT for in-place
-developer rebuilds. Developers must stop the daemon before rebuilding the release binary on Windows.
+Standalone CLI commands that pass `--standalone` use project-local storage under
+`<project>/.julie/indexes/` and do not participate in the shared registry.
+
+## Registry
+
+`registry.db` is the authoritative registry. It replaces the old JSON registry
+and the old daemon database name. It tracks:
+
+- Known workspaces: ID, path, status, file counts, and symbol counts.
+- Cleanup events for deleted or pruned workspaces.
+- Codehealth snapshots for dashboard views.
+- Tool call history retained for metrics.
+- Lightweight runtime state needed by standalone dashboard reads.
 
 ## Global Workspace Targeting
 
-Daemon mode is the supported global-workspace path and uses four workspace concepts:
+Julie uses four workspace concepts:
 
-- **Current workspace**: the workspace rooted at the session's project directory.
-- **Known workspace**: any workspace recorded in daemon metadata.
-- **Active workspace**: a known workspace opened for the current daemon session.
-- **Target workspace**: the active workspace selected for a tool call.
+- **Current workspace**: the session's primary workspace.
+- **Known workspace**: a workspace recorded in `registry.db`.
+- **Active workspace**: a known workspace opened for the current MCP session.
+- **Target workspace**: the active workspace selected by a tool call.
 
-In daemon mode, cross-workspace work goes through one front door:
+Cross-workspace work goes through one front door:
 
-1. Call `manage_workspace(operation="open", path=<path>)` or `manage_workspace(operation="open", workspace_id=<id>)`.
-2. Julie resolves the workspace, indexes or refreshes it as needed, then activates it for the current session.
+1. Call `manage_workspace(operation="open", path=<path>)` or
+   `manage_workspace(operation="open", workspace_id=<id>)`.
+2. Julie resolves the workspace, indexes or refreshes it as needed, and
+   activates it for the session.
 3. Search, navigation, and editing tools route by the resulting `workspace_id`.
 
-`manage_workspace(operation="register", ...)` indexes or refreshes a known workspace without activating it for the current session.
+`manage_workspace(operation="register", ...)` indexes or refreshes a known
+workspace without activating it for the current session.
 
-Outside daemon mode, Julie does not have the same registry-backed activation model. Stdio still accepts explicit non-`primary` workspace IDs and can index another path, but that behavior is permissive compatibility behavior, not the supported global-workspace flow.
+Omitted `workspace` parameters still mean the current primary workspace only.
+Secondary roots or opened workspaces do not expand the default search scope.
 
 ## Startup Hint And Roots Model
 
-Julie now treats startup path resolution and client roots as separate inputs.
+Julie treats startup path resolution and MCP client roots as separate inputs:
 
-- **Startup hint** is the path Julie gets from CLI, `JULIE_WORKSPACE`, or process `cwd` at session startup.
-- **Primary workspace binding** is the session's current `primary` target.
-- **Client roots** are request-time hints from MCP hosts that support `roots/list`.
+- **Startup hint**: path from CLI, `JULIE_WORKSPACE`, or process `cwd`.
+- **Primary workspace binding**: the session's current `primary` target.
+- **Client roots**: request-time hints from MCP hosts that support `roots/list`.
 
-The startup hint is not always authoritative. When Julie starts from a weak hint such as `cwd`, daemon sessions can remain unbound until the first primary-scoped request. On that request boundary, Julie asks the client for roots, binds the first root as the session primary, and keeps any additional roots active as secondary workspaces for explicit targeting.
+When Julie starts from a weak hint such as `cwd`, the session can remain
+unbound until the first primary-scoped request. At that boundary, Julie asks the
+client for roots, binds the first root as the session primary, and keeps any
+additional roots active as secondary workspaces for explicit targeting.
 
-This keeps default tool behavior stable:
+`notifications/roots/list_changed` is request-bound, not immediate. Julie marks
+the session roots state dirty when the notification arrives, then refreshes
+`roots/list` on the next primary-scoped request. Julie does not switch
+workspaces in the middle of an in-flight tool call.
 
-- Omitted `workspace` parameters still mean the current primary workspace only.
-- Secondary roots do not expand default search scope.
-- Secondary roots stay active in the session so explicit `workspace=<id>` calls keep working after primary rebinds.
+For explicit CLI or env startup sessions, a dirty roots notification settles
+back to the startup hint on the next primary-scoped request. Julie clears the
+dirty state there, but does not re-query roots or rebind away from the explicit
+startup root.
 
-`notifications/roots/list_changed` is request-bound, not immediate. Julie marks the session roots state dirty when the notification arrives, then refreshes `roots/list` on the next primary-scoped request. That follow-up request reconciles the primary binding and any newly reported secondary roots. Julie does not switch workspaces in the middle of an in-flight tool call.
+## Workspace Isolation
 
-## How Workspace Isolation Works
+Each workspace has its own physical database and Tantivy index. Workspace
+selection happens before opening the database connection:
 
-Each workspace has its own PHYSICAL database and Tantivy index files. Workspace selection happens when opening the DB connection:
+1. A tool receives a `workspace` parameter.
+2. The handler routes to `indexes/{workspace_id}/db/symbols.db`.
+3. The connection is scoped to that workspace and cannot query other workspace
+   databases.
 
-1. Tool receives `workspace` parameter
-2. Handler routes to `indexes/{workspace_id}/db/symbols.db`
-3. Connection is locked to that workspace — cannot query others from same connection
+Tool-level `workspace` parameters are essential. They choose which workspace
+database and Tantivy index are opened for that request.
 
-**Tool-level `workspace` parameters are essential**. They route to the correct workspace database. In daemon mode the target workspace must already be active for the current session. In stdio mode non-`primary` IDs are still accepted without daemon registry validation.
+## Leader And Follower Sessions
+
+Each shared workspace index directory contains `leader.lock`. On startup or
+workspace open, a Julie process attempts to acquire that lock:
+
+- **Leader**: owns writes for that workspace, including the watcher, catch-up
+  indexer, repairs, force reindex, refresh stats, and Tantivy writes.
+- **Follower**: serves read-only requests over SQLite WAL and Tantivy mmap.
+- **Leader death**: the OS releases the lock. A later session can acquire it and
+  reconcile changed files through the existing catch-up and repair paths.
+
+The leader lock is a durable file. Seeing `leader.lock` on disk is normal even
+when no process currently holds it.
 
 ## Watchers And Cleanup
 
-Watcher coverage follows active workspaces, not every known workspace in `daemon.db`.
+Watcher coverage follows active workspaces, not every known workspace in
+`registry.db`.
 
-- A watcher is attached when a workspace becomes active in a daemon session.
-- If another session opens the same workspace, Julie reuses the pooled workspace and watcher, then increments the watcher refcount instead of creating a second watcher.
-- When the last attached session disconnects, the watcher enters the existing grace window before the reaper removes it.
+- A watcher is attached when a workspace becomes active in a leader session.
+- Followers do not run watchers or write to Tantivy.
 - Known but inactive workspaces do not keep background watcher coverage.
 
-Cleanup follows the same liveness model.
+Cleanup follows the same liveness model:
 
 - **Present** workspace: path exists and the workspace is usable.
-- **Stale** workspace: path is gone and no live session or indexing work blocks cleanup. Open or delete will prune the row and index.
-- **Blocked** workspace: path is gone, but active sessions or live indexing still hold the workspace open. Julie keeps the row visible and reports the blocking reason.
+- **Stale** workspace: path is gone and no live session or indexing work blocks
+  cleanup.
+- **Blocked** workspace: path is gone, but a live session still holds the
+  workspace open.
 
-Missing-path cleanup is uniform across commands and the dashboard:
-
-- Opening a stale inactive workspace prunes it and records a cleanup event.
-- Opening a missing but blocked workspace does not prune it. Julie reports why cleanup is blocked.
-- Manual delete uses the same liveness checks and refuses to remove an active workspace.
-- Dashboard rows and detail panels surface the same stale versus blocked distinction so users can tell whether a dead worktree is ready to prune or still live in some session.
-
-This is the intended lifecycle for deleted worktrees and other short-lived clones. A dead path does not imply immediate deletion if the workspace is still active anywhere, but it also does not leave a permanent zombie row once liveness drains.
+Opening a stale inactive workspace prunes it and records a cleanup event.
+Opening a missing but blocked workspace reports the blocking reason. Manual
+delete uses the same liveness checks and refuses to remove an active workspace.
 
 ## Storage Location Summary
 
-| Mode   | Workspace data                          | Registry                  |
-|--------|-----------------------------------------|---------------------------|
-| Stdio  | `<project>/.julie/indexes/`             | None (ephemeral)          |
-| Daemon | `$JULIE_HOME/indexes/<workspace_id>/`   | `$JULIE_HOME/daemon.db`   |
+| Runtime path | Workspace data | Registry |
+| --- | --- | --- |
+| In-process MCP | `$JULIE_HOME/indexes/<workspace_id>/` | `$JULIE_HOME/registry.db` |
+| Standalone CLI | `<project>/.julie/indexes/<workspace_id>/` | None |
 
-Default `$JULIE_HOME` is `~/.julie`. Set the `JULIE_HOME` env var to relocate daemon state and indexes; see `docs/OPERATIONS.md` for the migration workflow.
+Default `$JULIE_HOME` is `~/.julie`. Set `JULIE_HOME` to relocate shared state
+and indexes; see `docs/OPERATIONS.md` for the migration workflow.
 
-## Log Location
+## Logs
 
-Per-workspace logs are PROJECT-LEVEL (not user-level) in both modes and are **not** affected by `JULIE_HOME`:
+Per-workspace logs are project-local and are not affected by `JULIE_HOME`:
 
 ```bash
-# CORRECT
-/Users/murphy/source/julie/.julie/logs/julie.log.2026-03-22
+# Correct
+/Users/murphy/source/julie/.julie/logs/julie.log.2026-06-06
 
-# WRONG
-~/.julie/logs/  ← DOES NOT EXIST
+# Wrong
+~/.julie/logs/
 ```
 
-(Daemon-process and adapter logs are written under `$JULIE_HOME`, which defaults to `~/.julie`.)
+The resident embedding host writes its own host log under `$JULIE_HOME`; normal
+workspace indexing and tool diagnostics belong in project logs.
 
 ## Key Benefits
 
-- Complete workspace isolation, each workspace has its own db/tantivy index
-- Explicit activation flow for cross-workspace work via `manage_workspace(operation="open", ...)`
-- Centralized daemon storage under `$JULIE_HOME/indexes/` (default `~/.julie/indexes/`)
-- Daemon mode enables cross-session sharing and persistent metrics
-- Stdio mode works fully offline with no daemon dependency
-
-## Startup Hint And Roots Policy
-
-Julie keeps startup intent and MCP roots separate.
-
-- `WorkspaceStartupHint` records where the session started and why: CLI flag, `JULIE_WORKSPACE`, or process `cwd`.
-- Client roots are only authoritative for weak `cwd` startup sessions.
-- Explicit CLI and env startup remain authoritative even if the client advertises roots support.
-
-On weak `cwd` startup, Julie can leave the session unbound, then resolve the primary workspace from `roots/list` at the next primary-scoped request. Extra roots from that response stay active as secondary workspaces for explicit targeting.
-
-`notifications/roots/list_changed` is request-bound. The notification only marks session roots state dirty. Julie refreshes `roots/list` and may rebind the primary workspace on the next primary-scoped request, but only for weak `cwd` startup sessions.
-
-For explicit CLI or env startup sessions, a dirty roots notification is settled back to the startup hint on the next primary-scoped request. Julie clears the dirty state there, but does not re-query roots or rebind away from the explicit startup root.
-
-Julie does not switch workspaces in the middle of an in-flight tool call.
+- Complete workspace isolation through separate db/tantivy files.
+- Explicit activation flow for cross-workspace work via
+  `manage_workspace(operation="open", ...)`.
+- Shared MCP-session storage under `$JULIE_HOME/indexes/`.
+- Single-writer safety through per-workspace `leader.lock`.
+- Read-only followers for concurrent sessions.
+- Standalone CLI remains available without shared registry state.

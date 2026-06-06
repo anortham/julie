@@ -12,7 +12,7 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 - **Language**: Rust (native performance, cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: Tantivy full-text search + SQLite structured storage + KNN vector search (embeddings)
-- **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout). Since the Phase 3c.3 cutover the no-args `julie-server` serves **in-process** over rmcp stdio (leader-locked per workspace), not via a forked daemon. The daemon/adapter path is being deleted across Phase 3d; daemon-specific sections below are legacy until that completes.
+- **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout). The no-args `julie-server` serves **in-process** over rmcp stdio, leader-locked per workspace. There is no forked daemon, stdio adapter, HTTP MCP bridge, or `julie daemon` runtime.
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 34 tree-sitter extractors with comprehensive test suites, now maintained in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo and consumed here as a pinned git dependency
 
@@ -323,29 +323,7 @@ builds after `cargo clean`.
 
 ### 🚨 LOG LOCATIONS
 
-Julie has TWO log locations depending on mode:
-
-> **⚠️ In transition (Phase 3d):** the shared daemon is being deleted. Since the Phase 3c.3 cutover the default no-args `julie-server` serves in-process per session and writes the **project-level** logs (`.julie/logs/`, shown below). The `~/.julie/daemon.log` paths apply only to the legacy daemon, which is being removed across Phase 3d.
-
-**Daemon mode logs** (the daemon process, shared across sessions):
-```bash
-# Daemon log (rotated daily)
-tail -f ~/.julie/daemon.log.$(date +%Y-%m-%d)
-
-# Check watcher activity
-grep "Background task processing" ~/.julie/daemon.log.$(date +%Y-%m-%d)
-
-# Check watcher creation
-grep "File watcher created" ~/.julie/daemon.log.$(date +%Y-%m-%d)
-
-# View recent errors
-tail -100 ~/.julie/daemon.log.$(date +%Y-%m-%d) | grep -i error
-
-# List all daemon log files
-ls -lh ~/.julie/daemon.log.*
-```
-
-**Project-level logs** (per-project, stdio mode or session-specific):
+Julie writes per-project logs for in-process MCP sessions and standalone CLI runs:
 ```bash
 # Project logs
 tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
@@ -362,8 +340,8 @@ ls -lh .julie/logs/
 ## 🔥 WORKSPACE ARCHITECTURE (Overview)
 
 **Each workspace has SEPARATE PHYSICAL FILES:**
-- Current workspace: `.julie/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
-- Other workspaces: `.julie/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
+- MCP/server storage: `$JULIE_HOME/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
+- Standalone CLI storage: `.julie/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
 
 **WORKSPACE ISOLATION HAPPENS AT FILE LEVEL, NOT QUERY LEVEL:**
 - Tool receives workspace param → Routes to correct .db file → Opens connection
@@ -381,7 +359,7 @@ See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 
 All workspace mutations serialize through a per-workspace async mutex defined in `src/workspace/mutation_gate.rs`. Eight canonical writers — watcher event-processor, watcher repair scan, watcher repair-replay, watcher Tantivy retry, catch-up indexer, force-reindex, refresh-stats, and `register` — all acquire `mutation_gate::acquire_gate(workspace_id)` before mutating, and threading is enforced at compile time via the `MutationGuard<'_>` proof token (gated functions take `_guard: &MutationGuard<'_>`).
 
-**Operator signals to watch in daemon.log:**
+**Operator signals to watch in project logs:**
 - `Waited Nms for mutation gate on workspace <id>` — fires only when gate-wait exceeds 100ms. Steady-state should rarely log; long catch-ups on fresh clones may log briefly. Sustained waits >1s for steady-state operation indicate a writer holding the gate too long; investigate whether a repair scan, catch-up, or force-reindex is leaking the guard.
 - `Watcher: extracted N symbols, M identifiers, K relationships from <path> (<lang>)` — successful index of a watcher event.
 - `Watcher: <path> unchanged (hash match), skipping re-index` — file written but content identical; expected on save-without-change.
@@ -395,18 +373,16 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
 ### Core Design Decisions
 1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
 2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
-3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`. In stdio mode: under `{project}/.julie/indexes/`. In daemon mode: under `~/.julie/indexes/` (shared across all sessions).
-   - **⚠️ Architecture in transition (Phase 3d):** the daemon + adapter described in the next four bullets are being **deleted** across Phase 3d. Since the Phase 3c.3 cutover the default no-args `julie-server` serves **in-process** over rmcp stdio (no daemon fork, no HTTP bridge, no `julie daemon` subcommand), leader-locked per workspace — the lock winner is the sole watcher + Tantivy writer, losers are read-only followers. It still uses `~/.julie/indexes/{workspace_id}/` for storage. The bullets below describe the legacy daemon path retained only until 3d.3 finishes the teardown; they will be rewritten then.
-   - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables cross-workspace targeting (via `manage_workspace(operation="open")`), symbol/file count snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` ensures one sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
-   - **Adapter mode** (default): when `julie-server` is run without arguments, it auto-starts the daemon (if not already running) and bridges stdio JSON-RPC to the daemon's localhost Streamable HTTP endpoint. This is the standard MCP client integration path.
-   - **Stale binary auto-restart**: the daemon captures its binary's mtime at startup. On each new connection and session disconnect, it compares the current binary mtime. If the daemon is idle (0 sessions) when a stale binary is detected, it shuts down immediately before accepting the connection. If sessions are active, it sets `restart_pending` and exits after the last session disconnects. The adapter restarts it automatically with the new binary.
-   - **Catch-up indexing on session connect**: when a session connects and the workspace is already indexed, a background staleness check runs (mtime comparison, then blake3 hash comparison via `filter_changed_files`). Files that changed while the daemon was down are incrementally re-indexed without requiring `force: true`. This closes the gap between the file watcher (which only sees live events) and daemon restarts.
-   - **Stdio mode**: single session, per-project indexes in `.julie/`, no registry persistence. Still available but not the default path.
+3. **Per-Workspace Isolation**: Each workspace gets its own db/tantivy in `indexes/{workspace_id}/`. No-args MCP sessions share `$JULIE_HOME/indexes/` and `$JULIE_HOME/registry.db`; standalone CLI runs use project-local `.julie/indexes/`.
+   - The no-args `julie-server` serves in-process over rmcp stdio.
+   - Per-workspace `leader.lock` elects the single writer. The leader owns the watcher, catch-up work, and Tantivy writes; followers are read-only over SQLite WAL and Tantivy mmap.
+   - `registry.db` tracks known workspaces, cleanup events, codehealth snapshots, tool calls, and lightweight process/session state.
+   - Removed surfaces: no daemon process, stdio adapter, HTTP MCP runtime, `julie daemon` command, PID file, discovery file, port file, token file, or daemon HTTP dashboard host.
 4. **Native Rust Core**: No FFI, no CGO — core indexing/search has zero external dependencies
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
 6. **SQLite Storage**: Symbols, identifiers, relationships, types, files
 7. **Single Binary + Optional Sidecar**: Core features work standalone; GPU-accelerated embeddings use a managed Python sidecar (auto-provisioned via `uv`)
-8. **Semantic Embeddings + KNN Vector Search**: Symbol embeddings via Python sidecar (sentence-transformers + PyTorch) stored in SQLite, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). GPU support: CUDA (NVIDIA, auto-detected), DirectML (AMD/Intel via torch-directml), MPS (Apple Silicon). Default model: CodeRankEmbed (768d). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2). In daemon mode, the embedding provider is shared via `EmbeddingService` (not per-workspace).
+8. **Semantic Embeddings + KNN Vector Search**: Symbol embeddings via Python sidecar (sentence-transformers + PyTorch) stored in SQLite, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). GPU support: CUDA (NVIDIA, auto-detected), DirectML (AMD/Intel via torch-directml), MPS (Apple Silicon). Default model: CodeRankEmbed (768d). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2). A resident embedding host is shared per `$JULIE_HOME`; it is not per-workspace and is not owned by a daemon process.
 9. **Instant Search**: Tantivy index available immediately after indexing
 10. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
 11. **Language-Agnostic Everything**: See below — this is critical

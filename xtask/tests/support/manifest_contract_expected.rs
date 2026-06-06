@@ -45,9 +45,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 5,
                 timeout_seconds: 30,
-                commands: &[
-                    "cargo nextest run -p julie-core",
-                ],
+                commands: &["cargo nextest run -p julie-core"],
             },
         ),
         (
@@ -67,9 +65,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 10,
                 timeout_seconds: 60,
-                commands: &[
-                    "cargo nextest run -p julie-index",
-                ],
+                commands: &["cargo nextest run -p julie-index"],
             },
         ),
         (
@@ -77,9 +73,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 10,
                 timeout_seconds: 60,
-                commands: &[
-                    "cargo nextest run -p julie-pipeline",
-                ],
+                commands: &["cargo nextest run -p julie-pipeline"],
             },
         ),
         (
@@ -128,8 +122,9 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "daemon",
             ExpectedBucket {
-                // Bumped to 60s/180s after the 2026-05 daemon-split bucket additions
-                // (lock_test, discovery_test, token_file_test, app_test, shutdown_drain_test).
+                // Bumped to 60s/180s after the 2026-05 daemon-split bucket additions.
+                // Discovery-file tests were deleted in Phase 3d.3; token_file_test,
+                // app_test, and shutdown_drain_test were deleted in Phase 3d.2b.
                 expected_seconds: 60,
                 timeout_seconds: 180,
                 commands: &["cargo nextest run --lib tests::daemon -- --skip search_quality"],
@@ -432,9 +427,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 15,
                 timeout_seconds: 60,
-                commands: &[
-                    "cargo nextest run -p julie-tools --lib tests::search_promotion_tests",
-                ],
+                commands: &["cargo nextest run -p julie-tools --lib tests::search_promotion_tests"],
             },
         ),
         (
@@ -457,9 +450,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 35,
                 timeout_seconds: 120,
-                commands: &[
-                    "cargo nextest run -p julie-tools --lib tests::tantivy_",
-                ],
+                commands: &["cargo nextest run -p julie-tools --lib tests::tantivy_"],
             },
         ),
         (
@@ -516,9 +507,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 20,
                 timeout_seconds: 60,
-                commands: &[
-                    "cargo nextest run -p julie-runtime --lib tests::workspace::registry",
-                ],
+                commands: &["cargo nextest run -p julie-runtime --lib tests::workspace::registry"],
             },
         ),
     ])

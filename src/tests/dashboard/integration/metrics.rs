@@ -5,14 +5,7 @@ async fn test_all_dashboard_pages_return_200() {
     let state = test_state();
     let config = DashboardConfig::default();
 
-    for path in [
-        "/",
-        "/projects",
-        "/metrics",
-        "/search",
-        "/search/analysis",
-        "/search/compare",
-    ] {
+    for path in ["/", "/projects", "/metrics", "/search", "/search/analysis"] {
         let app = create_router(state.clone(), config.clone()).unwrap();
         let response = app
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())

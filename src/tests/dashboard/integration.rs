@@ -1,12 +1,10 @@
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 use std::time::Instant;
 
 use axum::body::Body;
 use axum::http::Request;
-use tokio_stream::StreamExt;
 use tower::ServiceExt;
 
 use crate::daemon::database::DaemonDatabase;

@@ -8,7 +8,7 @@ use tera::Context;
 
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
-use crate::dashboard::routes::projects_actions::{
+use crate::dashboard::routes::search_session::{
     cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
 };
 use crate::tools::navigation::resolution::WorkspaceTarget;

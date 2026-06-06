@@ -25,6 +25,145 @@ mod tests {
         assert!(!db.table_exists("workspace_references"));
         assert!(db.table_exists("codehealth_snapshots"));
         assert!(db.table_exists("tool_calls"));
+        assert!(db.table_exists("daemon_state"));
+        assert!(!db.table_exists("search_compare_runs"));
+        assert!(!db.table_exists("search_compare_cases"));
+
+        let started_at: i64 = {
+            let conn = db.conn_for_test();
+            conn.query_row(
+                "SELECT started_at_unix FROM daemon_state LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert!(
+            started_at > 0,
+            "daemon_state.started_at_unix should be populated"
+        );
+    }
+
+    #[test]
+    fn test_search_compare_tables_are_dropped_from_existing_registry() {
+        let tmp = TempDir::new().unwrap();
+        let db_path = tmp.path().join("daemon.db");
+
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE schema_version (
+                     version    INTEGER PRIMARY KEY,
+                     applied_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE workspaces (
+                     workspace_id    TEXT PRIMARY KEY,
+                     path            TEXT NOT NULL UNIQUE,
+                     status          TEXT NOT NULL DEFAULT 'pending',
+                     session_count   INTEGER NOT NULL DEFAULT 0,
+                     last_indexed    INTEGER,
+                     symbol_count    INTEGER,
+                     file_count      INTEGER,
+                     embedding_model TEXT,
+                     vector_count    INTEGER,
+                     created_at      INTEGER NOT NULL,
+                     updated_at      INTEGER NOT NULL,
+                     last_index_duration_ms INTEGER
+                 );
+                 CREATE TABLE codehealth_snapshots (
+                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                     workspace_id    TEXT NOT NULL,
+                     timestamp       INTEGER NOT NULL,
+                     total_symbols   INTEGER NOT NULL,
+                     total_files     INTEGER NOT NULL
+                 );
+                 CREATE TABLE tool_calls (
+                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                     workspace_id  TEXT NOT NULL,
+                     session_id    TEXT NOT NULL,
+                     timestamp     INTEGER NOT NULL,
+                     tool_name     TEXT NOT NULL,
+                     duration_ms   REAL NOT NULL,
+                     result_count  INTEGER,
+                     source_bytes  INTEGER,
+                     input_bytes   INTEGER,
+                     output_bytes  INTEGER,
+                     success       INTEGER NOT NULL DEFAULT 1,
+                     metadata      TEXT
+                 );
+                 CREATE TABLE workspace_cleanup_events (
+                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                     workspace_id  TEXT NOT NULL,
+                     path          TEXT NOT NULL,
+                     action        TEXT NOT NULL,
+                     reason        TEXT NOT NULL,
+                     timestamp     INTEGER NOT NULL
+                 );
+                 CREATE TABLE search_compare_runs (
+                     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                     created_at               INTEGER NOT NULL,
+                     baseline_strategy        TEXT NOT NULL,
+                     candidate_strategy       TEXT NOT NULL,
+                     case_count               INTEGER NOT NULL,
+                     baseline_top1_hits       INTEGER NOT NULL,
+                     candidate_top1_hits      INTEGER NOT NULL,
+                     baseline_top3_hits       INTEGER NOT NULL,
+                     candidate_top3_hits      INTEGER NOT NULL,
+                     baseline_source_wins     INTEGER NOT NULL,
+                     candidate_source_wins    INTEGER NOT NULL,
+                     convergence_rate         REAL,
+                     stall_rate               REAL
+                 );
+                 CREATE TABLE search_compare_cases (
+                     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                     run_id                INTEGER NOT NULL,
+                     session_id            TEXT NOT NULL,
+                     workspace_id          TEXT NOT NULL,
+                     query                 TEXT NOT NULL,
+                     search_target         TEXT NOT NULL,
+                     expected_symbol_name  TEXT,
+                     expected_file_path    TEXT,
+                     baseline_rank         INTEGER,
+                     candidate_rank        INTEGER,
+                     baseline_top_hit      TEXT,
+                     candidate_top_hit     TEXT
+                 );
+                 INSERT INTO schema_version (version, applied_at)
+                 VALUES (6, unixepoch());",
+            )
+            .unwrap();
+        }
+
+        let db = DaemonDatabase::open(&db_path).unwrap();
+
+        assert!(!db.table_exists("search_compare_runs"));
+        assert!(!db.table_exists("search_compare_cases"));
+    }
+
+    #[test]
+    fn test_registry_db_open_migrates_existing_daemon_db_file() {
+        let tmp = TempDir::new().unwrap();
+        let daemon_path = tmp.path().join("daemon.db");
+        let registry_path = tmp.path().join("registry.db");
+
+        {
+            let db = DaemonDatabase::open(&daemon_path).unwrap();
+            db.upsert_workspace("ws_old", "/tmp/ws_old", "ready")
+                .unwrap();
+        }
+
+        let db = DaemonDatabase::open(&registry_path).unwrap();
+        let row = db
+            .get_workspace("ws_old")
+            .unwrap()
+            .expect("registry.db should inherit existing daemon.db rows");
+
+        assert_eq!(row.path, "/tmp/ws_old");
+        assert!(registry_path.exists());
+        assert!(
+            !daemon_path.exists(),
+            "successful registry migration should move the old daemon.db file"
+        );
     }
 
     #[test]
@@ -417,52 +556,6 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_and_list_search_compare_runs_and_cases() {
-        let (db, _tmp) = create_test_db();
-        let run_id = db
-            .insert_search_compare_run(&crate::daemon::database::SearchCompareRunInput {
-                baseline_strategy: "shared_current".to_string(),
-                candidate_strategy: "legacy_direct".to_string(),
-                case_count: 2,
-                baseline_top1_hits: 1,
-                candidate_top1_hits: 0,
-                baseline_top3_hits: 2,
-                candidate_top3_hits: 1,
-                baseline_source_wins: 2,
-                candidate_source_wins: 1,
-                convergence_rate: Some(0.5),
-                stall_rate: Some(0.25),
-            })
-            .unwrap();
-        db.replace_search_compare_cases(
-            run_id,
-            &[crate::daemon::database::SearchCompareCaseInput {
-                session_id: "sess1".to_string(),
-                workspace_id: "ws1".to_string(),
-                query: "search handler".to_string(),
-                search_target: "definitions".to_string(),
-                expected_symbol_name: Some("search_handler".to_string()),
-                expected_file_path: Some("src/dashboard/routes/search.rs".to_string()),
-                baseline_rank: Some(1),
-                candidate_rank: Some(3),
-                baseline_top_hit: Some(
-                    "search_handler @ src/dashboard/routes/search.rs".to_string(),
-                ),
-                candidate_top_hit: Some("run_search @ src/dashboard/routes/search.rs".to_string()),
-            }],
-        )
-        .unwrap();
-
-        let runs = db.list_search_compare_runs(10).unwrap();
-        let cases = db.list_search_compare_cases(run_id).unwrap();
-
-        assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].baseline_strategy, "shared_current");
-        assert_eq!(cases.len(), 1);
-        assert_eq!(cases[0].baseline_rank, Some(1));
-    }
-
-    #[test]
     fn test_prune_old_tool_calls() {
         let (db, _tmp) = create_test_db();
         // Insert a call with a very old timestamp (year 2001)
@@ -767,7 +860,6 @@ mod tests {
         assert_eq!(total2, 3, "should only count ws2 calls");
         assert_eq!(succeeded2, 0, "no ws2 calls succeeded");
     }
-
 
     #[test]
     fn test_migrate_workspace_ids_empty_map() {

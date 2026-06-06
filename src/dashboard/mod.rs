@@ -3,7 +3,6 @@
 pub mod error_buffer;
 pub mod routes;
 pub mod search_analysis;
-pub mod search_compare;
 pub mod state;
 
 use std::path::PathBuf;
@@ -137,30 +136,15 @@ pub fn create_router(
         .route("/", get(routes::status::index))
         .route("/status/live", get(routes::status::live))
         .route("/projects", get(routes::projects::index))
-        .route(
-            "/projects/register",
-            post(routes::projects_actions::register),
-        )
         .route("/projects/statuses", get(routes::projects::statuses))
         .route("/projects/table", get(routes::projects::table))
         .route("/projects/{id}/detail", get(routes::projects::detail))
-        .route("/projects/{id}/open", post(routes::projects_actions::open))
-        .route(
-            "/projects/{id}/refresh",
-            post(routes::projects_actions::refresh),
-        )
-        .route(
-            "/projects/{id}/delete",
-            post(routes::projects_actions::delete),
-        )
         .route("/metrics", get(routes::metrics::index))
         .route("/metrics/table", get(routes::metrics::table))
         .route("/metrics/summary", get(routes::metrics::summary))
         .route("/search", get(routes::search::index))
         .route("/search", post(routes::search::search))
         .route("/search/analysis", get(routes::search_analysis::index))
-        .route("/search/compare", get(routes::search_compare::index))
-        .route("/search/compare", post(routes::search_compare::run))
         .route(
             "/intelligence/{workspace_id}",
             get(routes::intelligence::index),
@@ -174,11 +158,6 @@ pub fn create_router(
             "/signals/{workspace_id}/summary",
             get(routes::signals::summary),
         )
-        .route(
-            "/signals/{workspace_id}/refresh",
-            post(routes::signals::refresh),
-        )
-        .route("/events/activity", get(routes::events::activity_stream))
         .route("/static/{*path}", get(serve_static))
         .with_state(app_state);
 

@@ -181,9 +181,8 @@ async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str)?;
     daemon_db.upsert_workspace(&primary_id, &primary_path_str, "ready")?;
-    let primary_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
-            .await?);
+    let primary_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(primary_path.clone()).await?);
 
     let target_path = target_root.canonicalize()?;
     let target_path_str = target_path.to_string_lossy().to_string();
@@ -249,7 +248,8 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
             primary_path.clone(),
             indexes_dir.join(&primary_id),
         )
-        .await?);
+        .await?,
+    );
     {
         let primary_db = primary_ws
             .db
@@ -279,7 +279,8 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
             target_path.clone(),
             indexes_dir.join(&target_id),
         )
-        .await?);
+        .await?,
+    );
     {
         let target_db = target_ws
             .db
@@ -397,18 +398,15 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
         recorded.0, target_id,
         "fast_refs telemetry should record the requested workspace id"
     );
-    // source_bytes are looked up in the loaded primary workspace DB (task.workspace),
-    // not the target workspace DB. This is the in-process behavior post WorkspacePool
-    // removal: the metrics writer only has access to the primary workspace's DB.
     assert_eq!(
         recorded.1,
-        Some(primary_bytes),
-        "fast_refs source_bytes are resolved from the loaded primary workspace db"
+        Some(target_bytes),
+        "fast_refs source_bytes should be resolved from the requested target workspace db"
     );
     assert_eq!(
         handler.session_metrics.total_source_bytes(),
-        primary_bytes as u64,
-        "fast_refs session source_bytes are resolved from the loaded primary workspace db"
+        target_bytes as u64,
+        "fast_refs session source_bytes should be resolved from the requested target workspace db"
     );
 
     let _ = service.cancel().await;

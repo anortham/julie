@@ -7,10 +7,10 @@ use rmcp::{
 use tracing::debug;
 
 use crate::handler::tools::error::classify_tool_failure;
+use crate::handler::workspace_resolution::resolve_workspace_filter;
 use crate::handler::{JulieServerHandler, tool_targets};
 use crate::tools::GetContextTool;
 use crate::tools::metrics::session::ToolCallReport;
-use crate::handler::workspace_resolution::resolve_workspace_filter;
 
 #[tool_router(router = tool_router_get_context, vis = "pub(crate)")]
 impl JulieServerHandler {
@@ -76,10 +76,13 @@ impl JulieServerHandler {
         };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
+        let source_bytes = self
+            .metrics_source_bytes_for_binding(workspace_snapshot.as_ref(), &source_file_paths)
+            .await;
         let report = ToolCallReport {
             result_count: None,
             input_bytes: Self::input_bytes_from_metadata(&metadata),
-            source_bytes: None,
+            source_bytes,
             output_bytes,
             metadata,
             source_file_paths,

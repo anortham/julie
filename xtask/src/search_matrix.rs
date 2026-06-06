@@ -1,11 +1,19 @@
+use anyhow::Result;
+use julie::daemon::database::{DaemonDatabase, WorkspaceRow};
+use julie::handler::JulieServerHandler;
+use julie::paths::DaemonPaths;
+use julie::tools::search::SearchBackend;
+use julie::tools::search::execution::{
+    SearchExecutionParams, SearchExecutionWorkspace, execute_search,
+};
+use julie::workspace::JulieWorkspace;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use julie::daemon::database::{DaemonDatabase, WorkspaceRow};
-use julie::paths::DaemonPaths;
-use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Instant;
 
 use crate::cli::{Ablation, SearchMatrixCommand};
 use crate::search_matrix_mine::mine_search_matrix_seed_report;
@@ -123,7 +131,7 @@ pub fn run_search_matrix_command(
     match command {
         SearchMatrixCommand::Mine { days, out } => {
             let daemon_paths = DaemonPaths::new();
-            let report = mine_search_matrix_seed_report(&daemon_paths.daemon_db(), *days, out)?;
+            let report = mine_search_matrix_seed_report(&daemon_paths.registry_db(), *days, out)?;
             writeln!(
                 stdout,
                 "search-matrix mine wrote {} candidates across {} clusters to {}",
@@ -186,7 +194,7 @@ pub fn run_search_matrix_baseline_with_home(
     let cases = SearchMatrixCaseSet::load(cases_path)?;
     let corpus = SearchMatrixCorpus::load(corpus_path)?;
     let daemon_paths = DaemonPaths::with_home(julie_home.to_path_buf());
-    let daemon_db = DaemonDatabase::open(&daemon_paths.daemon_db())?;
+    let daemon_db = DaemonDatabase::open(&daemon_paths.registry_db())?;
     let workspaces = daemon_db.list_workspaces()?;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -204,26 +212,185 @@ pub fn run_search_matrix_baseline_with_home(
     Ok(report)
 }
 
-/// Pool-backed search matrix (Phase 3d.2b-ii: WorkspacePool deleted).
-/// Returns error — restore in Phase 3d.3 when dashboard gets standalone registry.
 async fn run_baseline_async(
-    _daemon_paths: DaemonPaths,
-    _cases: &SearchMatrixCaseSet,
-    _corpus: &SearchMatrixCorpus,
-    _profile: &str,
-    _workspaces: &[WorkspaceRow],
-    _ablation: &Ablation,
+    daemon_paths: DaemonPaths,
+    cases: &SearchMatrixCaseSet,
+    corpus: &SearchMatrixCorpus,
+    profile: &str,
+    workspaces: &[WorkspaceRow],
+    ablation: &Ablation,
 ) -> Result<SearchMatrixBaselineReport> {
-    anyhow::bail!(
-        "search matrix requires WorkspacePool which was removed in Phase 3d.2b; \
-         restore in Phase 3d.3"
-    )
+    let profile_repos = corpus
+        .profiles
+        .get(profile)
+        .ok_or_else(|| anyhow::anyhow!("search-matrix profile `{profile}` not found"))?;
+    let daemon_db = Arc::new(DaemonDatabase::open(&daemon_paths.registry_db())?);
+    let _env_guard = ablation.apply_env();
+    let ablation_label = ablation.label().to_string();
+
+    let mut executions = Vec::new();
+    let mut skipped_repos = Vec::new();
+
+    for repo_name in &profile_repos.repos {
+        let Some(repo) = corpus.repos.iter().find(|repo| repo.name == *repo_name) else {
+            skipped_repos.push(SearchMatrixSkippedRepo {
+                repo_name: repo_name.clone(),
+                reason: "repo is not declared in corpus".to_string(),
+            });
+            continue;
+        };
+
+        let Some(repo_root) = resolve_repo_root(corpus, repo_name) else {
+            skipped_repos.push(SearchMatrixSkippedRepo {
+                repo_name: repo_name.clone(),
+                reason: "repo root not found".to_string(),
+            });
+            continue;
+        };
+
+        let repo_cases = eligible_cases_for_repo(cases, profile, repo);
+        if repo_cases.is_empty() {
+            skipped_repos.push(SearchMatrixSkippedRepo {
+                repo_name: repo_name.clone(),
+                reason: "no eligible cases for profile".to_string(),
+            });
+            continue;
+        }
+
+        let Some(workspace) = find_workspace_row(workspaces, &repo_root) else {
+            skipped_repos.push(SearchMatrixSkippedRepo {
+                repo_name: repo_name.clone(),
+                reason: "workspace is not registered in registry.db".to_string(),
+            });
+            continue;
+        };
+
+        if workspace.status != "ready" {
+            skipped_repos.push(SearchMatrixSkippedRepo {
+                repo_name: repo_name.clone(),
+                reason: format!("workspace status is `{}`", workspace.status),
+            });
+            continue;
+        }
+
+        let index_root = daemon_paths.workspace_index_dir(&workspace.workspace_id);
+        if !index_root.join("db").join("symbols.db").exists() {
+            skipped_repos.push(SearchMatrixSkippedRepo {
+                repo_name: repo_name.clone(),
+                reason: "workspace symbols.db is missing".to_string(),
+            });
+            continue;
+        }
+
+        let workspace_runtime = Arc::new(
+            JulieWorkspace::initialize_with_index_root(repo_root.clone(), index_root).await?,
+        );
+        let handler = JulieServerHandler::new_with_shared_workspace(
+            workspace_runtime,
+            repo_root,
+            Some(Arc::clone(&daemon_db)),
+            Some(workspace.workspace_id.clone()),
+            None,
+            None,
+            None,
+        )
+        .await?;
+
+        for case in repo_cases {
+            let execution =
+                execute_baseline_case(repo_name, workspace, case, &handler, &ablation_label).await;
+            executions.push(execution);
+        }
+    }
+
+    let summary_flags = compute_summary_flags(&executions, cases);
+    Ok(SearchMatrixBaselineReport {
+        profile: profile.to_string(),
+        executions,
+        skipped_repos,
+        summary_flags,
+    })
 }
 
-// Baseline-runner helpers below are dormant: `run_baseline_async` is stubbed
-// (WorkspacePool removed in Phase 3d.2b) and is rewired against the registry in
-// Phase 3d.3, which revives these. Kept, not deleted — most are
-// registry-independent corpus/case logic that 3d.3 reuses verbatim.
+async fn execute_baseline_case(
+    repo_name: &str,
+    workspace: &WorkspaceRow,
+    case: &SearchMatrixCase,
+    handler: &JulieServerHandler,
+    ablation_label: &str,
+) -> SearchMatrixBaselineExecution {
+    let language = case.language.clone();
+    let file_pattern = case.file_pattern.clone();
+    let started = Instant::now();
+    let result = execute_search(
+        SearchExecutionParams {
+            query: &case.query,
+            language: &language,
+            file_pattern: &file_pattern,
+            limit: 10,
+            context_lines: None,
+            exclude_tests: case.exclude_tests,
+            backend: SearchBackend::resolve(None),
+        },
+        &[SearchExecutionWorkspace::primary(
+            workspace.workspace_id.clone(),
+        )],
+        handler,
+    )
+    .await;
+    let latency_ms = started.elapsed().as_millis();
+
+    match result {
+        Ok(result) => SearchMatrixBaselineExecution {
+            repo_name: repo_name.to_string(),
+            workspace_id: workspace.workspace_id.clone(),
+            case_id: case.case_id.clone(),
+            family: case.family.clone(),
+            search_target: case.search_target.clone(),
+            hit_count: result.hits.len(),
+            hit_count_is_lower_bound: result.total_results > result.hits.len(),
+            relaxed: result.relaxed,
+            zero_hit_reason: result.trace.zero_hit_reason.as_ref().map(enum_label),
+            file_pattern_diagnostic: result
+                .trace
+                .file_pattern_diagnostic
+                .as_ref()
+                .map(enum_label),
+            hint_kind: result.trace.hint_kind.as_ref().map(enum_label),
+            latency_ms,
+            top_hits: result
+                .hits
+                .into_iter()
+                .take(10)
+                .map(|hit| SearchMatrixTopHit {
+                    name: hit.name,
+                    file: hit.file,
+                    line: hit.line,
+                    kind: hit.kind,
+                    score: hit.score,
+                })
+                .collect(),
+            ablation_label: ablation_label.to_string(),
+        },
+        Err(error) => SearchMatrixBaselineExecution {
+            repo_name: repo_name.to_string(),
+            workspace_id: workspace.workspace_id.clone(),
+            case_id: case.case_id.clone(),
+            family: case.family.clone(),
+            search_target: case.search_target.clone(),
+            hit_count: 0,
+            hit_count_is_lower_bound: false,
+            relaxed: false,
+            zero_hit_reason: Some(format!("search_error: {error}")),
+            file_pattern_diagnostic: None,
+            hint_kind: None,
+            latency_ms,
+            top_hits: Vec::new(),
+            ablation_label: ablation_label.to_string(),
+        },
+    }
+}
+
 #[allow(dead_code)]
 fn eligible_cases_for_repo<'a>(
     cases: &'a SearchMatrixCaseSet,

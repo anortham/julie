@@ -19,6 +19,7 @@ pub(crate) struct MetricsTask {
     pub tool_name: String,
     pub duration_ms: f64,
     pub result_count: Option<u32>,
+    pub source_bytes: Option<u64>,
     pub source_file_paths: Vec<String>,
     pub input_bytes: Option<u64>,
     pub output_bytes: u64,
@@ -31,23 +32,16 @@ pub(crate) struct MetricsTask {
 /// Single background task that drains the metrics channel and writes to SQLite.
 pub(crate) async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
     while let Some(task) = rx.recv().await {
-        let mut source_bytes: Option<u64> = None;
+        let mut source_bytes: Option<u64> = task.source_bytes;
         let resolved_workspace = task.workspace.read().await.clone();
 
         if let Some(ws) = resolved_workspace.as_ref() {
             if let Some(db_arc) = &ws.db {
                 if let Ok(db) = db_arc.lock() {
-                    source_bytes = if !task.source_file_paths.is_empty() {
+                    if source_bytes.is_none() && !task.source_file_paths.is_empty() {
                         let path_refs: Vec<&str> =
                             task.source_file_paths.iter().map(|s| s.as_str()).collect();
-                        db.get_total_file_sizes(&path_refs).ok()
-                    } else {
-                        None
-                    };
-                    if let Some(sb) = source_bytes {
-                        task.session_metrics
-                            .total_source_bytes
-                            .fetch_add(sb, Ordering::Relaxed);
+                        source_bytes = db.get_total_file_sizes(&path_refs).ok();
                     }
                     let _ = db.insert_tool_call_with_input_bytes(
                         &task.session_id,
@@ -62,6 +56,11 @@ pub(crate) async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<Metri
                     );
                 }
             }
+        }
+        if let Some(sb) = source_bytes {
+            task.session_metrics
+                .total_source_bytes
+                .fetch_add(sb, Ordering::Relaxed);
         }
 
         if let (Some(db), Some(ref workspace_id)) = (&task.daemon_db, task.workspace_id.as_ref()) {
@@ -155,6 +154,7 @@ impl JulieServerHandler {
                 tool_name: tool_name.to_string(),
                 duration_ms: duration.as_secs_f64() * 1000.0,
                 result_count: report.result_count,
+                source_bytes: report.source_bytes,
                 source_file_paths: report.source_file_paths.clone(),
                 input_bytes: report.input_bytes,
                 output_bytes,

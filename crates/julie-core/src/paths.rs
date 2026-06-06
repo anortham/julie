@@ -458,8 +458,13 @@ impl DaemonPaths {
     }
 
     /// Persistent daemon state database.
+    pub fn registry_db(&self) -> PathBuf {
+        self.julie_home.join("registry.db")
+    }
+
+    /// Deprecated 3d.3 compatibility shim. New code should use `registry_db`.
     pub fn daemon_db(&self) -> PathBuf {
-        self.julie_home.join("daemon.db")
+        self.registry_db()
     }
 
     /// Path to the file storing the dashboard HTTP port.

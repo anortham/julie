@@ -10,6 +10,7 @@
 
 pub use super::ManageWorkspaceTool;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -41,10 +42,15 @@ pub(crate) fn registry_store_for_handler(
     Ok(Some(registry_store_for(daemon_db)?))
 }
 
-pub(crate) fn cleanup_activity_for_handler(
-    _handler: &JulieServerHandler,
+pub(crate) async fn cleanup_activity_for_handler(
+    handler: &JulieServerHandler,
 ) -> WorkspaceCleanupActivity {
-    WorkspaceCleanupActivity::new()
+    let mut live_workspace_ids = HashSet::new();
+    if let Some(workspace_id) = handler.current_workspace_id() {
+        live_workspace_ids.insert(workspace_id);
+    }
+    live_workspace_ids.extend(handler.session_attached_workspace_ids().await);
+    WorkspaceCleanupActivity::new(live_workspace_ids)
 }
 
 // Split command implementations into logical modules

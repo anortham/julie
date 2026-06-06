@@ -1,10 +1,13 @@
+use std::fs;
 use std::path::PathBuf;
 
 use julie::daemon::database::DaemonDatabase;
 use serde_json::json;
 use tempfile::TempDir;
-use xtask::cli::{CliCommand, SearchMatrixCommand, parse_cli_command};
-use xtask::search_matrix::{SearchMatrixCaseSet, SearchMatrixCorpus};
+use xtask::cli::{Ablation, CliCommand, SearchMatrixCommand, parse_cli_command};
+use xtask::search_matrix::{
+    SearchMatrixCaseSet, SearchMatrixCorpus, run_search_matrix_baseline_with_home,
+};
 use xtask::search_matrix_mine::mine_search_matrix_seed_report;
 use xtask::workspace_root;
 
@@ -56,6 +59,71 @@ fn search_matrix_contract_tests_parse_baseline_command() {
             ablation: xtask::cli::Ablation::None,
         })
     );
+}
+
+#[test]
+fn search_matrix_contract_tests_baseline_no_longer_errors_on_removed_workspace_pool() {
+    let temp = TempDir::new().expect("tempdir");
+    let julie_home = temp.path().join("julie-home");
+    let roots_dir = temp.path().join("roots");
+    let cases_path = temp.path().join("cases.toml");
+    let corpus_path = temp.path().join("corpus.toml");
+    let out_path = temp.path().join("baseline.json");
+
+    fs::create_dir_all(&julie_home).expect("julie home");
+    fs::create_dir_all(&roots_dir).expect("roots");
+    fs::write(
+        &cases_path,
+        r#"
+[[cases]]
+case_id = "missing_repo_case"
+family = "exact_identifier"
+query = "missing_symbol"
+search_target = "definitions"
+language = "rust"
+profile_tags = ["smoke"]
+expected_mode = "expect_hits"
+"#,
+    )
+    .expect("write cases");
+    fs::write(
+        &corpus_path,
+        format!(
+            r#"
+roots = ["{}"]
+
+[profiles.smoke]
+repos = ["missing-repo"]
+
+[[repos]]
+name = "missing-repo"
+language = "rust"
+profile_tags = ["smoke"]
+"#,
+            roots_dir.display()
+        ),
+    )
+    .expect("write corpus");
+
+    let report = run_search_matrix_baseline_with_home(
+        &julie_home,
+        &cases_path,
+        &corpus_path,
+        "smoke",
+        &out_path,
+        &Ablation::None,
+    )
+    .expect("baseline should skip missing repos instead of requiring WorkspacePool");
+
+    assert!(report.executions.is_empty());
+    assert_eq!(report.skipped_repos.len(), 1);
+    assert_eq!(report.skipped_repos[0].repo_name, "missing-repo");
+    assert!(
+        report.skipped_repos[0]
+            .reason
+            .contains("repo root not found")
+    );
+    assert!(out_path.exists(), "baseline report should be written");
 }
 
 #[test]

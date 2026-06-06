@@ -340,24 +340,27 @@ both produce stem "estim".
 - **Blocking context**: Tantivy uses `std::sync::Mutex` for the writer, so
   search operations run inside `tokio::task::spawn_blocking`
 
-### NL Definition Query Latency — Daemon vs Standalone
+### NL Definition Query Latency - In-Process MCP vs Standalone
 
-**Daemon mode** (normal MCP client path): NL `definitions` queries (`is_nl_like_query` → true)
-take **~100ms** against a 100k-symbol workspace. The Tantivy index is held open in memory
-and the shared `EmbeddingService` is already initialized.
+**In-process MCP path** (normal MCP client path): NL `definitions` queries
+(`is_nl_like_query` -> true) take **~100ms** against a 100k-symbol workspace
+when the Tantivy index is already on disk and warm. The MCP session serves stdio
+directly and can reuse the resident embedding host for embedding-backed work.
 
-**Standalone mode** (`julie-server search ... --standalone`): Latency depends on whether
-the Tantivy index is already on disk and whether the OS page cache is warm:
+**Standalone mode** (`julie-server search ... --standalone`): Latency depends on
+whether the Tantivy index is already on disk and whether the OS page cache is
+warm:
 - **No index on disk**: ~40–75s (full workspace indexing + Tantivy segment build + query).
 - **Index on disk, cold OS cache**: ~2s (Tantivy mmaps all segments from disk).
 - **Index on disk, warm OS cache**: ~100–200ms (normal).
 
 **Key implementation note — embedding sidecar probe:**  
 NL `definitions` queries trigger `maybe_initialize_embeddings_for_nl_definitions` in
-`src/tools/search/nl_embeddings.rs`. In daemon mode this returns immediately (the
-`EmbeddingService` is already settled). In standalone mode without the fix below it
-would call `create_embedding_provider()`, which probes and launches the Python sidecar —
-costing **8–10 seconds** even when keywords are sufficient.
+`src/tools/search/nl_embeddings.rs`. In the MCP path, embedding-backed work goes
+through the resident embedding host when available. In standalone mode without
+the fix below it would call `create_embedding_provider()`, which probes and
+launches the Python sidecar, costing **8-10 seconds** even when keywords are
+sufficient.
 
 The fix (`bootstrap_standalone_handler` in `src/cli_tools/mod.rs`) calls
 `handler.mark_standalone_embedding_skipped()` immediately after indexing. This sets
@@ -372,7 +375,7 @@ is correct — the sidecar would be torn down immediately after the one-shot que
 
 | Path | Latency |
 |------|---------|
-| Daemon mode, query "function display template" | ~100ms avg |
+| In-process MCP, query "function display template" | ~100ms avg |
 | `search_symbols` internals (expand + AND search + OR fallback) | ~1ms |
 | `expand_query_terms("function display template")` | ~340µs |
 | AND pass (Tantivy search, 160 candidate limit) | ~800µs |
@@ -388,7 +391,25 @@ The AND/OR fallback adds at most one extra Tantivy search call.
 
 ## Storage
 
-**Stdio mode** (per-project):
+**In-process MCP path** (shared by sessions under `$JULIE_HOME`):
+```
+$JULIE_HOME/indexes/{workspace_id}/
+  ├── leader.lock              # Per-workspace writer election
+  ├── db/
+  │   └── symbols.db           # SQLite (symbols, files, relationships, types)
+  └── tantivy/
+      ├── meta.json            # Tantivy index metadata
+      ├── {segment_id}.fast    # Fast fields (stored data)
+      ├── {segment_id}.idx     # Inverted index
+      ├── {segment_id}.pos     # Positions
+      ├── {segment_id}.store   # Doc store
+      └── {segment_id}.term    # Term dictionary
+```
+
+The registry of all known workspaces and dashboard-visible metrics lives in
+`$JULIE_HOME/registry.db`.
+
+**Standalone CLI path** (per-project, no shared registry):
 ```
 <project>/.julie/indexes/{workspace_id}/
   ├── db/
@@ -402,15 +423,8 @@ The AND/OR fallback adds at most one extra Tantivy search call.
       └── {segment_id}.term    # Term dictionary
 ```
 
-**Daemon mode** (shared across sessions, under `$JULIE_HOME` — default `~/.julie`):
-```
-$JULIE_HOME/indexes/{workspace_id}/
-  ├── db/symbols.db
-  └── tantivy/
-```
-
 Each workspace (primary and reference) gets its own Tantivy index directory.
-In daemon mode, the registry of all workspaces and sessions lives in `$JULIE_HOME/daemon.db`. See `docs/OPERATIONS.md` for the `JULIE_HOME` override and migration workflow.
+See `docs/OPERATIONS.md` for the `JULIE_HOME` override and migration workflow.
 
 The `SearchIndex` supports `open_or_create` semantics -- if a Tantivy
 directory doesn't exist, it creates one. If it exists, it opens it. A v1-to-v2

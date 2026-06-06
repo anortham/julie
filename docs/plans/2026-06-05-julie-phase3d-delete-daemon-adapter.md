@@ -28,7 +28,7 @@ Refinement from the original "3d.1 = delete adapter + HTTP transport": orientati
 
 - **3d.1 — Cut the daemon-client surface.** Delete `adapter/**`, `bin/julie-adapter.rs`, the CLI's daemon-IPC mode (`cli_tools/daemon.rs`), and `daemon/http_client.rs`; route the CLI to standalone-only. This is the "adapter is gone" milestone — pure deletion of cutover-bypassed code. **This plan details 3d.1 in full.**
 - **3d.2 — Tear down the HTTP daemon server.** SPLIT into **3d.2a (entry kill)** + **3d.2b (server-core kill)** after the mapping workflow (2026-06-05) proved one PR is too large and surfaced three compile-couplings. 3d.2a deletes the daemon *entry* (the `julie daemon` subcommand + `julie-daemon` bin + `run_daemon` + the entry-only write-path `legacy_migration.rs`/`fd_limit.rs`), leaving a compiling tree with no way to start the HTTP daemon. 3d.2b deletes the now-orphaned *server core* (`app.rs`+`app/**`, `http_transport.rs`, `transport.rs`, `mcp_session.rs`, `session.rs`, `lifecycle.rs`, `shutdown_event.rs`, `token_file.rs`, `singleton.rs`) + the `InProcessDaemon` test harness + the handler.rs pool-field surgery that gates deleting `workspace_pool.rs`/`watcher_pool.rs`. **`pid.rs` is NOT deleted in 3d.2** — `discovery.rs` (the kept leader lock) imports it; it moves to 3d.3 with the discovery.json-reader excision. *(3d.2a detailed below; 3d.2b outlined.)*
-- **3d.3 — Data + dashboard.** `daemon.db` → `registry.db`; standalone registry-reader dashboard per §11 (add `daemon_state.started_at_unix`, drop mutation routes + live signals); delete `database/search_compare.rs` + the G7 dual-write; delete `src/migration.rs`. *(Outline below; detailed when reached.)*
+- **3d.3 — Data + dashboard.** `daemon.db` → `registry.db`; standalone registry-reader dashboard per §11 (add `daemon_state.started_at_unix`, drop mutation routes + live signals); delete `database/search_compare.rs` + the G7 dual-write; delete `src/migration.rs`. *(Detailed plan below.)*
 
 **Hard sequencing gate:** §7 DAG step 1 requires "the in-process server is live and proven" before deletions. That proof is the **3c.3 live dogfood smoke** (user-only: rebuild `--release`, restart the MCP client, confirm no `julie-daemon`/`julie-adapter` fork via `ps` and no `~/.julie/.../discovery.json`, then a live `fast_search` + `edit_file` + re-search round-trip). **3d.1 may be implemented and branch-gated, but its PR must not merge until that smoke passes.**
 
@@ -351,19 +351,290 @@ External review: codex (gpt-5.5, escalation tier) pre-merge on `main..HEAD` @ d8
 
 ---
 
-## 3d.3 — Data + standalone dashboard (OUTLINE — detail when reached)
+## 3d.3 - Data + Standalone Dashboard (Detailed Plan)
 
-`daemon.db` → `registry.db` rename/migration; add `registry.db.daemon_state.started_at_unix` (the one new write-site from §11); build the standalone registry-reader dashboard (reads `registry.db` + per-workspace `symbols.db` projection_states + `~/.julie/recovery-*.json`; drops all mutation routes, SSE, CSRF, live session/indexing/embedding signals per the §11 DROP list, plus `dashboard/routes/events.rs` + `projects_actions.rs` which have no read-only analogue); G7 dual-write cleanup — `fast_refs` the per-workspace `SymbolDatabase.tool_calls` read methods, and if the read-side is dead, delete `database/search_compare.rs` + the dual-write and make the central copy the source of truth; delete `src/migration.rs` (owner decision: delete now) + its `pub mod migration;` in `lib.rs`.
+**Goal:** finish the daemon teardown by turning the remaining daemon-named data layer into the in-process registry, deleting the last discovery/pid write-paths, and rebuilding the dashboard as a read-only registry viewer.
 
-**Absorbed from 3d.2b-ii (unmapped `WorkspacePool` consumer surfaced during execution):** `xtask/src/search_matrix.rs` `run_baseline_async` was a multi-workspace search-bakeoff that iterated the daemon registry (`DaemonDatabase` + `WorkspacePool` + `new_with_shared_workspace`). 3d.2b-ii **stubs it to a clear `bail!`** (dev-only eval tooling, no branch-gate dependency, and its proper rewire is coupled to this phase's `daemon.db → registry.db` rename — rewiring against `daemon.db` now would be redone here). 3d.3 rewires it onto the in-process single-workspace path (`new_in_process` per resolved repo root) reading from `registry.db`, restoring the baseline/ablation command.
+**Architecture:** `registry.db` is the central process-independent store for workspace rows, tool-call history, cleanup events, codehealth snapshots, and any dashboard-readable persisted signals. The in-process MCP server writes registry rows directly; the dashboard reads `registry.db` plus per-workspace `symbols.db` snapshots and recovery markers, with no mutation routes and no live pool/session/watch streams.
 
-**Absorbed from 3d.2 (per the verified map):** excise the `discovery.json` reader bodies in `daemon/discovery.rs` (`DiscoveryRecord::for_current_process`, `DiscoveryFile::read_and_validate` — their only callers die with the server in 3d.2b; the leader-lock `DaemonLockGuard` itself does NOT use them), then remove the `use crate::daemon::pid::{...}` import (discovery.rs:51) and finally **delete `src/daemon/pid.rs`** (held out of 3d.2 because discovery.rs imports it) + its `section7_files` tripwire entry + pid tests. This is the last write-path file. If `daemon/shutdown.rs::publish_discovery_phase` is also dead post-3d.2b (its only caller was `app/handle.rs`), excise it too — but keep `RecoveryMarker` (permanent).
+**Architecture Quality**
 
-**Tracked from 3d.2b-ii codex pre-merge review (both pre-existing in-process behaviors since the 3c.3 cutover, surfaced when the dead daemon arms were deleted — fix here where the registry/session/telemetry semantics are rebuilt):**
-- **F1 — in-process workspace-cleanup safety:** the cleanup activity guards (`watcher_ref_count`/`live_indexing_reason`/`remove_runtime_if_inactive`) are permanent no-ops in-process, and `attach_workspace_resources` no longer increments `session_count`, so `manage_workspace remove` / dashboard delete / auto-prune have no active-workspace interlock. When 3d.3 reworks `session_count` + registry semantics, decide the in-process safety model: either teach `cleanup_activity_for_handler` about the handler's current-primary + session-attached workspace IDs (block manual delete / auto-prune for the live set), or add a "refuse to remove the current primary" guard in `handle_remove_command`. This is a product-intent call (should removing your own current workspace be blocked?) — confirm with the owner during 3d.3.
-- **F2 — cross-workspace metrics attribution:** `run_metrics_writer` computes `source_bytes` (and inserts the tool_call row) from the loaded primary workspace DB even when the tool call targets a different `workspace_id`. When 3d.3 rebuilds the telemetry/dashboard consumer, carry a target DB handle/path into `MetricsTask` (or compute `source_bytes` in the wrapper from the resolved target snapshot) so cross-workspace tool calls attribute bytes to the target DB. Update `test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attribution` back to asserting `target_bytes` once the fix lands.
+**Affected modules:** `crates/julie-core::paths::DaemonPaths`, `src/daemon/database*`, `src/daemon/{discovery,pid,shutdown}.rs`, `src/dashboard/**`, `src/handler/tool_metrics.rs`, `src/tools/workspace/commands/registry/**`, `xtask/src/search_matrix.rs`, and legacy docs.
 
-**Docs (tracked from 3d.2b-i codex F1):** rewrite the now-legacy daemon/adapter architecture prose in `CLAUDE.md` + `AGENTS.md` to describe the in-process-only reality — the `🚨 LOG LOCATIONS` daemon block, the `Architecture Principles #3` daemon/adapter/stale-binary/catch-up/stdio bullets, the `Mode` key-fact, and the §8 "in daemon mode the embedding provider is shared" note. 3d.2b-i added interim "⚠️ in transition (Phase 3d)" banners to those sections; replace them with the final description once the daemon is fully deleted here (so the rewrite is done once against the end state, not churned per sub-PR).
+**Caller-facing interface:** keep tool and CLI behavior stable except for `dashboard`, which becomes a standalone read-only reader instead of an HTTP daemon page. Internally, prefer transitional type aliases or wrapper methods only where they reduce churn inside one sub-PR; the end state should not expose `daemon_db()` or `DaemonDatabase` as the registry API.
+
+**Depth/locality check:** this is cross-cutting but ordered. Registry naming/state happens first because dashboard, search-matrix, cleanup, and metrics all depend on the central store path and API. Discovery/pid deletion is independent after registry naming. Dashboard and metrics are kept separate so telemetry fixes do not block data-layer cleanup.
+
+**Test surface:** tests should exercise caller-facing behavior: path helpers return `registry.db`, registry migrations create `daemon_state.started_at_unix`, dashboard routes render read-only pages without action/SSE routes, cleanup refuses current active workspaces, target-workspace metrics record target source bytes, and `search-matrix baseline` no longer bails on the deleted pool path.
+
+**Rejected shortcuts:** do not leave `daemon_db()` as the final public path helper; do not keep dashboard mutation routes as disabled forms; do not silently keep pid/discovery tests after the runtime they proved is gone; do not fix metrics by changing assertions to match primary bytes.
+
+**Architecture risk:** medium. Most work is deletion/rename, but dashboard and metrics still touch shared handler state and registry semantics.
+
+### 3d.3 Task 1 - Registry Naming + `daemon_state.started_at_unix`
+
+**Files:**
+- Modify: `crates/julie-core/src/paths.rs`
+- Modify: `src/daemon/database.rs`, `src/daemon/database/migrations.rs`, `src/daemon/database/{workspaces,tool_calls,codehealth}.rs`
+- Modify: call sites under `src/handler.rs`, `src/tools/workspace/**`, `src/dashboard/**`, `xtask/src/search_matrix*.rs`, and tests that open the central DB
+
+**Build:**
+- Add `DaemonPaths::registry_db()` returning `$JULIE_HOME/registry.db`.
+- Move production call sites to `registry_db()`. Keep `daemon_db()` only as a temporary deprecated shim if a single sub-PR needs it for compatibility; remove it before 3d.3 closes.
+- Rename `DaemonDatabase` to `RegistryDatabase` or introduce `pub type DaemonDatabase = RegistryDatabase` only as a temporary bridge. End state should make the registry role clear in new code.
+- Add migration 006 creating/populating `daemon_state(started_at_unix INTEGER NOT NULL)` with one row. If an existing `daemon.db` exists and `registry.db` does not, migrate/rename the file at startup/open so existing workspaces survive the rename.
+- Update log messages/comments from `daemon.db` to `registry.db` in touched production files.
+
+**TDD gates:**
+- RED first: path test expecting `paths.registry_db() == <home>/registry.db`.
+- RED first: database migration test asserting `daemon_state.started_at_unix` exists and is non-zero after open.
+- RED first: compatibility test where opening the registry path migrates an existing `daemon.db` file if present.
+
+#### 3d.3 Task 1 Verification Ledger
+
+Scope SHA: parent `8fcfa893` + working-tree Task 1 diff.
+
+| Invariant | Command | Scope | SHA | Result | Timestamp UTC | Reused? |
+| --- | --- | --- | --- | --- | --- | --- |
+| Path helper must expose `registry.db` | `cargo nextest run -p julie --lib test_julie_home_env_override` | red-gate | 8fcfa893+wt | FAIL: `registry_db` method missing before implementation | 2026-06-06T02:08:12Z | no |
+| Registry migration must create `daemon_state.started_at_unix` | `cargo nextest run -p julie --lib test_daemon_db_create_and_migrate` | red-gate | 8fcfa893+wt | FAIL: `daemon_state` table missing before implementation | 2026-06-06T02:08:12Z | no |
+| Opening `registry.db` must migrate an existing `daemon.db` | `cargo nextest run -p julie --lib test_registry_db_open_migrates_existing_daemon_db_file` | red-gate | 8fcfa893+wt | FAIL: legacy workspace row was not visible through `registry.db` before implementation | 2026-06-06T02:08:12Z | no |
+| Daemon path helpers stay green after `registry_db()` | `cargo nextest run -p julie --lib tests::daemon::paths` | focused-green | 8fcfa893+wt | 30/30 passed | 2026-06-06T02:08:12Z | no |
+| Registry schema + legacy-file migration stay green | `cargo nextest run -p julie --lib tests::daemon::database` | focused-green | 8fcfa893+wt | 34/34 passed | 2026-06-06T02:08:12Z | no |
+| Julie test target compiles with Task 1 registry edits | `cargo nextest run -p julie --no-run` | compile-green | 8fcfa893+wt | Finished `test` profile | 2026-06-06T02:08:12Z | no |
+| `xtask` compiles after moving search-matrix to `registry_db()` | `cargo build -p xtask` | cross-crate-green | 8fcfa893+wt | Finished `dev` profile | 2026-06-06T02:08:12Z | no |
+
+### 3d.3 Task 2 - Delete Discovery JSON Readers + PID File
+
+**Files:**
+- Modify/delete: `src/daemon/discovery.rs`, `src/daemon/pid.rs`, `src/daemon/shutdown.rs`
+- Modify/delete tests: `src/tests/daemon/{discovery_test,pid,pid_file_format}.rs`, `src/tests/integration/wiring_a1_8.rs`, `src/tests/integration/in_process_boundary.rs`, and `src/tests/mod.rs` / `src/tests/daemon/mod.rs`
+
+**Build:**
+- Keep and, if useful, move `DaemonLockGuard` re-export because leader locking still matters.
+- Delete `DiscoveryRecord`, `DiscoveryState`, `DiscoveryFile`, `DiscoveryRecord::for_current_process`, `DiscoveryFile::read_and_validate`, and `DiscoveryFile::write_atomic` once their only consumers are gone.
+- Delete `publish_discovery_phase`; current `fast_refs` shows it is definition-only after 3d.2b-ii.
+- Delete `src/daemon/pid.rs` and pid tests after discovery validation no longer imports `PidFile`.
+- Update the in-process boundary tripwire so the final 3d.3 deleted set no longer lists `pid.rs`, `discovery.json`, or `src/migration.rs` as bypassed artifacts.
+
+**TDD gates:**
+- RED first: boundary test expecting no pid/discovery runtime files in the 3d.3 survivor list.
+- GREEN: `cargo nextest run -p julie --lib in_process_boundary` plus `cargo nextest run -p julie --no-run`.
+
+#### 3d.3 Task 2 Verification Ledger
+
+Scope SHA: parent `8fcfa893` + working-tree Task 1/2 diff.
+
+| Invariant | Command | Scope | SHA | Result | Timestamp UTC | Reused? |
+| --- | --- | --- | --- | --- | --- | --- |
+| Boundary tripwire must fail while pid/discovery runtime still exists | `cargo nextest run -p julie --lib pid_and_discovery_runtime_surface_deleted_in_3d3_task2` | red-gate | 8fcfa893+wt | FAIL: `src/daemon/pid.rs` still present before deletion | 2026-06-06T02:14:17Z | no |
+| Boundary tripwire must pass after deleting pid/discovery runtime | `cargo nextest run -p julie --lib pid_and_discovery_runtime_surface_deleted_in_3d3_task2` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:14:17Z | no |
+| In-process boundary module stays green after Task 2 deletion | `cargo nextest run -p julie --lib tests::integration::in_process_boundary` | focused-green | 8fcfa893+wt | 4/4 passed | 2026-06-06T02:14:17Z | no |
+| Julie test target compiles after deleting pid/discovery modules/tests | `cargo nextest run -p julie --no-run` | compile-green | 8fcfa893+wt | Finished `test` profile | 2026-06-06T02:14:17Z | no |
+| `xtask` compiles after test-tier comment cleanup | `cargo build -p xtask` | cross-crate-green | 8fcfa893+wt | Finished `dev` profile | 2026-06-06T02:14:17Z | no |
+| Checked-in manifest contract still matches expected bucket specs | `cargo nextest run -p xtask manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:14:17Z | no |
+
+### 3d.3 Task 3 - Delete Legacy Migration Module
+
+**Files:**
+- Delete: `src/migration.rs`, `src/tests/migration.rs`
+- Modify: `src/lib.rs`, `src/tests/mod.rs`, `xtask/src/changed.rs`, `xtask/tests/changed_tests.rs`
+
+**Build:**
+- Remove `pub mod migration;` and test registrations.
+- Remove changed-file routing for deleted migration files.
+- Keep no compatibility migration from old project-local indexes; owner decision in the 3d.3 outline is delete now.
+
+**TDD gates:**
+- RED first: xtask changed-routing test proving deleted migration paths no longer route to a stale bucket.
+- GREEN: `cargo nextest run -p xtask <changed-routing-test>` and `cargo nextest run -p julie --no-run`.
+
+#### 3d.3 Task 3 Verification Ledger
+
+Scope SHA: parent `8fcfa893` + working-tree Task 1/2/3 diff.
+
+| Invariant | Command | Scope | SHA | Result | Timestamp UTC | Reused? |
+| --- | --- | --- | --- | --- | --- | --- |
+| Deleted migration paths must not keep stale narrow bucket routing | `cargo nextest run -p xtask changed_tests_deleted_migration_paths_fall_back_to_dev` | red-gate | 8fcfa893+wt | FAIL: `src/migration.rs` still routed to narrow buckets before route removal | 2026-06-06T02:20:07Z | no |
+| Deleted migration paths fall back to dev after route removal | `cargo nextest run -p xtask changed_tests_deleted_migration_paths_fall_back_to_dev` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:20:07Z | no |
+| In-process boundary still passes after removing `src/migration.rs` from later-3d.3 survivors | `cargo nextest run -p julie --lib tests::integration::in_process_boundary` | focused-green | 8fcfa893+wt | 4/4 passed | 2026-06-06T02:20:07Z | no |
+| Changed-route module is green after pruning stale deleted-file assumptions | `cargo nextest run -p xtask changed_tests` | focused-green | 8fcfa893+wt | 52/52 passed | 2026-06-06T02:20:07Z | no |
+| Julie test target compiles after deleting legacy migration module/tests | `cargo nextest run -p julie --no-run` | compile-green | 8fcfa893+wt | Finished `test` profile | 2026-06-06T02:20:07Z | no |
+| `xtask` compiles after changed-route cleanup | `cargo build -p xtask` | cross-crate-green | 8fcfa893+wt | Finished `dev` profile | 2026-06-06T02:20:07Z | no |
+
+### 3d.3 Task 4 - Read-Only Standalone Dashboard
+
+**Files:**
+- Modify: `src/main.rs`, `src/cli.rs`, `src/dashboard/mod.rs`, `src/dashboard/state.rs`, `src/dashboard/routes/**`, dashboard templates/assets as needed
+- Delete: `src/dashboard/routes/events.rs`, `src/dashboard/routes/projects_actions.rs`
+- Modify tests: `src/tests/dashboard/**`, `src/tests/cli_tests.rs`
+
+**Build:**
+- Route `julie-server dashboard` to start/open a standalone dashboard that constructs read-only state from `DaemonPaths::registry_db()`.
+- Drop mutation routes (`register`, `open`, `refresh`, `delete`, `search_compare` mutation if present), CSRF/action token plumbing, SSE/live event route, restart-pending controls, and live session/indexing/embedding signals from dashboard state.
+- Preserve read-only pages that have persisted data: projects/workspaces, metrics/tool calls, search/intelligence pages backed by registry or per-workspace `symbols.db`, status from persisted registry + recovery markers.
+- Decide search-compare with Task 5: either keep read-only persisted runs if central registry owns them, or delete the page with the tables.
+
+**TDD gates:**
+- RED first: dashboard route test proving action/SSE routes are absent (404/405) while read-only pages still return 200.
+- RED first: CLI/dashboard test proving it no longer depends on daemon port/discovery files.
+- GREEN: `cargo nextest run -p julie --lib tests::dashboard` and focused CLI tests.
+
+#### 3d.3 Task 4 Verification Ledger
+
+Scope SHA: parent `8fcfa893` + working-tree Task 1/2/3/4 diff.
+
+| Invariant | Command | Scope | SHA | Result | Timestamp UTC | Reused? |
+| --- | --- | --- | --- | --- | --- | --- |
+| Read-only dashboard must reject action/SSE routes while keeping GET pages live | `cargo nextest run -p julie --lib test_router_is_read_only_without_action_or_sse_routes` | red-gate | 8fcfa893+wt | FAIL: `/projects/register` was still mounted before route removal | 2026-06-06T02:29:36Z | no |
+| Read-only dashboard route contract passes after removing action/SSE mounts | `cargo nextest run -p julie --lib test_router_is_read_only_without_action_or_sse_routes` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:29:36Z | no |
+| Dashboard router module stays green | `cargo nextest run -p julie --lib tests::dashboard::router` | focused-green | 8fcfa893+wt | 5/5 passed | 2026-06-06T02:29:36Z | no |
+| Static/search dashboard slice accepts missing SSE route | `cargo nextest run -p julie --lib tests::dashboard::integration::static_search` | focused-green | 8fcfa893+wt | 6/6 passed | 2026-06-06T02:29:36Z | no |
+| Dashboard module is green after read-only templates/routes | `cargo nextest run -p julie --lib tests::dashboard --no-fail-fast` | focused-green | 8fcfa893+wt | 88/88 passed; 1 leaky | 2026-06-06T02:29:36Z | no |
+| CLI tests pass after removing daemon-port dashboard helper | `cargo nextest run -p julie --lib tests::cli_tests` | focused-green | 8fcfa893+wt | 14/14 passed | 2026-06-06T02:29:36Z | no |
+| Julie binary compiles with standalone dashboard entry | `cargo build -p julie` | binary-green | 8fcfa893+wt | Finished `dev` profile | 2026-06-06T02:29:36Z | no |
+| Julie test target compiles after dashboard route/template changes | `cargo nextest run -p julie --no-run` | compile-green | 8fcfa893+wt | Finished `test` profile | 2026-06-06T02:29:36Z | no |
+
+### 3d.3 Task 5 - Search Compare + Tool-Call Source of Truth
+
+**Files:**
+- Inspect/modify: `src/daemon/database/search_compare.rs`, `src/dashboard/search_compare.rs`, `src/dashboard/routes/search_compare.rs`
+- Inspect/modify: per-workspace `SymbolDatabase` tool-call read/write methods in `src/database/**`
+- Modify: `src/handler/tool_metrics.rs`, `src/tools/metrics/**`, dashboard metrics routes/tests
+
+**Build:**
+- Re-run `fast_refs` on per-workspace `SymbolDatabase.tool_calls` read methods. If the read side is dead, delete per-workspace tool-call writes and keep the registry copy as the source of truth.
+- If search-compare is only dashboard/dev-eval history and still useful, keep it in registry; otherwise delete `search_compare.rs`, dashboard search-compare route/page, and migration tables together.
+- Fix cross-workspace metrics attribution: `MetricsTask` must compute `source_bytes` from the resolved target workspace, not always from loaded primary. Carry a target DB handle/path or compute source bytes before queuing the task from the resolved target snapshot.
+- Update `test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attribution` and the get_context target metrics test back to expecting target bytes.
+
+**Status note (2026-06-06):**
+- Done: target-workspace `source_bytes` attribution now computes from the resolved target binding before queueing metrics; registry rows and session totals use target bytes.
+- Done: search-compare is deleted rather than kept. The dashboard route/page/templates and `src/daemon/database/search_compare.rs` are gone; fresh DBs no longer create the tables, and migration 007 drops them from existing registries.
+- Deferred: deleting per-workspace `SymbolDatabase` metrics writes/table/API. `rg` shows dashboard metrics/search analysis now read registry rows, but handler/editing metrics tests and the exported `crates/julie-core::database` metrics API still read the per-workspace table directly. Removing that dual-write surface should be a separate test/API cleanup, not hidden inside this already cross-cutting deletion slice.
+
+**TDD gates:**
+- RED first: target-workspace fast_refs metrics test expects target `source_bytes`.
+- RED first: get_context target-workspace metrics test expects target `source_bytes`.
+- GREEN: exact tests above, plus dashboard metrics tests if registry schema changes.
+
+#### 3d.3 Task 5 Verification Ledger
+
+Scope SHA: parent `8fcfa893` + working-tree Task 1/2/3/4/5 diff.
+
+| Invariant | Command | Scope | SHA | Result | Timestamp UTC | Reused? |
+| --- | --- | --- | --- | --- | --- | --- |
+| `fast_refs` target-workspace metrics must use target source bytes | `cargo nextest run -p julie --lib test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attribution` | red-gate | 8fcfa893+wt | FAIL before implementation: recorded primary bytes `Some(25)` instead of target bytes `Some(53)` | 2026-06-06T02:45:56Z | no |
+| `get_context` target-workspace metrics must use target source bytes | `cargo nextest run -p julie --lib test_get_context_target_workspace_uses_requested_binding_for_metrics_attribution` | red-gate | 8fcfa893+wt | FAIL before implementation: recorded primary bytes `Some(33)` instead of target bytes `Some(125)` | 2026-06-06T02:45:56Z | no |
+| `fast_refs` target-workspace metrics use target source bytes after precomputing source bytes from the resolved binding | `cargo nextest run -p julie --lib test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attribution` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:45:56Z | no |
+| `get_context` target-workspace metrics use target source bytes after precomputing source bytes from the resolved binding | `cargo nextest run -p julie --lib test_get_context_target_workspace_uses_requested_binding_for_metrics_attribution` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:45:56Z | no |
+| Workspace-binding metrics module stays green after carrying source bytes through `ToolCallReport` | `cargo nextest run -p julie --lib tests::core::handler::workspace_binding_metrics` | focused-green | 8fcfa893+wt | 3/3 passed | 2026-06-06T02:45:56Z | no |
+| `get_context` target-workspace metrics module stays green | `cargo nextest run -p julie --lib tests::tools::get_context_target_workspace_metrics_tests` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:45:56Z | no |
+| Read-only dashboard must not serve the retired search-compare page | `cargo nextest run -p julie --lib test_router_is_read_only_without_action_or_sse_routes` | red-gate | 8fcfa893+wt | FAIL before deletion: `GET /search/compare` returned `200 OK` | 2026-06-06T02:45:56Z | no |
+| Existing registry DBs must drop retired search-compare tables | `cargo nextest run -p julie --lib test_search_compare_tables_are_dropped_from_existing_registry` | red-gate | 8fcfa893+wt | FAIL before migration 007: `search_compare_runs` still existed | 2026-06-06T02:45:56Z | no |
+| Search-compare route is absent after deleting route/page/templates | `cargo nextest run -p julie --lib test_router_is_read_only_without_action_or_sse_routes` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:45:56Z | no |
+| Search-compare tables are dropped from existing registries | `cargo nextest run -p julie --lib test_search_compare_tables_are_dropped_from_existing_registry` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:45:56Z | no |
+| Fresh registry schema excludes retired search-compare tables | `cargo nextest run -p julie --lib test_daemon_db_create_and_migrate` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:45:56Z | no |
+| Boundary tripwire confirms `src/daemon/database/search_compare.rs` is deleted | `cargo nextest run -p julie --lib search_compare_data_surface_deleted_in_3d3_task5` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:45:56Z | no |
+| Dashboard route/static/metrics slices stay green after search-compare deletion | `cargo nextest run -p julie --lib tests::dashboard::router`; `cargo nextest run -p julie --lib tests::dashboard::integration::static_search`; `cargo nextest run -p julie --lib tests::dashboard::integration::metrics` | focused-green | 8fcfa893+wt | 5/5 passed; 6/6 passed; 6/6 passed | 2026-06-06T02:45:56Z | no |
+| Registry database module stays green after migration 007 | `cargo nextest run -p julie --lib tests::daemon::database` | focused-green | 8fcfa893+wt | 34/34 passed | 2026-06-06T02:45:56Z | no |
+| Dashboard module stays green after deleting search-compare and action helper modules | `cargo nextest run -p julie --lib tests::dashboard --no-fail-fast` | focused-green | 8fcfa893+wt | 88/88 passed; 1 leaky | 2026-06-06T02:45:56Z | no |
+| Julie test target compiles after Task 5 deletions and metrics changes | `cargo nextest run -p julie --no-run` | compile-green | 8fcfa893+wt | Finished `test` profile | 2026-06-06T02:45:56Z | no |
+| Diff has no whitespace errors | `git diff --check` | hygiene | 8fcfa893+wt | clean | 2026-06-06T02:45:56Z | no |
+
+### 3d.3 Task 6 - In-Process Cleanup Safety
+
+**Files:**
+- Modify: `src/tools/workspace/commands/registry/{mod,cleanup,register_remove,list_clean,open}.rs`
+- Modify tests: `src/tests/tools/workspace/global_targeting/**`, `src/tests/tools/workspace/deferred_open.rs`, dashboard project tests if delete remains visible
+
+**Build:**
+- Replace stateless `WorkspaceCleanupActivity::new()` with an activity built from the handler's current primary and session-attached workspace IDs.
+- Block manual delete and auto-prune for the live in-process workspace set. At minimum, refuse to remove the current primary. If session-attached secondary IDs are cheaply available, block those too.
+- Keep deletion of inactive registered workspaces and orphan index dirs working.
+
+**TDD gates:**
+- RED first: `manage_workspace remove` against the current primary returns a blocked outcome and leaves registry/index data intact.
+- RED first: inactive workspace delete still succeeds.
+- GREEN: focused global-targeting/remove tests.
+
+#### 3d.3 Task 6 Verification Ledger
+
+Scope SHA: parent `8fcfa893` + working-tree Task 1/2/3/4/5/6 diff.
+
+| Invariant | Command | Scope | SHA | Result | Timestamp UTC | Reused? |
+| --- | --- | --- | --- | --- | --- | --- |
+| `manage_workspace remove` must block the current in-process primary and preserve registry/index data | `cargo nextest run -p julie --lib test_remove_current_primary_workspace_is_blocked_in_process` | red-gate | 8fcfa893+wt | FAIL before implementation: remove returned `Workspace Removed Successfully` and deleted the live primary index | 2026-06-06T02:51:36Z | no |
+| Current-primary remove blocks after `WorkspaceCleanupActivity` is built from handler live workspace ids | `cargo nextest run -p julie --lib test_remove_current_primary_workspace_is_blocked_in_process` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:51:36Z | no |
+| Inactive target removal still succeeds and deletes the global index dir | `cargo nextest run -p julie --lib test_remove_workspace_uses_global_index_dir_shape` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:51:36Z | no |
+| Global remove module stays green after adding live-workspace cleanup guards | `cargo nextest run -p julie --lib tests::tools::workspace::global_targeting::global_remove` | focused-green | 8fcfa893+wt | 2/2 passed | 2026-06-06T02:51:36Z | no |
+| List/stats cleanup sweep paths still work with async cleanup activity | `cargo nextest run -p julie --lib tests::tools::workspace::global_targeting::list_stats` | focused-green | 8fcfa893+wt | 5/5 passed | 2026-06-06T02:51:36Z | no |
+| Deferred-session registry operations still work when no primary is bound | `cargo nextest run -p julie --lib tests::tools::workspace::global_targeting::deferred_sessions` | focused-green | 8fcfa893+wt | 5/5 passed | 2026-06-06T02:51:36Z | no |
+| Julie test target compiles after cleanup-helper signature changes | `cargo nextest run -p julie --no-run` | compile-green | 8fcfa893+wt | Finished `test` profile | 2026-06-06T02:51:36Z | no |
+
+### 3d.3 Task 7 - Restore `search-matrix baseline`
+
+**Files:**
+- Modify: `xtask/src/search_matrix.rs`, `xtask/src/search_matrix_mine.rs`, `xtask/tests/search_matrix_contract_tests.rs`
+
+**Build:**
+- Replace the 3d.2b-ii `bail!` stub in `run_baseline_async`.
+- Iterate registry workspaces from `registry.db`; for each resolved repo root, use the in-process single-workspace path (`new_in_process` or the CLI standalone path) instead of `WorkspacePool`/`new_with_shared_workspace`.
+- Keep skipped-repo behavior for missing/not-ready workspaces.
+
+**Status note (2026-06-06):** restored with a registry-driven baseline runner. Missing undeclared repos, missing roots, unregistered workspaces, non-ready workspaces, and missing `symbols.db` are skipped with reasons. Ready registered repos run each eligible case through a one-workspace `JulieServerHandler` over the repo's global index dir; no `WorkspacePool` path is used.
+
+**TDD gates:**
+- RED first: contract test that `search-matrix baseline --ablation none` no longer errors with the 3d.2b-ii stub message.
+- GREEN: `cargo nextest run -p xtask search_matrix_contract_tests`.
+
+#### 3d.3 Task 7 Verification Ledger
+
+Scope SHA: parent `8fcfa893` + working-tree Task 1/2/3/4/5/6/7 diff.
+
+| Invariant | Command | Scope | SHA | Result | Timestamp UTC | Reused? |
+| --- | --- | --- | --- | --- | --- | --- |
+| `search-matrix baseline` must no longer bail on the removed `WorkspacePool` stub | `cargo nextest run -p xtask search_matrix_contract_tests_baseline_no_longer_errors_on_removed_workspace_pool` | red-gate | 8fcfa893+wt | FAIL before implementation: `search matrix requires WorkspacePool which was removed in Phase 3d.2b` | 2026-06-06T02:56:35Z | no |
+| Baseline skips a missing repo root instead of requiring `WorkspacePool` | `cargo nextest run -p xtask search_matrix_contract_tests_baseline_no_longer_errors_on_removed_workspace_pool` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T02:56:35Z | no |
+| Search-matrix contract tests stay green after restoring the baseline runner | `cargo nextest run -p xtask search_matrix_contract_tests` | focused-green | 8fcfa893+wt | 12/12 passed | 2026-06-06T02:56:35Z | no |
+| `xtask` executable compiles after restoring `run_baseline_async` | `cargo build -p xtask` | cross-crate-green | 8fcfa893+wt | Finished `dev` profile | 2026-06-06T02:56:35Z | no |
+
+### 3d.3 Task 8 - Final Docs + Agent Guidance Rewrite
+
+**Files:**
+- Modify: `CLAUDE.md`, `AGENTS.md`, `docs/WORKSPACE_ARCHITECTURE.md`, `docs/OPERATIONS.md`, `docs/SEARCH_FLOW.md`, and any plan docs that still describe daemon/adapter as current architecture.
+- Cross-repo follow-up: `julie-plugin` `run.cjs` and `update-binaries.yml` still name `julie-adapter`; update before release.
+
+**Build:**
+- Replace the interim "in transition" banners with final in-process-only architecture prose.
+- Document `registry.db`, leader locks, project logs, resident embedding host, and what no longer exists (`julie daemon`, adapter, daemon HTTP runtime, daemon pid/discovery files).
+- Do not rewrite historical release notes.
+
+**Status note (2026-06-06):** final current-architecture docs now describe the in-process stdio runtime, `$JULIE_HOME/registry.db`, per-workspace `leader.lock`, project-local logs, standalone read-only dashboard, and resident embedding host. Historical plan/release docs were left intact. No `scripts/check-agent-doc-sync.sh` exists in this worktree, so guidance sync is verified with `cmp AGENTS.md CLAUDE.md`.
+
+**Gate follow-up (2026-06-06):** the affected-change gate exposed one stale workspace-targeting expectation: `test_manage_workspace_open_uses_session_primary_binding_over_legacy_workspace_id` still expected auto-prune for a missing rebound current workspace. Task 6 intentionally blocks cleanup for live in-process workspaces, so the test now asserts `Workspace Missing But Still Active` with the in-process liveness reason.
+
+**TDD gates:**
+- Use existing docs-sync tests if available. Otherwise run `scripts/check-agent-doc-sync.sh` if present plus `cargo nextest run -p julie --no-run` for compile-sensitive doc references.
+
+#### 3d.3 Task 8 Verification Ledger
+
+Scope SHA: parent `8fcfa893` + working-tree Task 1/2/3/4/5/6/7/8 diff.
+
+| Invariant | Command | Scope | SHA | Result | Timestamp UTC | Reused? |
+| --- | --- | --- | --- | --- | --- | --- |
+| Agent guidance files must stay synced after final architecture rewrite | `cmp -s AGENTS.md CLAUDE.md && echo 'AGENTS/CLAUDE synced'` | docs-sync | 8fcfa893+wt | `AGENTS/CLAUDE synced` | 2026-06-06T03:42:44Z | no |
+| Current docs must not retain daemon/adapter-as-current claims | `rg -n "(Adapter mode|Daemon mode|daemon mode|auto-starts.*daemon|auto-launches.*daemon|daemon\\.db|~/.julie/daemon|daemon log|julie-server daemon|julie-server status|julie-server stop|served by daemon|stale binary auto-restart|adapter handles|bridges stdio|background process shares)" README.md AGENTS.md CLAUDE.md docs/WORKSPACE_ARCHITECTURE.md docs/OPERATIONS.md docs/SEARCH_FLOW.md` | docs-stale-scan | 8fcfa893+wt | no matches | 2026-06-06T03:42:44Z | no |
+| Diff hygiene stays clean after docs and test-contract update | `git diff --check` | hygiene | 8fcfa893+wt | pass, no output | 2026-06-06T03:42:44Z | no |
+| Julie test target compiles after final docs and test-contract update | `cargo nextest run -p julie --no-run` | compile-green | 8fcfa893+wt | Finished `test` profile | 2026-06-06T03:05:00Z | no |
+| `xtask` still builds after final docs and search-matrix changes | `cargo build -p xtask` | cross-crate-green | 8fcfa893+wt | Finished `dev` profile | 2026-06-06T03:05:00Z | no |
+| Rebound-current missing workspace follows the new live-workspace cleanup block | `cargo nextest run --lib test_manage_workspace_open_uses_session_primary_binding_over_legacy_workspace_id` | focused-green | 8fcfa893+wt | 1/1 passed | 2026-06-06T03:27:00Z | no |
+| Workspace-targeting bucket stays green after updating stale cleanup expectation | `cargo nextest run --lib tests::tools::workspace::global_targeting -- --skip search_quality` | focused-green | 8fcfa893+wt | 33/33 passed (1 leaky) | 2026-06-06T03:28:00Z | no |
+| Affected-change gate passes after 3d.3 Task 1-8 work | `cargo xtask test changed` | affected-change-green | 8fcfa893+wt | 39 buckets passed in 958.5s | 2026-06-06T03:42:00Z | no |
+| System tier stays green after daemon/adapter deletion cleanup | `cargo xtask test system` | branch-gate | 8fcfa893+wt | 5 buckets passed in 82.1s | 2026-06-06T03:47:13Z | no |
+| Reliability daemon failure did not reproduce in the exact test | `cargo nextest run --lib test_healthy_host_returns_some` | flake-check | 8fcfa893+wt | 1/1 passed | 2026-06-06T03:47:13Z | no |
+| Reliability daemon bucket passed after the non-repro exact check | `cargo nextest run --lib tests::daemon -- --skip search_quality` | flake-check | 8fcfa893+wt | 131/131 passed | 2026-06-06T03:47:13Z | no |
+| Reliability tier passes on rerun after non-repro daemon failure | `cargo xtask test reliability` | branch-gate | 8fcfa893+wt | 3 buckets passed in 60.5s | 2026-06-06T03:47:13Z | no |
 
 ---
 

@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use axum::body::Body;
-use axum::http::Request;
+use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
 use crate::daemon::lifecycle::LifecyclePhase;
@@ -34,6 +34,52 @@ async fn test_router_serves_landing_page() {
 
     let response = router.oneshot(request).await.unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_router_is_read_only_without_action_or_sse_routes() {
+    let state = test_state();
+    let config = DashboardConfig::default();
+
+    for path in ["/", "/projects", "/metrics", "/search"] {
+        let router = create_router(state.clone(), config.clone()).unwrap();
+        let response = router
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "GET {path}");
+    }
+
+    for (method, path) in [
+        (Method::POST, "/projects/register"),
+        (Method::POST, "/projects/ws_123/open"),
+        (Method::POST, "/projects/ws_123/refresh"),
+        (Method::POST, "/projects/ws_123/delete"),
+        (Method::POST, "/search/compare"),
+        (Method::GET, "/search/compare"),
+        (Method::POST, "/signals/ws_123/refresh"),
+        (Method::GET, "/events/activity"),
+    ] {
+        let router = create_router(state.clone(), config.clone()).unwrap();
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method(method.clone())
+                    .uri(path)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                response.status(),
+                StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+            ),
+            "{method} {path} should not be mounted on read-only dashboard, got {}",
+            response.status()
+        );
+    }
 }
 
 /// Collect an axum body into a String for JSON-parsing assertions.
