@@ -1,15 +1,13 @@
 //! Session tracking for idle detection and control-plane visibility.
 //!
-//! Tracks active MCP sessions so the daemon can detect when it has been idle
-//! (zero sessions) for graceful shutdown or resource reclamation, while also
-//! surfacing coarse lifecycle phases for the dashboard.
+//! Tracks active MCP sessions, drives the idle-reaper that reclaims abandoned
+//! sessions, and surfaces coarse lifecycle phases for the dashboard.
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tokio::sync::Notify;
 
 /// Env override for the session idle-reaper threshold (seconds).
 const SESSION_IDLE_TIMEOUT_ENV: &str = "JULIE_DAEMON_SESSION_IDLE_TIMEOUT_SECS";
@@ -88,10 +86,8 @@ struct SessionRecord {
 ///
 /// Thread-safe via `RwLock`. Each session gets a UUID on connect;
 /// the UUID is removed when the session ends (normally or on error).
-/// A `Notify` wakes any `drain_sessions` waiter whenever the count drops.
 pub struct SessionTracker {
     sessions: RwLock<HashMap<String, SessionRecord>>,
-    notify: Arc<Notify>,
 }
 
 impl SessionTracker {
@@ -99,7 +95,6 @@ impl SessionTracker {
     pub fn new() -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
-            notify: Arc::new(Notify::new()),
         }
     }
 
@@ -204,12 +199,9 @@ impl SessionTracker {
     }
 
     /// Remove a session by ID. No-op if the ID doesn't exist.
-    /// Notifies any `drain_sessions` waiter so it can re-check the count.
     pub fn remove_session(&self, id: &str) {
         let mut sessions = self.sessions.write().unwrap_or_else(|p| p.into_inner());
         sessions.remove(id);
-        drop(sessions); // release lock before notifying
-        self.notify.notify_one();
     }
 
     /// Number of currently active sessions.
@@ -218,13 +210,4 @@ impl SessionTracker {
         sessions.len()
     }
 
-    /// Returns true when no sessions are connected.
-    pub fn is_idle(&self) -> bool {
-        self.active_count() == 0
-    }
-
-    /// Access the notify handle for `drain_sessions`.
-    pub(crate) fn session_notify(&self) -> &Arc<Notify> {
-        &self.notify
-    }
 }

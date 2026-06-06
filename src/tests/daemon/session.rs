@@ -29,22 +29,6 @@ fn test_remove_session_decrements_count() {
 }
 
 #[test]
-fn test_is_idle_when_no_sessions() {
-    let tracker = SessionTracker::new();
-    assert!(tracker.is_idle());
-}
-
-#[test]
-fn test_not_idle_when_sessions_active() {
-    let tracker = SessionTracker::new();
-    let id = tracker.add_session();
-    assert!(!tracker.is_idle());
-
-    tracker.remove_session(&id);
-    assert!(tracker.is_idle());
-}
-
-#[test]
 fn test_remove_nonexistent_session_is_noop() {
     let tracker = SessionTracker::new();
     let id = tracker.add_session();

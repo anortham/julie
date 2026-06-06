@@ -33,7 +33,7 @@ manage_workspace(operation="stats")
 python3 .claude/skills/dead-code-audit/scripts/dead_code_inventory.py --workspace-id <workspace_id> --limit 40
 ```
 
-Use `--db <path>` if the workspace is not daemon-backed. Use `--json` when another script will postprocess the result. The default report excludes fixtures, docs, examples, and data/config languages. Add `--include-fixtures` or `--include-data-languages` when that scope matters.
+Use `--db <path>` if the workspace's index is not under the default `~/.julie/indexes/<workspace_id>/` location (e.g. a standalone `.julie/` project index). Use `--json` when another script will postprocess the result. The default report excludes fixtures, docs, examples, and data/config languages. Add `--include-fixtures` or `--include-data-languages` when that scope matters.
 
 3. Also run early-warning signals:
 
@@ -105,7 +105,7 @@ Check strings, config, route names, command names, JSON/TOML/YAML keys, shell sc
 blast_radius(file_paths=["<path>"], include_tests=true, max_depth=2)
 ```
 
-If the candidate lives in shared indexing, database, search ranking, daemon, parser extraction, or MCP handling code, escalate to design review before deletion.
+If the candidate lives in shared indexing, database, search ranking, workspace registry, parser extraction, or MCP handling code, escalate to design review before deletion.
 
 ## Reading Inventory Sections
 

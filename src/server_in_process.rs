@@ -259,10 +259,23 @@ pub async fn run_in_process_server(
         }
     };
 
-    let daemon_db = Arc::new(
-        crate::daemon::database::DaemonDatabase::open(&paths.registry_db())
-            .context("Failed to open Julie workspace registry")?,
-    );
+    // Registry DB powers dashboard/list visibility only — core MCP tools
+    // (search/navigation/edit) do not need it. Degrade gracefully if it cannot
+    // be opened (e.g. a filesystem/permission error on ~/.julie/) rather than
+    // aborting the whole MCP server: pass None and log a warning, matching the
+    // best-effort posture of the per-swap registry upsert.
+    let daemon_db = match crate::daemon::database::DaemonDatabase::open(&paths.registry_db()) {
+        Ok(db) => Some(Arc::new(db)),
+        Err(e) => {
+            warn!(
+                error = %e,
+                registry_db = %paths.registry_db().display(),
+                "Failed to open Julie workspace registry — dashboard/list visibility \
+                 degraded for this session; core search/navigation/edit unaffected"
+            );
+            None
+        }
+    };
 
     // 6. Build handler.  Passing `Some(index_root)` threads the daemon index
     //    directory into initialize_workspace_with_force so db/tantivy land
@@ -272,7 +285,7 @@ pub async fn run_in_process_server(
         embedding_provider,
         leadership,
         Some(index_root),
-        Some(daemon_db),
+        daemon_db,
     )
     .await
     .context("Failed to build in-process handler")?;

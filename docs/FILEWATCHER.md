@@ -1,19 +1,17 @@
 # File Watcher Architecture
 
-**Last Updated:** 2026-03-12
-**Status:** Production (v6)
+**Last Updated:** 2026-06-06
+**Status:** Production (v7, in-process server)
 
 ## Overview
 
 Julie uses OS-native file watchers (via the [`notify`](https://docs.rs/notify) crate) to detect file changes and trigger incremental re-indexing. This keeps the symbol database and Tantivy search index up to date without requiring full re-indexes.
 
-In stdio mode, `IncrementalIndexer` in `src/watcher/mod.rs` manages a single watcher for the connected workspace. It lives for the duration of the MCP session.
-
-In daemon mode, `WatcherPool` in `src/daemon/watcher_pool.rs` manages one `IncrementalIndexer` per registered workspace, sharing watchers across all connected MCP sessions.
+The no-args `julie-server` serves MCP in-process over stdio. For each workspace, the session that holds the per-workspace leader lock owns a single `IncrementalIndexer` (`src/watcher/mod.rs`) and runs the watcher for the duration of that session. Concurrent sessions on the same workspace are read-only followers and do not run their own watcher. There is no shared cross-session watcher pool.
 
 ### Catch-up Indexing on Session Connect
 
-File watchers only detect changes that happen while they're running. If files change while the daemon is down (during a restart, between sessions, or after a rebuild), the watcher misses them. To close this gap, a catch-up check runs automatically when a session connects to an already-indexed workspace:
+File watchers only detect changes that happen while they're running. If files change while no session is watching the workspace (between sessions, or after a rebuild), the watcher misses them. To close this gap, a catch-up check runs automatically when a session connects to an already-indexed workspace:
 
 1. `on_initialized` spawns a background `run_auto_indexing` task
 2. `check_if_indexing_needed` (startup.rs) compares the newest file mtime against the symbols.db mtime
@@ -21,7 +19,7 @@ File watchers only detect changes that happen while they're running. If files ch
 4. `filter_changed_files` (incremental.rs) computes blake3 hashes for each file and compares against stored hashes
 5. Only files with changed hashes are re-indexed; unchanged files are skipped
 
-This runs in the background and doesn't block the session. On a typical daemon restart where ~100 files changed, the catch-up completes in under 5 seconds.
+This runs in the background and doesn't block the session. On a typical session reconnect where ~100 files changed, the catch-up completes in under 5 seconds.
 
 ---
 
