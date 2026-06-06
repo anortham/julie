@@ -4,6 +4,12 @@
 
 A cross-platform code intelligence server built in Rust, providing LSP-quality features across 34 programming languages via the Model Context Protocol (MCP).
 
+## Maintenance Mode
+
+Julie is now in maintenance mode. Existing users can keep using the current release line, but new code-intelligence development has moved to [Miller](https://github.com/anortham/miller).
+
+If you are choosing a tool for a new agent workflow, start with Miller instead of Julie. Julie remains available for existing deployments that depend on its current MCP server, extraction, or plugin behavior.
+
 ## Why Julie?
 
 Without code intelligence, AI agents waste most of their context window just *reading* code. A 500-line file costs ~2,000 tokens. Understanding a module means reading every file in it. Tracing a function's callers means grepping the entire codebase. Every token spent reading raw files is a token unavailable for reasoning, planning, and generating code — and once the context window fills up, the session is over.
