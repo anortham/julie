@@ -252,27 +252,14 @@ impl HealthChecker {
         };
 
         let (watcher_state, watcher_ref_count, watcher_grace_active) =
-            if let Some(workspace_id) = primary_workspace_id.as_deref() {
-                if let Some(pool) = handler.watcher_pool.as_ref() {
-                    let ref_count = pool.ref_count(workspace_id).await;
-                    let grace_active = pool.has_grace_deadline(workspace_id).await;
-                    let watcher_state = if ref_count > 0 {
-                        WatcherState::SharedActive
-                    } else if grace_active {
-                        WatcherState::SharedGrace
-                    } else {
-                        WatcherState::SharedIdle
-                    };
-                    (watcher_state, Some(ref_count), grace_active)
-                } else {
-                    let workspace_guard = handler.workspace.read().await;
-                    let watcher_state = workspace_guard
-                        .as_ref()
-                        .and_then(|workspace| workspace.watcher.as_ref())
-                        .map(|_| WatcherState::Local)
-                        .unwrap_or(WatcherState::Unavailable);
-                    (watcher_state, None, false)
-                }
+            if primary_workspace_id.is_some() {
+                let workspace_guard = handler.workspace.read().await;
+                let watcher_state = workspace_guard
+                    .as_ref()
+                    .and_then(|workspace| workspace.watcher.as_ref())
+                    .map(|_| WatcherState::Local)
+                    .unwrap_or(WatcherState::Unavailable);
+                (watcher_state, None, false)
             } else {
                 (WatcherState::Unavailable, None, false)
             };

@@ -8,7 +8,6 @@ use rmcp::{
 };
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -42,18 +41,15 @@ async fn test_primary_force_refresh_uses_full_index_path() {
     fs::write(primary_root.join("main.rs"), "fn primary_marker() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str).unwrap();
-    let primary_ws = pool
-        .get_or_init(&primary_id, primary_path.clone())
-        .await
-        .expect("primary workspace should initialize");
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await
+            .expect("primary workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         primary_ws,
@@ -63,8 +59,6 @@ async fn test_primary_force_refresh_uses_full_index_path() {
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");
@@ -116,18 +110,15 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_primary_path = original_primary_root.canonicalize().unwrap();
     let original_primary_path_str = original_primary_path.to_string_lossy().to_string();
     let original_primary_id = generate_workspace_id(&original_primary_path_str).unwrap();
-    let original_primary_ws = pool
-        .get_or_init(&original_primary_id, original_primary_path.clone())
-        .await
-        .expect("original primary workspace should initialize");
+    let original_primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_primary_path.clone())
+            .await
+            .expect("original primary workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_primary_ws,
@@ -137,8 +128,6 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");
@@ -210,31 +199,30 @@ async fn test_daemon_rebound_primary_storage_anchor_keeps_shared_index_root() {
     let rebound_root = make_isolated_workspace_root(temp_dir.path(), "roots-primary");
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize().unwrap();
     let startup_id = generate_workspace_id(&startup_path.to_string_lossy()).unwrap();
-    let startup_ws = pool
-        .get_or_init(&startup_id, startup_path.clone())
-        .await
-        .expect("startup workspace should initialize");
+    let startup_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+            .await
+            .expect("startup workspace should initialize"),
+    );
 
-    let handler = JulieServerHandler::new_with_shared_workspace(
+    let mut handler = JulieServerHandler::new_with_shared_workspace(
         startup_ws,
         startup_path,
         Some(Arc::clone(&daemon_db)),
-        Some(startup_id),
+        Some(startup_id.clone()),
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");
+    // The in-process leader replaces the deleted WorkspacePool as the shared-root
+    // source: pin it so workspace_index_dir_for resolves every workspace
+    // (including a rebound primary) as a sibling under `indexes_dir`.
+    handler.in_process_index_root = Some(indexes_dir.join(&startup_id));
 
     let rebound_path = rebound_root.canonicalize().unwrap();
     let rebound_id = generate_workspace_id(&rebound_path.to_string_lossy()).unwrap();
@@ -267,18 +255,15 @@ async fn test_roots_list_error_falls_back_to_startup_hint() {
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize().unwrap();
     let startup_path_str = startup_path.to_string_lossy().to_string();
     let startup_id = generate_workspace_id(&startup_path_str).unwrap();
-    let startup_ws = pool
-        .get_or_init(&startup_id, startup_path.clone())
-        .await
-        .expect("startup workspace should initialize");
+    let startup_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+            .await
+            .expect("startup workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_ws,
@@ -291,8 +276,6 @@ async fn test_roots_list_error_falls_back_to_startup_hint() {
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");
@@ -365,18 +348,15 @@ async fn test_manage_workspace_refresh_force_reference_keeps_reference_snapshot_
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
     let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
     let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
-    let loaded_primary_ws = pool
-        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
-        .await
-        .expect("loaded primary workspace should initialize");
+    let loaded_primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(loaded_primary_path.clone())
+            .await
+            .expect("loaded primary workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         loaded_primary_ws,
@@ -386,8 +366,6 @@ async fn test_manage_workspace_refresh_force_reference_keeps_reference_snapshot_
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");
@@ -471,20 +449,17 @@ async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
     let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
     let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
-    let loaded_primary_ws = pool
-        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
-        .await
-        .expect("loaded primary workspace should initialize");
+    let loaded_primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(loaded_primary_path.clone())
+            .await
+            .expect("loaded primary workspace should initialize"),
+    );
 
-    let handler = JulieServerHandler::new_with_shared_workspace(
+    let mut handler = JulieServerHandler::new_with_shared_workspace(
         loaded_primary_ws,
         loaded_primary_path,
         Some(Arc::clone(&daemon_db)),
@@ -492,11 +467,13 @@ async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");
+    // In-process leader replaces the deleted WorkspacePool as the shared-root
+    // source: pin it so the reference (secondary) route resolves under the
+    // shared `indexes_dir`, not the rebound primary's project-local `.julie`.
+    handler.in_process_index_root = Some(indexes_dir.join(&loaded_primary_id));
 
     let rebound_primary_path = rebound_primary_root.canonicalize().unwrap();
     let rebound_primary_path_str = rebound_primary_path.to_string_lossy().to_string();
@@ -507,7 +484,7 @@ async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_
     daemon_db
         .upsert_workspace(&rebound_primary_id, &rebound_primary_path_str, "ready")
         .unwrap();
-    handler.set_current_primary_binding(rebound_primary_id, rebound_primary_path);
+    handler.set_current_primary_binding(rebound_primary_id, rebound_primary_path.clone());
 
     let reference_path = reference_root.canonicalize().unwrap();
     let reference_id = generate_workspace_id(&reference_path.to_string_lossy()).unwrap();
@@ -519,16 +496,22 @@ async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_
     assert!(!route.is_primary);
     assert_eq!(route.workspace_id, reference_id);
     assert_eq!(route.workspace_root, reference_path);
+    // The in-process leader pins `in_process_index_root` to the shared
+    // `indexes_dir`, so a reference (secondary) workspace keeps shared-root
+    // storage even when the primary is rebound (the deleted WorkspacePool used
+    // to carry this anchor).
     assert_eq!(
         route.db_path,
         indexes_dir
             .join(&route.workspace_id)
             .join("db")
-            .join("symbols.db")
+            .join("symbols.db"),
+        "reference workspace DB stays under the shared indexes_dir under a rebound primary"
     );
     assert_eq!(
         route.tantivy_path,
-        indexes_dir.join(&route.workspace_id).join("tantivy")
+        indexes_dir.join(&route.workspace_id).join("tantivy"),
+        "reference workspace tantivy stays under the shared indexes_dir under a rebound primary"
     );
 }
 
@@ -552,18 +535,15 @@ async fn test_manage_workspace_index_non_force_uses_rebound_session_primary_root
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
     let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
     let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
-    let loaded_primary_ws = pool
-        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
-        .await
-        .expect("loaded primary workspace should initialize");
+    let loaded_primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(loaded_primary_path.clone())
+            .await
+            .expect("loaded primary workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         loaded_primary_ws,
@@ -573,8 +553,6 @@ async fn test_manage_workspace_index_non_force_uses_rebound_session_primary_root
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");
@@ -785,18 +763,15 @@ async fn test_manage_workspace_refresh_non_force_uses_rebound_session_primary_ro
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
     let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
     let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
-    let loaded_primary_ws = pool
-        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
-        .await
-        .expect("loaded primary workspace should initialize");
+    let loaded_primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(loaded_primary_path.clone())
+            .await
+            .expect("loaded primary workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         loaded_primary_ws,
@@ -806,8 +781,6 @@ async fn test_manage_workspace_refresh_non_force_uses_rebound_session_primary_ro
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");

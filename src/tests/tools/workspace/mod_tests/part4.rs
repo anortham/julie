@@ -1,13 +1,10 @@
 #[tokio::test]
 async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_missing() {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::extractors::SymbolKind;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let startup_root = temp_dir.path().join("startup");
     let roots_root = temp_dir.path().join("roots");
@@ -17,30 +14,28 @@ async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_mis
     fs::write(roots_root.join("lib.rs"), "fn roots_health() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize().unwrap();
     let startup_id = generate_workspace_id(&startup_path.to_string_lossy()).unwrap();
     daemon_db
         .upsert_workspace(&startup_id, &startup_path.to_string_lossy(), "ready")
         .unwrap();
-    let startup_ws = pool
-        .get_or_init(&startup_id, startup_path.clone())
-        .await
-        .unwrap();
+    let startup_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+            .await
+            .unwrap(),
+    );
 
     let roots_path = roots_root.canonicalize().unwrap();
     let roots_id = generate_workspace_id(&roots_path.to_string_lossy()).unwrap();
     daemon_db
         .upsert_workspace(&roots_id, &roots_path.to_string_lossy(), "ready")
         .unwrap();
-    let roots_ws = pool
-        .get_or_init(&roots_id, roots_path.clone())
-        .await
-        .unwrap();
+    let roots_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(roots_path.clone())
+            .await
+            .unwrap(),
+    );
     {
         let mut roots_db = roots_ws.db.as_ref().unwrap().lock().unwrap();
         let file_info = crate::database::types::FileInfo {
@@ -95,8 +90,6 @@ async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_mis
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .unwrap();

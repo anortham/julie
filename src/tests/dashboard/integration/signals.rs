@@ -17,6 +17,7 @@ fn assert_stat_card(html: &str, label: &str, value: &str) {
     );
 }
 
+#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
 async fn test_signals_page_returns_200_for_indexed_workspace() {
     let (state, _temp_dir, workspace_id) = state_with_signal_workspace().await;
@@ -53,6 +54,7 @@ async fn test_signals_page_returns_404_for_unknown_workspace() {
     assert_eq!(response.status().as_u16(), 404);
 }
 
+#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
 async fn test_signals_summary_renders_counts_and_marker_evidence() {
     let (state, _temp_dir, workspace_id) = state_with_signal_workspace().await;
@@ -91,6 +93,7 @@ async fn test_signals_summary_renders_counts_and_marker_evidence() {
     assert!(!html.contains("HIGH"));
 }
 
+#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
 async fn test_signals_summary_empty_state_names_classified_markers() {
     let (state, _temp_dir, workspace_id) =
@@ -116,6 +119,7 @@ async fn test_signals_summary_empty_state_names_classified_markers() {
     assert!(html.contains("No classified annotation markers were found."));
 }
 
+#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
 async fn test_signals_refresh_requires_csrf_and_returns_summary() {
     let (state, _temp_dir, workspace_id) = state_with_signal_workspace().await;

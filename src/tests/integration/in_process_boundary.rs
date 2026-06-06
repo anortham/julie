@@ -1,19 +1,18 @@
-//! T12 — in-process boundary tripwire (Phase 3d.1).
+//! T12 — in-process boundary tripwire (Phase 3d.2b-ii).
 //!
-//! Updated from 3c.3: adapter module, `http_client.rs`, and `julie-adapter` binary
-//! deleted in 3d.1. Remaining §7-DAG daemon server files stay bypassed until 3d.2/3d.3.
+//! History: adapter module, `http_client.rs`, and `julie-adapter` binary deleted
+//! in 3d.1. The daemon HTTP-server runtime (`app/**`, `http_transport`, `transport`,
+//! `mcp_session`, `token_file`, `singleton`, `fd_limit`, `shutdown_event`) and the
+//! `WorkspacePool`/`WatcherPool` were deleted in 3d.2b-ii. `pid.rs`,
+//! `database/search_compare.rs`, and `migration.rs` remain — they are excised in 3d.3.
 //! Two guarantees:
 //!
 //!   1. **No-args path serves in-process.** `src/main.rs`'s `None =>` arm calls
 //!      `run_in_process_server` and NEVER `run_adapter` / `DaemonLauncher`. The
 //!      old fork-daemon-and-bridge-stdio path is gone from the default entry.
-//!   2. **The remaining §7-DAG files still exist.** The daemon HTTP transport,
-//!      singleton/legacy/pid, search_compare, and migration.rs are still present
-//!      — bypassed, not deleted (deletion is 3d.2/3d.3).
-//!   3. **The bypassed daemon code still compiles.** This test lives in the `julie`
-//!      lib crate, whose `lib.rs` declares `pub mod daemon;`. The explicit
-//!      `DaemonApp` reference below keeps the daemon HTTP server code load-bearing
-//!      until it is deleted in 3d.2b.
+//!   2. **The 3d.2b-ii deletions actually happened, and the 3d.3 files still exist.**
+//!      The daemon HTTP-server runtime + pool files MUST be gone; `pid.rs`,
+//!      `search_compare.rs`, and `migration.rs` MUST still be present (3d.3 deletes them).
 
 use std::fs;
 use std::path::Path;
@@ -26,15 +25,6 @@ fn code_part(line: &str) -> &str {
         Some(idx) => &line[..idx],
         None => line,
     }
-}
-
-/// Guarantee 3 (compile-time): force the bypassed daemon server code to still resolve.
-/// If `DaemonApp` is removed before Phase 3d.2b, this fails to COMPILE — a louder,
-/// earlier signal than the runtime assertions below.
-#[allow(dead_code)]
-fn _bypassed_entry_points_still_compile() {
-    // DaemonApp (HTTP server) still compiles — deletion is Phase 3d.2b.
-    let _: Option<crate::daemon::DaemonApp> = None;
 }
 
 /// Guarantee 1: the no-args (`None =>`) arm of `main.rs` serves in-process and
@@ -98,28 +88,56 @@ fn no_args_main_serves_in_process_not_adapter() {
     );
 }
 
-/// Guarantee 2: every file the later 3d sub-PRs (3d.2/3d.3) will remove is still
-/// present on the 3d.1 branch. Bypassed, not deleted.
-/// (adapter/**, http_client.rs, julie-adapter.rs were deleted in 3d.1.)
+/// Guarantee 2a: the daemon HTTP-server runtime + pool files deleted in 3d.2b-ii
+/// are actually gone. If a re-introduction or a missed deletion leaves any of these
+/// present, this fails — the deletion contract is enforced, not just assumed.
 #[test]
-fn section7_dag_files_are_bypassed_not_deleted() {
+fn daemon_http_runtime_files_are_deleted() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
-    // Remaining §7-DAG files after 3d.1 deletions. Grouped by design-doc shorthand.
-    let section7_files: &[&str] = &[
-        // daemon HTTP transport
+    let deleted_in_3d2b_ii: &[&str] = &[
+        // daemon HTTP-server runtime
+        "src/daemon/app.rs",
         "src/daemon/http_transport.rs",
         "src/daemon/transport.rs",
-        // singleton / pid
+        "src/daemon/mcp_session.rs",
+        "src/daemon/token_file.rs",
         "src/daemon/singleton.rs",
+        "src/daemon/fd_limit.rs",
+        "src/daemon/shutdown_event.rs",
+        // workspace/watcher pools
+        "src/daemon/workspace_pool.rs",
+        "src/daemon/watcher_pool.rs",
+    ];
+
+    let still_present: Vec<&str> = deleted_in_3d2b_ii
+        .iter()
+        .copied()
+        .filter(|rel| root.join(rel).exists())
+        .collect();
+
+    assert!(
+        still_present.is_empty(),
+        "Phase 3d.2b-ii deletes the daemon HTTP-server runtime + pool files; these \
+         MUST NOT exist. Still present: {still_present:?}"
+    );
+}
+
+/// Guarantee 2b: the files 3d.3 will remove are still present after 3d.2b-ii.
+/// Bypassed, not deleted (deletion is 3d.3).
+#[test]
+fn section7_dag_files_remaining_for_3d3_are_present() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+
+    // Files held out of 3d.2b-ii because kept code still imports them
+    // (e.g. `discovery.rs` imports `pid.rs`); excised in 3d.3.
+    let remaining_for_3d3: &[&str] = &[
         "src/daemon/pid.rs",
-        // search_compare
         "src/daemon/database/search_compare.rs",
-        // migration.rs
         "src/migration.rs",
     ];
 
-    let missing: Vec<&str> = section7_files
+    let missing: Vec<&str> = remaining_for_3d3
         .iter()
         .copied()
         .filter(|rel| !root.join(rel).exists())
@@ -127,7 +145,6 @@ fn section7_dag_files_are_bypassed_not_deleted() {
 
     assert!(
         missing.is_empty(),
-        "Phase 3d.1 deleted adapter/http_client but MUST NOT delete the remaining \
-         §7-DAG daemon server files (deletion is 3d.2/3d.3). Missing: {missing:?}"
+        "3d.2b-ii MUST NOT delete the §7-DAG files reserved for 3d.3. Missing: {missing:?}"
     );
 }

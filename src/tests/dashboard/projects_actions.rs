@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use axum::body::Body;
 use axum::http::Request;
@@ -10,8 +10,6 @@ use tower::ServiceExt;
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::lifecycle::{LifecyclePhase, ShutdownCause};
 use crate::daemon::session::SessionTracker;
-use crate::daemon::watcher_pool::WatcherPool;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::dashboard::routes::projects_actions::{
     cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
 };
@@ -29,7 +27,6 @@ async fn body_to_string(body: Body) -> String {
 fn action_ready_state() -> (
     DashboardState,
     Arc<DaemonDatabase>,
-    Arc<WorkspacePool>,
     tempfile::TempDir,
 ) {
     action_state_with_phase(LifecyclePhase::Ready, false)
@@ -41,31 +38,23 @@ fn action_state_with_phase(
 ) -> (
     DashboardState,
     Arc<DaemonDatabase>,
-    Arc<WorkspacePool>,
     tempfile::TempDir,
 ) {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let daemon_db =
         Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon"));
-    let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let workspace_pool = Arc::new(WorkspacePool::new(
-        temp_dir.path().join("indexes"),
-        Some(Arc::clone(&daemon_db)),
-    ));
     let sessions = Arc::new(SessionTracker::new());
-    let state = DashboardState::new_with_watcher_pool(
+    let state = DashboardState::new(
         sessions,
         Some(Arc::clone(&daemon_db)),
         Arc::new(AtomicBool::new(restart_pending)),
         Arc::new(RwLock::new(phase)),
         Instant::now(),
         None,
-        Some(watcher_pool),
-        Some(Arc::clone(&workspace_pool)),
         50,
     );
 
-    (state, daemon_db, workspace_pool, temp_dir)
+    (state, daemon_db, temp_dir)
 }
 
 fn action_state_without_daemon() -> (DashboardState, tempfile::TempDir) {
@@ -76,7 +65,6 @@ fn action_state_without_daemon() -> (DashboardState, tempfile::TempDir) {
         Arc::new(AtomicBool::new(false)),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
-        None,
         None,
         50,
     );
@@ -94,7 +82,7 @@ fn write_workspace_source(path: &std::path::Path) {
 
 #[tokio::test]
 async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
-    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, daemon_db, temp_dir) = action_ready_state();
     let current_path = temp_dir.path().join("current-workspace");
     let active_path = temp_dir.path().join("active-workspace");
     let known_path = temp_dir.path().join("known-workspace");
@@ -180,7 +168,7 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
 
 #[tokio::test]
 async fn test_projects_page_keeps_row_actions_compact() {
-    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, daemon_db, temp_dir) = action_ready_state();
     let workspace_root = temp_dir.path().join("compact-row-target");
     write_workspace_source(&workspace_root);
     let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
@@ -218,7 +206,7 @@ async fn test_projects_page_keeps_row_actions_compact() {
 
 #[tokio::test]
 async fn test_projects_register_action_indexes_workspace_without_activating_it() {
-    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, daemon_db, temp_dir) = action_ready_state();
     let workspace_root = temp_dir.path().join("register-target");
     write_workspace_source(&workspace_root);
     let csrf_token = state.action_csrf_token().to_string();
@@ -298,7 +286,7 @@ async fn test_projects_register_action_renders_tool_error_as_danger_notice() {
 #[tokio::test]
 #[serial_test::serial(dashboard_cwd)]
 async fn test_dashboard_handler_does_not_write_project_log_under_process_cwd() {
-    let (state, _daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, _daemon_db, temp_dir) = action_ready_state();
     let cwd = temp_dir.path().join("process-cwd");
     std::fs::create_dir_all(&cwd).expect("create cwd");
     let old_cwd = std::env::current_dir().expect("current dir");
@@ -332,7 +320,7 @@ async fn test_dashboard_handler_does_not_write_project_log_under_process_cwd() {
 
 #[tokio::test]
 async fn test_cleanup_dashboard_anchor_does_not_remove_paths_outside_indexes_dir() {
-    let (state, _daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, _daemon_db, temp_dir) = action_ready_state();
     std::fs::create_dir_all(temp_dir.path().join("indexes")).expect("indexes dir");
     let outside = temp_dir.path().join("outside-anchor-target");
     std::fs::create_dir_all(&outside).expect("outside dir");
@@ -353,7 +341,7 @@ async fn test_cleanup_dashboard_anchor_does_not_remove_paths_outside_indexes_dir
 
 #[tokio::test]
 async fn test_projects_refresh_action_blocks_while_daemon_is_stopping() {
-    let (state, daemon_db, _workspace_pool, _temp_dir) = action_state_with_phase(
+    let (state, daemon_db, _temp_dir) = action_state_with_phase(
         LifecyclePhase::Stopping {
             cause: ShutdownCause::RestartRequired,
         },
@@ -391,7 +379,7 @@ async fn test_projects_refresh_action_blocks_while_daemon_is_stopping() {
 
 #[tokio::test]
 async fn test_projects_open_action_warms_workspace_without_leaking_session_count() {
-    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, daemon_db, temp_dir) = action_ready_state();
     let workspace_root = temp_dir.path().join("open-target");
     write_workspace_source(&workspace_root);
     let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
@@ -427,7 +415,7 @@ async fn test_projects_open_action_warms_workspace_without_leaking_session_count
 
 #[tokio::test]
 async fn test_projects_delete_action_removes_inactive_workspace() {
-    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, daemon_db, temp_dir) = action_ready_state();
     let workspace_root = temp_dir.path().join("delete-target");
     write_workspace_source(&workspace_root);
     let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
@@ -468,7 +456,7 @@ async fn test_projects_delete_action_removes_inactive_workspace() {
 
 #[tokio::test]
 async fn test_projects_delete_action_rejects_bad_csrf_token() {
-    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, daemon_db, temp_dir) = action_ready_state();
     let workspace_root = temp_dir.path().join("delete-bad-token");
     write_workspace_source(&workspace_root);
     let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
@@ -501,7 +489,7 @@ async fn test_projects_delete_action_rejects_bad_csrf_token() {
 
 #[tokio::test]
 async fn test_project_detail_shows_workspace_state_without_reference_section() {
-    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, daemon_db, temp_dir) = action_ready_state();
     let workspace_root = temp_dir.path().join("detail-target");
     write_workspace_source(&workspace_root);
     let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
@@ -547,7 +535,7 @@ async fn test_project_detail_shows_workspace_state_without_reference_section() {
 
 #[tokio::test]
 async fn test_project_detail_shows_blocked_cleanup_reason_for_missing_active_workspace() {
-    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let (state, daemon_db, temp_dir) = action_ready_state();
     let workspace_root = temp_dir.path().join("blocked-detail-target");
     write_workspace_source(&workspace_root);
     let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();

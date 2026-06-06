@@ -729,52 +729,17 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["projection"];
     }
 
-    if matches_prefix(
-        path,
-        &[
-            "src/adapter/",
-            "src/tests/adapter/",
-            "src/tests/daemon/http_transport/",
-        ],
-    ) || matches_exact(
-        path,
-        &[
-            "src/daemon/http_transport.rs",
-            "src/daemon/transport.rs",
-            "src/tests/daemon/http_transport.rs",
-            "src/tests/daemon/mcp_session.rs",
-            "src/tests/daemon/transport.rs",
-        ],
-    ) {
-        return &["transport"];
+    if matches_exact(path, &["src/daemon/mod.rs", "src/daemon/lifecycle.rs"]) {
+        return &["daemon"];
     }
 
     if matches_exact(
         path,
         &[
-            "src/daemon/mod.rs",
-            "src/daemon/lifecycle.rs",
-            "src/tests/daemon/lifecycle.rs",
-            "src/tests/integration/daemon_lifecycle.rs",
-        ],
-    ) {
-        if path == "src/daemon/mod.rs" {
-            return &["lifecycle", "daemon"];
-        }
-        return &["lifecycle"];
-    }
-
-    if matches_exact(
-        path,
-        &[
-            "src/daemon/workspace_pool.rs",
             "src/daemon/workspace_registry_store.rs",
             "src/daemon/workspace_session_attachment.rs",
-            "src/daemon/watcher_pool.rs",
             "src/daemon/workspace_cleanup.rs",
             "src/workspace/registry.rs",
-            "src/tests/daemon/workspace_pool.rs",
-            "src/tests/daemon/watcher_pool.rs",
             "src/tests/daemon/workspace_cleanup.rs",
             "src/tests/tools/workspace/registry.rs",
         ],

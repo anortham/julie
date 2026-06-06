@@ -2,7 +2,6 @@ use std::fs;
 use std::sync::Arc;
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -25,10 +24,9 @@ fn result_text(result: &CallToolResult) -> String {
 }
 
 #[tokio::test]
+#[ignore = "daemon multi-workspace session/roots lifecycle (pool-backed); reworked in Phase 3d.3 registry rework"]
 async fn test_manage_workspace_open_path_succeeds_without_bound_primary_in_deferred_session() {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let startup_root = temp_dir.path().join("startup-cwd");
     let target_root = temp_dir.path().join("target");
@@ -46,10 +44,6 @@ async fn test_manage_workspace_open_path_succeeds_without_bound_primary_in_defer
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize().unwrap();
     let handler = JulieServerHandler::new_deferred_daemon_startup_hint_without_project_log(
@@ -61,8 +55,6 @@ async fn test_manage_workspace_open_path_succeeds_without_bound_primary_in_defer
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("deferred daemon handler should initialize");

@@ -12,7 +12,6 @@ use tower::ServiceExt;
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::lifecycle::LifecyclePhase;
 use crate::daemon::session::SessionTracker;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
 use crate::database::types::FileInfo;
@@ -31,7 +30,6 @@ fn test_state() -> DashboardState {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // no embedding service in tests
-        None,
         50,
     )
 }
@@ -53,7 +51,6 @@ fn test_state_with_db() -> (DashboardState, tempfile::TempDir) {
         Arc::new(AtomicBool::new(false)),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
-        None,
         None,
         50,
     );
@@ -176,14 +173,11 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
         .update_workspace_stats(&workspace_id, 2, 1, None, None, None)
         .unwrap();
 
-    let pool = Arc::new(WorkspacePool::new(
-        temp_dir.path().join("indexes"),
-        Some(Arc::clone(&daemon_db)),
-    ));
-    let workspace = pool
-        .get_or_init(&workspace_id, workspace_root.clone())
-        .await
-        .expect("workspace init");
+    let workspace = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(workspace_root.clone())
+            .await
+            .expect("workspace init"),
+    );
 
     {
         let mut db = workspace
@@ -233,7 +227,6 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
             None,
-            Some(pool),
             50,
         ),
         temp_dir,
@@ -257,14 +250,11 @@ async fn state_with_signal_workspace() -> (DashboardState, tempfile::TempDir, St
         .update_workspace_stats(&workspace_id, 2, 1, None, None, None)
         .unwrap();
 
-    let pool = Arc::new(WorkspacePool::new(
-        temp_dir.path().join("indexes"),
-        Some(Arc::clone(&daemon_db)),
-    ));
-    let workspace = pool
-        .get_or_init(&workspace_id, workspace_root.clone())
-        .await
-        .expect("workspace init");
+    let workspace = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(workspace_root.clone())
+            .await
+            .expect("workspace init"),
+    );
 
     {
         let mut db = workspace
@@ -314,7 +304,6 @@ async fn state_with_signal_workspace() -> (DashboardState, tempfile::TempDir, St
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
             None,
-            Some(pool),
             50,
         ),
         temp_dir,
@@ -342,14 +331,11 @@ async fn state_with_search_workspace(
         .update_workspace_stats(&workspace_id, 1, 1, None, None, None)
         .unwrap();
 
-    let pool = Arc::new(WorkspacePool::new(
-        temp_dir.path().join("indexes"),
-        Some(Arc::clone(&daemon_db)),
-    ));
-    let workspace = pool
-        .get_or_init(&workspace_id, workspace_root.clone())
-        .await
-        .expect("workspace init");
+    let workspace = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(workspace_root.clone())
+            .await
+            .expect("workspace init"),
+    );
 
     {
         let mut db = workspace
@@ -387,7 +373,6 @@ async fn state_with_search_workspace(
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
             None,
-            Some(pool),
             50,
         ),
         temp_dir,

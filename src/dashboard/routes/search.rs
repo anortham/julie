@@ -96,7 +96,7 @@ pub async fn search(
     )
     .await;
 
-    let no_pool = state.dashboard.workspace_pool().is_none();
+    let no_pool = true;
     let results = execution
         .as_ref()
         .map(|result| result.hits.clone())
@@ -112,36 +112,7 @@ pub async fn search(
     // Build centrality ranks (name -> rank 1..=20) for badge display.
     // Only show badges when a specific workspace is selected; cross-workspace
     // badges would be misleading since ranks come from one workspace.
-    let centrality_ranks: std::collections::HashMap<String, usize> = if !workspace_id.is_empty()
-        && let Some(pool) = state.dashboard.workspace_pool()
-    {
-        let ws_id = workspace_id.to_string();
-
-        if let Some(ws) = pool.get(&ws_id).await {
-            if let Some(db) = &ws.db {
-                if let Ok(guard) = db.lock() {
-                    guard
-                        .get_top_symbols_by_centrality(20)
-                        .ok()
-                        .map(|syms| {
-                            syms.into_iter()
-                                .enumerate()
-                                .map(|(i, s)| (s.name, i + 1))
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                } else {
-                    Default::default()
-                }
-            } else {
-                Default::default()
-            }
-        } else {
-            Default::default()
-        }
-    } else {
-        Default::default()
-    };
+    let centrality_ranks: std::collections::HashMap<String, usize> = Default::default();
     context.insert("centrality_ranks", &centrality_ranks);
 
     render_template(&state, "partials/search_results.html", context).await
@@ -157,10 +128,6 @@ async fn run_search(
     file_pattern: &str,
     limit: usize,
 ) -> Option<SearchExecutionResult> {
-    if state.dashboard.workspace_pool().is_none() {
-        return None;
-    }
-
     let workspace_ids: Vec<String> = if workspace_id.is_empty() {
         let db = state.dashboard.daemon_db()?;
         db.list_workspaces()

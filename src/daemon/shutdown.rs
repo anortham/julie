@@ -90,6 +90,8 @@ pub fn recovery_marker_path(paths: &DaemonPaths) -> PathBuf {
 /// or abort any sessions — it just observes the count, waits, and reports.
 /// The caller (`DaemonHandle::shutdown`) is responsible for flipping the
 /// HTTP transport into 502-abort mode when this returns `TimedOut`.
+// kept for 3d.3 recovery
+#[allow(dead_code)]
 pub async fn drain_with_markers(
     sessions: &SessionTracker,
     paths: &DaemonPaths,
@@ -188,6 +190,8 @@ pub fn clear_recovery_markers(paths: &DaemonPaths) -> Result<()> {
 /// canonical path, rename. A crash mid-write leaves either the prior file
 /// or the new one — never a partial. The temp suffix matches the recipe
 /// used by `DiscoveryFile::write_atomic`.
+// kept for 3d.3 recovery
+#[allow(dead_code)]
 fn append_recovery_marker(paths: &DaemonPaths, marker: &RecoveryMarker) -> Result<()> {
     let path = recovery_marker_path(paths);
     let mut existing = read_recovery_markers(paths);

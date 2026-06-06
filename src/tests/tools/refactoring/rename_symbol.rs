@@ -545,7 +545,6 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
 #[tokio::test]
 async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::tools::refactoring::resolve_workspace_root;
     use crate::workspace::registry::generate_workspace_id;
 
@@ -568,16 +567,13 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize()?;
     let original_id = generate_workspace_id(&original_path.to_string_lossy())?;
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await?;
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_path.clone())
+            .await?,
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
@@ -587,8 +583,6 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -597,7 +591,9 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
     daemon_db.upsert_workspace(&original_id, &original_path.to_string_lossy(), "ready")?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path.to_string_lossy(), "ready")?;
 
-    let rebound_ws = pool.get_or_init(&rebound_id, rebound_path.clone()).await?;
+    let rebound_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
+            .await?);
     let seed_handler = JulieServerHandler::new_with_shared_workspace(
         rebound_ws,
         rebound_path.clone(),
@@ -606,8 +602,6 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 

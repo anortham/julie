@@ -38,6 +38,7 @@ async fn test_status_live_exposes_nested_health_snapshot() {
     );
 }
 
+#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
 async fn test_status_live_exposes_indexing_health_snapshot() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
@@ -55,14 +56,11 @@ async fn test_status_live_exposes_indexing_health_snapshot() {
         .update_workspace_stats(&workspace_id, 10, 1, None, None, None)
         .unwrap();
 
-    let pool = Arc::new(WorkspacePool::new(
-        temp_dir.path().join("indexes"),
-        Some(Arc::clone(&daemon_db)),
-    ));
-    let workspace = pool
-        .get_or_init(&workspace_id, workspace_root.clone())
-        .await
-        .expect("workspace init");
+    let workspace = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(workspace_root.clone())
+            .await
+            .expect("workspace init"),
+    );
     {
         let mut indexing = workspace.indexing_runtime.write().unwrap();
         indexing.begin_operation(IndexingOperation::Incremental);
@@ -80,7 +78,6 @@ async fn test_status_live_exposes_indexing_health_snapshot() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,
-        Some(pool),
         50,
     );
     let config = DashboardConfig::default();
@@ -132,6 +129,7 @@ async fn test_status_live_exposes_indexing_health_snapshot() {
     );
 }
 
+#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
 async fn test_status_live_exposes_projection_freshness_snapshot() {
     let (state, _temp_dir, workspace_id) = state_with_projection_lag().await;

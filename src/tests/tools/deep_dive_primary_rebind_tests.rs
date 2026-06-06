@@ -5,7 +5,6 @@ use anyhow::Result;
 use tempfile::TempDir;
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::tools::deep_dive::{DeepDiveDepth, DeepDiveTool};
@@ -59,17 +58,14 @@ async fn setup_rebound_primary_deep_dive_handler()
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await?;
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_path.clone())
+            .await?,
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
@@ -79,8 +75,6 @@ async fn setup_rebound_primary_deep_dive_handler()
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -91,7 +85,9 @@ async fn setup_rebound_primary_deep_dive_handler()
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
-    let rebound_ws = pool.get_or_init(&rebound_id, rebound_path.clone()).await?;
+    let rebound_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
+            .await?);
     {
         let rebound_db = rebound_ws.db.as_ref().unwrap().clone();
         let mut rebound_db = rebound_db.lock().unwrap();

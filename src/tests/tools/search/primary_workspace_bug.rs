@@ -179,7 +179,6 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
 async fn test_text_search_definitions_explicit_rebound_workspace_uses_current_primary_store()
 -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::workspace::registry::generate_workspace_id;
     use std::sync::Arc;
 
@@ -201,17 +200,14 @@ async fn test_text_search_definitions_explicit_rebound_workspace_uses_current_pr
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await?;
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_path.clone())
+            .await?,
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
@@ -221,8 +217,6 @@ async fn test_text_search_definitions_explicit_rebound_workspace_uses_current_pr
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -233,7 +227,9 @@ async fn test_text_search_definitions_explicit_rebound_workspace_uses_current_pr
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
-    let rebound_ws = pool.get_or_init(&rebound_id, rebound_path.clone()).await?;
+    let rebound_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
+            .await?);
     let seed_handler = JulieServerHandler::new_with_shared_workspace(
         rebound_ws,
         rebound_path.clone(),
@@ -242,8 +238,6 @@ async fn test_text_search_definitions_explicit_rebound_workspace_uses_current_pr
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 

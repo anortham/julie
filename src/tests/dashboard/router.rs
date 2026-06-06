@@ -20,7 +20,6 @@ fn test_state() -> DashboardState {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // no embedding service in tests
-        None,
         50,
     )
 }

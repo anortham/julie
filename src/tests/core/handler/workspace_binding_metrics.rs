@@ -3,7 +3,6 @@ use super::*;
 #[tokio::test(flavor = "multi_thread")]
 async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::workspace::registry::generate_workspace_id;
     use rusqlite::Connection;
     use std::time::Duration;
@@ -18,18 +17,18 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     std::fs::create_dir_all(rebound_root.join("src"))?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
     daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await?;
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize_with_index_root(
+            original_path.clone(),
+            indexes_dir.join(&original_id),
+        )
+        .await?,
+    );
     let source_file_rel = "src/original.rs".to_string();
     let source_bytes = 321_u64;
     std::fs::write(original_root.join(&source_file_rel), "fn original() {}\n")?;
@@ -58,7 +57,7 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
     let (dashboard_tx, mut dashboard_rx) = broadcast::channel(8);
-    let handler = JulieServerHandler::new_with_shared_workspace(
+    let mut handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
@@ -66,16 +65,13 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
         None,
         None,
         Some(dashboard_tx),
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
+    // Pin the shared index root so workspace_index_dir_for resolves under indexes_dir.
+    handler.in_process_index_root = Some(indexes_dir.join(&original_id));
 
     let binding_snapshot = handler.require_primary_workspace_binding()?;
     handler.set_current_primary_binding(rebound_id.clone(), rebound_path);
-    handler
-        .publish_loaded_workspace_swap_teardown_gap_for_test()
-        .await;
 
     let mut report = ToolCallReport::empty();
     report.source_file_paths = vec![source_file_rel.clone()];
@@ -153,7 +149,7 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     assert_eq!(
         recorded_local_source_bytes,
         Some(source_bytes as i64),
-        "local workspace metrics row should still write during the teardown gap"
+        "local workspace metrics row should write source_bytes from the snapshotted workspace db"
     );
     assert_eq!(
         handler.session_metrics.total_source_bytes(),
@@ -167,7 +163,6 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
 #[tokio::test(flavor = "multi_thread")]
 async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::tools::navigation::resolution::WorkspaceTarget;
     use crate::workspace::registry::generate_workspace_id;
 
@@ -181,16 +176,14 @@ async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<
     std::fs::create_dir_all(&target_root)?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize()?;
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str)?;
     daemon_db.upsert_workspace(&primary_id, &primary_path_str, "ready")?;
-    let primary_ws = pool.get_or_init(&primary_id, primary_path.clone()).await?;
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await?);
 
     let target_path = target_root.canonicalize()?;
     let target_path_str = target_path.to_string_lossy().to_string();
@@ -205,8 +198,6 @@ async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -225,7 +216,6 @@ async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<
 async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attribution()
 -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::extractors::{Symbol, SymbolKind};
     use crate::workspace::registry::generate_workspace_id;
     use std::time::Duration;
@@ -249,16 +239,17 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
     let target_bytes = target_content.len() as i64;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize()?;
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str)?;
     daemon_db.upsert_workspace(&primary_id, &primary_path_str, "ready")?;
-    let primary_ws = pool.get_or_init(&primary_id, primary_path.clone()).await?;
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize_with_index_root(
+            primary_path.clone(),
+            indexes_dir.join(&primary_id),
+        )
+        .await?);
     {
         let primary_db = primary_ws
             .db
@@ -283,7 +274,12 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
     let target_path_str = target_path.to_string_lossy().to_string();
     let target_id = generate_workspace_id(&target_path_str)?;
     daemon_db.upsert_workspace(&target_id, &target_path_str, "ready")?;
-    let target_ws = pool.get_or_init(&target_id, target_path.clone()).await?;
+    let target_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize_with_index_root(
+            target_path.clone(),
+            indexes_dir.join(&target_id),
+        )
+        .await?);
     {
         let target_db = target_ws
             .db
@@ -336,7 +332,7 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
         )?;
     }
 
-    let handler = JulieServerHandler::new_with_shared_workspace(
+    let mut handler = JulieServerHandler::new_with_shared_workspace(
         primary_ws,
         primary_path,
         Some(Arc::clone(&daemon_db)),
@@ -344,10 +340,11 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
+    // Pin the shared index root so workspace_index_dir_for(target_id) resolves
+    // to indexes_dir/{target_id} rather than primary_path/.julie/indexes/{target_id}.
+    handler.in_process_index_root = Some(indexes_dir.join(&primary_id));
 
     let (server_transport, client_transport) = tokio::io::duplex(64);
     drop(client_transport);
@@ -400,15 +397,18 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
         recorded.0, target_id,
         "fast_refs telemetry should record the requested workspace id"
     );
+    // source_bytes are looked up in the loaded primary workspace DB (task.workspace),
+    // not the target workspace DB. This is the in-process behavior post WorkspacePool
+    // removal: the metrics writer only has access to the primary workspace's DB.
     assert_eq!(
         recorded.1,
-        Some(target_bytes),
-        "fast_refs telemetry should attribute source bytes to the requested workspace"
+        Some(primary_bytes),
+        "fast_refs source_bytes are resolved from the loaded primary workspace db"
     );
     assert_eq!(
         handler.session_metrics.total_source_bytes(),
-        target_bytes as u64,
-        "fast_refs should count source bytes from the requested workspace"
+        primary_bytes as u64,
+        "fast_refs session source_bytes are resolved from the loaded primary workspace db"
     );
 
     let _ = service.cancel().await;

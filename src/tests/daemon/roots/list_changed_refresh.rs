@@ -22,18 +22,13 @@ async fn test_roots_list_changed_marks_session_dirty_until_next_request() -> Res
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        Some(Arc::clone(&daemon_db)),
-    ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
         crate::workspace::registry::generate_workspace_id(&startup_path.to_string_lossy())?;
-    let startup_workspace = pool
-        .get_or_init(&startup_workspace_id, startup_path.clone())
-        .await?;
+    let startup_workspace =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(startup_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_workspace,
@@ -46,8 +41,6 @@ async fn test_roots_list_changed_marks_session_dirty_until_next_request() -> Res
         Some(Arc::clone(&embedding_service)),
         Some(Arc::clone(&restart_pending)),
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -190,18 +183,13 @@ async fn test_roots_list_changed_retries_after_failed_refresh() -> Result<()> {
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        Some(Arc::clone(&daemon_db)),
-    ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
         crate::workspace::registry::generate_workspace_id(&startup_path.to_string_lossy())?;
-    let startup_workspace = pool
-        .get_or_init(&startup_workspace_id, startup_path.clone())
-        .await?;
+    let startup_workspace =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(startup_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_workspace,
@@ -214,8 +202,6 @@ async fn test_roots_list_changed_retries_after_failed_refresh() -> Result<()> {
         Some(Arc::clone(&embedding_service)),
         Some(Arc::clone(&restart_pending)),
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -366,18 +352,13 @@ async fn test_roots_list_changed_roots_list_failure_does_not_serve_stale_primary
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        Some(Arc::clone(&daemon_db)),
-    ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
         crate::workspace::registry::generate_workspace_id(&startup_path.to_string_lossy())?;
-    let startup_workspace = pool
-        .get_or_init(&startup_workspace_id, startup_path.clone())
-        .await?;
+    let startup_workspace =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(startup_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_workspace,
@@ -390,8 +371,6 @@ async fn test_roots_list_changed_roots_list_failure_does_not_serve_stale_primary
         Some(Arc::clone(&embedding_service)),
         Some(Arc::clone(&restart_pending)),
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -511,18 +490,13 @@ async fn test_roots_list_changed_empty_refresh_reconciles_to_startup_hint() -> R
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        Some(Arc::clone(&daemon_db)),
-    ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
         crate::workspace::registry::generate_workspace_id(&startup_path.to_string_lossy())?;
-    let startup_workspace = pool
-        .get_or_init(&startup_workspace_id, startup_path.clone())
-        .await?;
+    let startup_workspace =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(startup_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_workspace,
@@ -535,8 +509,6 @@ async fn test_roots_list_changed_empty_refresh_reconciles_to_startup_hint() -> R
         Some(Arc::clone(&embedding_service)),
         Some(Arc::clone(&restart_pending)),
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -652,18 +624,13 @@ async fn test_roots_list_changed_startup_hint_fallback_preserves_active_secondar
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        Some(Arc::clone(&daemon_db)),
-    ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
         crate::workspace::registry::generate_workspace_id(&startup_path.to_string_lossy())?;
-    let startup_workspace = pool
-        .get_or_init(&startup_workspace_id, startup_path.clone())
-        .await?;
+    let startup_workspace =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(startup_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_workspace,
@@ -676,8 +643,6 @@ async fn test_roots_list_changed_startup_hint_fallback_preserves_active_secondar
         Some(Arc::clone(&embedding_service)),
         Some(Arc::clone(&restart_pending)),
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 

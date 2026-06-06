@@ -69,22 +69,6 @@ fn manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs() {
 }
 
 #[test]
-fn manifest_contract_tests_unix_only_lifecycle_filter_allows_zero_tests() {
-    let manifest = load_checked_in_manifest();
-    let lifecycle = &manifest.buckets["lifecycle"];
-    let command = lifecycle
-        .commands
-        .iter()
-        .find(|command| command.contains("tests::integration::daemon_lifecycle"))
-        .expect("lifecycle bucket should include daemon_lifecycle integration coverage");
-
-    assert!(
-        command.contains("--no-tests pass"),
-        "daemon_lifecycle integration tests are cfg(unix); this command must not fail the lifecycle bucket on Windows when it legitimately matches zero tests: {command}"
-    );
-}
-
-#[test]
 fn manifest_contract_tests_checked_in_manifest_includes_rebalancing_hints() {
     let contents = fs::read_to_string(manifest_path()).unwrap();
 
@@ -262,8 +246,6 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "daemon".to_string(),
                 "dashboard".to_string(),
                 "projection".to_string(),
-                "transport".to_string(),
-                "lifecycle".to_string(),
                 "workspace-runtime".to_string(),
                 "workspace-init".to_string(),
                 "documentation-indexing".to_string(),
@@ -290,8 +272,6 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
             "system".to_string(),
             vec![
                 "projection".to_string(),
-                "transport".to_string(),
-                "lifecycle".to_string(),
                 "workspace-runtime".to_string(),
                 "workspace-init".to_string(),
                 "documentation-indexing".to_string(),

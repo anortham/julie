@@ -14,7 +14,6 @@ use tokio::time::sleep;
 
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::embedding_service::EmbeddingService;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 

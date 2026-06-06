@@ -5,33 +5,21 @@ use anyhow::Result;
 use tracing::warn;
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::embedding_service::EmbeddingService;
-use crate::daemon::watcher_pool::WatcherPool;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::session_workspace::SessionWorkspaceState;
 
 #[derive(Clone)]
 pub struct WorkspaceSessionAttachment {
-    workspace_pool: Option<Arc<WorkspacePool>>,
     daemon_db: Option<Arc<DaemonDatabase>>,
-    watcher_pool: Option<Arc<WatcherPool>>,
-    embedding_service: Option<Arc<EmbeddingService>>,
     session_workspace: Arc<StdRwLock<SessionWorkspaceState>>,
 }
 
 impl WorkspaceSessionAttachment {
     pub fn new(
-        workspace_pool: Option<Arc<WorkspacePool>>,
         daemon_db: Option<Arc<DaemonDatabase>>,
-        watcher_pool: Option<Arc<WatcherPool>>,
-        embedding_service: Option<Arc<EmbeddingService>>,
         session_workspace: Arc<StdRwLock<SessionWorkspaceState>>,
     ) -> Self {
         Self {
-            workspace_pool,
             daemon_db,
-            watcher_pool,
-            embedding_service,
             session_workspace,
         }
     }
@@ -70,26 +58,19 @@ impl WorkspaceSessionAttachment {
         workspace_id: &str,
         workspace_root: PathBuf,
     ) -> Result<()> {
-        let Some(pool) = &self.workspace_pool else {
-            return Ok(());
-        };
-
-        let workspace = pool.get_or_init(workspace_id, workspace_root).await?;
-        self.update_session_count(workspace_id, true).await;
-        if let Some(watcher_pool) = &self.watcher_pool {
-            let provider = self
-                .embedding_service
-                .as_ref()
-                .and_then(|service| service.provider());
-            if let Err(error) = watcher_pool
-                .attach(workspace_id, &workspace, provider)
-                .await
-            {
-                warn!(
-                    workspace_id,
-                    "Failed to attach watcher during session attachment: {error}"
-                );
-            }
+        // In-process mode: register the workspace in daemon_db so it is
+        // visible to `manage_workspace list` and reachable via workspace-ID
+        // tool parameters (resolve_workspace_filter). No session-count
+        // tracking — that was a daemon-pool concept.
+        //
+        // Intentionally synchronous (no spawn_blocking): `upsert_workspace`
+        // is a fast SQLite write (<1 ms). Keeping it synchronous ensures no
+        // yield occurs between this call and `apply_root_snapshot` in
+        // `reconcile_primary_workspace_roots`, preventing a race where a
+        // concurrent `list_roots_from_peer` call observes an unbound state.
+        if let Some(db) = self.daemon_db.as_deref() {
+            let workspace_root_str = workspace_root.to_string_lossy();
+            db.upsert_workspace(workspace_id, &workspace_root_str, "ready")?;
         }
         Ok(())
     }
@@ -110,9 +91,6 @@ impl WorkspaceSessionAttachment {
 
     pub async fn detach_workspace_resources(&self, workspace_id: &str) -> Result<()> {
         self.update_session_count(workspace_id, false).await;
-        if let Some(watcher_pool) = &self.watcher_pool {
-            watcher_pool.detach(workspace_id).await;
-        }
         Ok(())
     }
 

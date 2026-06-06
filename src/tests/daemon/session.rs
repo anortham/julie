@@ -1,7 +1,6 @@
 //! Tests for SessionTracker (daemon idle detection).
 
 use crate::daemon::session::{SessionLifecyclePhase, SessionTracker};
-use std::time::{Duration, Instant};
 
 #[test]
 fn test_new_session_increments_count() {
@@ -105,50 +104,6 @@ fn test_session_phase_counts_follow_transitions() {
     assert_eq!(counts.bound, 0);
     assert_eq!(counts.serving, 1);
     assert_eq!(counts.closing, 1);
-}
-
-#[test]
-fn test_evict_idle_removes_only_stale_sessions() {
-    let tracker = SessionTracker::new();
-    let base = Instant::now();
-
-    let stale = tracker.add_session();
-    let fresh = tracker.add_session();
-
-    // `stale` last did work at `base`; `fresh` was active 600s later.
-    tracker.touch_session_at(&stale, base);
-    tracker.touch_session_at(&fresh, base + Duration::from_secs(600));
-
-    // "Now" is base+400s with a 300s idle threshold:
-    //   stale: 400s idle  >= 300s  -> evict
-    //   fresh: 0s idle (saturating) < 300s -> keep
-    let evicted = tracker.evict_idle(base + Duration::from_secs(400), Duration::from_secs(300));
-
-    assert_eq!(evicted, vec![stale.clone()]);
-    assert_eq!(tracker.active_count(), 1);
-    assert_eq!(
-        tracker.session_phase(&fresh),
-        Some(SessionLifecyclePhase::Connecting),
-        "the freshly-active session must survive eviction"
-    );
-    assert!(
-        tracker.session_phase(&stale).is_none(),
-        "the stale session must be gone"
-    );
-}
-
-#[test]
-fn test_evict_idle_returns_empty_when_none_stale() {
-    let tracker = SessionTracker::new();
-    let base = Instant::now();
-    let id = tracker.add_session();
-    tracker.touch_session_at(&id, base);
-
-    // Threshold not yet exceeded (100s idle < 300s).
-    let evicted = tracker.evict_idle(base + Duration::from_secs(100), Duration::from_secs(300));
-
-    assert!(evicted.is_empty());
-    assert_eq!(tracker.active_count(), 1);
 }
 
 #[test]

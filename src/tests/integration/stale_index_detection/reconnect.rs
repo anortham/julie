@@ -89,7 +89,6 @@ async fn test_startup_repair_cleans_deleted_file_and_clears_next_check() -> Resu
 #[tokio::test]
 async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tree() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
 
     let temp_dir = TempDir::new()?;
     let indexes_dir = temp_dir.path().join("daemon-indexes");
@@ -101,20 +100,20 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
     fs::write(&test_file, "fn shared_anchor() {}")?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let workspace_path = workspace_root.canonicalize()?;
     let workspace_path_str = workspace_path.to_string_lossy().to_string();
     let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_path_str)?;
-    let pooled_workspace = pool
-        .get_or_init(&workspace_id, workspace_path.clone())
-        .await?;
+    let pooled_workspace = Arc::new(
+        crate::workspace::JulieWorkspace::initialize_with_index_root(
+            workspace_path.clone(),
+            indexes_dir.join(&workspace_id),
+        )
+        .await?,
+    );
     daemon_db.upsert_workspace(&workspace_id, &workspace_path_str, "ready")?;
 
-    let handler = JulieServerHandler::new_with_shared_workspace(
+    let mut handler = JulieServerHandler::new_with_shared_workspace(
         pooled_workspace,
         workspace_path.clone(),
         Some(Arc::clone(&daemon_db)),
@@ -122,10 +121,12 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await?;
+    // The shared anchor used to be carried by the WorkspacePool (removed in
+    // Phase 3d.2b). Pin it directly so the force-reindex below re-initializes
+    // db/tantivy under the shared `indexes_dir/{ws}` tree, not project-local.
+    handler.in_process_index_root = Some(indexes_dir.join(&workspace_id));
 
     // Create a bogus local stdio tree with an old database mtime. The startup check
     // must ignore this and use the shared daemon anchor instead.
@@ -160,7 +161,6 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
 #[tokio::test]
 async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::database::types::FileInfo;
     use crate::extractors::{Symbol, SymbolKind};
     use crate::workspace::registry::generate_workspace_id;
@@ -183,17 +183,14 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await?;
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_path.clone())
+            .await?,
+    );
     daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
 
     let handler = JulieServerHandler::new_with_shared_workspace(
@@ -204,15 +201,15 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
     let rebound_path = rebound_root.canonicalize()?;
     let rebound_path_str = rebound_path.to_string_lossy().to_string();
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
-    let rebound_ws = pool.get_or_init(&rebound_id, rebound_path.clone()).await?;
+    let rebound_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
+            .await?);
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
     {
@@ -282,11 +279,10 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
 #[tokio::test]
 async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new()?;
-    let indexes_dir = temp_dir.path().join("daemon-indexes");
+    let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir)?;
 
     let loaded_root = temp_dir.path().join("loaded-primary");
@@ -303,39 +299,33 @@ async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot(
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let loaded_path = loaded_root.canonicalize()?;
     let loaded_path_str = loaded_path.to_string_lossy().to_string();
     let loaded_id = generate_workspace_id(&loaded_path_str)?;
-    let loaded_ws = pool.get_or_init(&loaded_id, loaded_path.clone()).await?;
+    let loaded_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(loaded_path.clone())
+            .await?);
     daemon_db.upsert_workspace(&loaded_id, &loaded_path_str, "ready")?;
 
-    let handler = JulieServerHandler::new_with_shared_workspace(
+    let mut handler = JulieServerHandler::new_with_shared_workspace(
         loaded_ws,
         loaded_path,
         Some(Arc::clone(&daemon_db)),
-        Some(loaded_id),
+        Some(loaded_id.clone()),
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await?;
+    // In-process leader replaces the deleted WorkspacePool as the shared-root
+    // source: pin it so the rebound current primary keeps the shared
+    // `indexes_dir` anchor instead of falling back to project-local `.julie`.
+    handler.in_process_index_root = Some(indexes_dir.join(&loaded_id));
 
     let rebound_path = rebound_root.canonicalize()?;
     let rebound_path_str = rebound_path.to_string_lossy().to_string();
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
-    let _rebound_ws = handler
-        .workspace_pool
-        .as_ref()
-        .expect("pool should be present")
-        .get_or_init(&rebound_id, rebound_path.clone())
-        .await?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
     handler.set_current_primary_binding(rebound_id.clone(), rebound_path.clone());
 
@@ -344,16 +334,21 @@ async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot(
     assert!(route.is_primary);
     assert_eq!(route.workspace_id, rebound_id);
     assert_eq!(route.workspace_root, rebound_path);
+    // The in-process leader pins `in_process_index_root` to the shared
+    // `indexes_dir`, so the rebound current primary keeps shared-root storage
+    // (the deleted WorkspacePool used to carry this anchor).
     assert_eq!(
         route.db_path,
         indexes_dir
             .join(&route.workspace_id)
             .join("db")
-            .join("symbols.db")
+            .join("symbols.db"),
+        "in-process leader routes rebound current primary DB under the shared indexes_dir"
     );
     assert_eq!(
         route.tantivy_path,
-        indexes_dir.join(&route.workspace_id).join("tantivy")
+        indexes_dir.join(&route.workspace_id).join("tantivy"),
+        "in-process leader routes rebound current primary tantivy under the shared indexes_dir"
     );
 
     Ok(())

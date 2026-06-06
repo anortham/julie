@@ -139,30 +139,6 @@ impl SessionTracker {
         }
     }
 
-    /// Evict every session whose idle age at `now` is at least `threshold`,
-    /// returning the evicted session IDs. Notifies any `drain_sessions` waiter
-    /// once if anything was removed so the count is re-observed promptly.
-    ///
-    /// Uses `saturating_duration_since` so a `last_activity` ahead of `now`
-    /// (only possible with injected test instants) reads as zero idle rather
-    /// than panicking.
-    pub(crate) fn evict_idle(&self, now: Instant, threshold: Duration) -> Vec<String> {
-        let mut sessions = self.sessions.write().unwrap_or_else(|p| p.into_inner());
-        let evicted: Vec<String> = sessions
-            .iter()
-            .filter(|(_, record)| now.saturating_duration_since(record.last_activity) >= threshold)
-            .map(|(id, _)| id.clone())
-            .collect();
-        for id in &evicted {
-            sessions.remove(id);
-        }
-        drop(sessions); // release lock before notifying
-        if !evicted.is_empty() {
-            self.notify.notify_one();
-        }
-        evicted
-    }
-
     pub fn set_phase(&self, id: &str, phase: SessionLifecyclePhase) -> bool {
         let mut sessions = self.sessions.write().unwrap_or_else(|p| p.into_inner());
         match sessions.get_mut(id) {

@@ -1,14 +1,11 @@
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use tracing::{info, warn};
 
 use crate::daemon::database::WorkspaceRow;
-use crate::daemon::watcher_pool::WatcherPool;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
 
 pub(crate) const CLEANUP_ACTION_AUTO_PRUNE: &str = "auto_prune";
@@ -47,59 +44,25 @@ pub(crate) struct CleanupSweepSummary {
     pub(crate) pruned_orphan_dirs: Vec<String>,
 }
 
-pub(crate) struct WorkspaceCleanupActivity<'a> {
-    workspace_pool: Option<&'a Arc<WorkspacePool>>,
-    watcher_pool: Option<&'a Arc<WatcherPool>>,
-}
+pub(crate) struct WorkspaceCleanupActivity;
 
-impl<'a> WorkspaceCleanupActivity<'a> {
-    pub(crate) fn new(
-        workspace_pool: Option<&'a Arc<WorkspacePool>>,
-        watcher_pool: Option<&'a Arc<WatcherPool>>,
-    ) -> Self {
-        Self {
-            workspace_pool,
-            watcher_pool,
-        }
+impl WorkspaceCleanupActivity {
+    pub(crate) fn new() -> Self {
+        Self
     }
 
-    async fn watcher_ref_count(&self, workspace_id: &str) -> usize {
-        if let Some(pool) = self.watcher_pool {
-            pool.ref_count(workspace_id).await
-        } else {
-            0
-        }
+    async fn watcher_ref_count(&self, _workspace_id: &str) -> usize {
+        // In-process mode: no shared watcher pool; no active refs.
+        0
     }
 
-    async fn live_indexing_reason(&self, workspace_id: &str) -> Option<String> {
-        let Some(pool) = self.workspace_pool else {
-            return None;
-        };
-        let snapshot = pool.indexing_snapshot(workspace_id).await?;
-        if let Some(operation) = snapshot.active_operation {
-            return Some(format!(
-                "indexing operation '{}' is still running",
-                operation
-            ));
-        }
-        if snapshot.catchup_active {
-            return Some("catch-up indexing is still running".to_string());
-        }
+    async fn live_indexing_reason(&self, _workspace_id: &str) -> Option<String> {
+        // In-process mode: no shared workspace pool to query.
         None
     }
 
-    async fn remove_runtime_if_inactive(&self, workspace_id: &str) -> Result<bool> {
-        if let Some(pool) = self.watcher_pool {
-            let removed = pool.remove_if_inactive(workspace_id).await?;
-            if !removed {
-                return Ok(false);
-            }
-        }
-
-        if let Some(pool) = self.workspace_pool {
-            pool.evict_workspace(workspace_id).await;
-        }
-
+    async fn remove_runtime_if_inactive(&self, _workspace_id: &str) -> Result<bool> {
+        // In-process mode: no pool entries to evict.
         Ok(true)
     }
 }
@@ -115,7 +78,7 @@ pub(crate) async fn path_missing_after_grace(path: &Path, recheck_delay: Duratio
 
 async fn manual_delete_block_reason(
     workspace: &WorkspaceRow,
-    activity: &WorkspaceCleanupActivity<'_>,
+    activity: &WorkspaceCleanupActivity,
 ) -> Option<String> {
     let mut reasons = Vec::new();
 
@@ -154,7 +117,7 @@ async fn manual_delete_block_reason(
 
 async fn auto_prune_block_reason(
     workspace: &WorkspaceRow,
-    activity: &WorkspaceCleanupActivity<'_>,
+    activity: &WorkspaceCleanupActivity,
 ) -> Option<String> {
     if workspace.session_count > 0 {
         return Some(format!(
@@ -173,7 +136,7 @@ async fn auto_prune_block_reason(
 
 async fn cleanup_block_reason(
     workspace: &WorkspaceRow,
-    activity: &WorkspaceCleanupActivity<'_>,
+    activity: &WorkspaceCleanupActivity,
     action: &str,
 ) -> Option<String> {
     if action == CLEANUP_ACTION_MANUAL_DELETE {
@@ -185,7 +148,7 @@ async fn cleanup_block_reason(
 
 pub(crate) async fn inspect_workspace_cleanup_state(
     workspace: &WorkspaceRow,
-    activity: &WorkspaceCleanupActivity<'_>,
+    activity: &WorkspaceCleanupActivity,
     action: &str,
 ) -> Result<WorkspaceCleanupState> {
     if !path_missing_after_grace(Path::new(&workspace.path), MISSING_PATH_RECHECK_DELAY).await? {
@@ -201,7 +164,7 @@ pub(crate) async fn inspect_workspace_cleanup_state(
 
 pub(crate) async fn delete_workspace_if_allowed(
     registry_store: &WorkspaceRegistryStore,
-    activity: &WorkspaceCleanupActivity<'_>,
+    activity: &WorkspaceCleanupActivity,
     workspace_id: &str,
     action: &str,
     reason: &str,
@@ -254,7 +217,7 @@ pub(crate) async fn delete_workspace_if_allowed(
 
 pub(crate) async fn prune_missing_workspaces(
     registry_store: &WorkspaceRegistryStore,
-    activity: &WorkspaceCleanupActivity<'_>,
+    activity: &WorkspaceCleanupActivity,
 ) -> Result<CleanupSweepSummary> {
     let all_workspaces = registry_store.list_workspaces()?;
     let mut summary = CleanupSweepSummary::default();
@@ -362,7 +325,7 @@ pub(crate) async fn prune_orphan_index_dirs(
 
 pub(crate) async fn run_cleanup_sweep(
     registry_store: &WorkspaceRegistryStore,
-    activity: &WorkspaceCleanupActivity<'_>,
+    activity: &WorkspaceCleanupActivity,
 ) -> Result<CleanupSweepSummary> {
     let mut summary = prune_missing_workspaces(registry_store, activity).await?;
     summary.pruned_orphan_dirs = prune_orphan_index_dirs(registry_store).await?;

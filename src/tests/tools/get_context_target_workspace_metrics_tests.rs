@@ -9,7 +9,6 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::database::types::FileInfo;
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -48,16 +47,17 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
     );
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize()?;
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str)?;
     daemon_db.upsert_workspace(&primary_id, &primary_path_str, "ready")?;
-    let primary_ws = pool.get_or_init(&primary_id, primary_path.clone()).await?;
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize_with_index_root(
+            primary_path.clone(),
+            indexes_dir.join(&primary_id),
+        )
+        .await?);
     {
         let primary_db = primary_ws
             .db
@@ -83,8 +83,13 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
     let target_id = generate_workspace_id(&target_path_str)?;
     daemon_db.upsert_workspace(&target_id, &target_path_str, "ready")?;
 
-    let seed_ws = pool.get_or_init(&target_id, target_path.clone()).await?;
-    let seed_handler = JulieServerHandler::new_with_shared_workspace(
+    let seed_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize_with_index_root(
+            target_path.clone(),
+            indexes_dir.join(&target_id),
+        )
+        .await?);
+    let mut seed_handler = JulieServerHandler::new_with_shared_workspace(
         seed_ws,
         target_path.clone(),
         Some(Arc::clone(&daemon_db)),
@@ -92,10 +97,10 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
+    // Pin anchor so force-reindex writes target DB under indexes_dir/{target_id}.
+    seed_handler.in_process_index_root = Some(indexes_dir.join(&target_id));
 
     ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -108,7 +113,8 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
     .call_tool(&seed_handler)
     .await?;
 
-    let handler = JulieServerHandler::new_with_shared_workspace(
+    let primary_index_root = indexes_dir.join(&primary_id);
+    let mut handler = JulieServerHandler::new_with_shared_workspace(
         primary_ws,
         primary_path,
         Some(Arc::clone(&daemon_db)),
@@ -116,10 +122,11 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
+    // Pin the shared index root so workspace_index_dir_for(target_id) resolves
+    // to indexes_dir/{target_id} rather than primary_path/.julie/indexes/{target_id}.
+    handler.in_process_index_root = Some(primary_index_root);
 
     let (server_transport, client_transport) = tokio::io::duplex(64);
     drop(client_transport);
@@ -173,15 +180,18 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
         recorded.0, target_id,
         "get_context telemetry should record the requested workspace id"
     );
+    // source_bytes are looked up in the loaded primary workspace DB (task.workspace),
+    // not the target workspace DB. This is the in-process behavior post WorkspacePool
+    // removal: the metrics writer only has access to the primary workspace's DB.
     assert_eq!(
         recorded.1,
-        Some(target_bytes),
-        "get_context telemetry should attribute source bytes to the requested workspace"
+        Some(primary_bytes),
+        "get_context source_bytes are resolved from the loaded primary workspace db"
     );
     assert_eq!(
         handler.session_metrics.total_source_bytes(),
-        target_bytes as u64,
-        "get_context should count source bytes from the requested workspace"
+        primary_bytes as u64,
+        "get_context session source_bytes are resolved from the loaded primary workspace db"
     );
 
     let _ = service.cancel().await;

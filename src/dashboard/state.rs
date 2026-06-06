@@ -12,15 +12,12 @@ use crate::daemon::database::DaemonDatabase;
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::lifecycle::{LifecyclePhase, LifecyclePhaseKind, ShutdownCause};
 use crate::daemon::session::{SessionPhaseCounts, SessionTracker};
-use crate::daemon::watcher_pool::WatcherPool;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::dashboard::error_buffer::{ErrorBuffer, LogEntry};
 use crate::embeddings::EmbeddingBackend;
 use crate::embeddings::EmbeddingRuntimeStatus;
 use crate::health::{
     EmbeddingRuntimeHealth, HealthLevel, ProjectionFreshness, ProjectionState,
     SearchProjectionHealth, SystemStatus, overall_from_planes, project_embedding_runtime,
-    search_projection_health_for_workspace,
 };
 
 // ---------------------------------------------------------------------------
@@ -145,8 +142,6 @@ pub struct DashboardState {
     /// `None` in test contexts that don't wire up a service; the
     /// `embedding_available` accessor returns `false` in that case.
     embedding_service: Option<Arc<EmbeddingService>>,
-    watcher_pool: Option<Arc<WatcherPool>>,
-    workspace_pool: Option<Arc<WorkspacePool>>,
     tx: broadcast::Sender<DashboardEvent>,
 }
 
@@ -154,7 +149,8 @@ impl DashboardState {
     /// Create a new `DashboardState`.
     ///
     /// Internally creates an `ErrorBuffer` with the given capacity and a
-    /// broadcast channel with capacity 256.
+    /// broadcast channel with capacity 256. Pool fields were removed in
+    /// Phase 3d.2b-ii (dashboard dead-but-compiling until 3d.3).
     pub fn new(
         sessions: Arc<SessionTracker>,
         daemon_db: Option<Arc<DaemonDatabase>>,
@@ -162,31 +158,6 @@ impl DashboardState {
         daemon_phase: Arc<RwLock<LifecyclePhase>>,
         start_time: Instant,
         embedding_service: Option<Arc<EmbeddingService>>,
-        workspace_pool: Option<Arc<WorkspacePool>>,
-        error_buffer_capacity: usize,
-    ) -> Self {
-        Self::new_with_watcher_pool(
-            sessions,
-            daemon_db,
-            restart_pending,
-            daemon_phase,
-            start_time,
-            embedding_service,
-            None,
-            workspace_pool,
-            error_buffer_capacity,
-        )
-    }
-
-    pub fn new_with_watcher_pool(
-        sessions: Arc<SessionTracker>,
-        daemon_db: Option<Arc<DaemonDatabase>>,
-        restart_pending: Arc<AtomicBool>,
-        daemon_phase: Arc<RwLock<LifecyclePhase>>,
-        start_time: Instant,
-        embedding_service: Option<Arc<EmbeddingService>>,
-        watcher_pool: Option<Arc<WatcherPool>>,
-        workspace_pool: Option<Arc<WorkspacePool>>,
         error_buffer_capacity: usize,
     ) -> Self {
         let error_buffer = ErrorBuffer::new(error_buffer_capacity);
@@ -201,8 +172,6 @@ impl DashboardState {
             error_buffer,
             recovery_markers: Arc::new(Vec::new()),
             embedding_service,
-            watcher_pool,
-            workspace_pool,
             tx,
         }
     }
@@ -281,7 +250,7 @@ impl DashboardState {
         let daemon_phase = daemon_phase_snapshot.kind();
         let shutdown_cause = daemon_phase_snapshot.shutdown_cause();
         let session_phases = self.sessions.phase_counts();
-        let workspace_pool_connected = self.workspace_pool.is_some();
+        let workspace_pool_connected = false;
 
         let (workspaces, daemon_db_connected) = match self.daemon_db.as_ref() {
             Some(db) => match db.list_workspaces() {
@@ -347,11 +316,7 @@ impl DashboardState {
                     session_phases.bound,
                     session_phases.serving,
                     session_phases.closing,
-                    if workspace_pool_connected {
-                        ""
-                    } else {
-                        "; workspace pool detached"
-                    }
+                    "; workspace pool detached"
                 )
             },
         };
@@ -378,11 +343,7 @@ impl DashboardState {
             level: overall_from_planes(
                 data_plane_level,
                 indexing.level,
-                if self.workspace_pool.is_some() {
-                    search_projection.level
-                } else {
-                    HealthLevel::Ready
-                },
+                HealthLevel::Ready,
                 false,
             ),
             readiness,
@@ -498,16 +459,6 @@ impl DashboardState {
             .and_then(|svc| svc.runtime_status())
     }
 
-    /// Reference to the workspace pool, if available.
-    pub fn workspace_pool(&self) -> Option<&Arc<WorkspacePool>> {
-        self.workspace_pool.as_ref()
-    }
-
-    /// Reference to the watcher pool, if available.
-    pub fn watcher_pool(&self) -> Option<&Arc<WatcherPool>> {
-        self.watcher_pool.as_ref()
-    }
-
     /// Subscribe to the broadcast channel. Each call returns an independent receiver.
     pub fn subscribe(&self) -> broadcast::Receiver<DashboardEvent> {
         self.tx.subscribe()
@@ -526,191 +477,25 @@ impl DashboardState {
 
 impl DashboardState {
     async fn indexing_health(&self) -> DashboardIndexingHealth {
-        let Some(workspace_pool) = self.workspace_pool.as_ref() else {
-            return DashboardIndexingHealth {
-                level: HealthLevel::Ready,
-                active_operation: None,
-                stage: None,
-                catchup_active: false,
-                watcher_paused: false,
-                watcher_rescan_pending: false,
-                dirty_projection_count: 0,
-                repair_needed: false,
-                repair_issue_count: 0,
-                repair_reasons: Vec::new(),
-                detail: "indexing idle".to_string(),
-            };
-        };
-
-        let snapshots = workspace_pool.indexing_snapshots().await;
-        let mut active_workspace = None;
-        let mut active_operation = None;
-        let mut stage = None;
-        let mut catchup_active = false;
-        let mut watcher_paused = false;
-        let mut watcher_rescan_pending = false;
-        let mut dirty_projection_count = 0usize;
-        let mut repair_needed = false;
-        let mut repair_issue_count = 0usize;
-        let mut repair_reasons = std::collections::BTreeSet::new();
-
-        for (workspace_id, snapshot) in snapshots {
-            if active_workspace.is_none()
-                && (snapshot.active_operation.is_some()
-                    || snapshot.catchup_active
-                    || snapshot.watcher_paused
-                    || snapshot.watcher_rescan_pending
-                    || snapshot.dirty_projection_count > 0
-                    || snapshot.repair_needed())
-            {
-                active_workspace = Some(workspace_id);
-                active_operation = snapshot
-                    .active_operation
-                    .map(|operation| operation.as_str().to_string());
-                stage = snapshot.stage.map(|stage| stage.as_str().to_string());
-            }
-
-            catchup_active |= snapshot.catchup_active;
-            watcher_paused |= snapshot.watcher_paused;
-            watcher_rescan_pending |= snapshot.watcher_rescan_pending;
-            dirty_projection_count += snapshot.dirty_projection_count;
-            repair_needed |= snapshot.repair_needed();
-            repair_issue_count += snapshot.repair_issue_count();
-            for reason in snapshot.repair_reasons {
-                repair_reasons.insert(reason.as_str().to_string());
-            }
-        }
-
-        let level = if catchup_active
-            || watcher_paused
-            || watcher_rescan_pending
-            || dirty_projection_count > 0
-            || repair_needed
-            || active_operation.is_some()
-        {
-            HealthLevel::Degraded
-        } else {
-            HealthLevel::Ready
-        };
-
-        let detail = if level == HealthLevel::Ready {
-            "indexing idle".to_string()
-        } else {
-            let mut parts = Vec::new();
-            if let Some(workspace_id) = active_workspace.as_deref() {
-                parts.push(format!("workspace {workspace_id}"));
-            }
-            if let Some(operation) = active_operation.as_deref() {
-                parts.push(format!("operation {operation}"));
-            }
-            if let Some(stage_value) = stage.as_deref() {
-                parts.push(format!("stage {stage_value}"));
-            }
-            if catchup_active {
-                parts.push("catch-up active".to_string());
-            }
-            if watcher_paused {
-                parts.push("watcher paused".to_string());
-            }
-            if watcher_rescan_pending {
-                parts.push("watcher rescan pending".to_string());
-            }
-            if dirty_projection_count > 0 {
-                parts.push(format!("{dirty_projection_count} dirty projection entries"));
-            }
-            if repair_needed {
-                parts.push(format!("{repair_issue_count} repair issue(s)"));
-            }
-            parts.join(", ")
-        };
-
+        // Pool detached (Phase 3d.2b-ii). Dashboard is dead-but-compiling until 3d.3.
         DashboardIndexingHealth {
-            level,
-            active_operation,
-            stage,
-            catchup_active,
-            watcher_paused,
-            watcher_rescan_pending,
-            dirty_projection_count,
-            repair_needed,
-            repair_issue_count,
-            repair_reasons: repair_reasons.into_iter().collect(),
-            detail,
+            level: HealthLevel::Ready,
+            active_operation: None,
+            stage: None,
+            catchup_active: false,
+            watcher_paused: false,
+            watcher_rescan_pending: false,
+            dirty_projection_count: 0,
+            repair_needed: false,
+            repair_issue_count: 0,
+            repair_reasons: Vec::new(),
+            detail: "indexing idle".to_string(),
         }
     }
 
     async fn search_projection_health(&self) -> SearchProjectionHealth {
-        let Some(workspace_pool) = self.workspace_pool.as_ref() else {
-            return SearchProjectionHealth {
-                level: HealthLevel::Unavailable,
-                state: ProjectionState::Missing,
-                freshness: ProjectionFreshness::Unavailable,
-                workspace_id: None,
-                canonical_revision: None,
-                projected_revision: None,
-                revision_lag: None,
-                repair_needed: false,
-                detail: "projection visibility unavailable because workspace pool is detached"
-                    .to_string(),
-            };
-        };
-
-        let snapshots = workspace_pool.projection_inputs().await;
-        let mut selected: Option<SearchProjectionHealth> = None;
-
-        for (workspace_id, db, search_index_ready) in snapshots {
-            let projection = match db.lock() {
-                Ok(db_lock) => {
-                    let symbol_count = db_lock.get_symbol_count_for_workspace().unwrap_or(0);
-                    search_projection_health_for_workspace(
-                        &workspace_id,
-                        &db_lock,
-                        symbol_count,
-                        search_index_ready,
-                    )
-                    .unwrap_or_else(|err| SearchProjectionHealth {
-                        level: HealthLevel::Unavailable,
-                        state: ProjectionState::Missing,
-                        freshness: ProjectionFreshness::Unavailable,
-                        workspace_id: Some(workspace_id.clone()),
-                        canonical_revision: None,
-                        projected_revision: None,
-                        revision_lag: None,
-                        repair_needed: false,
-                        detail: format!("Failed to read projection state: {}", err),
-                    })
-                }
-                Err(_busy) => SearchProjectionHealth {
-                    level: HealthLevel::Degraded,
-                    state: if search_index_ready {
-                        ProjectionState::Ready
-                    } else {
-                        ProjectionState::Missing
-                    },
-                    freshness: if search_index_ready {
-                        ProjectionFreshness::Lagging
-                    } else {
-                        ProjectionFreshness::RebuildRequired
-                    },
-                    workspace_id: Some(workspace_id.clone()),
-                    canonical_revision: None,
-                    projected_revision: None,
-                    revision_lag: None,
-                    repair_needed: true,
-                    detail: "projection visibility temporarily unavailable because SQLite is busy"
-                        .to_string(),
-                },
-            };
-
-            if selected
-                .as_ref()
-                .is_none_or(|current| projection_rank(&projection) > projection_rank(current))
-            {
-                selected = Some(projection);
-            }
-        }
-
-        selected.unwrap_or(SearchProjectionHealth {
+        // Pool detached (Phase 3d.2b-ii). Dashboard is dead-but-compiling until 3d.3.
+        SearchProjectionHealth {
             level: HealthLevel::Unavailable,
             state: ProjectionState::Missing,
             freshness: ProjectionFreshness::Unavailable,
@@ -719,21 +504,10 @@ impl DashboardState {
             projected_revision: None,
             revision_lag: None,
             repair_needed: false,
-            detail: "no active workspace projections are visible to the dashboard".to_string(),
-        })
+            detail: "projection visibility unavailable because workspace pool is detached"
+                .to_string(),
+        }
     }
-}
-
-fn projection_rank(projection: &SearchProjectionHealth) -> (u8, i64, String) {
-    let severity = match projection.freshness {
-        ProjectionFreshness::RebuildRequired => 3,
-        ProjectionFreshness::Lagging => 2,
-        ProjectionFreshness::Current => 1,
-        ProjectionFreshness::Unavailable => 0,
-    };
-    let lag = projection.revision_lag.unwrap_or(0);
-    let workspace = projection.workspace_id.clone().unwrap_or_default();
-    (severity, lag, workspace)
 }
 
 fn backend_label(backend: &EmbeddingBackend) -> String {

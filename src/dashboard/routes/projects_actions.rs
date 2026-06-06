@@ -57,8 +57,6 @@ pub(crate) async fn dashboard_handler(
         None,
         None,
         Some(state.dashboard.sender()),
-        state.dashboard.watcher_pool().cloned(),
-        state.dashboard.workspace_pool().cloned(),
     )
     .await?;
 
@@ -81,38 +79,9 @@ pub(crate) async fn disconnect_dashboard_attached_workspaces(handler: &JulieServ
 }
 
 pub(crate) async fn cleanup_dashboard_anchor(state: &AppState, anchor_id: &str) {
-    if let Some(pool) = state.dashboard.workspace_pool() {
-        pool.evict_workspace(anchor_id).await;
-    }
-
-    if let Some(watcher_pool) = state.dashboard.watcher_pool() {
-        let _ = watcher_pool.remove_if_inactive(anchor_id).await;
-    }
-
+    // Pool detached (Phase 3d.2b-ii) — no pool eviction or index cleanup.
     if let Some(daemon_db) = state.dashboard.daemon_db() {
         let _ = daemon_db.delete_workspace(anchor_id);
-    }
-
-    if let Some(pool) = state.dashboard.workspace_pool() {
-        let anchor_index_dir = pool.indexes_dir().join(anchor_id);
-        if anchor_index_dir.exists() {
-            let indexes_dir = pool.indexes_dir();
-            let remove_allowed = indexes_dir
-                .canonicalize()
-                .ok()
-                .zip(anchor_index_dir.canonicalize().ok())
-                .is_some_and(|(indexes_dir, anchor_index_dir)| {
-                    anchor_index_dir.starts_with(indexes_dir)
-                });
-            if remove_allowed {
-                let _ = tokio::fs::remove_dir_all(anchor_index_dir).await;
-            } else {
-                warn!(
-                    anchor_id,
-                    "Refusing to clean dashboard anchor outside indexes directory"
-                );
-            }
-        }
     }
 }
 

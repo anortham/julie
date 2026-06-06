@@ -3,8 +3,6 @@ use super::*;
 #[tokio::test]
 async fn test_manage_workspace_list_labels_current_active_and_known_workspaces() {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
     let active_root = temp_dir.path().join("active");
@@ -17,10 +15,6 @@ async fn test_manage_workspace_list_labels_current_active_and_known_workspaces()
     fs::write(known_root.join("lib.rs"), "fn known() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
@@ -29,10 +23,11 @@ async fn test_manage_workspace_list_labels_current_active_and_known_workspaces()
         .upsert_workspace(&primary_id, &primary_path_str, "ready")
         .unwrap();
 
-    let primary_ws = pool
-        .get_or_init(&primary_id, primary_path.clone())
-        .await
-        .expect("primary workspace should initialize");
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await
+            .expect("primary workspace should initialize"),
+    );
     let handler = JulieServerHandler::new_with_shared_workspace(
         primary_ws,
         primary_path,
@@ -41,8 +36,6 @@ async fn test_manage_workspace_list_labels_current_active_and_known_workspaces()
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");
@@ -107,8 +100,6 @@ async fn test_manage_workspace_list_labels_current_active_and_known_workspaces()
 #[tokio::test]
 async fn test_manage_workspace_list_uses_session_primary_binding_for_current_label() {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let legacy_primary_root = temp_dir.path().join("legacy-primary");
     let rebound_primary_root = temp_dir.path().join("rebound-primary");
@@ -129,10 +120,6 @@ async fn test_manage_workspace_list_uses_session_primary_binding_for_current_lab
     fs::write(active_root.join("lib.rs"), "fn active() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let legacy_primary_path = legacy_primary_root.canonicalize().unwrap();
     let legacy_primary_path_str = legacy_primary_path.to_string_lossy().to_string();
@@ -141,10 +128,11 @@ async fn test_manage_workspace_list_uses_session_primary_binding_for_current_lab
         .upsert_workspace(&legacy_primary_id, &legacy_primary_path_str, "ready")
         .unwrap();
 
-    let legacy_primary_ws = pool
-        .get_or_init(&legacy_primary_id, legacy_primary_path.clone())
-        .await
-        .expect("legacy primary workspace should initialize");
+    let legacy_primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(legacy_primary_path.clone())
+            .await
+            .expect("legacy primary workspace should initialize"),
+    );
     let handler = JulieServerHandler::new_with_shared_workspace(
         legacy_primary_ws,
         legacy_primary_path,
@@ -153,8 +141,6 @@ async fn test_manage_workspace_list_uses_session_primary_binding_for_current_lab
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");
@@ -209,8 +195,6 @@ async fn test_manage_workspace_list_uses_session_primary_binding_for_current_lab
 #[tokio::test]
 async fn test_manage_workspace_list_triggers_roots_resolution_when_primary_missing() {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let startup_root = temp_dir.path().join("startup");
     let roots_root = temp_dir.path().join("roots");
@@ -220,10 +204,6 @@ async fn test_manage_workspace_list_triggers_roots_resolution_when_primary_missi
     fs::write(roots_root.join("lib.rs"), "fn roots_primary() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize().unwrap();
     let startup_path_str = startup_path.to_string_lossy().to_string();
@@ -239,10 +219,11 @@ async fn test_manage_workspace_list_triggers_roots_resolution_when_primary_missi
         .upsert_workspace(&roots_id, &roots_path_str, "ready")
         .unwrap();
 
-    let startup_ws = pool
-        .get_or_init(&startup_id, startup_path.clone())
-        .await
-        .expect("startup workspace should initialize");
+    let startup_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+            .await
+            .expect("startup workspace should initialize"),
+    );
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_ws,
         crate::workspace::startup_hint::WorkspaceStartupHint {
@@ -254,8 +235,6 @@ async fn test_manage_workspace_list_triggers_roots_resolution_when_primary_missi
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");
@@ -303,8 +282,6 @@ async fn test_manage_workspace_list_triggers_roots_resolution_when_primary_missi
 #[tokio::test]
 async fn test_manage_workspace_stats_include_all_known_workspaces() {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
     let active_root = temp_dir.path().join("active");
@@ -317,10 +294,6 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
     fs::write(known_root.join("lib.rs"), "fn known() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
@@ -332,10 +305,11 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
         .update_workspace_stats(&primary_id, 10, 2, None, None, None)
         .unwrap();
 
-    let primary_ws = pool
-        .get_or_init(&primary_id, primary_path.clone())
-        .await
-        .expect("primary workspace should initialize");
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await
+            .expect("primary workspace should initialize"),
+    );
     let handler = JulieServerHandler::new_with_shared_workspace(
         primary_ws,
         primary_path,
@@ -344,8 +318,6 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");
@@ -413,18 +385,12 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
 async fn test_manage_workspace_stats_neutral_gap_returns_registry_summary_without_primary_identity()
 {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
     fs::create_dir_all(&primary_root).unwrap();
     fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
@@ -432,10 +398,11 @@ async fn test_manage_workspace_stats_neutral_gap_returns_registry_summary_withou
     daemon_db
         .upsert_workspace(&primary_id, &primary_path_str, "ready")
         .unwrap();
-    let primary_ws = pool
-        .get_or_init(&primary_id, primary_path.clone())
-        .await
-        .expect("primary workspace should initialize");
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await
+            .expect("primary workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         primary_ws,
@@ -445,8 +412,6 @@ async fn test_manage_workspace_stats_neutral_gap_returns_registry_summary_withou
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");

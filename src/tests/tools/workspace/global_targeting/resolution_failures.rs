@@ -85,6 +85,7 @@ async fn test_workspace_resolution_failure_known_not_ready_is_typed() {
     );
 }
 
+#[ignore = "daemon multi-workspace write lifecycle (pool-backed); fate decided in Phase 3d.3 registry rework"]
 #[tokio::test]
 async fn test_workspace_resolution_failure_auto_activation_failed_is_typed() {
     let (temp_dir, handler, _target_id) = setup_known_reference_search_workspace().await;

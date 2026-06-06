@@ -20,7 +20,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::workspace::registry::generate_workspace_id;
     use std::sync::Arc;
 
@@ -46,17 +45,14 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await?;
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_path.clone())
+            .await?,
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
@@ -66,8 +62,6 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -78,7 +72,9 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
-    let rebound_ws = pool.get_or_init(&rebound_id, rebound_path.clone()).await?;
+    let rebound_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
+            .await?);
     let seed_handler = JulieServerHandler::new_with_shared_workspace(
         rebound_ws,
         rebound_path.clone(),
@@ -87,8 +83,6 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -520,7 +514,6 @@ async fn test_fast_search_primary_rejects_swap_in_progress_after_partial_publish
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_primary_wrapper_resolves_roots_before_searching() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new()?;
@@ -538,20 +531,20 @@ async fn test_fast_search_primary_wrapper_resolves_roots_before_searching() -> R
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize()?;
     let startup_id = generate_workspace_id(&startup_path.to_string_lossy())?;
-    let startup_ws = pool.get_or_init(&startup_id, startup_path.clone()).await?;
+    let startup_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+            .await?);
 
     let roots_path = roots_root.canonicalize()?;
     let roots_id = generate_workspace_id(&roots_path.to_string_lossy())?;
     daemon_db.upsert_workspace(&startup_id, &startup_path.to_string_lossy(), "ready")?;
     daemon_db.upsert_workspace(&roots_id, &roots_path.to_string_lossy(), "ready")?;
-    let roots_ws = pool.get_or_init(&roots_id, roots_path.clone()).await?;
+    let roots_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(roots_path.clone())
+            .await?);
     {
         let rebound_db = roots_ws.db.as_ref().unwrap().clone();
         let mut rebound_db = rebound_db.lock().unwrap();
@@ -605,8 +598,6 @@ async fn test_fast_search_primary_wrapper_resolves_roots_before_searching() -> R
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
     handler.set_client_supports_workspace_roots_for_test(true);
