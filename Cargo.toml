@@ -107,10 +107,10 @@ shellexpand = "3.1"
 sha2 = "0.10"
 include_dir = "0.7"  # Embed Python sidecar source into binary at compile time
 
-# HTTP server (daemon mode)
+# HTTP server for the standalone dashboard reader
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "form"] }
 
-# Dashboard (daemon mode)
+# Dashboard rendering
 tera = "1"
 rust-embed = "8"
 opener = "0.7"

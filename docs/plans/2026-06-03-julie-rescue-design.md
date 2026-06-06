@@ -1,11 +1,15 @@
 # Julie Rescue: De-slop the Packaging, Keep the Moat
 
 **Date:** 2026-06-03
-**Status:** Design — revised after Codex (gpt-5.5) adversarial spec review; pending final user sign-off
+**Status:** Historical design. Current status is tracked in `docs/plans/2026-06-06-julie-rescue-current-status.md`.
 **Authors:** Alan + Claude (brainstorm session)
 **Supersedes the implicit question:** "Can we save Julie, or does Miller replace her?"
 
 ---
+
+## Current Status Pointer
+
+As of 2026-06-06, the crate split and daemon teardown have moved well beyond this initial design. Use this document for the original strategy and use `docs/plans/2026-06-06-julie-rescue-current-status.md` for the active status, remaining risks, and next recommended slice.
 
 ## TL;DR
 

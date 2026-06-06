@@ -1,6 +1,5 @@
-//! Per-project log writer for daemon mode.
+//! Per-project log writer for in-process MCP sessions.
 //!
-//! The daemon's tracing subscriber writes to `~/.julie/daemon.log` (everything).
 //! This module writes user-facing highlights (tool calls, indexing, session lifecycle)
 //! to `{project}/.julie/logs/julie.log.{date}` so `tail -f .julie/logs/julie.log.*`
 //! works from the project directory.
@@ -76,14 +75,11 @@ impl ProjectLog {
         );
     }
 
-    /// Log session start with a pointer to daemon logs.
+    /// Log session start.
     pub fn session_start(&self, session_id: &str) {
         self.log(
             "INFO",
-            &format!(
-                "Session {} connected (daemon mode). Daemon logs at ~/.julie/daemon.log.*",
-                session_id
-            ),
+            &format!("Session {} connected (in-process MCP)", session_id),
         );
     }
 

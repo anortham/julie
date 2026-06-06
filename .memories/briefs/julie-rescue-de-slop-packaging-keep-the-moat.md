@@ -3,25 +3,44 @@ id: julie-rescue-de-slop-packaging-keep-the-moat
 title: "Julie Rescue: de-slop packaging, keep the moat"
 status: active
 created: 2026-06-03T14:35:36.960Z
-updated: 2026-06-03T14:35:36.960Z
-tags: []
+updated: 2026-06-06T13:39:24.934Z
+tags:
+  - julie-rescue
+  - current-status
+  - test-economy
+  - daemon-teardown
 ---
 
-## Decision (2026-06-03)
-**Save Julie in place. Do NOT switch to Miller (.NET) or eros (Python).** The momentum problem is packaging, not Rust (`cargo check` is 3.6s). All three projects share the same `julie-extract` binary, so the only question is the *host* layer — and Miller/eros are the two "rewrite the host" experiments already built, both of which dropped Julie's moat (semantic/hybrid search + centrality reranking + token-budgeted get_context + 34-lang breadth + shipped plugin/CLI) to look fast. We decline that trade and harvest their good ideas instead.
+## Decision
 
-## The two things strangling iteration
-1. **Relink tax** — `src/lib.rs` pulls all 126k test LOC into ONE test binary that relinks on every edit; even a single targeted test relinks the monolith. Cure = per-crate test binaries via a workspace split.
-2. **Daemon slop** — `src/daemon` (10.1k) + `src/adapter` (1.3k), 12 test markers; ~7-9k is "we run a bespoke daemon" tax and the home of the unsolved fast_search-hang/deep_dive-disconnect.
+Save Julie in place. Do not switch to Miller (.NET) or eros (Python). The rescue has confirmed the core bet: Julie's retrieval moat is real enough to keep, and the pain is packaging/runtime/test economics rather than Rust itself.
 
-## 4-phase program (doc: docs/plans/2026-06-03-julie-rescue-design.md, branch julie-rescue)
-1. **Untangle + leaf-crate split** (START HERE) — sever measured back-edges, MERGE search+analysis (they cycle on language-config types), extract `julie-core` + `julie-index`.
-2. Peel off julie-tools / julie-runtime / julie-pipeline.
-3. **Daemon teardown** → WAL readers + leader-election lock + ONE resident embedding-host (shared sidecar; per-session sidecars would OOM VRAM). Open sub-fork: shared on-disk Tantivy cross-process vs Miller's rebuild-in-memory model.
-4. Tools 12→7 (edit trio→edit(op); fast_refs+call_path→trace) + harvests: build-failing convention test gate (Miller), token-ROI telemetry (eros), APPROVED-tool-list test.
+## Current Status (2026-06-06)
 
-## Caveat to resolve early
-No shared-corpus retrieval bakeoff exists — Julie's moat is asserted, not measured vs Miller BM25+bridge / eros lancedb-hybrid. eros has a bakeoff harness with a julie-cli baseline. Run it before sinking the broad restructuring effort into the rescue; it also seeds Phase 4's promotion gate.
+Julie is already well past the original starting point:
 
-## Next step
-User reviewing the design doc, then → writing-plans to turn Phase 1 into an implementation plan.
+- `julie-core`, `julie-index`, `julie-pipeline`, `julie-context`, `julie-tools`, `julie-runtime`, and `julie-test-support` now exist.
+- The old HTTP daemon + stdio adapter runtime has been deleted through Phase 3d.3 and merged to `main` at `49b86689`.
+- Current docs now describe the in-process stdio server, `$JULIE_HOME/registry.db`, per-workspace `leader.lock`, project-local logs, standalone read-only dashboard, and resident embedding host.
+
+The rescue is not done. The active bottleneck is now the test loop: `cargo xtask test list` still reports `dev` as 37 buckets / ~35 minutes expected, while the latest 3d.3 affected-change gate passed in 958.5s. That is better, but still too slow for normal agent iteration.
+
+## Constraints
+
+- Preserve Julie's moat: semantic/hybrid search, graph-centrality reranking, token-budgeted `get_context`, 34-language breadth, CLI/plugin shipping path.
+- Keep behavior working while deleting complexity. Deletion is only a win when caller-facing tool behavior and focused gates stay green.
+- Do not reintroduce daemon/adapter process management. The only intended resident extra process is the embedding host.
+- Treat `julie-plugin` packaging as release-blocking because it still references deleted adapter/daemon binary names.
+
+## Success Criteria
+
+- Default branch verification is materially below the old 30-minute pain point, ideally under 10 minutes for the normal `dev`/changed loop.
+- Slow handler-bound buckets are split, relocated, or demoted to broader release gates with evidence.
+- Stale daemon vocabulary is removed from current user-facing docs and gradually retired from internal names (`DaemonDatabase` -> registry role, `daemon` bucket -> registry/runtime role).
+- Phase 4 tool consolidation starts only after the test loop is cheap enough to support it.
+
+## References
+
+- `docs/plans/2026-06-06-julie-rescue-current-status.md` — current source of truth for what's done and what's left.
+- `docs/plans/2026-06-05-julie-phase3d-delete-daemon-adapter.md` — daemon/adapter teardown plan and verification ledger.
+- `docs/plans/2026-06-03-julie-rescue-design.md` — original strategy and rationale.

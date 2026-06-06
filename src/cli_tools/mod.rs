@@ -80,15 +80,15 @@ pub struct CliToolOutput {
 /// Trait that each CLI tool command implements to bridge CLI args into
 /// tool execution. A3 implements this for each named subcommand.
 ///
-/// The trait provides two paths:
-/// - `tool_name()` + `to_tool_args()` for daemon mode (JSON-RPC dispatch)
-/// - `call_standalone()` for standalone mode (direct handler call)
+/// The trait provides two pieces of behavior:
+/// - `tool_name()` + `to_tool_args()` for MCP-style argument conversion
+/// - `call_standalone()` for direct in-process CLI execution
 #[async_trait]
 pub trait CliToolCommand: Send + Sync {
     /// The MCP tool name (e.g. "fast_search", "fast_refs", "get_symbols").
     fn tool_name(&self) -> &'static str;
 
-    /// Convert CLI args to JSON tool parameters for daemon-mode dispatch.
+    /// Convert CLI args to JSON tool parameters.
     fn to_tool_args(&self) -> Result<Value>;
 
     /// Validate that the command can run in standalone mode.
@@ -225,8 +225,8 @@ pub async fn bootstrap_standalone_handler(
         // launches the Python embedding sidecar in `spawn_blocking`. That
         // probe costs ~8-10s on a cold machine. Standalone mode is a
         // single-shot CLI tool — launching the sidecar wastes time and would
-        // be torn down immediately. Daemon mode handles embedding init
-        // separately in the background; keyword-only search is the right
+        // be torn down immediately. Long-running MCP sessions handle embedding
+        // init separately in the background; keyword-only search is the right
         // degraded mode for standalone.
         //
         // Setting `embedding_runtime_status` to `Some(...)` satisfies the
@@ -237,7 +237,7 @@ pub async fn bootstrap_standalone_handler(
     } else {
         anyhow::bail!(
             "Workspace not indexed: {}\n\
-             Run `julie-server workspace index` or use daemon mode for automatic indexing.\n\
+             Run `julie-server workspace index --workspace <path>` and try again.\n\
              If the workspace has no source files, there is nothing to index.",
             workspace_root.display()
         );

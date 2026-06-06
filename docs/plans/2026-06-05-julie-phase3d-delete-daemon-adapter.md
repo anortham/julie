@@ -4,6 +4,8 @@
 
 **Goal:** Remove the now-bypassed HTTP daemon + stdio adapter so `julie-server` is a single in-process MCP server (leader-locked) plus the resident embedding-host, and the dashboard becomes a standalone `registry.db` reader.
 
+**Current status (2026-06-06):** COMPLETE and merged to `main` as `49b86689`. The branch-gate evidence is recorded under 3d.3 Task 8. Treat earlier unchecked 3d.1/3d.2 acceptance boxes as historical task text, not active remaining work.
+
 **Architecture:** Phase 3c.3 flipped no-args `julie-server` to serve `JulieServerHandler` in-process over rmcp stdio, guarded by the per-workspace OS leader lock. The daemon's HTTP serve path, the stdio adapter, and the multi-session pools are now dead weight reachable only via the explicit `julie daemon` subcommand. 3d deletes them in dependency order (clients → server → data/dashboard), preserving the leader lock (`daemon/discovery.rs`), the embedding-host glue, the per-workspace SQLite/Tantivy stores, and `RecoveryMarker`.
 
 **Tech Stack:** Rust, rmcp (stdio serve), fs2 advisory flock (leader lock), SQLite WAL (registry + per-workspace), axum/Tera (dashboard, being demoted to a read-only reader), tree-sitter (unaffected).
