@@ -1,8 +1,8 @@
 # Julie Test Economy Rescue Plan
 
 **Date:** 2026-06-06
-**Status:** Active; first dev-tier cut implemented
-**Baseline:** `b5ed8ef8` plus this working-tree slice
+**Status:** Active; fast `dev` gate implemented, `tools-workspace` split complete
+**Baseline:** `8968692c` plus this working-tree slice
 
 ---
 
@@ -25,15 +25,15 @@ From the current manifest after the first cut:
 | `dev` | 27 | 589s / 9.8m |
 | `system` | 5 | 225s / 3.8m |
 | `dogfood` | 2 | 380s / 6.3m |
-| `full` | 44 | 2519s / 42.0m |
+| `full` | 46 | 2519s / 42.0m |
 
-`dev` was 37 buckets / 1914s before this slice. The removed broad buckets are still present in `full`.
+`dev` was 37 buckets / 1914s before the fast-gate cut. The removed broad buckets are still present in `full`.
 
 The first actual `cargo xtask test dev` run after calibration passed 27 buckets in 389.7s. A first attempt exposed an undersized `core-database` timeout: the package compile took 27s under a 30s bucket timeout. The timeout is now 90s; the expected runtime remains 5s, so this does not change the 600s `dev` cap.
 
 Broad buckets removed from `dev`:
 
-- `tools-workspace`
+- `tools-workspace` (now split into `tools-workspace-discovery`, `tools-workspace-indexing`, and `tools-workspace-management`)
 - `tools-search-line`
 - `tools-search-file-mode`
 - `tools-search-format-quality`
@@ -58,14 +58,23 @@ Done in this slice:
 
 ### 2. Split The Slow Broad Buckets
 
-Next target order:
+Current target order:
 
-1. `tools-workspace` (300s, 9 commands)
+1. `tools-workspace` (done: split into discovery/indexing/management)
 2. `tools-search-line` (250s, 1 serialized command)
 3. `tools-editing` (200s, 8 commands)
 4. `tools-workspace-targeting` (170s, 2 commands)
 5. `tools-search-format-quality` (100s, 6 commands)
 6. `tools-call-path` (80s, 2 commands)
+
+`tools-workspace` split evidence:
+
+- `tools-workspace-discovery`: 2 commands, passed in 1.1s.
+- `tools-workspace-indexing`: 5 commands, passed in 282.9s; `mod_tests` is the long pole at 280.6s.
+- `tools-workspace-management`: 2 commands, passed in 4.1s.
+- `tools-workspace-targeting` remains separate and unchanged.
+
+Out of scope for this plan: MCP tool consolidation or tool taxonomy changes. Bucket splitting should preserve the current tool surface unless the user reopens that product decision.
 
 For each bucket:
 
@@ -115,3 +124,10 @@ After test ownership is clearer:
 | First actual dev run exposed undersized core-database timeout | `cargo xtask test dev` | dev-calibration | `5b6ec712 + dirty timeout fix` | fail: `core-database` timed out at 30s after 27s compile | 2026-06-06T14:28:45Z | no |
 | Core database bucket passes with calibrated timeout | `cargo xtask test bucket core-database` | bucket-calibration | `5b6ec712 + dirty timeout fix` | pass: `core-database` 6.3s | 2026-06-06T14:28:45Z | no |
 | Fast dev gate passes after timeout calibration | `cargo xtask test dev` | dev-fast-gate | `5b6ec712 + dirty timeout fix` | pass: 27 buckets in 389.7s | 2026-06-06T14:28:45Z | no |
+| Workspace split routing fails before split implementation | `cargo nextest run -p xtask changed_tests_route_workspace_split_modules_to_narrow_buckets 2>&1 \| tail -60` | targeted-red | `8968692c + dirty test-only` | fail as expected: discovery split path still routed to `tools-workspace` | 2026-06-06T14:50:40Z | no |
+| Workspace split routing and manifest contracts pass | `cargo nextest run -p xtask changed_tests_route_workspace_split_modules_to_narrow_buckets`; `cargo nextest run -p xtask manifest_contract_tests_checked_in_manifest_uses_approved_first_pass_tiers manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs manifest_tests_full_retains_broad_release_buckets manifest_tests_dev_tier_stays_under_ten_minutes` | targeted-xtask | `8968692c + dirty` | pass: 1/1 routing and 4/4 manifest tests | 2026-06-06T14:50:40Z | no |
+| Workspace discovery split bucket passes | `cargo xtask test bucket tools-workspace-discovery` | workspace-split | `8968692c + dirty` | pass: 1.1s | 2026-06-06T14:50:40Z | no |
+| Workspace indexing split bucket passes | `cargo xtask test bucket tools-workspace-indexing` | workspace-split | `8968692c + dirty` | pass: 282.9s; `mod_tests` took 280.6s | 2026-06-06T14:50:40Z | no |
+| Workspace management split bucket passes | `cargo xtask test bucket tools-workspace-management` | workspace-split | `8968692c + dirty` | pass: 4.1s | 2026-06-06T14:50:40Z | no |
+| Full xtask package passes after workspace bucket split | `cargo nextest run -p xtask` | xtask-package | `8968692c + dirty` | pass: 169/169 tests in 1.840s | 2026-06-06T14:55:53Z | no |
+| Changed-path gate selects xtask-runner for the workspace split diff | `XTASK_CHANGED_PATHS=$'xtask/test_tiers.toml\nxtask/src/changed.rs\nxtask/src/manifest.rs\nxtask/tests/changed_tests.rs\nxtask/tests/manifest_contract_tests.rs\nxtask/tests/support/manifest_contract_expected.rs\ndocs/plans/2026-06-06-julie-rescue-current-status.md\ndocs/plans/2026-06-06-julie-test-economy-plan.md' cargo xtask test changed` | scoped-changed | `8968692c + dirty` | pass: `xtask-runner` 2.5s | 2026-06-06T14:55:53Z | no |

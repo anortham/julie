@@ -31,7 +31,9 @@ fn changed_tests_select_localized_tool_buckets() {
         selection.bucket_names,
         vec![
             "xtask-runner",
-            "tools-workspace",
+            "tools-workspace-discovery",
+            "tools-workspace-indexing",
+            "tools-workspace-management",
             "tools-workspace-targeting",
             "workspace-init"
         ]
@@ -69,7 +71,7 @@ fn changed_tests_workspace_test_changes_do_not_pull_workspace_init() {
     );
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["tools-workspace"]);
+    assert_eq!(selection.bucket_names, vec!["tools-workspace-indexing"]);
 }
 
 #[test]
@@ -569,7 +571,9 @@ fn changed_tests_handler_tool_files_select_specific_buckets() {
             "tools-get-context-pipeline",
             "tools-get-context-format",
             "tools-get-context-graph",
-            "tools-workspace",
+            "tools-workspace-discovery",
+            "tools-workspace-indexing",
+            "tools-workspace-management",
             "tools-workspace-targeting",
             "tools-get-symbols",
             "tools-editing",
@@ -631,7 +635,13 @@ fn changed_tests_handler_cross_cutting_files_route_to_specific_buckets() {
         ("src/handler/tool_metrics.rs", &["tools-metrics", "daemon"]),
         (
             "src/handler/tool_targets.rs",
-            &["tools-workspace", "tools-workspace-targeting", "daemon"],
+            &[
+                "tools-workspace-discovery",
+                "tools-workspace-indexing",
+                "tools-workspace-management",
+                "tools-workspace-targeting",
+                "daemon",
+            ],
         ),
         ("src/handler/tools/mod.rs", &["daemon"]),
     ];
@@ -691,7 +701,13 @@ fn changed_tests_startup_routes_to_lifecycle_workspace_runtime_and_workspace() {
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(
         selection.bucket_names,
-        vec!["tools-workspace", "lifecycle", "workspace-runtime"]
+        vec![
+            "tools-workspace-discovery",
+            "tools-workspace-indexing",
+            "tools-workspace-management",
+            "lifecycle",
+            "workspace-runtime"
+        ]
     );
     assert!(selection.fallback_paths.is_empty());
 }
@@ -846,7 +862,9 @@ fn sample_manifest() -> TestManifest {
 dev = [
   "cli",
   "xtask-runner",
-  "tools-workspace",
+  "tools-workspace-discovery",
+  "tools-workspace-indexing",
+  "tools-workspace-management",
   "tools-workspace-targeting",
   "workspace-init",
   "tools-search-tantivy",
@@ -898,10 +916,20 @@ expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo nextest run --lib tests::core::handler -- --skip search_quality"]
 
-[buckets.tools-workspace]
+[buckets.tools-workspace-discovery]
 expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::workspace::discovery"]
+
+[buckets.tools-workspace-indexing]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::workspace::mod_tests"]
+
+[buckets.tools-workspace-management]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::workspace::isolation"]
 
 [buckets.tools-workspace-targeting]
 expected_seconds = 10

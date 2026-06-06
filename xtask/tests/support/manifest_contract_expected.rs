@@ -464,20 +464,38 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "tools-workspace",
+            "tools-workspace-discovery",
             ExpectedBucket {
-                expected_seconds: 300,
-                timeout_seconds: 420,
+                expected_seconds: 60,
+                timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::workspace::discovery -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::utils -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-workspace-indexing",
+            ExpectedBucket {
+                expected_seconds: 200,
+                timeout_seconds: 360,
+                commands: &[
                     "cargo nextest run --lib tests::tools::workspace::file_policy -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::index_embedding_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::workspace::isolation -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::workspace::management_token -- --skip search_quality",
                     "cargo nextest run -j 1 --lib tests::tools::workspace::mod_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::processor -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::resolver -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::workspace::utils -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-workspace-management",
+            ExpectedBucket {
+                expected_seconds: 40,
+                timeout_seconds: 120,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::workspace::isolation -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::management_token -- --skip search_quality",
                 ],
             },
         ),
@@ -886,14 +904,32 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
             },
         ),
         (
-            "tools-workspace",
+            "tools-workspace-discovery",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("workspace discovery, path, and utility coverage"),
+            },
+        ),
+        (
+            "tools-workspace-indexing",
             ExpectedBucketMetadata {
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
                 notes: Some(
-                    "workspace management (excluding heavy targeting fixtures); mod_tests serialized on Windows-sensitive indexing cases",
+                    "workspace indexing policy, processor, resolver, and serialized mod_tests coverage",
                 ),
+            },
+        ),
+        (
+            "tools-workspace-management",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("workspace isolation and management output coverage"),
             },
         ),
         (

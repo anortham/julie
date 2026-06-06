@@ -105,7 +105,9 @@ const JULIE_PIPELINE_INDEXING_BUCKETS: &[&str] = &[
     "core-pipeline",
     "workspace-init",
     "integration",
-    "tools-workspace",
+    "tools-workspace-discovery",
+    "tools-workspace-indexing",
+    "tools-workspace-management",
 ];
 
 /// Buckets for `crates/julie-pipeline/src/embeddings/**` edits. The embedding
@@ -127,6 +129,12 @@ const JULIE_RUNTIME_WATCHER_BUCKETS: &[&str] = &["core-runtime", "workspace-runt
 /// tests) and workspace-init (handler binding tests) slices (R6).
 const JULIE_RUNTIME_WORKSPACE_BUCKETS: &[&str] =
     &["core-runtime", "workspace-runtime", "workspace-init"];
+
+const WORKSPACE_TOOL_BUCKETS: &[&str] = &[
+    "tools-workspace-discovery",
+    "tools-workspace-indexing",
+    "tools-workspace-management",
+];
 
 /// Buckets for general `crates/julie-tools/src/**` edits (Phase 2b crate split).
 /// Covers the tool-specific test buckets whose commands now include `-p julie-tools`
@@ -491,7 +499,13 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-metrics", "daemon"];
     }
     if path == "src/handler/tool_targets.rs" {
-        return &["tools-workspace", "tools-workspace-targeting", "daemon"];
+        return &[
+            "tools-workspace-discovery",
+            "tools-workspace-indexing",
+            "tools-workspace-management",
+            "tools-workspace-targeting",
+            "daemon",
+        ];
     }
     if path == "src/handler/tools/mod.rs" {
         // Pure module declaration file. Re-routes to daemon (handler trait surface);
@@ -503,7 +517,13 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     // Startup routing touches DaemonDatabase, workspace registry, and indexing;
     // it no longer needs to force the full dev tier.
     if path == "src/startup.rs" {
-        return &["lifecycle", "workspace-runtime", "tools-workspace"];
+        return &[
+            "tools-workspace-discovery",
+            "tools-workspace-indexing",
+            "tools-workspace-management",
+            "lifecycle",
+            "workspace-runtime",
+        ];
     }
 
     if matches_exact(
@@ -589,7 +609,7 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     // live in top-crate buckets ALSO pull those buckets (Phase 0/1 lesson — a
     // localized edit to moved code must not silently skip its behavioral coverage):
     //   crates/julie-pipeline/src/embeddings/**    -> core-pipeline + core-embeddings
-    //   crates/julie-pipeline/src/indexing_core/** -> core-pipeline + workspace-init + integration + tools-workspace
+    //   crates/julie-pipeline/src/indexing_core/** -> core-pipeline + workspace-init + integration + split workspace tool buckets
     //   crates/julie-pipeline/src/{resolver*,finalize.rs} -> same indexing behavioral set
     // Subpath checks must precede the catch-all prefix (first match wins).
     if matches_prefix(path, &["crates/julie-pipeline/src/embeddings/"]) {
@@ -750,12 +770,31 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["workspace-runtime"];
     }
 
+    if matches_exact(
+        path,
+        &[
+            "src/tools/workspace/discovery.rs",
+            "src/tools/workspace/language.rs",
+            "src/tools/workspace/paths.rs",
+            "src/tools/workspace/utils.rs",
+        ],
+    ) {
+        return &["tools-workspace-discovery"];
+    }
+
+    if matches_prefix(path, &["src/tools/workspace/indexing/"]) {
+        return &["tools-workspace-indexing", "workspace-init"];
+    }
+
     // Note: "src/workspace/" removed — workspace moved to crates/julie-runtime (T2c.2);
     // edits to the top-crate re-export shim at src/workspace/ now route via the
     // crates/julie-runtime/src/workspace/ arm above when editing the real source.
+    // Broad workspace command/module edits keep all workspace tool slices.
     if matches_prefix(path, &["src/tools/workspace/"]) {
         return &[
-            "tools-workspace",
+            "tools-workspace-discovery",
+            "tools-workspace-indexing",
+            "tools-workspace-management",
             "tools-workspace-targeting",
             "workspace-init",
         ];
@@ -773,8 +812,43 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-workspace-targeting"];
     }
 
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/workspace/discovery.rs",
+            "src/tests/tools/workspace/utils.rs",
+        ],
+    ) || matches_prefix(path, &["src/tests/tools/workspace/discovery/"])
+    {
+        return &["tools-workspace-discovery"];
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/workspace/file_policy.rs",
+            "src/tests/tools/workspace/index_embedding_tests.rs",
+            "src/tests/tools/workspace/mod_tests.rs",
+            "src/tests/tools/workspace/processor.rs",
+            "src/tests/tools/workspace/resolver.rs",
+        ],
+    ) || matches_prefix(path, &["src/tests/tools/workspace/mod_tests/"])
+    {
+        return &["tools-workspace-indexing"];
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/workspace/isolation.rs",
+            "src/tests/tools/workspace/management_token.rs",
+        ],
+    ) {
+        return &["tools-workspace-management"];
+    }
+
     if matches_prefix(path, &["src/tests/tools/workspace/"]) {
-        return &["tools-workspace"];
+        return WORKSPACE_TOOL_BUCKETS;
     }
 
     if path == "src/tools/search/query_preprocessor.rs" {
@@ -957,7 +1031,9 @@ fn handler_tool_buckets_for_path(path: &str) -> Option<&'static [&'static str]> 
         ]),
         "src/handler/tools/rename_symbol.rs" => Some(&["tools-refactoring"]),
         "src/handler/tools/manage_workspace.rs" => Some(&[
-            "tools-workspace",
+            "tools-workspace-discovery",
+            "tools-workspace-indexing",
+            "tools-workspace-management",
             "tools-workspace-targeting",
             "workspace-init",
         ]),
@@ -1161,7 +1237,9 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "tools-search-hybrid",
         "tools-search-query",
         "tools-search-unified",
-        "tools-workspace",
+        "tools-workspace-discovery",
+        "tools-workspace-indexing",
+        "tools-workspace-management",
         "tools-workspace-targeting",
         "tools-get-symbols",
         "tools-editing",
@@ -1324,6 +1402,35 @@ mod tests {
     }
 
     #[test]
+    fn changed_tests_route_workspace_split_modules_to_narrow_buckets() {
+        let manifest = manifest();
+
+        for (path, expected_bucket) in [
+            (
+                "src/tests/tools/workspace/discovery/file_filtering.rs",
+                "tools-workspace-discovery",
+            ),
+            (
+                "src/tests/tools/workspace/mod_tests/part1.rs",
+                "tools-workspace-indexing",
+            ),
+            (
+                "src/tests/tools/workspace/isolation.rs",
+                "tools-workspace-management",
+            ),
+        ] {
+            let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+            assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+            assert_eq!(selection.bucket_names, vec![expected_bucket], "{path}");
+            assert!(
+                selection.fallback_paths.is_empty(),
+                "{path} should not fall back; rationale={:?}",
+                selection.rationale
+            );
+        }
+    }
+
+    #[test]
     fn changed_tests_route_target_workspace_fast_refs_split_modules_to_fast_refs_bucket() {
         let manifest = manifest();
         let selection = select_changed_buckets(
@@ -1397,7 +1504,9 @@ mod tests {
             selection.bucket_names,
             vec![
                 "core-pipeline",
-                "tools-workspace",
+                "tools-workspace-discovery",
+                "tools-workspace-indexing",
+                "tools-workspace-management",
                 "workspace-init",
                 "integration"
             ],
@@ -1420,7 +1529,9 @@ mod tests {
                 selection.bucket_names,
                 vec![
                     "core-pipeline",
-                    "tools-workspace",
+                    "tools-workspace-discovery",
+                    "tools-workspace-indexing",
+                    "tools-workspace-management",
                     "workspace-init",
                     "integration"
                 ],
