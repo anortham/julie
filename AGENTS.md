@@ -99,10 +99,10 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 |------|---------|----------------|-------------|
 | **Nano** | `cargo xtask test nano` | Fastest core buckets (~25s) | Ultra-tight loop: quick sanity before or between edit batches |
 | **Smoke** | `cargo xtask test smoke` | Small confidence slice of the fastest buckets | Quick sanity check when you want a tiny run |
-| **Dev** | `cargo xtask test dev` | Batch-level regression tier for ordinary code changes | Once per completed batch, before handoff |
+| **Dev** | `cargo xtask test dev` | Fast batch-level regression tier for ordinary code changes (<10m expected) | Once per completed batch, before handoff |
 | **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
 | **Dogfood** | `cargo xtask test dogfood` | `search_quality` bucket | Use after search/scoring/tokenization changes |
-| **Full** | `cargo xtask test full` | Dev + system + dogfood buckets | Use for broad branch-level confidence |
+| **Full** | `cargo xtask test full` | Dev + broad tool/system/dogfood/release buckets | Use for broad pre-merge confidence |
 | **Reliability** | `cargo xtask test reliability` | Registry/runtime lifecycle + workspace init + integration buckets | Use when hardening lifecycle, watcher, or registry/runtime flows |
 | **Benchmark** | `cargo xtask test benchmark` | Focused `system_health` integration bucket | Use when iterating on health-report latency or a narrow benchmark harness |
 
@@ -114,7 +114,7 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
    ```
    This is the default. One test, seconds of wall-clock.
 2. **After a localized change affecting one subsystem**: `cargo xtask test changed`. Picks the smallest matching bucket set from the git diff.
-3. **If `changed` falls back to `dev`**: accept it, that means shared infrastructure moved.
+3. **If `changed` falls back to `dev`**: accept it, that means shared infrastructure moved. `dev` is the fast branch gate, not the full release gate.
 4. **After a completed batch or before handoff**: run `cargo xtask test dev` once. Not per edit.
 5. **If you changed startup/workspace/system flows**: add `cargo xtask test system`
 6. **If you changed search/scoring/tokenization**: add `cargo xtask test dogfood`

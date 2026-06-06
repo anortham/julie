@@ -1496,10 +1496,10 @@ mod tests {
     }
 
     #[test]
-    fn changed_tests_dev_search_buckets_cover_declared_search_modules() {
+    fn changed_tests_full_search_buckets_cover_declared_search_modules() {
         let manifest = manifest();
-        let dev_buckets = manifest.tiers.get("dev").expect("dev tier exists");
-        let dev_search_commands: Vec<&String> = dev_buckets
+        let full_buckets = manifest.tiers.get("full").expect("full tier exists");
+        let full_search_commands: Vec<&String> = full_buckets
             .iter()
             .filter(|bucket| bucket.starts_with("tools-search-"))
             .flat_map(|bucket| bucket_commands(&manifest, bucket))
@@ -1509,7 +1509,7 @@ mod tests {
         let uncovered: Vec<String> = modules
             .into_iter()
             .filter(|module| {
-                !dev_search_commands
+                !full_search_commands
                     .iter()
                     .any(|command| command_covers_module(command, module))
             })
@@ -1517,7 +1517,7 @@ mod tests {
 
         assert!(
             uncovered.is_empty(),
-            "declared search modules must be covered by dev search bucket commands; uncovered={uncovered:?}"
+            "declared search modules must be covered by full search bucket commands; uncovered={uncovered:?}"
         );
     }
 }

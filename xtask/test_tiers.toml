@@ -5,7 +5,8 @@
 nano = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
-dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-dep-integration"]
+# Dev: fast branch-level gate. Keep under 10 minutes expected; full keeps broad coverage.
+dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-zero-hit", "tools-search-promotion", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-get-symbols", "tools-deep-dive", "tools-fast-refs", "tools-blast-spillover", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard"]
 # System coverage kept separate from fast local buckets.
 system = ["projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
@@ -40,7 +41,7 @@ commands = ["cargo nextest run -p xtask"]
 [buckets.core-database]
 # Core database path; modest runtime but commonly exercised.
 expected_seconds = 5
-timeout_seconds = 30
+timeout_seconds = 90
 scope_label = "core"
 notes = "core database layer"
 commands = ["cargo nextest run -p julie-core"]

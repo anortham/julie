@@ -132,6 +132,8 @@ mod tests {
     use super::TestManifest;
     use std::path::PathBuf;
 
+    const DEV_TIER_MAX_EXPECTED_SECONDS: u64 = 600;
+
     fn manifest_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_tiers.toml")
     }
@@ -158,5 +160,56 @@ mod tests {
                 .is_some_and(|buckets| buckets.iter().any(|bucket| bucket == "dashboard")),
             "full tier should run dashboard tests"
         );
+    }
+
+    #[test]
+    fn manifest_tests_dev_tier_stays_under_ten_minutes() {
+        let manifest = TestManifest::load(manifest_path()).expect("load manifest");
+        let dev_buckets = manifest.tiers.get("dev").expect("dev tier exists");
+        let expected_seconds: u64 = dev_buckets
+            .iter()
+            .map(|bucket_name| {
+                manifest
+                    .buckets
+                    .get(bucket_name)
+                    .unwrap_or_else(|| panic!("missing bucket {bucket_name}"))
+                    .expected_seconds
+            })
+            .sum();
+
+        assert!(
+            expected_seconds <= DEV_TIER_MAX_EXPECTED_SECONDS,
+            "dev tier expected runtime must stay under {DEV_TIER_MAX_EXPECTED_SECONDS}s; got {expected_seconds}s across {} buckets",
+            dev_buckets.len()
+        );
+    }
+
+    #[test]
+    fn manifest_tests_full_retains_broad_release_buckets() {
+        let manifest = TestManifest::load(manifest_path()).expect("load manifest");
+        let dev_buckets = manifest.tiers.get("dev").expect("dev tier exists");
+        let full_buckets = manifest.tiers.get("full").expect("full tier exists");
+
+        for bucket_name in [
+            "tools-search-line",
+            "tools-search-file-mode",
+            "tools-search-format-quality",
+            "tools-search-unified",
+            "tools-workspace",
+            "tools-workspace-targeting",
+            "tools-editing",
+            "tools-call-path",
+            "tools-refactoring",
+            "extractor-dep-integration",
+        ] {
+            assert!(
+                full_buckets.iter().any(|bucket| bucket == bucket_name),
+                "full tier must retain broad bucket {bucket_name}"
+            );
+            assert!(
+                !dev_buckets.iter().any(|bucket| bucket == bucket_name),
+                "broad bucket {bucket_name} should stay out of the fast dev tier"
+            );
+        }
     }
 }

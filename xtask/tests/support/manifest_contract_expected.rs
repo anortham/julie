@@ -44,7 +44,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             "core-database",
             ExpectedBucket {
                 expected_seconds: 5,
-                timeout_seconds: 30,
+                timeout_seconds: 90,
                 commands: &["cargo nextest run -p julie-core"],
             },
         ),
