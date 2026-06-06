@@ -2573,8 +2573,8 @@ pub(crate) fn parse_request_timeout(raw: Option<String>) -> Option<Duration> {
 ///
 /// For `manage_workspace` the exemption is operation-aware:
 /// - **Exempt (mutating / long-running):** Index, Register, Remove, Clean, Refresh, Open.
-/// - **Deadline-bounded (read-only):** List, Stats, Health — a hung stats or health
-///   query has no write-safety concern, so it must not escape the hang guard.
+/// - **Deadline-bounded (read-only):** List, Stats, Health, Dashboard — these
+///   have no write-safety concern, so they must not escape the hang guard.
 /// - **Unparseable operation:** not exempt (safely bounded; no mutation risk).
 pub(crate) fn is_write_exempt(
     tool_name: &str,

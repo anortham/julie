@@ -3,6 +3,7 @@
 pub mod error_buffer;
 pub mod routes;
 pub mod search_analysis;
+pub mod standalone;
 pub mod state;
 
 use std::path::PathBuf;

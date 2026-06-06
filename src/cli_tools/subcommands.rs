@@ -288,9 +288,9 @@ pub struct BlastRadiusArgs {
 ///   julie-server workspace health --force
 ///   julie-server workspace register --path /code/myproject --name "My Project"
 ///
-/// Note: `open`, `register`, `remove`, `refresh`, and `stats` operate on the
-/// shared registry and are exposed through the MCP `manage_workspace` tool, not
-/// the one-shot standalone CLI path.
+/// Note: `open`, `register`, `remove`, `refresh`, `stats`, and `dashboard`
+/// require either the MCP `manage_workspace` tool or a dedicated CLI entry
+/// point, not the one-shot standalone workspace wrapper.
 #[derive(Debug, Clone, Parser)]
 pub struct WorkspaceArgs {
     /// Operation: index, list, register, remove, stats, clean, refresh, open, health

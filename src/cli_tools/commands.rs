@@ -392,6 +392,9 @@ impl CliToolCommand for WorkspaceArgs {
             "stats" => anyhow::bail!(
                 "Workspace `stats` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
             ),
+            "dashboard" => anyhow::bail!(
+                "Workspace `dashboard` is not available from the one-shot standalone CLI. Use `julie-server dashboard` from a shell, or `manage_workspace(operation=\"dashboard\")` from your MCP client."
+            ),
             _ => Ok(()),
         }
     }
@@ -439,6 +442,25 @@ impl CliToolCommand for GenericToolArgs {
         }
 
         Ok(args)
+    }
+
+    fn validate_standalone(&self) -> Result<()> {
+        if self.name != "manage_workspace" {
+            return Ok(());
+        }
+
+        let params = self.to_tool_args()?;
+        if params
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+            == Some("dashboard")
+        {
+            anyhow::bail!(
+                "Tool `manage_workspace` operation `dashboard` is not available from the one-shot standalone CLI. Use `julie-server dashboard` from a shell, or `manage_workspace(operation=\"dashboard\")` from your MCP client."
+            );
+        }
+
+        Ok(())
     }
 
     async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

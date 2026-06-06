@@ -183,6 +183,10 @@ Use this path when you are not using the Claude Code plugin or the Codex/OpenCod
 
 Download a release archive for your platform from [GitHub releases](https://github.com/anortham/julie/releases), extract `julie-server`, and use its absolute path in your MCP config. Supported release targets are macOS Apple Silicon, macOS Intel, Linux x86_64, and Windows x86_64.
 
+**Upgrading from an older split-daemon install?** `julie-adapter` and `julie-daemon` are gone from the current MCP runtime. Every MCP client config must launch `julie-server` directly. If an old config still points at `julie-adapter`, change the command to the `julie-server` path, then restart the MCP client. Plugin users should update or reinstall the Julie plugin so its launcher also starts `julie-server`.
+
+Stale adapter configs usually show up as old processes named `julie-adapter` or `julie-daemon`, or config files whose command path still ends in one of those names. Stop those old processes after updating the config; a fresh session should only start `julie-server`.
+
 **Client workspace-resolution support:**
 
 | Client | Sends MCP roots? | Needs `JULIE_WORKSPACE`? |
@@ -365,11 +369,11 @@ Julie indexes your workspace automatically on first connection or first primary 
 
 ### Workspace Management
 
-- `manage_workspace` - Index, register, open, remove, refresh, list, stat, clean, and health-check workspaces
-  - Operations: `index`, `register`, `open`, `remove`, `list`, `refresh`, `stats`, `clean`, `health`
+- `manage_workspace` - Index, register, open, remove, refresh, list, stat, clean, health-check workspaces, and launch the dashboard
+  - Operations: `index`, `register`, `open`, `remove`, `list`, `refresh`, `stats`, `clean`, `health`, `dashboard`
   - Cross-workspace work: call `open` first, then pass the returned `workspace_id` to other tools
 
-> Operational and session metrics are surfaced through the dashboard (`julie-server dashboard`) rather than an MCP tool — see the **bytes NOT injected** headline metric on the Metrics page.
+> Operational and session metrics are surfaced through the dashboard. Start it from a shell with `julie-server dashboard`, or from an MCP session with `manage_workspace(operation="dashboard")`.
 
 **Default Ignore Patterns** - Julie automatically excludes common build artifacts and dependencies to prevent indexing noise:
 

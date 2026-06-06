@@ -6,6 +6,7 @@ use tracing::info;
 
 use crate::handler::JulieServerHandler;
 
+mod dashboard;
 pub(crate) mod force_safeguards;
 mod index;
 pub(crate) mod registry;
@@ -25,6 +26,7 @@ pub(crate) enum ManageWorkspaceOperation {
     Open,
     Stats,
     Health,
+    Dashboard,
 }
 
 impl ManageWorkspaceOperation {
@@ -41,6 +43,7 @@ impl ManageWorkspaceOperation {
         ("refresh", Self::Refresh),
         ("open", Self::Open),
         ("health", Self::Health),
+        ("dashboard", Self::Dashboard),
     ];
 
     pub(crate) fn parse(operation: &str) -> Result<Self> {
@@ -141,6 +144,7 @@ pub(crate) enum ManageWorkspaceRequest {
     Health {
         detailed: bool,
     },
+    Dashboard,
 }
 
 impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
@@ -194,13 +198,14 @@ impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
             ManageWorkspaceOperation::Health => Ok(Self::Health {
                 detailed: tool.detailed.unwrap_or(false),
             }),
+            ManageWorkspaceOperation::Dashboard => Ok(Self::Dashboard),
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Operation to perform: "index", "list", "register", "remove", "stats", "clean", "refresh", "open", "health"
+    /// Operation to perform: "index", "list", "register", "remove", "stats", "clean", "refresh", "open", "health", "dashboard"
     ///
     /// EXAMPLES:
     /// Index workspace:      {"operation": "index", "path": null, "force": false}
@@ -213,6 +218,7 @@ pub struct ManageWorkspaceTool {
     /// Refresh workspace:    {"operation": "refresh", "workspace_id": "workspace-id", "force": true}
     /// Open and force sync:   {"operation": "open", "workspace_id": "workspace-id", "force": true}
     /// Health check:         {"operation": "health", "detailed": true}
+    /// Launch dashboard:      {"operation": "dashboard"}
     pub operation: String,
 
     // Optional parameters used by various operations
@@ -304,6 +310,7 @@ impl ManageWorkspaceTool {
             ManageWorkspaceRequest::Health { detailed } => {
                 self.handle_health_command(handler, detailed).await
             }
+            ManageWorkspaceRequest::Dashboard => self.handle_dashboard_command().await,
         }
     }
 }

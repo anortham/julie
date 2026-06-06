@@ -149,6 +149,9 @@ fn manage_workspace_request_parses_valid_operations_with_live_fields() {
         request,
         ManageWorkspaceRequest::Health { detailed } if detailed
     ));
+
+    let request = request_from_json(json!({ "operation": "dashboard" })).unwrap();
+    assert!(matches!(request, ManageWorkspaceRequest::Dashboard));
 }
 
 #[test]
@@ -168,7 +171,7 @@ fn manage_workspace_request_rejects_missing_required_fields_and_unknown_operatio
         ),
         (
             json!({ "operation": "add" }),
-            "Unknown operation: 'add'. Valid operations: index, list, register, remove, stats, clean, refresh, open, health",
+            "Unknown operation: 'add'. Valid operations: index, list, register, remove, stats, clean, refresh, open, health, dashboard",
         ),
     ];
 
@@ -191,6 +194,9 @@ fn manage_workspace_preflight_classification_uses_shared_operation_parser() {
         "workspace_id": "workspace-1"
     })));
     assert!(request_targets_primary(json!({ "operation": "health" })));
+    assert!(!request_targets_primary(
+        json!({ "operation": "dashboard" })
+    ));
 
     assert!(request_targets_primary(json!({ "operation": "stats" })));
     assert!(request_targets_primary(json!({
@@ -223,4 +229,5 @@ fn manage_workspace_preflight_classification_uses_shared_operation_parser() {
         "path": "/repo"
     })));
     assert!(!primary_index_request(json!({ "operation": "list" })));
+    assert!(!primary_index_request(json!({ "operation": "dashboard" })));
 }

@@ -15,9 +15,6 @@ use julie::cli::{
     Cli, Command, cli_command_needs_workspace_startup_hint, resolve_workspace_startup_hint,
 };
 use julie::cli_tools::run_cli_tool;
-use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, RwLock};
-use std::time::Instant;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -26,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Some(Command::Dashboard) => {
-            run_standalone_dashboard().await?;
+            julie::dashboard::standalone::serve_dashboard_forever().await?;
         }
         // Tool commands: routed through the CLI execution core
         Some(Command::Search(args)) => {
@@ -89,37 +86,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    Ok(())
-}
-
-async fn run_standalone_dashboard() -> anyhow::Result<()> {
-    let paths = julie::paths::DaemonPaths::new();
-    paths.ensure_dirs()?;
-    let registry = Arc::new(julie::daemon::database::DaemonDatabase::open(
-        &paths.registry_db(),
-    )?);
-    let recovery_markers = Arc::new(julie::daemon::shutdown::read_recovery_markers(&paths));
-    let state = julie::dashboard::state::DashboardState::new(
-        Arc::new(julie::daemon::session::SessionTracker::new()),
-        Some(registry),
-        Arc::new(AtomicBool::new(false)),
-        Arc::new(RwLock::new(julie::daemon::lifecycle::LifecyclePhase::Ready)),
-        Instant::now(),
-        None,
-        50,
-    )
-    .with_recovery_markers(recovery_markers);
-    let app = julie::dashboard::create_router(state, julie::dashboard::DashboardConfig::default())?;
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
-    let addr = listener.local_addr()?;
-    let url = format!("http://{addr}");
-
-    println!("Dashboard URL: {url}");
-    if let Err(error) = opener::open(&url) {
-        eprintln!("Failed to open browser: {error}");
-    }
-
-    axum::serve(listener, app.into_make_service()).await?;
     Ok(())
 }
 

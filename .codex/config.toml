@@ -2,3 +2,6 @@
 command = "bun"
 args = ["run", "/Users/murphy/source/goldfish/src/server.ts"]
 env = { GOLDFISH_WORKSPACE = "/Users/murphy/source/julie" }
+
+[mcp_servers.julie]
+command = "/Users/murphy/source/julie/target/release/julie-server"

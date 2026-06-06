@@ -5,4 +5,5 @@ mod language_bar;
 mod projects;
 mod router;
 mod search_analysis;
+mod standalone;
 mod state;

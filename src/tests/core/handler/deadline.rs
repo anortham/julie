@@ -51,22 +51,34 @@ fn args(op: &str) -> serde_json::Map<String, serde_json::Value> {
 
 #[test]
 fn test_is_write_exempt_edit_file_is_exempt() {
-    assert!(is_write_exempt("edit_file", None), "edit_file must always be exempt");
+    assert!(
+        is_write_exempt("edit_file", None),
+        "edit_file must always be exempt"
+    );
 }
 
 #[test]
 fn test_is_write_exempt_rename_symbol_is_exempt() {
-    assert!(is_write_exempt("rename_symbol", None), "rename_symbol must always be exempt");
+    assert!(
+        is_write_exempt("rename_symbol", None),
+        "rename_symbol must always be exempt"
+    );
 }
 
 #[test]
 fn test_is_write_exempt_rewrite_symbol_is_exempt() {
-    assert!(is_write_exempt("rewrite_symbol", None), "rewrite_symbol must always be exempt");
+    assert!(
+        is_write_exempt("rewrite_symbol", None),
+        "rewrite_symbol must always be exempt"
+    );
 }
 
 #[test]
 fn test_is_write_exempt_fast_search_is_not_exempt() {
-    assert!(!is_write_exempt("fast_search", None), "fast_search must be deadline-bounded");
+    assert!(
+        !is_write_exempt("fast_search", None),
+        "fast_search must be deadline-bounded"
+    );
 }
 
 #[test]
@@ -102,6 +114,15 @@ fn test_is_write_exempt_manage_workspace_health_is_not_exempt() {
     assert!(
         !is_write_exempt("manage_workspace", Some(&a)),
         "manage_workspace health (read-only) must be deadline-bounded"
+    );
+}
+
+#[test]
+fn test_is_write_exempt_manage_workspace_dashboard_is_not_exempt() {
+    let a = args("dashboard");
+    assert!(
+        !is_write_exempt("manage_workspace", Some(&a)),
+        "manage_workspace dashboard only launches a background reader and must be deadline-bounded"
     );
 }
 
@@ -167,8 +188,7 @@ async fn test_dispatch_with_deadline_writer_exempt_not_bounded() {
 
     // The same tight deadline that fires for a read tool must be IGNORED for writers.
     let deadline = Some(Duration::from_millis(50));
-    let result =
-        dispatch_with_deadline("edit_file", /*exempt=*/ true, stalling, deadline).await;
+    let result = dispatch_with_deadline("edit_file", /*exempt=*/ true, stalling, deadline).await;
 
     let err = result.expect_err("exempt writer must propagate its own error, not hang");
     assert!(

@@ -604,6 +604,42 @@ async fn test_run_cli_tool_standalone_workspace_stats_not_available_via_cli() {
     );
 }
 
+#[test]
+fn test_workspace_dashboard_is_not_available_from_one_shot_cli_wrapper() {
+    let args = WorkspaceArgs {
+        operation: "dashboard".into(),
+        path: None,
+        force: false,
+        name: None,
+    };
+
+    let err = args
+        .validate_standalone()
+        .expect_err("workspace dashboard should refuse one-shot standalone mode");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("julie-server dashboard") && msg.contains("manage_workspace"),
+        "Expected guidance for dashboard entry points, got: {msg}"
+    );
+}
+
+#[test]
+fn test_generic_manage_workspace_dashboard_is_not_available_from_one_shot_cli() {
+    let args = GenericToolArgs {
+        name: "manage_workspace".to_string(),
+        params: r#"{"operation":"dashboard"}"#.to_string(),
+    };
+
+    let err = args
+        .validate_standalone()
+        .expect_err("generic manage_workspace dashboard should refuse one-shot standalone mode");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("julie-server dashboard") && msg.contains("manage_workspace"),
+        "Expected guidance for dashboard entry points, got: {msg}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Serialization round-trip
 // ---------------------------------------------------------------------------
