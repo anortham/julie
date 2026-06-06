@@ -1075,11 +1075,28 @@ impl JulieServerHandler {
         leader: LeadershipState,
         index_root: Option<PathBuf>,
     ) -> Result<Self> {
+        Self::new_in_process_with_daemon_db(
+            startup_hint,
+            embedding_provider,
+            leader,
+            index_root,
+            None,
+        )
+        .await
+    }
+
+    pub async fn new_in_process_with_daemon_db(
+        startup_hint: WorkspaceStartupHint,
+        embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+        leader: LeadershipState,
+        index_root: Option<PathBuf>,
+        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+    ) -> Result<Self> {
         // Build on top of the deferred-startup path, which wires up everything
         // except the project-log and sets startup_hint on the session state.
         let mut handler = Self::new_deferred_daemon_startup_hint_with_project_log(
             startup_hint,
-            /*daemon_db=*/ None,
+            daemon_db,
             /*embedding_service=*/ None,
             /*restart_pending=*/ None,
             /*dashboard_tx=*/ None,
@@ -1392,12 +1409,16 @@ impl JulieServerHandler {
         mark_attached: bool,
     ) {
         let workspace_root = workspace.root.clone();
-        let mut workspace_guard = self.workspace.write().await;
-        *workspace_guard = Some(workspace);
+        let workspace_root_for_registry = workspace_root.clone();
+        {
+            let mut workspace_guard = self.workspace.write().await;
+            *workspace_guard = Some(workspace);
+        }
 
         *self.workspace_id.write().unwrap_or_else(|p| p.into_inner()) = workspace_id.clone();
 
         let attached_workspace_id = workspace_id.clone().filter(|_| mark_attached);
+        let registry_workspace_id = workspace_id.clone();
         self.update_session_workspace(move |session_workspace| {
             if let Some(workspace_id) = workspace_id {
                 session_workspace.bind_primary(workspace_id, workspace_root);
@@ -1405,6 +1426,17 @@ impl JulieServerHandler {
 
             session_workspace.complete_primary_swap();
         });
+        if let Some(workspace_id) = registry_workspace_id
+            && let Err(error) = self
+                .session_attachment()
+                .attach_workspace_resources(&workspace_id, workspace_root_for_registry)
+                .await
+        {
+            warn!(
+                workspace_id = %workspace_id,
+                "Failed to register loaded primary workspace in registry: {error}"
+            );
+        }
         if let Some(workspace_id) = attached_workspace_id {
             self.session_attachment()
                 .mark_workspace_attached(workspace_id);

@@ -1,7 +1,10 @@
+use crate::daemon::database::DaemonDatabase;
+use crate::daemon::discovery::DaemonLockGuard;
 use crate::handler::JulieServerHandler;
 use crate::leadership::LeadershipState;
-use crate::daemon::discovery::DaemonLockGuard;
+use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
+use std::fs;
 use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
@@ -110,6 +113,41 @@ async fn test_new_in_process_with_leader_is_leader() {
             .await
             .unwrap();
     assert!(handler.is_leader(), "with lock → is_leader must be true");
+}
+
+#[tokio::test]
+async fn test_new_in_process_with_daemon_db_registers_loaded_primary() {
+    let dir = tempfile::tempdir().unwrap();
+    let primary_root = dir.path().join("primary");
+    fs::create_dir_all(&primary_root).unwrap();
+    fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&dir.path().join("registry.db")).unwrap());
+    let primary_path = primary_root.canonicalize().unwrap();
+    let primary_path_str = primary_path.to_string_lossy().to_string();
+    let primary_id = generate_workspace_id(&primary_path_str).unwrap();
+    let hint = WorkspaceStartupHint {
+        path: primary_path,
+        source: Some(WorkspaceStartupSource::Cli),
+    };
+
+    let handler = JulieServerHandler::new_in_process_with_daemon_db(
+        hint,
+        None,
+        LeadershipState::none(),
+        None,
+        Some(Arc::clone(&daemon_db)),
+    )
+    .await
+    .unwrap();
+
+    handler.ensure_workspace().await.unwrap();
+
+    let row = daemon_db
+        .get_workspace(&primary_id)
+        .unwrap()
+        .expect("loaded in-process primary should be visible to registry-backed dashboard");
+    assert_eq!(row.path, primary_path_str);
 }
 
 // ---------------------------------------------------------------------------

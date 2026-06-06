@@ -185,8 +185,7 @@ pub async fn run_in_process_server(
     //    binding id. Pinning the binding to this hint (no `list_roots` rebind)
     //    is enforced by `JulieServerHandler::request_prefers_client_roots()`
     //    returning false for in-process handlers.
-    let canonical_path =
-        JulieServerHandler::canonicalize_workspace_path(startup_hint.path.clone());
+    let canonical_path = JulieServerHandler::canonicalize_workspace_path(startup_hint.path.clone());
     let startup_hint = crate::workspace::startup_hint::WorkspaceStartupHint {
         path: canonical_path.clone(),
         source: startup_hint.source,
@@ -260,14 +259,20 @@ pub async fn run_in_process_server(
         }
     };
 
+    let daemon_db = Arc::new(
+        crate::daemon::database::DaemonDatabase::open(&paths.registry_db())
+            .context("Failed to open Julie workspace registry")?,
+    );
+
     // 6. Build handler.  Passing `Some(index_root)` threads the daemon index
     //    directory into initialize_workspace_with_force so db/tantivy land
     //    next to the leader lock — the F2 inode-coupling invariant.
-    let handler = JulieServerHandler::new_in_process(
+    let handler = JulieServerHandler::new_in_process_with_daemon_db(
         startup_hint,
         embedding_provider,
         leadership,
         Some(index_root),
+        Some(daemon_db),
     )
     .await
     .context("Failed to build in-process handler")?;

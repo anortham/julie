@@ -1,6 +1,66 @@
 use super::*;
 
 #[tokio::test]
+async fn test_manage_workspace_list_includes_loaded_primary_without_explicit_registration() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+
+    let primary_root = temp_dir.path().join("primary");
+    fs::create_dir_all(&primary_root).unwrap();
+    fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let primary_path = primary_root.canonicalize().unwrap();
+    let primary_path_str = primary_path.to_string_lossy().to_string();
+    let primary_id = generate_workspace_id(&primary_path_str).unwrap();
+
+    let handler = JulieServerHandler::new_deferred_daemon_startup_hint_without_project_log(
+        crate::workspace::startup_hint::WorkspaceStartupHint {
+            path: primary_path.clone(),
+            source: Some(crate::workspace::startup_hint::WorkspaceStartupSource::Cli),
+        },
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("handler should initialize");
+
+    handler
+        .ensure_workspace()
+        .await
+        .expect("primary workspace should load");
+
+    let row = daemon_db
+        .get_workspace(&primary_id)
+        .expect("registry lookup should succeed")
+        .expect("loaded primary should be registered for dashboard/list visibility");
+    assert_eq!(row.path, primary_path_str);
+
+    let result = ManageWorkspaceTool {
+        operation: "list".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .expect("list should succeed");
+
+    let text = extract_text_from_result(&result);
+    assert!(
+        text.contains(&format!("({}) [CURRENT]", primary_id)),
+        "list should show the loaded primary workspace as CURRENT: {text}"
+    );
+    assert!(
+        !text.contains("No workspaces registered"),
+        "list must not hide the loaded primary workspace: {text}"
+    );
+}
+
+#[tokio::test]
 async fn test_manage_workspace_list_labels_current_active_and_known_workspaces() {
     let temp_dir = tempfile::TempDir::new().unwrap();
 
