@@ -1,21 +1,21 @@
 //! A2.3 — Concurrent MCP regression test (deadlock detector).
 //!
-//! Daemon-backed handler with real WorkspacePool + WatcherPool. Drives 8
-//! concurrent tool requests against a single indexed workspace (4 reads + 4
-//! writes including one real mutation) while a background task continually
-//! modifies a file in that workspace, keeping the file watcher's
-//! event-processor contended with the mutation_gate. All 8 must complete
-//! within a 30s budget and produce non-error `CallToolResult` payloads.
+//! In-process handler with real JulieWorkspace. Drives 8 concurrent tool
+//! requests against a single indexed workspace (4 reads + 4 writes including
+//! one real mutation) while a background task continually modifies a file in
+//! that workspace, keeping the file watcher's event-processor contended with
+//! the mutation_gate. All 8 must complete within a 30s budget and produce
+//! non-error `CallToolResult` payloads.
 //!
-//! **The point is to catch deadlocks.** The connection-pool, mutation_gate,
-//! and watcher event-processor are the only things serializing writers; if
-//! there's a lock-order bug between them this test wedges and the wrapping
-//! `timeout` fires.
+//! **The point is to catch deadlocks.** The mutation_gate and watcher
+//! event-processor are the only things serializing writers; if there's a
+//! lock-order bug between them this test wedges and the wrapping `timeout`
+//! fires.
 //!
 //! Strengthened through two codex review passes (8 findings addressed total):
-//!   1. **Daemon-backed handler** via `new_with_shared_workspace` so tool
-//!      calls actually traverse the real `WorkspaceConnectionPool` and
-//!      shared `WatcherPool` — not `new_for_test`'s stdio-only fallback.
+//!   1. **Handler via `new_with_shared_workspace`** so tool calls traverse
+//!      the real workspace connection and shared workspace state —
+//!      not `new_for_test`'s stdio-only fallback.
 //!   2. **Watcher proof-of-life**: write a sentinel file, poll the DB until
 //!      its symbol appears, only then start the workload. If the watcher
 //!      never indexes the sentinel, the test fails fast.
@@ -24,24 +24,22 @@
 //!   4. **Non-identical content** in dry-run rewrites/renames so they don't
 //!      bail in early-return validation paths.
 //!   5. **`tokio::sync::Barrier(8)`** so the 8 tasks release simultaneously
-//!      and actually contend for the gate + pool.
+//!      and actually contend for the gate.
 //!   6. **Explicit `workspace_id` routing** instead of `"primary"`. The
 //!      `"primary"` short-form falls through `handler.primary_database()`
 //!      which still uses the legacy `Arc<Mutex<SymbolDatabase>>`, bypassing
-//!      the very `WorkspaceConnectionPool` surface this test exists to
-//!      cover. Routing by id forces the pooled `get_pooled_database_for_workspace`
-//!      path (see `src/tools/search/text_search.rs:90-96` vs `:140-150`).
+//!      the very connection-pool surface this test exists to cover. Routing
+//!      by id forces the pooled `get_pooled_database_for_workspace` path.
 //!   7. **DB post-condition for the real mutation**: poll for
 //!      `disposable_marker_v2` in the symbol DB after the workload completes.
 //!      `EditFileTool` commits via `EditingTransaction` which does NOT acquire
-//!      the mutation gate — only the watcher's event-processor does (see
-//!      `src/watcher/runtime.rs`). The DB observing the new symbol proves the
-//!      watcher actually picked up the edit AND crossed the gate.
+//!      the mutation gate — only the watcher's event-processor does. The DB
+//!      observing the new symbol proves the watcher actually picked up the
+//!      edit AND crossed the gate.
 //!   8. **`CallToolResult.is_error` check**: a tool returning
-//!      `Ok(CallToolResult::error(...))` (e.g. `manage_workspace index` on a
-//!      lock-order regression) would otherwise count as success. Each task
-//!      now ships its result back and the completion loop rejects error
-//!      payloads explicitly.
+//!      `Ok(CallToolResult::error(...))` would otherwise count as success.
+//!      Each task now ships its result back and the completion loop rejects
+//!      error payloads explicitly.
 //!
 //! Plan reference: `docs/plans/2026-05-16-daemon-split-and-search-reranker-plan.md`
 //! Task A2.3 (escalation-tier owned).
@@ -59,8 +57,6 @@ mod tests {
     use tokio::time::timeout;
 
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::watcher_pool::WatcherPool;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::handler::JulieServerHandler;
     use crate::mcp_compat::CallToolResult;
     use crate::tools::deep_dive::{DeepDiveDepth, DeepDiveTool};
@@ -76,39 +72,30 @@ mod tests {
         ws_root: PathBuf,
         workspace_id: String,
         handler: Arc<JulieServerHandler>,
-        workspace_pool: Arc<WorkspacePool>,
     }
 
-    /// Poll the legacy DB (via the shared workspace handle in the pool) for a
-    /// symbol name until it appears or `timeout_dur` elapses. Used both for
-    /// the watcher proof-of-life precondition AND for the post-workload
-    /// assertion that the real mutation's watcher event got processed
-    /// through the mutation_gate.
-    async fn wait_for_symbol_via_pool(
-        pool: &Arc<WorkspacePool>,
-        workspace_id: &str,
+    /// Poll the handler's primary DB for a symbol name until it appears or
+    /// `timeout_dur` elapses. Used both for the watcher proof-of-life
+    /// precondition AND for the post-workload assertion that the real
+    /// mutation's watcher event got processed through the mutation_gate.
+    async fn wait_for_symbol_via_handler(
+        handler: &Arc<JulieServerHandler>,
         symbol_name: &str,
         timeout_dur: Duration,
     ) -> Result<()> {
         let start = Instant::now();
         loop {
-            let ws = pool
-                .get(workspace_id)
-                .await
-                .ok_or_else(|| anyhow!("workspace `{}` not in pool", workspace_id))?;
-            let found = {
-                let db_handle = ws
-                    .db
-                    .as_ref()
-                    .ok_or_else(|| anyhow!("workspace `{}` has no db", workspace_id))?;
-                let guard = db_handle.lock().unwrap();
-                guard
-                    .find_symbols_by_name(symbol_name)?
-                    .into_iter()
-                    .any(|s| s.name == symbol_name)
-            };
-            if found {
-                return Ok(());
+            if let Ok(db) = handler.primary_database().await {
+                let found = {
+                    let guard = db.lock().unwrap();
+                    guard
+                        .find_symbols_by_name(symbol_name)?
+                        .into_iter()
+                        .any(|s| s.name == symbol_name)
+                };
+                if found {
+                    return Ok(());
+                }
             }
             if start.elapsed() >= timeout_dur {
                 return Err(anyhow!(
@@ -148,30 +135,20 @@ mod tests {
             "pub fn disposable_marker() { let _ = 7; }\n",
         )?;
 
-        // Daemon-backed setup: DaemonDatabase + WorkspacePool + WatcherPool.
-        let indexes_dir = temp_dir.path().join("indexes");
-        std::fs::create_dir_all(&indexes_dir)?;
+        // In-process setup: DaemonDatabase + JulieWorkspace (no pool).
         let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-        let workspace_pool = Arc::new(WorkspacePool::new(
-            indexes_dir,
-            Some(Arc::clone(&daemon_db)),
-        ));
-        let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(60)));
 
         let ws_root_str = ws_root.to_string_lossy().to_string();
         let workspace_id = generate_workspace_id(&ws_root_str)?;
-        let shared_ws = timeout(
-            Duration::from_secs(20),
-            workspace_pool.get_or_init(&workspace_id, ws_root.clone()),
-        )
-        .await
-        .map_err(|_| anyhow!("setup hung in pool.get_or_init (>20s)"))??;
+        let shared_ws = Arc::new(
+            timeout(
+                Duration::from_secs(20),
+                crate::workspace::JulieWorkspace::initialize(ws_root.clone()),
+            )
+            .await
+            .map_err(|_| anyhow!("setup hung in JulieWorkspace::initialize (>20s)"))??
+        );
 
-        // Pass watcher_pool to handler so its session_attachment implicit
-        // attach fires the watcher at construction time. An explicit
-        // post-index attach didn't reliably start a working watcher on
-        // macOS (notify settle latency); the implicit one runs before the
-        // initial index, giving the FSEvents stream time to warm up.
         let handler = Arc::new(
             timeout(
                 Duration::from_secs(20),
@@ -183,8 +160,6 @@ mod tests {
                     None,
                     None,
                     None,
-                    Some(Arc::clone(&watcher_pool)),
-                    Some(Arc::clone(&workspace_pool)),
                 ),
             )
             .await
@@ -217,7 +192,6 @@ mod tests {
             ws_root,
             workspace_id,
             handler,
-            workspace_pool,
         })
     }
 
@@ -378,7 +352,6 @@ mod tests {
         let fixture = setup_concurrent_workspace().await?;
         let ws_root = fixture.ws_root.clone();
         let handler = Arc::clone(&fixture.handler);
-        let workspace_pool = Arc::clone(&fixture.workspace_pool);
         let workspace_id = fixture.workspace_id.clone();
         // Tools route by explicit id, NOT "primary". This exercises the
         // target-workspace branch of every tool. The companion test
@@ -396,9 +369,8 @@ mod tests {
             &sentinel_path,
             "pub fn sentinel_watcher_proof() { let _ = 9; }\n",
         )?;
-        wait_for_symbol_via_pool(
-            &workspace_pool,
-            &workspace_id,
+        wait_for_symbol_via_handler(
+            &handler,
             "sentinel_watcher_proof",
             Duration::from_secs(10),
         )
@@ -674,9 +646,8 @@ mod tests {
         // re-indexing under load would false-pass. Asserting the new symbol
         // landed in the DB proves the watcher event-processor DID process
         // the edit AND crossed the gate.
-        wait_for_symbol_via_pool(
-            &workspace_pool,
-            &workspace_id,
+        wait_for_symbol_via_handler(
+            &handler,
             "disposable_marker_v2",
             Duration::from_secs(10),
         )

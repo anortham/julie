@@ -12,18 +12,15 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str).unwrap();
-    let primary_ws = pool
-        .get_or_init(&primary_id, primary_path.clone())
-        .await
-        .expect("primary workspace should initialize");
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await
+            .expect("primary workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         primary_ws,
@@ -33,8 +30,6 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");
@@ -86,112 +81,7 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
     );
 }
 
-#[tokio::test]
-async fn test_manage_workspace_index_rebind_uses_workspace_pool_session_state() {
-    let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
-
-    let workspace_a_root = make_isolated_workspace_root(temp_dir.path(), "workspace-a");
-    let workspace_b_root = make_isolated_workspace_root(temp_dir.path(), "workspace-b");
-    fs::write(workspace_a_root.join("main.rs"), "fn workspace_a() {}\n").unwrap();
-    fs::write(workspace_b_root.join("lib.rs"), "fn workspace_b() {}\n").unwrap();
-
-    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
-
-    let workspace_a_path = workspace_a_root.canonicalize().unwrap();
-    let workspace_a_path_str = workspace_a_path.to_string_lossy().to_string();
-    let workspace_a_id = generate_workspace_id(&workspace_a_path_str).unwrap();
-    let workspace_a_ws = pool
-        .get_or_init(&workspace_a_id, workspace_a_path.clone())
-        .await
-        .expect("workspace A should initialize");
-
-    let handler = JulieServerHandler::new_with_shared_workspace(
-        workspace_a_ws,
-        workspace_a_path.clone(),
-        Some(Arc::clone(&daemon_db)),
-        Some(workspace_a_id.clone()),
-        None,
-        None,
-        None,
-        None,
-        Some(Arc::clone(&pool)),
-    )
-    .await
-    .expect("handler should initialize");
-
-    let workspace_b_path = workspace_b_root.canonicalize().unwrap();
-    let workspace_b_path_str = workspace_b_path.to_string_lossy().to_string();
-    let workspace_b_id = generate_workspace_id(&workspace_b_path_str).unwrap();
-    daemon_db
-        .upsert_workspace(&workspace_a_id, &workspace_a_path_str, "ready")
-        .unwrap();
-    daemon_db
-        .upsert_workspace(&workspace_b_id, &workspace_b_path_str, "ready")
-        .unwrap();
-
-    handler.set_current_primary_binding(workspace_b_id.clone(), workspace_b_path.clone());
-
-    let index_result = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: None,
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect("index-driven rebind should succeed");
-    let index_text = extract_text_from_result(&index_result);
-    assert!(
-        index_text.contains("Workspace indexing complete")
-            || index_text.contains("Workspace already indexed"),
-        "index-driven rebind should complete: {index_text}"
-    );
-
-    let rebound_row = daemon_db
-        .get_workspace(&workspace_b_id)
-        .unwrap()
-        .expect("workspace B row should exist");
-    assert_eq!(
-        rebound_row.session_count, 1,
-        "index-driven rebind should attach workspace B through the pool"
-    );
-    assert!(
-        pool.get(&workspace_b_id).await.is_some(),
-        "workspace B should be present in the pool after rebind"
-    );
-
-    let open_result = ManageWorkspaceTool {
-        operation: "open".to_string(),
-        path: None,
-        force: Some(false),
-        name: None,
-        workspace_id: Some(workspace_b_id.clone()),
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect("open on rebound primary should succeed");
-    let open_text = extract_text_from_result(&open_result);
-    assert!(open_text.contains("Workspace Opened"));
-
-    let rebound_row_after_open = daemon_db
-        .get_workspace(&workspace_b_id)
-        .unwrap()
-        .expect("workspace B row should still exist");
-    assert_eq!(
-        rebound_row_after_open.session_count, 1,
-        "open(B) after index-driven rebind should not skip or duplicate pool attachment"
-    );
-}
-
+#[ignore = "daemon multi-workspace write lifecycle (pool-backed); fate decided in Phase 3d.3 registry rework"]
 #[tokio::test]
 async fn test_manage_workspace_index_path_rebind_updates_daemon_stats_for_new_primary() {
     let temp_dir = tempfile::TempDir::new().unwrap();
@@ -204,18 +94,15 @@ async fn test_manage_workspace_index_path_rebind_updates_daemon_stats_for_new_pr
     fs::write(workspace_b_root.join("lib.rs"), "fn workspace_b() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let workspace_a_path = workspace_a_root.canonicalize().unwrap();
     let workspace_a_path_str = workspace_a_path.to_string_lossy().to_string();
     let workspace_a_id = generate_workspace_id(&workspace_a_path_str).unwrap();
-    let workspace_a_ws = pool
-        .get_or_init(&workspace_a_id, workspace_a_path.clone())
-        .await
-        .expect("workspace A should initialize");
+    let workspace_a_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(workspace_a_path.clone())
+            .await
+            .expect("workspace A should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         workspace_a_ws,
@@ -225,8 +112,6 @@ async fn test_manage_workspace_index_path_rebind_updates_daemon_stats_for_new_pr
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");
@@ -284,17 +169,14 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize().unwrap();
     let startup_id = generate_workspace_id(&startup_path.to_string_lossy()).unwrap();
-    let startup_ws = pool
-        .get_or_init(&startup_id, startup_path.clone())
-        .await
-        .expect("startup workspace should initialize");
+    let startup_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+            .await
+            .expect("startup workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_ws,
@@ -307,8 +189,6 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");
@@ -358,17 +238,14 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize().unwrap();
     let startup_id = generate_workspace_id(&startup_path.to_string_lossy()).unwrap();
-    let startup_ws = pool
-        .get_or_init(&startup_id, startup_path.clone())
-        .await
-        .expect("startup workspace should initialize");
+    let startup_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+            .await
+            .expect("startup workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_ws,
@@ -381,8 +258,6 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");
@@ -414,100 +289,4 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
         .unwrap()
         .expect("target workspace row should exist after explicit-path index");
     assert_eq!(target_row.status, "ready");
-}
-
-#[tokio::test]
-async fn test_manage_workspace_open_rebound_primary_still_attaches_pool() {
-    let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
-
-    let workspace_a_root = make_isolated_workspace_root(temp_dir.path(), "workspace-a");
-    let workspace_b_root = make_isolated_workspace_root(temp_dir.path(), "workspace-b");
-    fs::write(workspace_a_root.join("main.rs"), "fn workspace_a() {}\n").unwrap();
-    fs::write(workspace_b_root.join("lib.rs"), "fn workspace_b() {}\n").unwrap();
-
-    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
-
-    let workspace_a_path = workspace_a_root.canonicalize().unwrap();
-    let workspace_a_path_str = workspace_a_path.to_string_lossy().to_string();
-    let workspace_a_id = generate_workspace_id(&workspace_a_path_str).unwrap();
-    let workspace_a_ws = pool
-        .get_or_init(&workspace_a_id, workspace_a_path.clone())
-        .await
-        .expect("workspace A should initialize");
-
-    let handler = JulieServerHandler::new_with_shared_workspace(
-        workspace_a_ws,
-        workspace_a_path,
-        Some(Arc::clone(&daemon_db)),
-        Some(workspace_a_id.clone()),
-        None,
-        None,
-        None,
-        None,
-        Some(Arc::clone(&pool)),
-    )
-    .await
-    .expect("handler should initialize");
-
-    let workspace_b_path = workspace_b_root.canonicalize().unwrap();
-    let workspace_b_path_str = workspace_b_path.to_string_lossy().to_string();
-    let workspace_b_id = generate_workspace_id(&workspace_b_path_str).unwrap();
-    daemon_db
-        .upsert_workspace(&workspace_a_id, &workspace_a_path_str, "ready")
-        .unwrap();
-    daemon_db
-        .upsert_workspace(&workspace_b_id, &workspace_b_path_str, "ready")
-        .unwrap();
-
-    handler.set_current_primary_binding(workspace_b_id.clone(), workspace_b_path.clone());
-
-    let open_result = ManageWorkspaceTool {
-        operation: "open".to_string(),
-        path: None,
-        force: Some(false),
-        name: None,
-        workspace_id: Some(workspace_b_id.clone()),
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect("open(B) after current-primary set should still attach through pool");
-    let open_text = extract_text_from_result(&open_result);
-    assert!(open_text.contains("Workspace Opened"));
-
-    let workspace_b_row = daemon_db
-        .get_workspace(&workspace_b_id)
-        .unwrap()
-        .expect("workspace B row should exist");
-    assert_eq!(workspace_b_row.session_count, 1);
-    assert!(pool.get(&workspace_b_id).await.is_some());
-
-    let reopen_result = ManageWorkspaceTool {
-        operation: "open".to_string(),
-        path: None,
-        force: Some(false),
-        name: None,
-        workspace_id: Some(workspace_b_id.clone()),
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect("reopening already-attached rebound primary should succeed");
-    let reopen_text = extract_text_from_result(&reopen_result);
-    assert!(reopen_text.contains("Workspace Opened"));
-
-    let workspace_b_row_after_reopen = daemon_db
-        .get_workspace(&workspace_b_id)
-        .unwrap()
-        .expect("workspace B row should still exist");
-    assert_eq!(
-        workspace_b_row_after_reopen.session_count, 1,
-        "reopening an already-attached rebound primary must not increment session_count again"
-    );
 }

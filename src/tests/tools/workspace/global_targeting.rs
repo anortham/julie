@@ -10,7 +10,6 @@ use rmcp::{
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use crate::paths::DaemonPaths;
 use crate::tests::helpers::mcp::{
@@ -54,8 +53,6 @@ async fn mark_index_ready(handler: &JulieServerHandler) {
 async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieServerHandler, String)
 {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = make_isolated_workspace_root(temp_dir.path(), "primary");
     let target_root = make_isolated_workspace_root(temp_dir.path(), "target");
@@ -67,18 +64,15 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str).unwrap();
-    let primary_ws = pool
-        .get_or_init(&primary_id, primary_path.clone())
-        .await
-        .expect("primary workspace should initialize");
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await
+            .expect("primary workspace should initialize"),
+    );
 
     let seed_handler = JulieServerHandler::new_with_shared_workspace(
         Arc::clone(&primary_ws),
@@ -88,8 +82,6 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("seed handler should initialize");
@@ -134,8 +126,6 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("fresh handler should initialize");

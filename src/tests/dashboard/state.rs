@@ -7,7 +7,6 @@ use crate::daemon::database::DaemonDatabase;
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::lifecycle::{LifecyclePhase, ShutdownCause};
 use crate::daemon::session::{SessionLifecyclePhase, SessionTracker};
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::dashboard::state::{DashboardDaemonPhase, DashboardEvent, DashboardState};
 use crate::database::types::FileInfo;
 use crate::extractors::{Symbol, SymbolKind};
@@ -48,7 +47,6 @@ async fn test_dashboard_health_snapshot_reports_ready_state() {
         Arc::clone(&restart_pending),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
-        None,
         None,
         50,
     );
@@ -101,7 +99,6 @@ async fn test_dashboard_health_snapshot_reports_restart_pending_and_embedding_de
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(service),
-        None,
         50,
     );
 
@@ -131,7 +128,6 @@ fn test_dashboard_state_creation() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // no embedding service
-        None,
         50,
     );
 
@@ -139,7 +135,6 @@ fn test_dashboard_state_creation() {
     assert!(!state.is_restart_pending());
     assert!(state.error_entries().is_empty());
     assert!(!state.embedding_available());
-    assert!(state.workspace_pool().is_none());
 }
 
 /// The whole point of Task 5: DashboardState should reflect the
@@ -162,7 +157,6 @@ fn test_dashboard_state_embedding_available_reflects_service_live() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(Arc::clone(&service)),
-        None,
         50,
     );
 
@@ -215,7 +209,6 @@ fn test_dashboard_state_embedding_initializing_reflects_service_lifecycle() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,
-        None,
         50,
     );
     assert!(
@@ -232,7 +225,6 @@ fn test_dashboard_state_embedding_initializing_reflects_service_lifecycle() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(Arc::clone(&service)),
-        None,
         50,
     );
     assert!(
@@ -276,7 +268,6 @@ fn test_dashboard_state_embedding_unavailable_with_runtime_status() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(Arc::clone(&service)),
-        None,
         50,
     );
 
@@ -314,7 +305,6 @@ async fn test_dashboard_health_snapshot_surfaces_embedding_runtime_details() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(Arc::clone(&service)),
-        None,
         50,
     );
 
@@ -351,7 +341,6 @@ async fn test_dashboard_broadcast_send_receive() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // embedding service not needed for broadcast test
-        None,
         50,
     );
 
@@ -407,7 +396,6 @@ async fn test_dashboard_health_snapshot_reports_daemon_and_session_phases() {
         Arc::clone(&restart_pending),
         Arc::clone(&daemon_phase),
         Instant::now(),
-        None,
         None,
         50,
     );
@@ -471,6 +459,7 @@ fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     }
 }
 
+#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
 async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
     let temp_dir = tempfile::tempdir().unwrap();
@@ -489,14 +478,11 @@ async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
         .update_workspace_stats(&workspace_id, 2, 1, None, None, None)
         .unwrap();
 
-    let pool = Arc::new(WorkspacePool::new(
-        temp_dir.path().join("indexes"),
-        Some(Arc::clone(&daemon_db)),
-    ));
-    let workspace = pool
-        .get_or_init(&workspace_id, workspace_root.clone())
-        .await
-        .expect("workspace init");
+    let workspace = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(workspace_root.clone())
+            .await
+            .expect("workspace init"),
+    );
 
     {
         let mut db = workspace
@@ -545,7 +531,6 @@ async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,
-        Some(pool),
         50,
     );
 

@@ -383,17 +383,21 @@ pub(crate) async fn plan_primary_workspace_repair(
 
     let current_primary_root = route.workspace_root.clone();
     let db_path = route.db_path.clone();
-    let db_arc = route
-        .database_for_read(handler)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("No database connection - indexing needed"))?;
-
-    if !db_path.exists() {
-        debug!("No database connection - indexing needed");
-        return Ok(Some(PrimaryWorkspaceRepairPlan {
-            reasons: vec![IndexingRepairReason::EmptyDatabase],
-        }));
-    }
+    let db_arc = match route.database_for_read(handler).await? {
+        Some(db) => db,
+        None => {
+            // Database file does not exist yet — workspace has never been indexed.
+            // Treat as empty: schedule a full initial index.
+            debug!(
+                "No database at {} for workspace '{}' — initial indexing needed",
+                db_path.display(),
+                route.workspace_id
+            );
+            return Ok(Some(PrimaryWorkspaceRepairPlan {
+                reasons: vec![IndexingRepairReason::EmptyDatabase],
+            }));
+        }
+    };
 
     let (has_symbols_result, semantic_version_matches, indexed_files_raw, stored_repairs) = {
         // Keep the SQLite mutex scoped to database reads. Filesystem scans below

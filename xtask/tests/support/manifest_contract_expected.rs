@@ -164,17 +164,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "lifecycle",
-            ExpectedBucket {
-                expected_seconds: 30,
-                timeout_seconds: 90,
-                commands: &[
-                    "cargo nextest run --lib tests::daemon::lifecycle -- --skip search_quality",
-                    "cargo nextest run --no-tests pass --lib tests::integration::daemon_lifecycle -- --skip search_quality",
-                ],
-            },
-        ),
-        (
             "projection",
             ExpectedBucket {
                 expected_seconds: 45,
@@ -190,18 +179,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 180,
                 timeout_seconds: 300,
                 commands: &["cargo nextest run --lib search_quality"],
-            },
-        ),
-        (
-            "transport",
-            ExpectedBucket {
-                expected_seconds: 35,
-                timeout_seconds: 90,
-                commands: &[
-                    "cargo nextest run --lib tests::daemon::transport -- --skip search_quality",
-                    "cargo nextest run --lib tests::daemon::http_transport -- --skip search_quality",
-                    "cargo nextest run --lib tests::daemon::mcp_session -- --skip search_quality",
-                ],
             },
         ),
         (
@@ -537,12 +514,9 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "workspace-runtime",
             ExpectedBucket {
-                expected_seconds: 45,
-                timeout_seconds: 120,
+                expected_seconds: 20,
+                timeout_seconds: 60,
                 commands: &[
-                    "cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality",
-                    "cargo nextest run --lib tests::daemon::watcher_pool -- --skip search_quality",
-                    "cargo nextest run --lib tests::daemon::workspace_cleanup -- --skip search_quality",
                     "cargo nextest run -p julie-runtime --lib tests::workspace::registry",
                 ],
             },
@@ -683,17 +657,6 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
             },
         ),
         (
-            "lifecycle",
-            ExpectedBucketMetadata {
-                scope_label: "system",
-                owner: "lead",
-                expensive: false,
-                notes: Some(
-                    "daemon lifecycle and restart handoff (backed by daemon::lifecycle + integration::daemon_lifecycle)",
-                ),
-            },
-        ),
-        (
             "projection",
             ExpectedBucketMetadata {
                 scope_label: "system",
@@ -709,17 +672,6 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: true,
                 notes: Some("heavy fixture-backed relevance suite"),
-            },
-        ),
-        (
-            "transport",
-            ExpectedBucketMetadata {
-                scope_label: "system",
-                owner: "lead",
-                expensive: false,
-                notes: Some(
-                    "HTTP transport coverage (backed by daemon transport tests)",
-                ),
             },
         ),
         (
@@ -982,7 +934,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some(
-                    "workspace pool and watcher runtime ownership (backed by daemon workspace/watcher tests)",
+                    "workspace registry (pool/watcher + workspace_cleanup deleted in 3d.2b; cleanup -> 3d.3)",
                 ),
             },
         ),

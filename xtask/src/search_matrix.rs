@@ -2,15 +2,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Instant;
-
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use julie::daemon::database::{DaemonDatabase, WorkspaceRow};
-use julie::daemon::workspace_pool::WorkspacePool;
-use julie::handler::JulieServerHandler;
 use julie::paths::DaemonPaths;
-use julie::tools::search::FastSearchTool;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{Ablation, SearchMatrixCommand};
@@ -210,265 +204,27 @@ pub fn run_search_matrix_baseline_with_home(
     Ok(report)
 }
 
+/// Pool-backed search matrix (Phase 3d.2b-ii: WorkspacePool deleted).
+/// Returns error — restore in Phase 3d.3 when dashboard gets standalone registry.
 async fn run_baseline_async(
-    daemon_paths: DaemonPaths,
-    cases: &SearchMatrixCaseSet,
-    corpus: &SearchMatrixCorpus,
-    profile: &str,
-    workspaces: &[WorkspaceRow],
-    ablation: &Ablation,
+    _daemon_paths: DaemonPaths,
+    _cases: &SearchMatrixCaseSet,
+    _corpus: &SearchMatrixCorpus,
+    _profile: &str,
+    _workspaces: &[WorkspaceRow],
+    _ablation: &Ablation,
 ) -> Result<SearchMatrixBaselineReport> {
-    let profile_entry = corpus
-        .profiles
-        .get(profile)
-        .ok_or_else(|| anyhow!("unknown search-matrix profile `{profile}`"))?;
-
-    // Set ablation env vars BEFORE constructing the workspace pool.
-    // CodeTokenizer reads these at construction via `new()`, which is called
-    // during workspace open. Setting them after pool creation would be too late.
-    // The guard restores the prior env state on drop (including on `?` propagation).
-    let env_guard = ablation.apply_env();
-
-    let pool = Arc::new(WorkspacePool::new(daemon_paths.indexes_dir(), None));
-
-    let mut executions = Vec::new();
-    let mut skipped_repos = Vec::new();
-    // (workspace_id, repo_root) of every workspace that received an ablation
-    // reindex.  Used for eager baseline restoration at the end of the run so
-    // the maintainer's `~/.julie` indexes are returned to a baseline-tokenizer
-    // projection rather than being left in an ablated state that the next
-    // daemon session would have to silently reindex.
-    let mut touched_for_restore: Vec<(String, std::path::PathBuf)> = Vec::new();
-
-    for repo_name in &profile_entry.repos {
-        let Some(repo_meta) = corpus.repos.iter().find(|repo| &repo.name == repo_name) else {
-            skipped_repos.push(SearchMatrixSkippedRepo {
-                repo_name: repo_name.clone(),
-                reason: "missing repo metadata".to_string(),
-            });
-            continue;
-        };
-
-        if !repo_meta.profile_tags.iter().any(|tag| tag == profile) {
-            skipped_repos.push(SearchMatrixSkippedRepo {
-                repo_name: repo_name.clone(),
-                reason: format!("repo metadata does not include profile `{profile}`"),
-            });
-            continue;
-        }
-
-        let Some(repo_root) = resolve_repo_root(corpus, repo_name) else {
-            skipped_repos.push(SearchMatrixSkippedRepo {
-                repo_name: repo_name.clone(),
-                reason: "repo not found under configured search roots".to_string(),
-            });
-            continue;
-        };
-
-        let Some(workspace_row) = find_workspace_row(workspaces, &repo_root) else {
-            skipped_repos.push(SearchMatrixSkippedRepo {
-                repo_name: repo_name.clone(),
-                reason: "no matching daemon workspace for resolved repo root".to_string(),
-            });
-            continue;
-        };
-
-        if !workspace_row.status.eq_ignore_ascii_case("ready") {
-            skipped_repos.push(SearchMatrixSkippedRepo {
-                repo_name: repo_name.clone(),
-                reason: format!("workspace status is {}", workspace_row.status),
-            });
-            continue;
-        }
-
-        let workspace = pool
-            .get_or_init(&workspace_row.workspace_id, repo_root.clone())
-            .await?;
-        let handler = JulieServerHandler::new_with_shared_workspace(
-            workspace,
-            repo_root.clone(),
-            None,
-            Some(workspace_row.workspace_id.clone()),
-            None,
-            None,
-            None,
-            None,
-            Some(Arc::clone(&pool)),
-        )
-        .await?;
-
-        // When running an ablation variant, force a full reindex so the Tantivy
-        // index reflects the ablated tokenizer. The `TokenizerCompatibilitySignature`
-        // includes both ablation booleans (T3), so a changed flag *should* trigger
-        // an automatic rebuild on workspace open — but we force it explicitly here
-        // to guarantee correctness regardless of any cached state.
-        if !ablation.is_baseline() {
-            let reindex_tool = julie::tools::workspace::ManageWorkspaceTool {
-                operation: "index".to_string(),
-                path: Some(repo_root.to_string_lossy().to_string()),
-                force: Some(true),
-                name: None,
-                workspace_id: Some(workspace_row.workspace_id.clone()),
-                detailed: None,
-            };
-            reindex_tool.call_tool_with_options(&handler, true).await?;
-            touched_for_restore.push((workspace_row.workspace_id.clone(), repo_root.clone()));
-        }
-
-        for case in eligible_cases_for_repo(cases, profile, repo_meta) {
-            let started_at = Instant::now();
-            let search_limit = 10usize;
-            // Note: case.search_target (YAML field) is preserved for report
-            // grouping/display but is NOT passed to FastSearchTool — T8 removed
-            // search_target from the public surface; all calls go through the
-            // unified path.
-            let execution = FastSearchTool {
-                query: case.query.clone(),
-                language: case.language.clone(),
-                file_pattern: case.file_pattern.clone(),
-                limit: search_limit as u32,
-                context_lines: None,
-                exclude_tests: case.exclude_tests,
-                backend: None,
-                workspace: Some(workspace_row.workspace_id.clone()),
-                return_format: "locations".to_string(),
-            }
-            .execute_with_trace(&handler)
-            .await?;
-            let execution = execution
-                .execution
-                .ok_or_else(|| anyhow!("search-matrix baseline received no execution trace"))?;
-            let hit_count_is_lower_bound =
-                matches!(case.search_target.as_str(), "content" | "files")
-                    && execution.hits.len() >= search_limit;
-            let hit_count = if matches!(case.search_target.as_str(), "content" | "files") {
-                execution.hits.len()
-            } else {
-                execution.total_results
-            };
-
-            executions.push(SearchMatrixBaselineExecution {
-                repo_name: repo_name.clone(),
-                workspace_id: workspace_row.workspace_id.clone(),
-                case_id: case.case_id.clone(),
-                family: case.family.clone(),
-                search_target: case.search_target.clone(),
-                hit_count,
-                hit_count_is_lower_bound,
-                relaxed: execution.relaxed,
-                zero_hit_reason: execution.trace.zero_hit_reason.as_ref().map(enum_label),
-                file_pattern_diagnostic: execution
-                    .trace
-                    .file_pattern_diagnostic
-                    .as_ref()
-                    .map(enum_label),
-                hint_kind: execution.trace.hint_kind.as_ref().map(enum_label),
-                latency_ms: started_at.elapsed().as_millis(),
-                top_hits: execution
-                    .hits
-                    .iter()
-                    .take(3)
-                    .map(|hit| SearchMatrixTopHit {
-                        name: hit.name.clone(),
-                        file: hit.file.clone(),
-                        line: hit.line,
-                        kind: hit.kind.clone(),
-                        score: hit.score,
-                    })
-                    .collect(),
-                ablation_label: ablation.label().to_string(),
-            });
-        }
-    }
-
-    // Eager baseline restoration.  After a non-baseline ablation run, every
-    // touched workspace has its on-disk Tantivy index built with the ablated
-    // tokenizer.  Without restoration, the next daemon session that opens any
-    // of those workspaces would detect a compat-marker mismatch and silently
-    // reindex from scratch — an expensive surprise.  We pay that cost here in
-    // the matrix command instead, so the daemon-side experience is uniform.
-    //
-    // We drop the env guard first so the freshly constructed CodeTokenizer
-    // inside the restore pool reads BASELINE flags.  We also drop the
-    // original pool so any cached workspaces from the ablation phase are
-    // released — a fresh pool with fresh handlers ensures the SearchIndex is
-    // re-opened with the baseline tokenizer.
-    //
-    // Best-effort: restore failures log to stderr but do not fail the report.
-    // The compat-marker auto-recovery on next daemon open is the safety net
-    // for the rare failure-path scenario.
-    if !ablation.is_baseline() && !touched_for_restore.is_empty() {
-        drop(env_guard);
-        drop(pool);
-
-        let restore_pool = Arc::new(WorkspacePool::new(daemon_paths.indexes_dir(), None));
-        for (workspace_id, repo_root) in &touched_for_restore {
-            match restore_workspace_to_baseline(
-                &restore_pool,
-                &daemon_paths,
-                workspace_id,
-                repo_root,
-            )
-            .await
-            {
-                Ok(()) => {}
-                Err(err) => {
-                    eprintln!(
-                        "warning: ablation eager restore failed for workspace {workspace_id} \
-                         at {}: {err}.  Next daemon open will auto-recover via compat-marker.",
-                        repo_root.display()
-                    );
-                }
-            }
-        }
-    } else {
-        drop(env_guard);
-    }
-
-    let summary_flags = compute_summary_flags(&executions, cases);
-    Ok(SearchMatrixBaselineReport {
-        profile: profile.to_string(),
-        executions,
-        skipped_repos,
-        summary_flags,
-    })
-}
-
-/// Force-reindex a single workspace with the current (baseline) tokenizer env.
-/// Used by `run_baseline_async` to undo an ablation reindex.
-async fn restore_workspace_to_baseline(
-    pool: &Arc<WorkspacePool>,
-    _daemon_paths: &DaemonPaths,
-    workspace_id: &str,
-    repo_root: &std::path::Path,
-) -> Result<()> {
-    let workspace = pool
-        .get_or_init(workspace_id, repo_root.to_path_buf())
-        .await?;
-    let handler = JulieServerHandler::new_with_shared_workspace(
-        workspace,
-        repo_root.to_path_buf(),
-        None,
-        Some(workspace_id.to_string()),
-        None,
-        None,
-        None,
-        None,
-        Some(Arc::clone(pool)),
+    anyhow::bail!(
+        "search matrix requires WorkspacePool which was removed in Phase 3d.2b; \
+         restore in Phase 3d.3"
     )
-    .await?;
-    let restore_tool = julie::tools::workspace::ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(repo_root.to_string_lossy().to_string()),
-        force: Some(true),
-        name: None,
-        workspace_id: Some(workspace_id.to_string()),
-        detailed: None,
-    };
-    restore_tool.call_tool_with_options(&handler, true).await?;
-    Ok(())
 }
 
+// Baseline-runner helpers below are dormant: `run_baseline_async` is stubbed
+// (WorkspacePool removed in Phase 3d.2b) and is rewired against the registry in
+// Phase 3d.3, which revives these. Kept, not deleted — most are
+// registry-independent corpus/case logic that 3d.3 reuses verbatim.
+#[allow(dead_code)]
 fn eligible_cases_for_repo<'a>(
     cases: &'a SearchMatrixCaseSet,
     profile: &str,
@@ -491,6 +247,7 @@ fn eligible_cases_for_repo<'a>(
         .collect()
 }
 
+#[allow(dead_code)]
 fn resolve_repo_root(corpus: &SearchMatrixCorpus, repo_name: &str) -> Option<PathBuf> {
     corpus
         .roots
@@ -500,6 +257,7 @@ fn resolve_repo_root(corpus: &SearchMatrixCorpus, repo_name: &str) -> Option<Pat
         .find(|candidate| candidate.is_dir())
 }
 
+#[allow(dead_code)]
 fn expand_search_root(root: &str) -> PathBuf {
     if root == "~" {
         return std::env::var_os("HOME")
@@ -516,6 +274,7 @@ fn expand_search_root(root: &str) -> PathBuf {
     PathBuf::from(root)
 }
 
+#[allow(dead_code)]
 fn find_workspace_row<'a>(
     workspaces: &'a [WorkspaceRow],
     repo_root: &Path,
@@ -526,10 +285,12 @@ fn find_workspace_row<'a>(
         .find(|workspace| normalize_repo_root(Path::new(&workspace.path)) == target_root)
 }
 
+#[allow(dead_code)]
 fn normalize_repo_root(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+#[allow(dead_code)]
 fn compute_summary_flags(
     executions: &[SearchMatrixBaselineExecution],
     cases: &SearchMatrixCaseSet,
@@ -586,12 +347,14 @@ fn compute_summary_flags(
     flags
 }
 
+#[allow(dead_code)]
 fn push_flag(flags: &mut Vec<String>, flag: &str) {
     if !flags.iter().any(|existing| existing == flag) {
         flags.push(flag.to_string());
     }
 }
 
+#[allow(dead_code)]
 fn enum_label<T: Serialize>(value: &T) -> String {
     serde_json::to_value(value)
         .ok()

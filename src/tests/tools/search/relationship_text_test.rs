@@ -462,8 +462,6 @@ mod relationship_text_test {
             None,
             None,
             None,
-            None,
-            None,
         )
         .await
         .unwrap();

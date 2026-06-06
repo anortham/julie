@@ -7,8 +7,6 @@ use super::*;
 async fn build_primary_bound_handler_for_swap_guard_test()
 -> (tempfile::TempDir, JulieServerHandler, String, String) {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
     let target_root = temp_dir.path().join("target");
@@ -18,18 +16,15 @@ async fn build_primary_bound_handler_for_swap_guard_test()
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str).unwrap();
-    let primary_ws = pool
-        .get_or_init(&primary_id, primary_path.clone())
-        .await
-        .expect("primary workspace should initialize");
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await
+            .expect("primary workspace should initialize"),
+    );
     daemon_db
         .upsert_workspace(&primary_id, &primary_path_str, "ready")
         .unwrap();
@@ -49,8 +44,6 @@ async fn build_primary_bound_handler_for_swap_guard_test()
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");

@@ -11,7 +11,6 @@ use tempfile::TempDir;
 async fn test_fast_search_line_mode_reports_index_requirement_for_reference_without_tantivy()
 -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::workspace::registry::generate_workspace_id;
     use std::sync::Arc;
 
@@ -37,17 +36,14 @@ async fn test_fast_search_line_mode_reports_index_requirement_for_reference_with
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await?;
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_path.clone())
+            .await?,
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
@@ -57,8 +53,6 @@ async fn test_fast_search_line_mode_reports_index_requirement_for_reference_with
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 
@@ -115,7 +109,6 @@ async fn test_fast_search_line_mode_reports_index_requirement_for_reference_with
 async fn test_fast_search_definitions_reports_index_requirement_for_reference_without_tantivy()
 -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::workspace::registry::generate_workspace_id;
     use std::sync::Arc;
 
@@ -137,17 +130,14 @@ async fn test_fast_search_definitions_reports_index_requirement_for_reference_wi
     )?;
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await?;
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_path.clone())
+            .await?,
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
@@ -157,8 +147,6 @@ async fn test_fast_search_definitions_reports_index_requirement_for_reference_wi
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await?;
 

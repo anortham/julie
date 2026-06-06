@@ -4,6 +4,10 @@
 //! import sites compile unchanged.
 pub use julie_core::indexing_state::{
     IndexedFileDisposition, IndexingBatchState, IndexingOperation, IndexingRepairReason,
-    IndexingRuntimeSnapshot, IndexingRuntimeState, IndexingStage, SharedIndexingRuntime,
+    IndexingRuntimeSnapshot, IndexingStage, SharedIndexingRuntime,
 };
+// Test-only since Phase 3d.2b removed the WorkspacePool consumer; re-exported so
+// the `…::indexing::state::IndexingRuntimeState` test paths still resolve.
+#[cfg(test)]
+pub use julie_core::indexing_state::IndexingRuntimeState;
 

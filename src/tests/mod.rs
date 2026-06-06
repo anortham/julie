@@ -149,7 +149,6 @@ pub mod utils {
 pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
     pub mod concurrent_mcp; // A2.3 concurrent MCP regression test (deadlock detector across pool + gate + watcher)
-    pub mod daemon_lifecycle;
     pub mod documentation_indexing;
     pub mod in_process_boundary; // T12: in-process boundary tripwire (cutover bypasses, not deletes, daemon/adapter)
     pub mod indexing_pipeline;

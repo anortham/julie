@@ -79,8 +79,6 @@ async fn test_handler_and_route(
         None,
         None,
         None,
-        None,
-        None,
     )
     .await?;
 

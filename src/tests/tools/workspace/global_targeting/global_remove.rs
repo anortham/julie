@@ -29,10 +29,6 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
@@ -41,10 +37,11 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
         .upsert_workspace(&primary_id, &primary_path_str, "ready")
         .unwrap();
 
-    let primary_ws = pool
-        .get_or_init(&primary_id, primary_path.clone())
-        .await
-        .expect("primary workspace should initialize");
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
+            .await
+            .expect("primary workspace should initialize"),
+    );
     let handler = JulieServerHandler::new_with_shared_workspace(
         Arc::clone(&primary_ws),
         primary_path,
@@ -53,8 +50,6 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .expect("handler should initialize");

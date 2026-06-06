@@ -7,10 +7,10 @@ nano = ["core-database", "core-fast"]
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
 dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-dep-integration"]
 # System coverage kept separate from fast local buckets.
-system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
+system = ["projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -437,13 +437,10 @@ commands = ["cargo nextest run -p julie-runtime"]
 
 [buckets.daemon]
 # Daemon-mode tests: handler construction, HTTP session lifecycle,
-# MCP roots flow, and SessionWorkspaceState invariants. Real transport/session
-# coverage needs to run in CI to defend the rebind machinery.
+# MCP roots flow, and SessionWorkspaceState invariants.
 #
-# The 2026-05 daemon split (A1.2-A1.8) added lock_test, discovery_test,
-# token_file_test, app_test, and shutdown_drain_test. The end-to-end app
-# serve/shutdown and discovery-publishing tests run ~10s each, so the bucket
-# now lives in the 60-120s range rather than the original ~12s.
+# The 2026-05 daemon split (A1.2-A1.8) added lock_test and discovery_test.
+# app_test, token_file_test, and shutdown_drain_test deleted in Phase 3d.2b.
 expected_seconds = 60
 timeout_seconds = 180
 scope_label = "daemon"
@@ -481,39 +478,15 @@ scope_label = "system"
 notes = "projection repair gate (backed by integration::projection_repair)"
 commands = ["cargo nextest run --lib tests::integration::projection_repair -- --skip search_quality"]
 
-[buckets.transport]
-# Transport specialist gate for HTTP transport slices (adapter deleted in 3d.1).
-expected_seconds = 35
-timeout_seconds = 90
-scope_label = "system"
-notes = "HTTP transport coverage (backed by daemon transport tests)"
-commands = [
-  "cargo nextest run --lib tests::daemon::transport -- --skip search_quality",
-  "cargo nextest run --lib tests::daemon::http_transport -- --skip search_quality",
-  "cargo nextest run --lib tests::daemon::mcp_session -- --skip search_quality",
-]
-
-[buckets.lifecycle]
-# Lifecycle specialist gate for daemon startup, drain, and restart handoff.
-expected_seconds = 30
-timeout_seconds = 90
-scope_label = "system"
-notes = "daemon lifecycle and restart handoff (backed by daemon::lifecycle + integration::daemon_lifecycle)"
-commands = [
-  "cargo nextest run --lib tests::daemon::lifecycle -- --skip search_quality",
-  "cargo nextest run --no-tests pass --lib tests::integration::daemon_lifecycle -- --skip search_quality",
-]
-
 [buckets.workspace-runtime]
-# Workspace runtime specialist gate for pool ownership and watcher cleanup slices.
-expected_seconds = 45
-timeout_seconds = 120
+# Workspace registry specialist gate. (Pool/watcher + the daemon-registry
+# workspace_cleanup tests were deleted in 3d.2b; cleanup coverage is restored
+# in 3d.3 alongside the daemon.db -> registry.db rework.)
+expected_seconds = 20
+timeout_seconds = 60
 scope_label = "system"
-notes = "workspace pool and watcher runtime ownership (backed by daemon workspace/watcher tests)"
+notes = "workspace registry (pool/watcher + workspace_cleanup deleted in 3d.2b; cleanup -> 3d.3)"
 commands = [
-  "cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality",
-  "cargo nextest run --lib tests::daemon::watcher_pool -- --skip search_quality",
-  "cargo nextest run --lib tests::daemon::workspace_cleanup -- --skip search_quality",
   "cargo nextest run -p julie-runtime --lib tests::workspace::registry",
 ]
 

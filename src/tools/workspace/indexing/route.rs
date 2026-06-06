@@ -9,7 +9,6 @@ use crate::database::SymbolDatabase;
 use crate::handler::JulieServerHandler;
 use crate::search::{SearchIndex, SearchProjection};
 use crate::tools::workspace::indexing::state::SharedIndexingRuntime;
-use crate::workspace::JulieWorkspace;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IndexRouteRepairReason {
@@ -71,39 +70,30 @@ impl IndexRoute {
         workspace_root: PathBuf,
         is_primary: bool,
     ) -> std::result::Result<Self, IndexRouteError> {
-        let (db_path, tantivy_path) = if let Some(pool) = handler.workspace_pool.as_ref() {
-            let workspace_index_dir = pool.indexes_dir().join(&workspace_id);
-            (
-                workspace_index_dir.join("db").join("symbols.db"),
-                workspace_index_dir.join("tantivy"),
-            )
-        } else {
-            let db_path = handler
-                .workspace_db_file_path_for(&workspace_id)
-                .await
-                .map_err(|err| {
-                    IndexRouteError::new(
-                        IndexRouteRepairReason::StorageAnchorUnavailable,
-                        format!(
-                            "failed to resolve database path for workspace '{}': {err}",
-                            workspace_id
-                        ),
-                    )
-                })?;
-            let tantivy_path = handler
-                .workspace_tantivy_dir_for(&workspace_id)
-                .await
-                .map_err(|err| {
-                    IndexRouteError::new(
-                        IndexRouteRepairReason::StorageAnchorUnavailable,
-                        format!(
-                            "failed to resolve Tantivy path for workspace '{}': {err}",
-                            workspace_id
-                        ),
-                    )
-                })?;
-            (db_path, tantivy_path)
-        };
+        let db_path = handler
+            .workspace_db_file_path_for(&workspace_id)
+            .await
+            .map_err(|err| {
+                IndexRouteError::new(
+                    IndexRouteRepairReason::StorageAnchorUnavailable,
+                    format!(
+                        "failed to resolve database path for workspace '{}': {err}",
+                        workspace_id
+                    ),
+                )
+            })?;
+        let tantivy_path = handler
+            .workspace_tantivy_dir_for(&workspace_id)
+            .await
+            .map_err(|err| {
+                IndexRouteError::new(
+                    IndexRouteRepairReason::StorageAnchorUnavailable,
+                    format!(
+                        "failed to resolve Tantivy path for workspace '{}': {err}",
+                        workspace_id
+                    ),
+                )
+            })?;
 
         Ok(Self {
             workspace_id,
@@ -115,24 +105,6 @@ impl IndexRoute {
             search_index: None,
             indexing_runtime: None,
         })
-    }
-
-    fn workspace_backed_route(
-        workspace_id: String,
-        workspace_root: PathBuf,
-        is_primary: bool,
-        workspace: &Arc<JulieWorkspace>,
-    ) -> Self {
-        Self {
-            db_path: workspace.workspace_db_path(&workspace_id),
-            tantivy_path: workspace.workspace_tantivy_path(&workspace_id),
-            workspace_id,
-            workspace_root,
-            is_primary,
-            database: workspace.db.as_ref().cloned(),
-            search_index: workspace.search_index.as_ref().cloned(),
-            indexing_runtime: Some(Arc::clone(&workspace.indexing_runtime)),
-        }
     }
 
     async fn open_database_from_path(
@@ -295,17 +267,6 @@ impl IndexRoute {
 
         if handler.current_workspace_id().as_deref() == Some(workspace_id.as_str()) {
             return Self::for_current_primary(handler).await;
-        }
-
-        if let Some(pool) = handler.workspace_pool.as_ref() {
-            if let Some(workspace) = pool.get(&workspace_id).await {
-                return Ok(Self::workspace_backed_route(
-                    workspace_id,
-                    workspace_root,
-                    false,
-                    &workspace,
-                ));
-            }
         }
 
         Self::path_backed_route(handler, workspace_id, workspace_root, false).await

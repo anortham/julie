@@ -73,33 +73,6 @@ async fn load_report(
     workspace_id: &str,
     fresh: bool,
 ) -> Result<EarlyWarningReport, StatusCode> {
-    if let Some(pool) = state.dashboard.workspace_pool()
-        && let Some(workspace) = pool.get(workspace_id).await
-        && let Some(db) = workspace.db.as_ref()
-    {
-        let db = std::sync::Arc::clone(db);
-        let workspace_id_for_task = workspace_id.to_string();
-        let configs = LanguageConfigs::load_embedded();
-        let options = report_options(workspace_id, fresh);
-        return tokio::task::spawn_blocking(move || {
-            let db = db.lock().map_err(|error| {
-                tracing::error!("Early warning report database lock poisoned: {error}");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-            generate_early_warning_report(&db, &configs, options).map_err(|error| {
-                tracing::error!(
-                    "Early warning report generation failed for {workspace_id_for_task}: {error:#}"
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })
-        })
-        .await
-        .map_err(|error| {
-            tracing::error!("Early warning report task failed for {workspace_id}: {error:#}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    }
-
     let db = open_workspace_db(state, workspace_id)?;
     let configs = LanguageConfigs::load_embedded();
     let options = report_options(workspace_id, fresh);

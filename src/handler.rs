@@ -88,31 +88,18 @@ impl PrimarySwapRollback {
     }
 
     async fn restore(self, handler: &JulieServerHandler) -> Result<()> {
-        let mut restored_workspace = match (
-            self.loaded_workspace_id.as_deref(),
-            self.loaded_workspace_root.clone(),
-        ) {
-            (Some(workspace_id), Some(workspace_root))
-                if handler.workspace_pool.is_some() && handler.daemon_db.is_some() =>
-            {
-                Some(
-                    handler
-                        .acquire_pooled_workspace_for_rebind(workspace_id, workspace_root)
-                        .await?,
-                )
-            }
-            (_, Some(workspace_root)) => JulieWorkspace::detect_and_load(workspace_root)
+        let mut restored_workspace = match self.loaded_workspace_root.clone() {
+            Some(workspace_root) => JulieWorkspace::detect_and_load(workspace_root)
                 .await?
                 .or(self.workspace),
-            (_, None) => self.workspace,
+            None => self.workspace,
         };
 
         // Gate the watcher on `!is_in_process_follower()`, NOT `is_leader()`:
         // stdio/daemon handlers use `LeadershipState::none()` (is_leader()==false)
         // but ARE the sole writer and must restore their watcher. Only an
         // in-process FOLLOWER must skip it (the leader owns writes).
-        if handler.workspace_pool.is_none()
-            && handler.daemon_db.is_none()
+        if handler.daemon_db.is_none()
             && !handler.is_in_process_follower()
         {
             if let Some(workspace) = restored_workspace.as_mut() {
@@ -138,6 +125,10 @@ impl PrimarySwapRollback {
     }
 }
 
+// Production callers were removed with the WorkspacePool metrics fast-path in
+// Phase 3d.2b (the in-process metrics writer resolves the DB via `ws.db`
+// directly). Retained as test-only path-layout coverage.
+#[cfg(test)]
 pub(crate) fn metrics_db_path_for_workspace(
     index_root_override: Option<&std::path::Path>,
     current_workspace_root: &std::path::Path,
@@ -258,6 +249,11 @@ pub struct JulieServerHandler {
     /// Single-flight gate for deferred auto-index repair so primary requests can
     /// wait behind an already-started background repair instead of racing it.
     deferred_auto_index_gate: Arc<tokio::sync::Mutex<()>>,
+    /// Serializes concurrent roots resolution calls so only one task sends a
+    /// ListRoots round-trip to the client at a time. The second waiter re-checks
+    /// the binding state after acquiring the gate and short-circuits when the
+    /// first caller already bound the workspace.
+    roots_resolution_gate: Arc<tokio::sync::Mutex<()>>,
     /// In-flight claim for the F1 background repair spawn (codex pre-merge F-C).
     /// The leader's `call_tool` envelope spawns a non-cancellable repair task
     /// when `deferred_auto_index_pending` is set; without a claim, every
@@ -272,9 +268,6 @@ pub struct JulieServerHandler {
     /// Optional daemon session lifecycle handle. Present when this handler is
     /// serving an IPC session through the daemon.
     session_lifecycle: Option<SessionLifecycleHandle>,
-    /// Fix C part c: shared watcher pool for pausing non-primary workspace watchers
-    /// during force reindex. None in stdio mode.
-    pub(crate) watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
     /// Bounded channel sender for background metrics writes (M03).
     /// A single background task drains this; try_send drops on backpressure
     /// rather than spawning unbounded tasks.
@@ -283,8 +276,6 @@ pub struct JulieServerHandler {
     /// the resolved physical db path so root-anchor changes in stdio do not reuse
     /// stale handles across different `.julie/indexes/...` trees.
     ref_db_cache: Arc<RwLock<HashMap<String, (PathBuf, Arc<std::sync::Mutex<SymbolDatabase>>)>>>,
-    /// Shared daemon workspace pool for explicit workspace activation.
-    pub(crate) workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     /// Mutation-gate registry used by workspace writer paths in this handler.
@@ -435,6 +426,12 @@ impl JulieServerHandler {
     fn primary_binding_for_root(&self, workspace_root: PathBuf) -> Result<PrimaryWorkspaceBinding> {
         let workspace_root = Self::canonicalize_workspace_path(workspace_root);
         crate::workspace::root_safety::reject_sensitive_workspace_root(&workspace_root)?;
+        if !workspace_root.is_dir() {
+            return Err(anyhow::anyhow!(
+                "workspace root is not a directory: {}",
+                workspace_root.display()
+            ));
+        }
         let workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace_root.to_string_lossy())?;
         Ok(PrimaryWorkspaceBinding {
@@ -625,22 +622,64 @@ impl JulieServerHandler {
         }
 
         if self.client_supports_workspace_roots() {
-            match self.list_roots_from_peer(peer).await {
-                Ok(roots) => {
-                    if self.reconcile_primary_workspace_roots(roots).await? {
-                        if complete_deferred_auto_index {
-                            self.complete_deferred_auto_index_if_needed().await?;
+            // Serialize concurrent ListRoots round-trips. Without the gate,
+            // two tasks (e.g. the `on_initialized` eager probe and the first
+            // incoming tool call) can both see an unbound state, both send
+            // ListRoots to the client, and then one hangs because the client
+            // only handles a single request. The gate ensures only one task
+            // performs the round-trip; the second waiter re-checks the
+            // binding state after acquiring and short-circuits when it finds
+            // the workspace already bound.
+            //
+            // The gate is held from the re-check through
+            // `reconcile_primary_workspace_roots` so the binding write is
+            // visible to the next waiter. It is released before the expensive
+            // `complete_deferred_auto_index_if_needed` call.
+            enum GateOutcome {
+                AlreadyBound,
+                Reconciled(bool),
+                Failed(anyhow::Error),
+            }
+            let gate_outcome: GateOutcome = {
+                let _gate = self.roots_resolution_gate.lock().await;
+                // Re-check inside the gate — the previous holder may have
+                // already bound the workspace.
+                if self.require_primary_binding().is_ok() && !self.roots_dirty() {
+                    GateOutcome::AlreadyBound
+                } else {
+                    match self.list_roots_from_peer(peer).await {
+                        Ok(roots) => {
+                            match self.reconcile_primary_workspace_roots(roots).await {
+                                Ok(reconciled) => GateOutcome::Reconciled(reconciled),
+                                Err(err) => GateOutcome::Failed(err),
+                            }
                         }
-                        return Ok(());
+                        Err(err) => GateOutcome::Failed(err),
                     }
+                }
+            };
 
+            match gate_outcome {
+                GateOutcome::AlreadyBound => {
+                    if complete_deferred_auto_index {
+                        self.complete_deferred_auto_index_if_needed().await?;
+                    }
+                    return Ok(());
+                }
+                GateOutcome::Reconciled(true) => {
+                    if complete_deferred_auto_index {
+                        self.complete_deferred_auto_index_if_needed().await?;
+                    }
+                    return Ok(());
+                }
+                GateOutcome::Reconciled(false) => {
                     self.reconcile_primary_workspace_to_startup_hint().await?;
                     if complete_deferred_auto_index {
                         self.complete_deferred_auto_index_if_needed().await?;
                     }
                     return Ok(());
                 }
-                Err(err) => {
+                GateOutcome::Failed(err) => {
                     warn!(
                         "Failed to query client roots during request-time primary resolution: {err}"
                     );
@@ -782,13 +821,12 @@ impl JulieServerHandler {
             restart_pending: None,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
             deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
-            watcher_pool: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
-            workspace_pool: None,
             dashboard_tx: None,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
@@ -799,7 +837,7 @@ impl JulieServerHandler {
         })
     }
 
-    /// Create a handler for daemon mode, backed by a shared workspace from WorkspacePool.
+    /// Create a handler for an in-process follower session backed by a shared workspace.
     ///
     /// Each handler gets its own `session_metrics` and `indexing_status` (per-session),
     /// but the workspace's expensive resources (db, search_index) are shared across
@@ -808,8 +846,8 @@ impl JulieServerHandler {
     /// Clone semantics of JulieWorkspace:
     /// - `db: Arc<Mutex<SqliteDB>>` and `search_index: Arc<Mutex<SearchIndex>>` are
     ///   shared (Arc clone). This is the whole point: multiple sessions hit one db.
-    /// - `watcher` is `None` in the clone (daemon manages file watchers separately).
-    /// - `embedding_provider` is set to `None` (Phase 3 handles shared embeddings).
+    /// - `watcher` is `None` in the clone (leader manages the file watcher).
+    /// - `embedding_provider` is set to `None` (shared via EmbeddingService).
     pub async fn new_with_shared_workspace(
         workspace: Arc<JulieWorkspace>,
         workspace_root: PathBuf,
@@ -818,8 +856,6 @@ impl JulieServerHandler {
         embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
         restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
-        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
-        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     ) -> Result<Self> {
         Self::new_with_shared_workspace_startup_hint(
             workspace,
@@ -832,8 +868,6 @@ impl JulieServerHandler {
             embedding_service,
             restart_pending,
             dashboard_tx,
-            watcher_pool,
-            workspace_pool,
         )
         .await
     }
@@ -846,8 +880,6 @@ impl JulieServerHandler {
         embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
         restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
-        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
-        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     ) -> Result<Self> {
         let workspace_root = workspace_startup_hint.path.clone();
         info!(
@@ -903,13 +935,12 @@ impl JulieServerHandler {
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
             deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
-            watcher_pool,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
-            workspace_pool,
             dashboard_tx,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
@@ -935,8 +966,6 @@ impl JulieServerHandler {
         embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
         restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
-        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
-        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     ) -> Result<Self> {
         Self::new_deferred_daemon_startup_hint_with_project_log(
             workspace_startup_hint,
@@ -944,8 +973,6 @@ impl JulieServerHandler {
             embedding_service,
             restart_pending,
             dashboard_tx,
-            watcher_pool,
-            workspace_pool,
             true,
         )
         .await
@@ -957,8 +984,6 @@ impl JulieServerHandler {
         embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
         restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
-        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
-        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     ) -> Result<Self> {
         Self::new_deferred_daemon_startup_hint_with_project_log(
             workspace_startup_hint,
@@ -966,8 +991,6 @@ impl JulieServerHandler {
             embedding_service,
             restart_pending,
             dashboard_tx,
-            watcher_pool,
-            workspace_pool,
             false,
         )
         .await
@@ -979,8 +1002,6 @@ impl JulieServerHandler {
         embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
         restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
-        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
-        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
         enable_project_writes: bool,
     ) -> Result<Self> {
         let workspace_root = workspace_startup_hint.path.clone();
@@ -1016,13 +1037,12 @@ impl JulieServerHandler {
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
+            roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
             deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
             session_lifecycle: None,
-            watcher_pool,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
-            workspace_pool,
             dashboard_tx,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
@@ -1067,8 +1087,6 @@ impl JulieServerHandler {
             /*embedding_service=*/ None,
             /*restart_pending=*/ None,
             /*dashboard_tx=*/ None,
-            /*watcher_pool=*/ None,
-            /*workspace_pool=*/ None,
             /*enable_project_writes=*/ true,
         )
         .await?;
@@ -1097,6 +1115,12 @@ impl JulieServerHandler {
         Ok(handler)
     }
 
+    // Orphaned by the Phase 3d.2b deletion of `src/daemon/mcp_session.rs` (the
+    // per-HTTP-session wiring that attached lifecycle handles and drove the
+    // serving/closing phase transitions). The in-process server does not yet
+    // publish session-lifecycle phases; the `SessionLifecycleHandle` plumbing is
+    // torn out in the Phase 3d.3 session-lifecycle/dashboard rewrite.
+    #[allow(dead_code)]
     pub(crate) fn attach_session_lifecycle(&mut self, session_lifecycle: SessionLifecycleHandle) {
         let phase = self.current_session_lifecycle_phase();
         session_lifecycle.set_phase(phase);
@@ -1140,10 +1164,16 @@ impl JulieServerHandler {
         result
     }
 
+    // See `attach_session_lifecycle`: orphaned with the daemon mcp_session
+    // deletion (3d.2b), removed in the 3d.3 session-lifecycle/dashboard rewrite.
+    // `mark_session_serving` stays reachable in test builds via
+    // `mark_session_serving_for_test`.
+    #[allow(dead_code)]
     pub(crate) fn mark_session_serving(&self) {
         self.update_session_workspace(|state| state.mark_serving());
     }
 
+    #[allow(dead_code)]
     pub(crate) fn mark_session_closing(&self) {
         self.update_session_workspace(|state| state.mark_closing());
     }
@@ -1249,10 +1279,6 @@ impl JulieServerHandler {
         self.mutation_gate_registry.acquire(workspace_id).await
     }
 
-    pub(crate) fn set_mutation_gate_registry(&mut self, registry: Arc<MutationGateRegistry>) {
-        self.mutation_gate_registry = registry;
-    }
-
     pub fn is_primary_workspace_swap_in_progress(&self) -> bool {
         self.session_workspace
             .read()
@@ -1343,10 +1369,7 @@ impl JulieServerHandler {
 
     fn session_attachment(&self) -> WorkspaceSessionAttachment {
         WorkspaceSessionAttachment::new(
-            self.workspace_pool.as_ref().map(Arc::clone),
             self.daemon_db.as_ref().map(Arc::clone),
-            self.watcher_pool.as_ref().map(Arc::clone),
-            self.embedding_service.as_ref().map(Arc::clone),
             Arc::clone(&self.session_workspace),
         )
     }
@@ -1390,36 +1413,6 @@ impl JulieServerHandler {
             self.session_attachment()
                 .mark_workspace_attached(workspace_id);
         }
-    }
-
-    async fn acquire_pooled_workspace_for_rebind(
-        &self,
-        workspace_id: &str,
-        workspace_root: PathBuf,
-    ) -> Result<JulieWorkspace> {
-        let pool = self.workspace_pool.as_ref().expect("pool checked above");
-        let pooled_workspace = if self.was_workspace_attached_in_session(workspace_id).await {
-            pool.get(workspace_id).await.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Workspace '{}' was marked attached but is missing from the workspace pool",
-                    workspace_id
-                )
-            })?
-        } else {
-            self.session_attachment()
-                .attach_workspace_once(workspace_id, workspace_root)
-                .await?;
-            pool.get(workspace_id).await.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Workspace '{}' was attached but is missing from the workspace pool",
-                    workspace_id
-                )
-            })?
-        };
-
-        let mut workspace = (*pooled_workspace).clone();
-        workspace.embedding_provider = None;
-        Ok(workspace)
     }
 
     #[cfg(test)]
@@ -1584,22 +1577,10 @@ impl JulieServerHandler {
                     != target_canonical
             })
         };
-        let target_workspace_id =
-            crate::workspace::registry::generate_workspace_id(&target_canonical.to_string_lossy())
-                .ok();
-        // In daemon mode, the primary workspace MUST be sourced from the
-        // shared `WorkspacePool` so its index ends up under the daemon-shared
-        // `~/.julie/indexes/` path and stays in the pool's membership set.
-        // The old gate also required `(loaded_workspace_root_changed || force)`,
-        // which meant a deferred session's first non-force primary init (what
-        // `run_auto_indexing` does on the first request) fell through to the
-        // project-local `JulieWorkspace::initialize` / `detect_and_load`
-        // branch, leaving the pool empty while session state later marked the
-        // workspace as attached. That pre-staged Finding #38's guard to trip
-        // on every subsequent primary-scoped tool call.
-        let use_pooled_rebind = self.workspace_pool.is_some()
-            && self.daemon_db.is_some()
-            && target_workspace_id.is_some();
+        // In-process mode: workspace pool is gone; every session initializes
+        // its workspace directly via `JulieWorkspace::initialize`. The old
+        // `use_pooled_rebind = pool.is_some()` gate is collapsed to false.
+        let use_pooled_rebind = false;
         let rollback = if loaded_workspace_root_changed {
             Some(PrimarySwapRollback::capture(self).await)
         } else {
@@ -1616,12 +1597,7 @@ impl JulieServerHandler {
 
             self.teardown_loaded_workspace(use_pooled_rebind).await;
 
-            if use_pooled_rebind {
-                let workspace_id = target_workspace_id.as_ref().expect("id checked above");
-                Ok(self
-                    .acquire_pooled_workspace_for_rebind(workspace_id, target_canonical.clone())
-                    .await?)
-            } else if let Some(index_root) = &self.in_process_index_root {
+            if let Some(index_root) = &self.in_process_index_root {
                 // In-process force reindex (codex pre-merge F-B): the leader's
                 // db/tantivy AND the held `leader.lock` all live under the shared
                 // `index_root` (~/.julie/indexes/{ws}/). The non-force branch
@@ -1739,12 +1715,7 @@ impl JulieServerHandler {
                 self.teardown_loaded_workspace(use_pooled_rebind).await;
             }
 
-            if use_pooled_rebind {
-                let workspace_id = target_workspace_id.as_ref().expect("id checked above");
-                Ok(self
-                    .acquire_pooled_workspace_for_rebind(workspace_id, target_canonical.clone())
-                    .await?)
-            } else if let Some(index_root) = &self.in_process_index_root {
+            if let Some(index_root) = &self.in_process_index_root {
                 // In-process mode (T8/F2): redirect db/tantivy to the shared daemon
                 // index directory so the leader lock and workspace storage share one
                 // inode tree (`~/.julie/indexes/{ws}/`).  This is the F2 hard gate —
@@ -1993,30 +1964,6 @@ impl JulieServerHandler {
         }))
     }
 
-    async fn primary_workspace_snapshot_from_pool(
-        &self,
-        binding: &PrimaryWorkspaceBinding,
-    ) -> Result<Option<PrimaryWorkspaceSnapshot>> {
-        let Some(pool) = &self.workspace_pool else {
-            return Ok(None);
-        };
-        let Some(workspace) = pool.get(&binding.workspace_id).await else {
-            return Ok(None);
-        };
-        let database = workspace.db.as_ref().cloned().ok_or_else(|| {
-            anyhow::anyhow!(
-                "Database not available. Run manage_workspace(operation=\"index\") first."
-            )
-        })?;
-
-        Ok(Some(PrimaryWorkspaceSnapshot {
-            binding: binding.clone(),
-            database,
-            search_index: workspace.search_index.as_ref().cloned(),
-            indexing_runtime: Some(Arc::clone(&workspace.indexing_runtime)),
-        }))
-    }
-
     async fn primary_workspace_snapshot_from_binding_paths(
         &self,
         binding: &PrimaryWorkspaceBinding,
@@ -2132,19 +2079,9 @@ impl JulieServerHandler {
             }
         }
 
-        if let Some(snapshot) = self.primary_workspace_snapshot_from_pool(&binding).await? {
-            return Ok(snapshot);
-        }
-
-        return if self.workspace_pool.is_some() {
-            Err(anyhow::anyhow!(
-                "Primary workspace '{}' is not attached in the daemon workspace pool",
-                binding.workspace_id
-            ))
-        } else {
-            self.primary_workspace_snapshot_from_binding_paths(&binding)
-                .await
-        };
+        return self
+            .primary_workspace_snapshot_from_binding_paths(&binding)
+            .await;
     }
 
     pub(crate) async fn primary_database(&self) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
@@ -2281,62 +2218,15 @@ impl JulieServerHandler {
         let loaded_workspace_id = self.loaded_workspace_id();
         let current_workspace_id = self.current_workspace_id();
 
-        if let Some(pool) = &self.workspace_pool {
-            if let Some(current_id) = current_workspace_id.as_ref() {
-                if let Some(anchor_workspace) = pool.get(current_id).await {
-                    return Ok((
-                        anchor_workspace.root.clone(),
-                        anchor_workspace.index_root_override.clone(),
-                    ));
-                }
-
-                // Path computation stays lenient when the rebound primary isn't
-                // pool-resident yet. Operations like manage_workspace(register) and
-                // refresh routing need to compute target paths even before the
-                // pool catches up. Strict pool-membership enforcement happens in
-                // the connection-opening helpers (get_database_for_workspace and
-                // get_search_index_for_workspace) where it actually matters.
-                if loaded_workspace_id.as_deref() != Some(current_id.as_str()) {
-                    return Ok((
-                        self.current_workspace_root(),
-                        loaded_workspace
-                            .as_ref()
-                            .and_then(|workspace| workspace.index_root_override.clone()),
-                    ));
-                }
-
-                return Err(anyhow::anyhow!(
-                    "Current primary workspace '{}' is not attached in the daemon workspace pool",
-                    current_id
-                ));
-            }
-
-            if let Some(loaded_id) = loaded_workspace_id.as_ref() {
-                if let Some(anchor_workspace) = pool.get(loaded_id).await {
-                    return Ok((
-                        anchor_workspace.root.clone(),
-                        anchor_workspace.index_root_override.clone(),
-                    ));
-                }
-
-                return Err(anyhow::anyhow!(
-                    "Current primary workspace '{}' is not attached in the daemon workspace pool",
-                    loaded_id
-                ));
-            }
-
-            if let Some(loaded_workspace) = loaded_workspace.as_ref() {
-                return Ok((
-                    self.current_workspace_root(),
-                    loaded_workspace.index_root_override.clone(),
-                ));
-            }
-
-            return Err(anyhow::anyhow!("Primary workspace not initialized"));
-        }
-
-        let loaded_workspace =
-            loaded_workspace.ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+        // Deferred startup: no workspace loaded yet (e.g. handler constructed
+        // before the primary binding is resolved from client roots). Fall back
+        // to the startup hint path so secondary workspace operations (e.g.
+        // `manage_workspace open`) can compute storage paths without a bound
+        // primary. Storage will live under `{startup_hint}/.julie/indexes/{id}/`.
+        let Some(loaded_workspace) = loaded_workspace else {
+            let hint_path = self.workspace_startup_hint().path;
+            return Ok((hint_path, None));
+        };
 
         if let Some(ref current_id) = current_workspace_id {
             if loaded_workspace_id.as_deref() != Some(current_id.as_str()) {
@@ -2368,30 +2258,26 @@ impl JulieServerHandler {
     /// Secondary workspaces (workspace_id != current primary) are exempt:
     /// they are accessed lazily via on-disk paths and don't require a pool
     /// entry to function.
-    async fn ensure_primary_pool_membership_for(&self, workspace_id: &str) -> Result<()> {
-        let Some(pool) = self.workspace_pool.as_ref() else {
-            return Ok(());
-        };
-        let Some(current_id) = self.current_workspace_id() else {
-            return Ok(());
-        };
-        if current_id != workspace_id {
-            return Ok(());
-        }
-        if pool.get(workspace_id).await.is_some() {
-            return Ok(());
-        }
-        Err(anyhow::anyhow!(
-            "Current primary workspace '{}' is not attached in the daemon workspace pool",
-            workspace_id
-        ))
+    async fn ensure_primary_pool_membership_for(&self, _workspace_id: &str) -> Result<()> {
+        Ok(())
     }
 
     pub(crate) async fn workspace_index_dir_for(&self, workspace_id: &str) -> Result<PathBuf> {
-        if let Some(pool) = self.workspace_pool.as_ref() {
-            return Ok(pool.indexes_dir().join(workspace_id));
+        // In-process / daemon-shared mode: the deleted `WorkspacePool` used to
+        // resolve every workspace's storage as a sibling under the shared
+        // `~/.julie/indexes/` root — even during a rebind window where the loaded
+        // workspace hasn't caught up to the current primary binding. With the
+        // pool gone, `in_process_index_root` (`<shared_indexes>/{primary_id}`) is
+        // the authoritative shared-root source. Consult it FIRST so rebound and
+        // secondary workspaces keep the shared anchor instead of falling back to
+        // the current workspace's project-local `.julie` tree. This mirrors the
+        // `anchor_override.parent().join(workspace_id)` resolution below, which
+        // already assumes the override is `<shared_indexes>/{primary_id}`.
+        if let Some(index_root) = &self.in_process_index_root {
+            if let Some(shared_indexes) = index_root.parent() {
+                return Ok(shared_indexes.join(workspace_id));
+            }
         }
-
         let (anchor_root, anchor_override) = self.workspace_storage_anchor().await?;
         Ok(if let Some(ref override_root) = anchor_override {
             override_root
@@ -2428,41 +2314,20 @@ impl JulieServerHandler {
 
     /// Acquire a per-request `SymbolDatabase` backed by a pooled connection.
     ///
-    /// **Use this for new handler code.** In daemon mode each call returns a
-    /// fresh `SymbolDatabase` wrapping a `PooledConn` from the workspace's
+    /// **Use this for new handler code.** Each call returns a fresh
+    /// `SymbolDatabase` wrapping a `PooledConn` from the workspace's
     /// `WorkspaceConnectionPool` — distinct handlers no longer serialize on a
     /// shared `Arc<Mutex<SymbolDatabase>>`. The connection returns to the pool
     /// when the `SymbolDatabase` is dropped.
     ///
-    /// In stdio mode (no `workspace_pool`) the implementation falls back to
-    /// opening a fresh owned `SymbolDatabase` per request — stdio handlers
-    /// don't have a concurrency problem to solve, so the extra open cost is
-    /// acceptable and the behavior matches what callers already expect.
+    /// In standalone/in-process mode the implementation opens a fresh owned
+    /// `SymbolDatabase` per request — these handlers don't have a cross-session
+    /// concurrency problem, so the extra open cost is acceptable.
     pub async fn get_pooled_database_for_workspace(
         &self,
         workspace_id: &str,
     ) -> Result<SymbolDatabase> {
-        self.ensure_primary_pool_membership_for(workspace_id)
-            .await?;
-
-        if let Some(workspace_pool) = self.workspace_pool.as_ref() {
-            let _workspace = workspace_pool.get(workspace_id).await.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Workspace '{}' is not loaded in the daemon workspace pool",
-                    workspace_id
-                )
-            })?;
-            let conn_pool = workspace_pool
-                .connection_pool(workspace_id)
-                .await
-                .ok_or_else(|| {
-                    anyhow::anyhow!("Connection pool missing for workspace '{}'", workspace_id)
-                })?;
-            return conn_pool.request_db().await;
-        }
-
-        // Stdio-mode fallback: open a fresh owned SymbolDatabase. Migrations
-        // are idempotent so the cost is bounded.
+        // Open a fresh owned SymbolDatabase. Migrations are idempotent so the cost is bounded.
         let db_path = self.workspace_db_file_path_for(workspace_id).await?;
         if !db_path.exists() {
             return Err(anyhow::anyhow!(

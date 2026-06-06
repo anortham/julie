@@ -138,6 +138,7 @@ async fn test_dashboard_post_search_returns_200() {
     assert_eq!(response.status().as_u16(), 200);
 }
 
+#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
 async fn test_dashboard_content_search_renders_line_match_preview() {
     let (state, _temp_dir, workspace_id) = state_with_search_workspace(

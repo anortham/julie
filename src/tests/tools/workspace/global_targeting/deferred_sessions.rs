@@ -8,17 +8,17 @@ use super::*;
 fn make_deferred_handler_no_primary(
     indexes_dir: &std::path::Path,
     daemon_db: Arc<DaemonDatabase>,
-    pool: Arc<WorkspacePool>,
     startup_root: &std::path::Path,
 ) -> impl std::future::Future<Output = JulieServerHandler> {
     let _ = indexes_dir;
     let startup_path = startup_root.canonicalize().unwrap();
     let startup_id = generate_workspace_id(&startup_path.to_string_lossy()).unwrap();
     async move {
-        let startup_ws = pool
-            .get_or_init(&startup_id, startup_path.clone())
-            .await
-            .expect("startup workspace should initialize");
+        let startup_ws = Arc::new(
+            crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+                .await
+                .expect("startup workspace should initialize"),
+        );
         let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
             startup_ws,
             crate::workspace::startup_hint::WorkspaceStartupHint {
@@ -30,8 +30,6 @@ fn make_deferred_handler_no_primary(
             None,
             None,
             None,
-            None,
-            Some(pool),
         )
         .await
         .expect("handler should initialize");
@@ -53,10 +51,6 @@ async fn test_manage_workspace_list_succeeds_in_deferred_session_without_primary
     fs::create_dir_all(&startup_root).unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     // Pre-register two workspaces so list has something to show.
     let registered_path = temp_dir.path().join("registered").canonicalize().ok();
@@ -79,7 +73,6 @@ async fn test_manage_workspace_list_succeeds_in_deferred_session_without_primary
     let handler = make_deferred_handler_no_primary(
         &indexes_dir,
         Arc::clone(&daemon_db),
-        Arc::clone(&pool),
         &startup_root,
     )
     .await;
@@ -121,10 +114,6 @@ async fn test_manage_workspace_remove_succeeds_in_deferred_session_without_prima
     fs::create_dir_all(&removable_root).unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let removable_path = removable_root.canonicalize().unwrap();
     let removable_id = generate_workspace_id(&removable_path.to_string_lossy()).unwrap();
@@ -135,7 +124,6 @@ async fn test_manage_workspace_remove_succeeds_in_deferred_session_without_prima
     let handler = make_deferred_handler_no_primary(
         &indexes_dir,
         Arc::clone(&daemon_db),
-        Arc::clone(&pool),
         &startup_root,
     )
     .await;
@@ -184,15 +172,10 @@ async fn test_manage_workspace_register_succeeds_in_deferred_session_without_pri
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let handler = make_deferred_handler_no_primary(
         &indexes_dir,
         Arc::clone(&daemon_db),
-        Arc::clone(&pool),
         &startup_root,
     )
     .await;
@@ -244,15 +227,10 @@ async fn test_manage_workspace_add_is_rejected_as_unknown_operation() {
     fs::create_dir_all(&candidate_root).unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let handler = make_deferred_handler_no_primary(
         &indexes_dir,
         Arc::clone(&daemon_db),
-        Arc::clone(&pool),
         &startup_root,
     )
     .await;
@@ -305,18 +283,15 @@ async fn test_manage_workspace_register_in_deferred_cwd_session_via_server_handl
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let startup_path = startup_root.canonicalize().unwrap();
     let startup_path_str = startup_path.to_string_lossy().to_string();
     let startup_id = generate_workspace_id(&startup_path_str).unwrap();
-    let startup_ws = pool
-        .get_or_init(&startup_id, startup_path.clone())
-        .await
-        .expect("startup workspace should initialize");
+    let startup_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
+            .await
+            .expect("startup workspace should initialize"),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
         startup_ws,
@@ -329,8 +304,6 @@ async fn test_manage_workspace_register_in_deferred_cwd_session_via_server_handl
         None,
         None,
         None,
-        None,
-        Some(pool),
     )
     .await
     .expect("handler should initialize");

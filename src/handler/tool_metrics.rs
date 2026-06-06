@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -7,8 +6,7 @@ use tokio::sync::RwLock;
 use tracing::warn;
 
 use crate::dashboard::state::DashboardEvent;
-use crate::database::SymbolDatabase;
-use crate::handler::{JulieServerHandler, PrimaryWorkspaceBinding, metrics_db_path_for_workspace};
+use crate::handler::{JulieServerHandler, PrimaryWorkspaceBinding};
 use crate::tools::metrics::session::{SessionMetrics, ToolCallReport, ToolKind};
 use crate::workspace::JulieWorkspace;
 
@@ -16,8 +14,6 @@ use crate::workspace::JulieWorkspace;
 /// Avoids spawning a new task per tool call.
 pub(crate) struct MetricsTask {
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
-    pub workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
-    pub current_workspace_root: PathBuf,
     pub session_metrics: Arc<SessionMetrics>,
     pub session_id: String,
     pub tool_name: String,
@@ -36,78 +32,10 @@ pub(crate) struct MetricsTask {
 pub(crate) async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
     while let Some(task) = rx.recv().await {
         let mut source_bytes: Option<u64> = None;
-        let mut resolved_workspace = task.workspace.read().await.clone();
-        if let (Some(pool), Some(workspace_id)) = (&task.workspace_pool, task.workspace_id.as_ref())
-        {
-            let matches_requested_workspace = resolved_workspace.as_ref().is_some_and(|ws| {
-                let db_path = metrics_db_path_for_workspace(
-                    ws.index_root_override.as_deref(),
-                    &task.current_workspace_root,
-                    workspace_id,
-                );
-                db_path.exists()
-            });
-
-            if resolved_workspace.is_none() || !matches_requested_workspace {
-                resolved_workspace = pool.get(workspace_id).await.map(|ws| (*ws).clone());
-            }
-        }
+        let resolved_workspace = task.workspace.read().await.clone();
 
         if let Some(ws) = resolved_workspace.as_ref() {
-            // Preferred path: pooled connection via WorkspacePool. Avoids
-            // the per-tool-call `SymbolDatabase::new` cold-open (which runs
-            // pragmas + migrations + schema init every time). Falls back to
-            // the legacy `Arc<Mutex<SymbolDatabase>>` only when the pool
-            // is not available (stdio mode / pre-A2.2c tests).
-            let pooled_db = if let (Some(pool), Some(workspace_id)) =
-                (&task.workspace_pool, task.workspace_id.as_ref())
-            {
-                if let Some(conn_pool) = pool.connection_pool(workspace_id).await {
-                    match conn_pool.acquire().await {
-                        Ok(pooled) => Some(SymbolDatabase::from_pooled(
-                            pooled,
-                            conn_pool.db_path().to_path_buf(),
-                        )),
-                        Err(e) => {
-                            warn!(
-                                "Metrics writer: failed to acquire pooled connection for {}: {}",
-                                workspace_id, e
-                            );
-                            None
-                        }
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            if let Some(db) = pooled_db {
-                source_bytes = if !task.source_file_paths.is_empty() {
-                    let path_refs: Vec<&str> =
-                        task.source_file_paths.iter().map(|s| s.as_str()).collect();
-                    db.get_total_file_sizes(&path_refs).ok()
-                } else {
-                    None
-                };
-                if let Some(sb) = source_bytes {
-                    task.session_metrics
-                        .total_source_bytes
-                        .fetch_add(sb, Ordering::Relaxed);
-                }
-                let _ = db.insert_tool_call_with_input_bytes(
-                    &task.session_id,
-                    &task.tool_name,
-                    task.duration_ms,
-                    task.result_count,
-                    source_bytes,
-                    task.input_bytes,
-                    Some(task.output_bytes),
-                    task.success,
-                    task.metadata_str.as_deref(),
-                );
-            } else if let Some(db_arc) = &ws.db {
+            if let Some(db_arc) = &ws.db {
                 if let Ok(db) = db_arc.lock() {
                     source_bytes = if !task.source_file_paths.is_empty() {
                         let path_refs: Vec<&str> =
@@ -199,10 +127,6 @@ impl JulieServerHandler {
         let workspace_id = workspace_snapshot
             .map(|binding| binding.workspace_id.clone())
             .or_else(|| self.current_workspace_id());
-        let workspace_root = workspace_snapshot
-            .map(|binding| binding.workspace_root.clone())
-            .unwrap_or_else(|| self.current_workspace_root());
-
         if let Some(kind) = ToolKind::from_name(tool_name) {
             self.session_metrics
                 .record(kind, duration_us, 0, output_bytes);
@@ -226,8 +150,6 @@ impl JulieServerHandler {
             let metadata = report.metadata.to_string();
             let _ = self.metrics_tx.try_send(MetricsTask {
                 workspace: self.workspace.clone(),
-                workspace_pool: self.workspace_pool.clone(),
-                current_workspace_root: workspace_root,
                 session_metrics: self.session_metrics.clone(),
                 session_id: self.session_metrics.session_id.clone(),
                 tool_name: tool_name.to_string(),

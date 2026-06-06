@@ -1,7 +1,6 @@
 //! Test workspace builders with proper isolation
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
 use std::path::PathBuf;
@@ -161,17 +160,9 @@ pub async fn create_isolated_storage_handler(
 ) -> Result<IsolatedStorageHandler> {
     let temp_home = tempfile::tempdir()?;
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_home.path().join("daemon.db"))?);
-    let indexes_dir = temp_home.path().join("indexes");
-    std::fs::create_dir_all(&indexes_dir)?;
-
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let mut handler = JulieServerHandler::new(workspace_root).await?;
     handler.daemon_db = Some(daemon_db);
-    handler.workspace_pool = Some(pool);
 
     Ok(IsolatedStorageHandler { handler, temp_home })
 }

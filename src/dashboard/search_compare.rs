@@ -9,7 +9,6 @@ use crate::dashboard::routes::projects_actions::{
     cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
 };
 use crate::dashboard::search_analysis::{SearchEpisode, analyze_tool_calls, episode_stats};
-use crate::search::index::SearchFilter;
 use crate::tools::search::execution::{self, SearchExecutionWorkspace};
 use crate::tools::search::trace::{SearchExecutionResult, SearchHit};
 
@@ -199,79 +198,10 @@ async fn execute_shared_current(
     .await
 }
 
-async fn execute_legacy_direct(state: &AppState, case: &CompareCase) -> Result<Vec<SearchHit>> {
-    let pool = state
-        .dashboard
-        .workspace_pool()
-        .ok_or_else(|| anyhow::anyhow!("workspace pool unavailable"))?;
-    let workspace = pool
-        .get(&case.workspace_id)
-        .await
-        .ok_or_else(|| anyhow::anyhow!("workspace not attached"))?;
-    let search_index = workspace
-        .search_index
-        .as_ref()
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("search index unavailable"))?;
-    let target = case.search_target.clone();
-    let query = case.query.clone();
-    let workspace_id = case.workspace_id.clone();
-    tokio::task::spawn_blocking(move || -> Result<Vec<SearchHit>> {
-        let index = search_index
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let filter = SearchFilter::default();
-        let all_hits = index.search_unified(&query, &filter, 10)?;
-        let want_file = target == "content";
-        Ok(all_hits
-            .into_iter()
-            .filter(|h| {
-                if want_file {
-                    h.kind == "file"
-                } else {
-                    h.kind != "file"
-                }
-            })
-            .map(|h| {
-                let is_file = h.kind == "file";
-                SearchHit {
-                    name: if is_file {
-                        h.file_path
-                            .rsplit('/')
-                            .next()
-                            .unwrap_or(&h.file_path)
-                            .to_string()
-                    } else {
-                        h.name
-                    },
-                    file: h.file_path,
-                    line: if is_file { None } else { Some(h.start_line) },
-                    kind: h.kind,
-                    language: h.language,
-                    score: h.tantivy_score,
-                    snippet: if h.signature.is_empty() {
-                        if h.doc_comment.is_empty() {
-                            None
-                        } else {
-                            Some(h.doc_comment)
-                        }
-                    } else {
-                        Some(h.signature)
-                    },
-                    workspace: workspace_id.clone(),
-                    symbol_id: if is_file { None } else { Some(h.id) },
-                    backing: crate::tools::search::trace::SearchHitBacking::LineMatch(
-                        crate::tools::search::LineMatch {
-                            file_path: String::new(),
-                            line_number: 0,
-                            line_content: String::new(),
-                        },
-                    ),
-                }
-            })
-            .collect())
-    })
-    .await?
+/// Legacy direct path (pool detached — Phase 3d.2b-ii). Returns empty results
+/// until Phase 3d.3 wires the dashboard to the standalone registry.
+async fn execute_legacy_direct(_state: &AppState, _case: &CompareCase) -> Result<Vec<SearchHit>> {
+    Ok(vec![])
 }
 
 fn expected_rank(hits: &[SearchHit], case: &CompareCase) -> Option<usize> {

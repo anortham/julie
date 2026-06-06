@@ -129,6 +129,8 @@ impl ProjectsNotice {
 }
 
 /// Map a language name to its CSS custom property name.
+/// Kept (dead) for the 3d.3 standalone-dashboard rewrite.
+#[allow(dead_code)]
 pub(crate) fn lang_css_var(lang: &str) -> &'static str {
     match lang.to_lowercase().as_str() {
         "rust" => "var(--lang-rust)",
@@ -225,16 +227,13 @@ fn base_session_state(
 }
 
 async fn workspace_session_state(
-    state: &AppState,
+    _state: &AppState,
     workspace: &WorkspaceRow,
     current_workspace_counts: &HashMap<String, usize>,
 ) -> WorkspaceSessionStateView {
     let (label, base_detail, current_session_count, active_session_count) =
         base_session_state(workspace, current_workspace_counts);
-    let cleanup_activity = WorkspaceCleanupActivity::new(
-        state.dashboard.workspace_pool(),
-        state.dashboard.watcher_pool(),
-    );
+    let cleanup_activity = WorkspaceCleanupActivity::new();
     let lifecycle =
         inspect_workspace_cleanup_state(workspace, &cleanup_activity, CLEANUP_ACTION_AUTO_PRUNE)
             .await;
@@ -438,67 +437,9 @@ async fn fetch_language_data(
     workspace_id: &str,
     max_entries: usize,
 ) -> Vec<LanguageEntry> {
-    let pool = match state.dashboard.workspace_pool() {
-        Some(pool) => pool,
-        None => return vec![],
-    };
-
-    let workspace = match pool.get(workspace_id).await {
-        Some(workspace) => workspace,
-        None => return vec![],
-    };
-
-    let db = match &workspace.db {
-        Some(db) => db,
-        None => return vec![],
-    };
-
-    let counts = {
-        let db_guard = match db.lock() {
-            Ok(guard) => guard,
-            Err(_) => return vec![],
-        };
-        match db_guard.count_files_by_language() {
-            Ok(counts) => counts,
-            Err(_) => return vec![],
-        }
-    };
-
-    if counts.is_empty() {
-        return vec![];
-    }
-
-    let total: i64 = counts.iter().map(|(_, count)| count).sum();
-    if total == 0 {
-        return vec![];
-    }
-
-    let mut entries = Vec::new();
-    let mut other_count: i64 = 0;
-
-    for (index, (lang, count)) in counts.iter().enumerate() {
-        if index < max_entries {
-            entries.push(LanguageEntry {
-                name: lang.clone(),
-                file_count: *count,
-                percentage: (*count as f64 / total as f64) * 100.0,
-                css_var: lang_css_var(lang).to_string(),
-            });
-        } else {
-            other_count += count;
-        }
-    }
-
-    if other_count > 0 {
-        entries.push(LanguageEntry {
-            name: "Other".to_string(),
-            file_count: other_count,
-            percentage: (other_count as f64 / total as f64) * 100.0,
-            css_var: lang_css_var("other").to_string(),
-        });
-    }
-
-    entries
+    // Pool detached (Phase 3d.2b-ii). Dashboard is dead-but-compiling until 3d.3.
+    let _ = (state, workspace_id, max_entries);
+    vec![]
 }
 
 /// Render a compact language bar as an HTML string for the statuses JSON response.
@@ -627,50 +568,8 @@ pub async fn detail(
     let languages = fetch_language_data(&state, &workspace_id, 8).await;
     let has_languages = !languages.is_empty();
 
-    let kind_bar_html = {
-        let pool = state.dashboard.workspace_pool();
-        if let Some(pool) = pool {
-            if let Some(workspace_arc) = pool.get(&workspace_id).await {
-                if let Some(db) = &workspace_arc.db {
-                    let guard = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-                    let (by_kind, _) = guard.get_symbol_statistics().unwrap_or_default();
-
-                    let total: usize = by_kind.values().sum();
-                    if total > 0 {
-                        let mut entries: Vec<_> = by_kind.iter().collect();
-                        entries.sort_by(|left, right| right.1.cmp(left.1));
-                        let segments = entries
-                            .iter()
-                            .take(8)
-                            .map(|(kind, count)| {
-                                let pct = (**count as f64 / total as f64) * 100.0;
-                                let css_var =
-                                    crate::dashboard::routes::intelligence::kind_css_var(kind);
-                                let escaped_kind = kind
-                                    .replace('&', "&amp;")
-                                    .replace('<', "&lt;")
-                                    .replace('>', "&gt;")
-                                    .replace('"', "&quot;");
-                                format!(
-                                    r#"<div class="kind-bar-segment" style="width: {:.1}%; background: var({});" title="{}: {} ({:.1}%)"></div>"#,
-                                    pct, css_var, escaped_kind, count, pct
-                                )
-                            })
-                            .collect::<Vec<_>>();
-                        format!(r#"<div class="kind-bar-track">{}</div>"#, segments.join(""))
-                    } else {
-                        String::new()
-                    }
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        }
-    };
+    // Pool detached (Phase 3d.2b-ii).
+    let kind_bar_html = String::new();
 
     let mut context = Context::new();
     context.insert("workspace", &workspace);

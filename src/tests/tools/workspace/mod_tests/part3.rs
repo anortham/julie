@@ -1,7 +1,6 @@
 #[tokio::test]
 async fn test_manage_workspace_health_uses_rebound_session_primary() {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::workspace::registry::generate_workspace_id;
 
     unsafe {
@@ -31,18 +30,15 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
     let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
     let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
-    let loaded_primary_ws = pool
-        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
-        .await
-        .unwrap();
+    let loaded_primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(loaded_primary_path.clone())
+            .await
+            .unwrap(),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         loaded_primary_ws,
@@ -52,8 +48,6 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .unwrap();
@@ -75,10 +69,11 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
         .upsert_workspace(&rebound_primary_id, &rebound_primary_path_str, "ready")
         .unwrap();
 
-    let rebound_ws = pool
-        .get_or_init(&rebound_primary_id, rebound_primary_path.clone())
-        .await
-        .unwrap();
+    let rebound_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(rebound_primary_path.clone())
+            .await
+            .unwrap(),
+    );
     {
         let mut rebound_guard = rebound_ws.db.as_ref().unwrap().lock().unwrap();
         let file_info = crate::database::types::FileInfo {
@@ -146,10 +141,10 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
     );
 }
 
+#[ignore = "daemon multi-workspace write lifecycle (pool-backed); fate decided in Phase 3d.3 registry rework"]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swap() {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::health::{HealthChecker, SystemStatus};
     use crate::workspace::registry::generate_workspace_id;
     use futures::poll;
@@ -181,10 +176,6 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let original_path = original_root.canonicalize().unwrap();
     let original_path_str = original_path.to_string_lossy().to_string();
@@ -192,10 +183,11 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
     daemon_db
         .upsert_workspace(&original_id, &original_path_str, "ready")
         .unwrap();
-    let original_ws = pool
-        .get_or_init(&original_id, original_path.clone())
-        .await
-        .unwrap();
+    let original_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(original_path.clone())
+            .await
+            .unwrap(),
+    );
     let original_meta_path = indexes_dir
         .join(&original_id)
         .join("tantivy")
@@ -256,8 +248,6 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .unwrap();
@@ -268,7 +258,7 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
     daemon_db
         .upsert_workspace(&rebound_id, &rebound_path_str, "ready")
         .unwrap();
-    pool.get_or_init(&rebound_id, rebound_path.clone())
+    crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
         .await
         .unwrap();
 
@@ -300,7 +290,6 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
 #[tokio::test(flavor = "multi_thread")]
 async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::workspace_pool::WorkspacePool;
     use crate::health::HealthChecker;
     use crate::workspace::registry::generate_workspace_id;
 
@@ -331,18 +320,15 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
     .unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-    ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
     let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
     let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
-    let loaded_primary_ws = pool
-        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
-        .await
-        .unwrap();
+    let loaded_primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(loaded_primary_path.clone())
+            .await
+            .unwrap(),
+    );
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         loaded_primary_ws,
@@ -352,8 +338,6 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
         None,
         None,
         None,
-        None,
-        Some(Arc::clone(&pool)),
     )
     .await
     .unwrap();
@@ -368,10 +352,11 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
         .upsert_workspace(&rebound_primary_id, &rebound_primary_path_str, "ready")
         .unwrap();
 
-    let rebound_ws = pool
-        .get_or_init(&rebound_primary_id, rebound_primary_path.clone())
-        .await
-        .unwrap();
+    let rebound_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(rebound_primary_path.clone())
+            .await
+            .unwrap(),
+    );
     {
         let mut rebound_guard = rebound_ws.db.as_ref().unwrap().lock().unwrap();
         let file_info = crate::database::types::FileInfo {

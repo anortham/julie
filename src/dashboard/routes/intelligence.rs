@@ -224,9 +224,7 @@ pub(crate) fn open_workspace_db(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let db_path = if let Some(pool) = state.dashboard.workspace_pool() {
-        pool.indexes_dir().join(workspace_id).join("db/symbols.db")
-    } else {
+    let db_path = {
         let paths =
             crate::paths::DaemonPaths::try_new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         paths.workspace_db_path(workspace_id)
