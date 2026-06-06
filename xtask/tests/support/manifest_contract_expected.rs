@@ -364,12 +364,35 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "tools-search-line",
+            "tools-search-line-core",
             ExpectedBucket {
-                expected_seconds: 250,
-                timeout_seconds: 330,
+                expected_seconds: 40,
+                timeout_seconds: 90,
                 commands: &[
-                    "cargo nextest run -j 1 --lib tests::tools::search::line_ -- --skip search_quality",
+                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode::basic -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-line-filters",
+            ExpectedBucket {
+                expected_seconds: 150,
+                timeout_seconds: 240,
+                commands: &[
+                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode::filters -- --skip search_quality",
+                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode_or_fallback_tests -- --skip search_quality",
+                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode_second_pass_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-line-primary",
+            ExpectedBucket {
+                expected_seconds: 75,
+                timeout_seconds: 120,
+                commands: &[
+                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode::missing_index -- --skip search_quality",
+                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode::primary_rebind -- --skip search_quality",
                 ],
             },
         ),
@@ -819,14 +842,32 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
             },
         ),
         (
-            "tools-search-line",
+            "tools-search-line-core",
             ExpectedBucketMetadata {
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
                 notes: Some(
-                    "line-mode search coverage; serialized because tests mutate process env and spin per-test indexers",
+                    "line-mode basic behavior coverage; serialized because tests mutate process env and spin per-test indexers",
                 ),
+            },
+        ),
+        (
+            "tools-search-line-filters",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("line-mode filter, fallback, and second-pass coverage"),
+            },
+        ),
+        (
+            "tools-search-line-primary",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("line-mode primary workspace rebinding and missing-index coverage"),
             },
         ),
         (

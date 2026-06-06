@@ -3,7 +3,7 @@ id: julie-rescue-de-slop-packaging-keep-the-moat
 title: "Julie Rescue: de-slop packaging, keep the moat"
 status: active
 created: 2026-06-03T14:35:36.960Z
-updated: 2026-06-06T14:54:29.832Z
+updated: 2026-06-06T15:17:41.928Z
 tags:
   - julie-rescue
   - current-status
@@ -25,10 +25,10 @@ Julie is already well past the original starting point:
 - Current docs describe the in-process stdio server, `$JULIE_HOME/registry.db`, per-workspace `leader.lock`, project-local logs, standalone read-only dashboard, and resident embedding host.
 - The `julie-plugin` launcher fix is prepared in `/Users/murphy/source/julie-plugin-single-server` on `fix/single-server-launcher` at `4165fcb` (`fix: launch julie-server directly`). It launches `julie-server` directly and keeps only legacy split-daemon cleanup.
 - The fast `dev` gate is implemented locally: `dev` is 27 buckets / 589s expected, protected by an xtask contract that caps it at 600s. The first actual `cargo xtask test dev` pass ran 27 buckets in 389.7s after calibrating the `core-database` timeout.
-- The first broad bucket split is done locally: old `tools-workspace` is now `tools-workspace-discovery`, `tools-workspace-indexing`, and `tools-workspace-management`; `tools-workspace-targeting` remains separate.
-- `full` now keeps 46 buckets / 2519s expected for release-level coverage.
+- The first two broad bucket splits are done locally: old `tools-workspace` is now discovery/indexing/management buckets, and old `tools-search-line` is now core/filters/primary buckets.
+- `full` now keeps 48 buckets / 2534s expected for release-level coverage.
 
-The rescue is not done. The active bottleneck is now splitting the remaining broad buckets removed from `dev`: `tools-search-line`, `tools-editing`, `tools-workspace-targeting`, `tools-search-format-quality`, and `tools-call-path`. Next recommended slice: split `tools-search-line`.
+The rescue is not done. The active bottleneck is now splitting the remaining broad buckets removed from `dev`: `tools-editing`, `tools-workspace-targeting`, `tools-search-format-quality`, and `tools-call-path`. Next recommended slice: split `tools-editing`.
 
 ## Constraints
 

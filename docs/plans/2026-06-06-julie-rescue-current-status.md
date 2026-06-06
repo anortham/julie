@@ -1,8 +1,8 @@
 # Julie Rescue Current Status
 
 **Date:** 2026-06-06
-**Current local baseline:** `8968692c` (`test(xtask): keep dev tier under ten minutes`)
-**Practical status:** Julie is saved in place, the daemon/adapter teardown has landed, the default `dev` tier is below 10 minutes expected and actual, and the first broad bucket split is done. The rescue is not done; the next bottleneck is splitting the remaining slow broad buckets without losing coverage.
+**Current local baseline:** `4bfa2361` (`test(xtask): split workspace bucket`)
+**Practical status:** Julie is saved in place, the daemon/adapter teardown has landed, the default `dev` tier is below 10 minutes expected and actual, and the first two broad bucket splits are done. The rescue is not done; the next bottleneck is splitting the remaining slow broad buckets without losing coverage.
 
 ---
 
@@ -10,7 +10,7 @@
 
 Do not reopen the daemon teardown as active implementation work. Phase 3d.3 is merged and branch-gated.
 
-Do focus the next rescue slice on decomposing the remaining slow broad buckets and retiring stale runtime vocabulary. The repo has real crate-split wins, and the calibrated `dev` tier now targets 27 buckets / 589s expected; the first actual run passed in 389.7s. `full` still carries the broad release coverage at 46 buckets / 2519s expected.
+Do focus the next rescue slice on decomposing the remaining slow broad buckets and retiring stale runtime vocabulary. The repo has real crate-split wins, and the calibrated `dev` tier now targets 27 buckets / 589s expected; the first actual run passed in 389.7s. `full` still carries the broad release coverage at 48 buckets / 2534s expected.
 
 ---
 
@@ -52,12 +52,12 @@ From `cargo xtask test list` on 2026-06-06:
 | `dev` | 27 | 589s / 9.8m expected; 389.7s actual |
 | `system` | 5 | 225s / 3.8m |
 | `dogfood` | 2 | 380s / 6.3m |
-| `full` | 46 | 2519s / 42.0m |
+| `full` | 48 | 2534s / 42.2m |
 
 Broad buckets removed from `dev` and retained in `full`:
 
 - `tools-workspace`: split into `tools-workspace-discovery` (1.1s actual), `tools-workspace-indexing` (282.9s actual), and `tools-workspace-management` (4.1s actual)
-- `tools-search-line`: 250s
+- `tools-search-line`: split into `tools-search-line-core` (31.6s actual), `tools-search-line-filters` (140.2s actual), and `tools-search-line-primary` (64.9s actual)
 - `tools-editing`: 200s
 - `tools-workspace-targeting`: 170s
 - `tools-search-format-quality`: 100s
@@ -77,7 +77,7 @@ This addresses the user's "30 minute test suite" complaint for the default branc
 ### Test-Economy Work
 
 1. Run actual wall-clock timing for the broad buckets now retained only in `full`.
-2. Split the remaining slow handler-bound buckets first: `tools-search-line`, `tools-editing`, `tools-workspace-targeting`, `tools-search-format-quality`, and `tools-call-path`.
+2. Split the remaining slow handler-bound buckets first: `tools-editing`, `tools-workspace-targeting`, `tools-search-format-quality`, and `tools-call-path`.
 3. Move any still-handler-free tests from the top crate into `julie-tools` / `julie-runtime`; keep only real handler/in-process integration tests in the top crate.
 4. Re-admit cheap representative slices into `dev` only when the 600s contract stays green.
 5. Rename stale bucket/module vocabulary from `daemon` to `registry-runtime` or equivalent once the test ownership is clear.
@@ -94,9 +94,9 @@ This addresses the user's "30 minute test suite" complaint for the default branc
 
 Do the next small, evidence-first PR:
 
-1. Split `tools-search-line` so line-mode edits no longer require one 250s serialized bucket.
-2. Route line-mode-specific paths to the new buckets in `xtask/src/changed.rs`.
-3. Run `cargo nextest run -p xtask` plus the affected line-mode bucket(s), then leave `full` for the broader pre-merge gate.
+1. Split `tools-editing` so edit-tool changes no longer require one 200s bucket with eight commands.
+2. Route editing-specific paths to the new buckets in `xtask/src/changed.rs`.
+3. Run `cargo nextest run -p xtask` plus the affected editing bucket(s), then leave `full` for the broader pre-merge gate.
 
 That slice preserves Julie behavior while reducing the cost of changed-path verification and making the remaining complexity visible.
 

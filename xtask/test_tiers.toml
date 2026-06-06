@@ -11,7 +11,7 @@ dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", 
 system = ["projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -117,15 +117,37 @@ commands = [
   "cargo nextest run -p julie-tools --lib tests::tantivy_",
 ]
 
-[buckets.tools-search-line]
-# Line-mode search tests. line_mode.rs alone is ~63KB and dominates this slice;
-# isolating from file/zero-hit lets edits to one strategy skip the others.
-expected_seconds = 250
-timeout_seconds = 330
+[buckets.tools-search-line-core]
+# Core line-mode search behavior.
+expected_seconds = 40
+timeout_seconds = 90
 scope_label = "tooling"
-notes = "line-mode search coverage; serialized because tests mutate process env and spin per-test indexers"
+notes = "line-mode basic behavior coverage; serialized because tests mutate process env and spin per-test indexers"
 commands = [
-  "cargo nextest run -j 1 --lib tests::tools::search::line_ -- --skip search_quality",
+  "cargo nextest run -j 1 --lib tests::tools::search::line_mode::basic -- --skip search_quality",
+]
+
+[buckets.tools-search-line-filters]
+# Line-mode caller filters, fallback counters, and second-pass coverage.
+expected_seconds = 150
+timeout_seconds = 240
+scope_label = "tooling"
+notes = "line-mode filter, fallback, and second-pass coverage"
+commands = [
+  "cargo nextest run -j 1 --lib tests::tools::search::line_mode::filters -- --skip search_quality",
+  "cargo nextest run -j 1 --lib tests::tools::search::line_mode_or_fallback_tests -- --skip search_quality",
+  "cargo nextest run -j 1 --lib tests::tools::search::line_mode_second_pass_tests -- --skip search_quality",
+]
+
+[buckets.tools-search-line-primary]
+# Line-mode primary workspace rebinding and missing-index diagnostics.
+expected_seconds = 75
+timeout_seconds = 120
+scope_label = "tooling"
+notes = "line-mode primary workspace rebinding and missing-index coverage"
+commands = [
+  "cargo nextest run -j 1 --lib tests::tools::search::line_mode::missing_index -- --skip search_quality",
+  "cargo nextest run -j 1 --lib tests::tools::search::line_mode::primary_rebind -- --skip search_quality",
 ]
 
 [buckets.tools-search-file-mode]

@@ -119,7 +119,9 @@ fn changed_tests_selects_search_and_dogfood_for_search_core_changes() {
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line",
+            "tools-search-line-core",
+            "tools-search-line-filters",
+            "tools-search-line-primary",
             "tools-search-file-mode",
             "tools-search-zero-hit",
             "tools-search-promotion",
@@ -174,7 +176,9 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
             vec![
                 "core-index",
                 "tools-search-tantivy",
-                "tools-search-line",
+                "tools-search-line-core",
+                "tools-search-line-filters",
+                "tools-search-line-primary",
                 "tools-search-file-mode",
                 "tools-search-zero-hit",
                 "tools-search-promotion",
@@ -350,7 +354,9 @@ fn changed_tests_reports_path_to_bucket_rationale() {
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line",
+            "tools-search-line-core",
+            "tools-search-line-filters",
+            "tools-search-line-primary",
             "tools-search-file-mode",
             "tools-search-zero-hit",
             "tools-search-promotion",
@@ -362,7 +368,7 @@ fn changed_tests_reports_path_to_bucket_rationale() {
             "tools-search-unified",
         ]
     );
-    assert!(output.contains("CHANGED: rationale: src/tools/search/mod.rs -> tools-search-tantivy, tools-search-line, tools-search-file-mode, tools-search-zero-hit, tools-search-promotion, tools-search-format-quality, tools-search-context, tools-search-text, tools-search-hybrid, tools-search-query"));
+    assert!(output.contains("CHANGED: rationale: src/tools/search/mod.rs -> tools-search-tantivy, tools-search-line-core, tools-search-line-filters, tools-search-line-primary, tools-search-file-mode, tools-search-zero-hit, tools-search-promotion, tools-search-format-quality, tools-search-context, tools-search-text, tools-search-hybrid, tools-search-query"));
 }
 
 #[test]
@@ -373,7 +379,9 @@ fn changed_tests_search_paths_select_split_search_buckets() {
         &manifest,
         &[
             "src/tests/tools/search/tantivy_tokenizer_tests.rs".to_string(),
-            "src/tests/tools/search/line_mode.rs".to_string(),
+            "src/tests/tools/search/line_mode/basic.rs".to_string(),
+            "src/tests/tools/search/line_mode/filters.rs".to_string(),
+            "src/tests/tools/search/line_mode/primary_rebind.rs".to_string(),
             "src/tests/tools/search/file_mode_tests.rs".to_string(),
             "src/tests/tools/search/primary_workspace_bug.rs".to_string(),
             "src/tests/tools/search/definition_overfetch_tests.rs".to_string(),
@@ -390,7 +398,9 @@ fn changed_tests_search_paths_select_split_search_buckets() {
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line",
+            "tools-search-line-core",
+            "tools-search-line-filters",
+            "tools-search-line-primary",
             "tools-search-file-mode",
             "tools-search-zero-hit",
             "tools-search-promotion",
@@ -476,7 +486,9 @@ fn changed_tests_handler_tool_fast_search_selects_search_buckets() {
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line",
+            "tools-search-line-core",
+            "tools-search-line-filters",
+            "tools-search-line-primary",
             "tools-search-file-mode",
             "tools-search-zero-hit",
             "tools-search-promotion",
@@ -612,7 +624,9 @@ fn changed_tests_handler_search_telemetry_selects_search_buckets() {
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line",
+            "tools-search-line-core",
+            "tools-search-line-filters",
+            "tools-search-line-primary",
             "tools-search-file-mode",
             "tools-search-zero-hit",
             "tools-search-promotion",
@@ -868,7 +882,9 @@ dev = [
   "tools-workspace-targeting",
   "workspace-init",
   "tools-search-tantivy",
-  "tools-search-line",
+  "tools-search-line-core",
+  "tools-search-line-filters",
+  "tools-search-line-primary",
   "tools-search-file-mode",
   "tools-search-zero-hit",
   "tools-search-promotion",
@@ -946,10 +962,20 @@ expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::search::tantivy_"]
 
-[buckets.tools-search-line]
+[buckets.tools-search-line-core]
 expected_seconds = 10
 timeout_seconds = 40
-commands = ["cargo test --lib tests::tools::search::line_"]
+commands = ["cargo test --lib tests::tools::search::line_mode::basic"]
+
+[buckets.tools-search-line-filters]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::search::line_mode::filters"]
+
+[buckets.tools-search-line-primary]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::search::line_mode::primary_rebind"]
 
 [buckets.tools-search-file-mode]
 expected_seconds = 10

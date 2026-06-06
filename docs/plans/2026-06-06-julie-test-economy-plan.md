@@ -1,8 +1,8 @@
 # Julie Test Economy Rescue Plan
 
 **Date:** 2026-06-06
-**Status:** Active; fast `dev` gate implemented, `tools-workspace` split complete
-**Baseline:** `8968692c` plus this working-tree slice
+**Status:** Active; fast `dev` gate implemented, `tools-workspace` and `tools-search-line` splits complete
+**Baseline:** `4bfa2361` plus this working-tree slice
 
 ---
 
@@ -25,7 +25,7 @@ From the current manifest after the first cut:
 | `dev` | 27 | 589s / 9.8m |
 | `system` | 5 | 225s / 3.8m |
 | `dogfood` | 2 | 380s / 6.3m |
-| `full` | 46 | 2519s / 42.0m |
+| `full` | 48 | 2534s / 42.2m |
 
 `dev` was 37 buckets / 1914s before the fast-gate cut. The removed broad buckets are still present in `full`.
 
@@ -34,7 +34,7 @@ The first actual `cargo xtask test dev` run after calibration passed 27 buckets 
 Broad buckets removed from `dev`:
 
 - `tools-workspace` (now split into `tools-workspace-discovery`, `tools-workspace-indexing`, and `tools-workspace-management`)
-- `tools-search-line`
+- `tools-search-line` (now split into `tools-search-line-core`, `tools-search-line-filters`, and `tools-search-line-primary`)
 - `tools-search-file-mode`
 - `tools-search-format-quality`
 - `tools-search-unified`
@@ -61,7 +61,7 @@ Done in this slice:
 Current target order:
 
 1. `tools-workspace` (done: split into discovery/indexing/management)
-2. `tools-search-line` (250s, 1 serialized command)
+2. `tools-search-line` (done: split into core/filters/primary)
 3. `tools-editing` (200s, 8 commands)
 4. `tools-workspace-targeting` (170s, 2 commands)
 5. `tools-search-format-quality` (100s, 6 commands)
@@ -73,6 +73,12 @@ Current target order:
 - `tools-workspace-indexing`: 5 commands, passed in 282.9s; `mod_tests` is the long pole at 280.6s.
 - `tools-workspace-management`: 2 commands, passed in 4.1s.
 - `tools-workspace-targeting` remains separate and unchanged.
+
+`tools-search-line` split evidence:
+
+- `tools-search-line-core`: 1 command, passed in 31.6s.
+- `tools-search-line-filters`: 3 commands, passed in 140.2s; filter and fallback subcommands are the long poles at 58.8s and 60.1s.
+- `tools-search-line-primary`: 2 commands, passed in 64.9s.
 
 Out of scope for this plan: MCP tool consolidation or tool taxonomy changes. Bucket splitting should preserve the current tool surface unless the user reopens that product decision.
 
@@ -131,3 +137,11 @@ After test ownership is clearer:
 | Workspace management split bucket passes | `cargo xtask test bucket tools-workspace-management` | workspace-split | `8968692c + dirty` | pass: 4.1s | 2026-06-06T14:50:40Z | no |
 | Full xtask package passes after workspace bucket split | `cargo nextest run -p xtask` | xtask-package | `8968692c + dirty` | pass: 169/169 tests in 1.840s | 2026-06-06T14:55:53Z | no |
 | Changed-path gate selects xtask-runner for the workspace split diff | `XTASK_CHANGED_PATHS=$'xtask/test_tiers.toml\nxtask/src/changed.rs\nxtask/src/manifest.rs\nxtask/tests/changed_tests.rs\nxtask/tests/manifest_contract_tests.rs\nxtask/tests/support/manifest_contract_expected.rs\ndocs/plans/2026-06-06-julie-rescue-current-status.md\ndocs/plans/2026-06-06-julie-test-economy-plan.md' cargo xtask test changed` | scoped-changed | `8968692c + dirty` | pass: `xtask-runner` 2.5s | 2026-06-06T14:55:53Z | no |
+| Line-mode split routing fails before split implementation | `cargo nextest run -p xtask changed_tests_route_line_mode_split_modules_to_narrow_buckets` | targeted-red | `4bfa2361 + dirty test-only` | fail as expected: `line_mode/basic.rs` still routed to `tools-search-line` | 2026-06-06T15:15:38Z | no |
+| Line-mode split routing and manifest contracts pass | `cargo nextest run -p xtask changed_tests_route_line_mode_split_modules_to_narrow_buckets changed_tests_search_paths_select_split_search_buckets changed_tests_selects_search_and_dogfood_for_search_core_changes changed_tests_reports_path_to_bucket_rationale changed_tests_handler_tool_fast_search_selects_search_buckets changed_tests_handler_search_telemetry_selects_search_buckets manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs manifest_contract_tests_checked_in_manifest_uses_approved_first_pass_tiers manifest_tests_full_retains_broad_release_buckets manifest_tests_dev_tier_stays_under_ten_minutes` | targeted-xtask | `4bfa2361 + dirty` | pass: 10/10 tests | 2026-06-06T15:15:38Z | no |
+| Line-mode core split bucket passes | `cargo xtask test bucket tools-search-line-core` | line-split | `4bfa2361 + dirty` | pass: 31.6s | 2026-06-06T15:15:38Z | no |
+| Line-mode filters split bucket passes | `cargo xtask test bucket tools-search-line-filters` | line-split | `4bfa2361 + dirty` | pass: 140.2s; commands 58.8s, 60.1s, 21.2s | 2026-06-06T15:15:38Z | no |
+| Line-mode primary split bucket passes | `cargo xtask test bucket tools-search-line-primary` | line-split | `4bfa2361 + dirty` | pass: 64.9s; commands 20.2s and 44.7s | 2026-06-06T15:15:38Z | no |
+| Manifest totals after line-mode split | `cargo xtask test list`; parse `xtask/test_tiers.toml` tier totals | manifest-list | `4bfa2361 + dirty` | pass: `dev` 27 buckets / 589s; `full` 48 buckets / 2534s | 2026-06-06T15:15:38Z | no |
+| Full xtask package passes after line-mode split | `cargo nextest run -p xtask` | xtask-package | `4bfa2361 + dirty` | pass: 170/170 tests in 1.969s | 2026-06-06T15:17:00Z | no |
+| Changed-path gate selects xtask-runner for the line split diff | `XTASK_CHANGED_PATHS=$'xtask/test_tiers.toml\nxtask/src/changed.rs\nxtask/src/manifest.rs\nxtask/tests/changed_tests.rs\nxtask/tests/manifest_contract_tests.rs\nxtask/tests/support/manifest_contract_expected.rs\ndocs/plans/2026-06-06-julie-rescue-current-status.md\ndocs/plans/2026-06-06-julie-test-economy-plan.md' cargo xtask test changed` | scoped-changed | `4bfa2361 + dirty` | pass: `xtask-runner` 2.3s | 2026-06-06T15:17:00Z | no |

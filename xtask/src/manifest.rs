@@ -191,7 +191,9 @@ mod tests {
         let full_buckets = manifest.tiers.get("full").expect("full tier exists");
 
         for bucket_name in [
-            "tools-search-line",
+            "tools-search-line-core",
+            "tools-search-line-filters",
+            "tools-search-line-primary",
             "tools-search-file-mode",
             "tools-search-format-quality",
             "tools-search-unified",

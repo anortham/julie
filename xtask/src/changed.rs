@@ -29,7 +29,9 @@ const DEV_FALLBACK_PREFIXES: &[&str] = &[
 
 const SEARCH_TOOL_BUCKETS: &[&str] = &[
     "tools-search-tantivy",
-    "tools-search-line",
+    "tools-search-line-core",
+    "tools-search-line-filters",
+    "tools-search-line-primary",
     "tools-search-file-mode",
     "tools-search-zero-hit",
     "tools-search-promotion",
@@ -43,7 +45,9 @@ const SEARCH_TOOL_BUCKETS: &[&str] = &[
 
 const SEARCH_TOOL_BUCKETS_WITH_QUALITY: &[&str] = &[
     "tools-search-tantivy",
-    "tools-search-line",
+    "tools-search-line-core",
+    "tools-search-line-filters",
+    "tools-search-line-primary",
     "tools-search-file-mode",
     "tools-search-zero-hit",
     "tools-search-promotion",
@@ -58,7 +62,9 @@ const SEARCH_TOOL_BUCKETS_WITH_QUALITY: &[&str] = &[
 
 const SEARCH_TOOL_BUCKETS_WITH_HANDLER_TELEMETRY: &[&str] = &[
     "tools-search-tantivy",
-    "tools-search-line",
+    "tools-search-line-core",
+    "tools-search-line-filters",
+    "tools-search-line-primary",
     "tools-search-file-mode",
     "tools-search-zero-hit",
     "tools-search-promotion",
@@ -80,7 +86,9 @@ const SEARCH_TOOL_BUCKETS_WITH_HANDLER_TELEMETRY: &[&str] = &[
 const JULIE_INDEX_SEARCH_BUCKETS: &[&str] = &[
     "core-index",
     "tools-search-tantivy",
-    "tools-search-line",
+    "tools-search-line-core",
+    "tools-search-line-filters",
+    "tools-search-line-primary",
     "tools-search-file-mode",
     "tools-search-zero-hit",
     "tools-search-promotion",
@@ -1119,8 +1127,24 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
         return Some(&["tools-search-tantivy"]);
     }
 
-    if matches_prefix(path, &["src/tests/tools/search/line_"]) {
-        return Some(&["tools-search-line"]);
+    if path == "src/tests/tools/search/line_mode.rs"
+        || path == "src/tests/tools/search/line_mode/mod.rs"
+        || path == "src/tests/tools/search/line_mode/basic.rs"
+    {
+        return Some(&["tools-search-line-core"]);
+    }
+
+    if path == "src/tests/tools/search/line_mode/filters.rs"
+        || path == "src/tests/tools/search/line_mode_or_fallback_tests.rs"
+        || path == "src/tests/tools/search/line_mode_second_pass_tests.rs"
+    {
+        return Some(&["tools-search-line-filters"]);
+    }
+
+    if path == "src/tests/tools/search/line_mode/missing_index.rs"
+        || path == "src/tests/tools/search/line_mode/primary_rebind.rs"
+    {
+        return Some(&["tools-search-line-primary"]);
     }
 
     if matches_prefix(path, &["src/tests/tools/search/file_"]) {
@@ -1227,7 +1251,9 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "tools-get-context-format",
         "tools-get-context-graph",
         "tools-search-tantivy",
-        "tools-search-line",
+        "tools-search-line-core",
+        "tools-search-line-filters",
+        "tools-search-line-primary",
         "tools-search-file-mode",
         "tools-search-zero-hit",
         "tools-search-promotion",
@@ -1417,6 +1443,47 @@ mod tests {
             (
                 "src/tests/tools/workspace/isolation.rs",
                 "tools-workspace-management",
+            ),
+        ] {
+            let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+            assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+            assert_eq!(selection.bucket_names, vec![expected_bucket], "{path}");
+            assert!(
+                selection.fallback_paths.is_empty(),
+                "{path} should not fall back; rationale={:?}",
+                selection.rationale
+            );
+        }
+    }
+
+    #[test]
+    fn changed_tests_route_line_mode_split_modules_to_narrow_buckets() {
+        let manifest = manifest();
+
+        for (path, expected_bucket) in [
+            (
+                "src/tests/tools/search/line_mode/basic.rs",
+                "tools-search-line-core",
+            ),
+            (
+                "src/tests/tools/search/line_mode/filters.rs",
+                "tools-search-line-filters",
+            ),
+            (
+                "src/tests/tools/search/line_mode_or_fallback_tests.rs",
+                "tools-search-line-filters",
+            ),
+            (
+                "src/tests/tools/search/line_mode_second_pass_tests.rs",
+                "tools-search-line-filters",
+            ),
+            (
+                "src/tests/tools/search/line_mode/missing_index.rs",
+                "tools-search-line-primary",
+            ),
+            (
+                "src/tests/tools/search/line_mode/primary_rebind.rs",
+                "tools-search-line-primary",
             ),
         ] {
             let selection = select_changed_buckets(&manifest, &[path.to_string()]);
