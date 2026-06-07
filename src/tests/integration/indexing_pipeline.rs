@@ -63,6 +63,26 @@ async fn fast_search_text(
     Ok(extract_text_from_result(&result))
 }
 
+#[test]
+fn test_indexing_pipeline_project_batch_does_not_clone_large_batch_vectors() {
+    let source = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/tools/workspace/indexing/pipeline.rs"
+    ))
+    .expect("read indexing pipeline source");
+
+    for forbidden in [
+        "batch.all_symbols.clone()",
+        "batch.all_file_infos.clone()",
+        "batch.files_to_clean.clone()",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "project_batch must move large extracted batch vectors into projection, not clone `{forbidden}`"
+        );
+    }
+}
+
 async fn test_handler_and_route(
     temp_dir: &TempDir,
 ) -> Result<(JulieServerHandler, std::path::PathBuf, IndexRoute)> {

@@ -31,6 +31,22 @@ pub struct IdentifierRef {
 const IDENTIFIER_REF_COLUMNS: &str =
     "name, kind, file_path, start_line, containing_symbol_id, target_symbol_id, confidence";
 
+fn refill_temp_values(
+    conn: &rusqlite::Connection,
+    table_name: &str,
+    values: &[&str],
+) -> Result<()> {
+    conn.execute(&format!("DELETE FROM {table_name}"), [])?;
+
+    let insert_sql = format!("INSERT OR IGNORE INTO {table_name} (value) VALUES (?1)");
+    let mut stmt = conn.prepare(&insert_sql)?;
+    for value in values {
+        stmt.execute([value])?;
+    }
+
+    Ok(())
+}
+
 /// Escape SQL LIKE wildcard characters so they match literally.
 /// `_` (any single char) and `%` (any sequence) are escaped with `\`.
 /// The backslash itself is also escaped.
@@ -468,53 +484,86 @@ impl SymbolDatabase {
             return Ok(HashSet::new());
         }
 
-        // Each query uses file_chunk.len() + name_chunk.len() bind params.
-        // Keep total under 500 with 250 per axis.
-        const AXIS_CHUNK: usize = 250;
+        self.conn.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS _julie_identifier_presence_files (
+                value TEXT PRIMARY KEY
+            );
+            CREATE TEMP TABLE IF NOT EXISTS _julie_identifier_presence_names (
+                value TEXT PRIMARY KEY
+            );",
+        )?;
+        refill_temp_values(&self.conn, "_julie_identifier_presence_files", file_paths)?;
+        refill_temp_values(&self.conn, "_julie_identifier_presence_names", names)?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT i.file_path, i.name
+             FROM identifiers i
+             JOIN _julie_identifier_presence_files f ON i.file_path = f.value
+             JOIN _julie_identifier_presence_names n ON i.name = n.value",
+        )?;
+
         let mut results = HashSet::new();
-
-        for file_chunk in file_paths.chunks(AXIS_CHUNK) {
-            for name_chunk in names.chunks(AXIS_CHUNK) {
-                let file_placeholders: String = (1..=file_chunk.len())
-                    .map(|i| format!("?{}", i))
-                    .collect::<Vec<_>>()
-                    .join(",");
-                let name_offset = file_chunk.len();
-                let name_placeholders: String = (1..=name_chunk.len())
-                    .map(|i| format!("?{}", name_offset + i))
-                    .collect::<Vec<_>>()
-                    .join(",");
-
-                let query = format!(
-                    "SELECT DISTINCT file_path, name FROM identifiers \
-                     WHERE file_path IN ({}) AND name IN ({})",
-                    file_placeholders, name_placeholders
-                );
-
-                let mut stmt = self.conn.prepare(&query)?;
-
-                let mut params: Vec<&dyn rusqlite::types::ToSql> = Vec::new();
-                for fp in file_chunk {
-                    params.push(fp as &dyn rusqlite::types::ToSql);
-                }
-                for n in name_chunk {
-                    params.push(n as &dyn rusqlite::types::ToSql);
-                }
-
-                let rows = stmt.query_map(&*params, |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                })?;
-
-                for row in rows {
-                    let (file_path, name) = row?;
-                    results.insert((file_path, name));
-                }
-            }
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            results.insert(row?);
         }
 
         debug!(
             "Identifier presence check: {} files x {} names → {} matches",
             file_paths.len(),
+            names.len(),
+            results.len()
+        );
+        Ok(results)
+    }
+
+    /// Check which (containing_symbol_id, name) pairs have matching identifiers.
+    ///
+    /// This is intentionally exact-match only. The relationship resolver uses it
+    /// to decide whether a caller scope mentions a candidate parent type; qualified
+    /// prefix expansion would only create extra work because the resolver filters
+    /// those rows back down to exact parent names.
+    pub fn get_scoped_identifier_presence(
+        &self,
+        scope_ids: &[&str],
+        names: &[&str],
+    ) -> Result<HashSet<(String, String)>> {
+        if scope_ids.is_empty() || names.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        self.conn.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS _julie_identifier_presence_scopes (
+                value TEXT PRIMARY KEY
+            );
+            CREATE TEMP TABLE IF NOT EXISTS _julie_identifier_presence_names (
+                value TEXT PRIMARY KEY
+            );",
+        )?;
+        refill_temp_values(&self.conn, "_julie_identifier_presence_scopes", scope_ids)?;
+        refill_temp_values(&self.conn, "_julie_identifier_presence_names", names)?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT i.containing_symbol_id, i.name
+             FROM identifiers i
+             JOIN _julie_identifier_presence_scopes s ON i.containing_symbol_id = s.value
+             JOIN _julie_identifier_presence_names n ON i.name = n.value
+             WHERE i.containing_symbol_id IS NOT NULL",
+        )?;
+
+        let mut results = HashSet::new();
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            results.insert(row?);
+        }
+
+        debug!(
+            "Scoped identifier presence check: {} scopes x {} names → {} matches",
+            scope_ids.len(),
             names.len(),
             results.len()
         );

@@ -4,9 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{info, warn};
 
+use crate::search::SearchIndex;
 use julie_core::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDatabase};
 use julie_extractors::Symbol;
-use crate::search::SearchIndex;
 
 mod apply;
 
@@ -143,7 +143,15 @@ impl SearchProjection {
             None,
         )?;
 
+        let phase_start = std::time::Instant::now();
         let symbols = db.get_all_symbols()?;
+        info!(
+            "projection.ensure_current.load_symbols: {:.2}s ({} symbols)",
+            phase_start.elapsed().as_secs_f64(),
+            symbols.len()
+        );
+
+        let phase_start = std::time::Instant::now();
         let raw_file_tuples = db.get_all_files_for_search_projection()?;
         let file_infos: Vec<FileInfo> = raw_file_tuples
             .into_iter()
@@ -159,7 +167,21 @@ impl SearchProjection {
                 line_count: 0,
             })
             .collect();
+        info!(
+            "projection.ensure_current.load_files: {:.2}s ({} files)",
+            phase_start.elapsed().as_secs_f64(),
+            file_infos.len()
+        );
+
+        let phase_start = std::time::Instant::now();
         let symbol_contexts = symbol_contexts_from_symbols(&symbols);
+        info!(
+            "projection.ensure_current.build_symbol_contexts: {:.2}s ({} symbols)",
+            phase_start.elapsed().as_secs_f64(),
+            symbols.len()
+        );
+
+        let phase_start = std::time::Instant::now();
         let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
         let relationship_map = match collect_relationship_names_bounded(
             db,
@@ -186,7 +208,14 @@ impl SearchProjection {
                 }
             }
         };
+        info!(
+            "projection.ensure_current.collect_relationship_text: {:.2}s ({} focal symbols, {} relationship_text rows)",
+            phase_start.elapsed().as_secs_f64(),
+            symbol_ids.len(),
+            relationship_map.len()
+        );
 
+        let phase_start = std::time::Instant::now();
         if let Err(err) = self.rebuild(
             index,
             &symbols,
@@ -205,7 +234,19 @@ impl SearchProjection {
             );
             return Err(err);
         }
+        info!(
+            "projection.ensure_current.apply_documents_uncommitted: {:.2}s ({} symbols, {} files)",
+            phase_start.elapsed().as_secs_f64(),
+            symbols.len(),
+            file_infos.len()
+        );
+
+        let phase_start = std::time::Instant::now();
         index.release_writer()?;
+        info!(
+            "projection.ensure_current.commit: {:.2}s",
+            phase_start.elapsed().as_secs_f64()
+        );
 
         let ready_state = db.upsert_projection_state(
             self.projection,

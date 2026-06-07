@@ -6,6 +6,30 @@ use tracing::{debug, info};
 
 use crate::database::SymbolDatabase;
 
+const IDENTIFIER_SECONDARY_INDEXES: &[(&str, &str)] = &[
+    ("idx_identifiers_name", "identifiers(name)"),
+    ("idx_identifiers_file", "identifiers(file_path)"),
+    (
+        "idx_identifiers_containing",
+        "identifiers(containing_symbol_id)",
+    ),
+    ("idx_identifiers_target", "identifiers(target_symbol_id)"),
+    ("idx_identifiers_kind", "identifiers(kind)"),
+    (
+        "idx_identifiers_file_line_kind",
+        "identifiers(file_path, start_line, kind)",
+    ),
+    ("idx_identifiers_file_name", "identifiers(file_path, name)"),
+    (
+        "idx_identifiers_kind_containing",
+        "identifiers(kind, containing_symbol_id)",
+    ),
+    (
+        "idx_identifiers_name_kind_containing",
+        "identifiers(name, kind, containing_symbol_id)",
+    ),
+];
+
 pub(crate) fn insert_identifiers_tx(
     tx: &Transaction<'_>,
     identifiers: &[julie_extractors::Identifier],
@@ -59,6 +83,38 @@ pub(crate) fn insert_identifiers_tx(
     }
 
     Ok(inserted)
+}
+
+pub(crate) fn insert_identifiers_with_deferred_indexes_tx(
+    tx: &Transaction<'_>,
+    identifiers: &[julie_extractors::Identifier],
+    valid_symbol_ids: Option<&HashSet<String>>,
+) -> Result<i64> {
+    if identifiers.is_empty() {
+        return Ok(0);
+    }
+
+    drop_identifier_secondary_indexes_tx(tx)?;
+    let inserted = insert_identifiers_tx(tx, identifiers, valid_symbol_ids)?;
+    create_identifier_secondary_indexes_tx(tx)?;
+    Ok(inserted)
+}
+
+fn drop_identifier_secondary_indexes_tx(tx: &Transaction<'_>) -> Result<()> {
+    for (name, _) in IDENTIFIER_SECONDARY_INDEXES {
+        tx.execute(&format!("DROP INDEX IF EXISTS {name}"), [])?;
+    }
+    Ok(())
+}
+
+fn create_identifier_secondary_indexes_tx(tx: &Transaction<'_>) -> Result<()> {
+    for (name, definition) in IDENTIFIER_SECONDARY_INDEXES {
+        tx.execute(
+            &format!("CREATE INDEX IF NOT EXISTS {name} ON {definition}"),
+            [],
+        )?;
+    }
+    Ok(())
 }
 
 fn normalize_symbol_ref(

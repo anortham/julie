@@ -45,6 +45,7 @@ pub(crate) async fn run_indexing_pipeline(
     let (batch, extracted_records) =
         extract_files_for_indexing_with_records(files_by_language, &route.workspace_root).await?;
     record_extracted_file_records(&mut state, extracted_records);
+    let files_processed = batch.files_processed;
 
     // Test-role classification (and literal carrier gating) now happens inside
     // the shared chokepoint `extract_files_for_indexing_with_records` above, so
@@ -76,7 +77,7 @@ pub(crate) async fn run_indexing_pipeline(
     project_batch(
         &db,
         route,
-        &batch,
+        batch,
         &mut state,
         persist_result.canonical_revision,
     )
@@ -116,7 +117,7 @@ pub(crate) async fn run_indexing_pipeline(
 
     Ok(IndexingPipelineResult {
         state,
-        files_processed: batch.files_processed,
+        files_processed,
         canonical_revision: persist_result.canonical_revision,
     })
 }
@@ -345,13 +346,16 @@ fn store_parse_diagnostics(
 async fn project_batch(
     db: &std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
     route: &IndexRoute,
-    batch: &ExtractedBatch,
+    batch: ExtractedBatch,
     state: &mut IndexingBatchState,
     canonical_revision: Option<i64>,
 ) -> Result<()> {
-    let symbols = batch.all_symbols.clone();
-    let file_infos = batch.all_file_infos.clone();
-    let files_to_clean = batch.files_to_clean.clone();
+    let ExtractedBatch {
+        all_symbols: symbols,
+        all_file_infos: file_infos,
+        files_to_clean,
+        ..
+    } = batch;
 
     debug!(
         workspace_id = %route.workspace_id,

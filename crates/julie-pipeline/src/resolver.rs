@@ -466,20 +466,22 @@ fn build_parent_reference_context(
     };
 
     let parent_name_set: HashSet<&str> = parent_name_queries.iter().map(String::as_str).collect();
+    let scope_ids: Vec<String> = if caller_scope_ids.is_empty() {
+        Vec::new()
+    } else {
+        let mut seen = HashSet::new();
+        caller_scope_ids
+            .iter()
+            .filter(|id| seen.insert(**id))
+            .map(|id| (*id).to_string())
+            .collect()
+    };
+    let unique_scope_ids: Vec<&str> = scope_ids.iter().map(String::as_str).collect();
     let mut scope_refs = if caller_scope_ids.is_empty() {
         HashSet::new()
     } else {
-        let scope_ids: HashSet<&str> = caller_scope_ids.iter().copied().collect();
-        match db.get_identifiers_by_names(&parent_name_queries) {
-            Ok(refs) => refs
-                .into_iter()
-                .filter_map(|identifier| {
-                    let scope_id = identifier.containing_symbol_id?;
-                    (scope_ids.contains(scope_id.as_str())
-                        && parent_name_set.contains(identifier.name.as_str()))
-                    .then_some((scope_id, identifier.name))
-                })
-                .collect(),
+        match db.get_scoped_identifier_presence(&unique_scope_ids, &unique_parent_names) {
+            Ok(refs) => refs,
             Err(e) => {
                 warn!(
                     "Failed to query scoped identifier presence for disambiguation: {}",
@@ -491,14 +493,6 @@ fn build_parent_reference_context(
     };
 
     if !caller_scope_ids.is_empty() {
-        let scope_ids: Vec<String> = {
-            let mut seen = HashSet::new();
-            caller_scope_ids
-                .iter()
-                .filter(|id| seen.insert(**id))
-                .map(|id| (*id).to_string())
-                .collect()
-        };
         match db.get_symbols_by_ids(&scope_ids) {
             Ok(symbols) => {
                 for symbol in symbols {

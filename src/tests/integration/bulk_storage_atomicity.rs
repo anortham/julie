@@ -595,6 +595,21 @@ fn test_bulk_store_identifiers_indexes_restored() -> Result<()> {
 }
 
 #[test]
+fn test_fresh_bulk_store_defers_identifier_indexes() -> Result<()> {
+    let source = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/crates/julie-core/src/database/bulk/atomic.rs"
+    ))?;
+
+    assert!(
+        source.contains("insert_identifiers_with_deferred_indexes_tx"),
+        "fresh bulk persistence must defer secondary identifier indexes while loading large identifier batches"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_bulk_store_types_indexes_restored() -> Result<()> {
     // [I-C2] Verifies that type indexes survive a bulk_store_types call.
     // Mirror of test_bulk_store_identifiers_indexes_restored for the types table.

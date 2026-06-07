@@ -21,6 +21,7 @@ mod embeddings;
 mod extractor_symbols;
 mod file_queries;
 mod identifier_centrality;
+mod identifier_queries;
 mod migrations;
 mod reference_scores_basic;
 mod reference_scores_propagation;

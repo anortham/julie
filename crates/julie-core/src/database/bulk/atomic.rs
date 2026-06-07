@@ -18,7 +18,7 @@ use super::cleanup::{
     persist_batch_metadata_tx, record_incremental_file_changes, require_workspace_id,
     unix_timestamp,
 };
-use super::identifiers::insert_identifiers_tx;
+use super::identifiers::{insert_identifiers_tx, insert_identifiers_with_deferred_indexes_tx};
 use super::literals::insert_literals_tx;
 use super::relationships::insert_relationships_tx;
 use super::type_arguments::insert_type_arguments_tx;
@@ -100,7 +100,7 @@ impl SymbolDatabase {
                 delete_file_rows_tx(&tx, file_path)?;
             }
 
-            let counts = insert_batch_tx(&tx, write_set, now)?;
+            let counts = insert_batch_tx(&tx, write_set, now, false)?;
             let revision = if counts.has_changes(files_to_clean.len()) {
                 let revision = record_canonical_revision_tx(
                     &tx,
@@ -251,7 +251,7 @@ fn fresh_insert_atomic(
             delete_all_indexed_rows_tx(&tx)?;
         }
 
-        let counts = insert_batch_tx(&tx, write_set, now)?;
+        let counts = insert_batch_tx(&tx, write_set, now, true)?;
         let revision = if counts.has_changes(0) {
             let revision = record_canonical_revision_tx(
                 &tx,
@@ -300,6 +300,7 @@ fn insert_batch_tx(
     tx: &Transaction<'_>,
     write_set: &CanonicalWriteSet<'_>,
     now: i64,
+    defer_identifier_indexes: bool,
 ) -> Result<InsertCounts> {
     let mut counts = InsertCounts::default();
     counts.files = insert_files_tx(tx, write_set.files, now)?;
@@ -315,7 +316,15 @@ fn insert_batch_tx(
     )?;
     counts.relationships =
         insert_relationships_tx(tx, write_set.relationships, Some(&valid_symbol_ids))?;
-    counts.identifiers = insert_identifiers_tx(tx, write_set.identifiers, Some(&valid_symbol_ids))?;
+    counts.identifiers = if defer_identifier_indexes {
+        insert_identifiers_with_deferred_indexes_tx(
+            tx,
+            write_set.identifiers,
+            Some(&valid_symbol_ids),
+        )?
+    } else {
+        insert_identifiers_tx(tx, write_set.identifiers, Some(&valid_symbol_ids))?
+    };
     counts.types = insert_types_tx(tx, write_set.types, Some(&valid_symbol_ids), now)?;
     // type_arguments after identifiers: each row's identifier_id FKs an
     // identifier row (FK checks are off in the bulk window, but the ordering

@@ -4,12 +4,12 @@
 // query once per unique name) produces identical results to the
 // sequential per-relationship approach — just much faster.
 
+use crate::resolver;
 use julie_core::database::{FileInfo, SymbolDatabase};
 use julie_extractors::base::{
     Identifier, IdentifierKind, PendingRelationship, RelationshipKind,
     StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget, Visibility,
 };
-use crate::resolver;
 use tempfile::TempDir;
 
 /// Helper: minimal symbol with just the fields that matter for resolution
@@ -842,6 +842,23 @@ fn test_resolve_structured_batch_does_not_treat_vendor_path_as_workspace_crate_r
     assert!(
         resolved.is_empty(),
         "workspace glob reexports must not resolve through nested vendor crate roots"
+    );
+}
+
+#[test]
+fn test_resolver_uses_scoped_identifier_presence_without_prefix_scan() {
+    let source = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/resolver.rs"),
+    )
+    .expect("resolver source should be readable");
+
+    assert!(
+        source.contains("get_scoped_identifier_presence"),
+        "resolver should use exact scoped identifier presence for parent disambiguation"
+    );
+    assert!(
+        !source.contains("get_identifiers_by_names(&parent_name_queries)"),
+        "resolver must not scan qualified identifier prefixes for scoped parent-name presence"
     );
 }
 
