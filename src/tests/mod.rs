@@ -304,7 +304,7 @@ pub mod dashboard;
 // ============================================================================
 // DAEMON TESTS - v6 daemon infrastructure (paths, PID, lifecycle)
 // ============================================================================
-pub mod daemon;
+pub mod registry;
 
 // ============================================================================
 // EXTRACTOR TESTS - Live in the external julie-extractors repo

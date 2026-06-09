@@ -28,7 +28,6 @@ async fn test_manage_workspace_open_registers_missing_workspace_and_returns_work
         Some(primary_id),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -117,7 +116,6 @@ async fn test_manage_workspace_register_does_not_mutate_primary_binding_during_r
         Some(legacy_primary_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -196,7 +194,6 @@ async fn test_manage_workspace_open_by_workspace_id_marks_known_workspace_active
         Some(primary_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -269,7 +266,6 @@ async fn test_manage_workspace_open_does_not_activate_workspace_when_refresh_fai
         Some(primary_id),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -330,7 +326,6 @@ async fn test_manage_workspace_open_is_idempotent_for_active_workspace() {
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
         None,
     )
@@ -403,7 +398,6 @@ async fn test_manage_workspace_open_short_circuits_when_active() {
         Some(primary_id),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -471,7 +465,6 @@ async fn test_manage_workspace_open_force_active_workspace_runs_refresh() {
         primary_root.canonicalize().unwrap(),
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
         None,
     )

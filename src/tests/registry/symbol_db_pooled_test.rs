@@ -8,8 +8,8 @@ use tempfile::tempdir;
 use tokio::sync::Barrier;
 use tokio::time::timeout;
 
-use crate::daemon::connection_pool::WorkspaceConnectionPool;
 use crate::database::SymbolDatabase;
+use crate::registry::connection_pool::WorkspaceConnectionPool;
 
 #[tokio::test]
 async fn test_pooled_symbol_database_round_trips_through_owned_schema() {

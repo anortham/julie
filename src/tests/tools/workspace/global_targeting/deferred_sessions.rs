@@ -29,7 +29,6 @@ fn make_deferred_handler_no_primary(
             Some(startup_id),
             None,
             None,
-            None,
         )
         .await
         .expect("handler should initialize");
@@ -70,12 +69,8 @@ async fn test_manage_workspace_list_succeeds_in_deferred_session_without_primary
             .unwrap();
     }
 
-    let handler = make_deferred_handler_no_primary(
-        &indexes_dir,
-        Arc::clone(&daemon_db),
-        &startup_root,
-    )
-    .await;
+    let handler =
+        make_deferred_handler_no_primary(&indexes_dir, Arc::clone(&daemon_db), &startup_root).await;
 
     let result = ManageWorkspaceTool {
         operation: "list".to_string(),
@@ -121,12 +116,8 @@ async fn test_manage_workspace_remove_succeeds_in_deferred_session_without_prima
         .upsert_workspace(&removable_id, &removable_path.to_string_lossy(), "ready")
         .unwrap();
 
-    let handler = make_deferred_handler_no_primary(
-        &indexes_dir,
-        Arc::clone(&daemon_db),
-        &startup_root,
-    )
-    .await;
+    let handler =
+        make_deferred_handler_no_primary(&indexes_dir, Arc::clone(&daemon_db), &startup_root).await;
 
     let result = ManageWorkspaceTool {
         operation: "remove".to_string(),
@@ -173,12 +164,8 @@ async fn test_manage_workspace_register_succeeds_in_deferred_session_without_pri
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
 
-    let handler = make_deferred_handler_no_primary(
-        &indexes_dir,
-        Arc::clone(&daemon_db),
-        &startup_root,
-    )
-    .await;
+    let handler =
+        make_deferred_handler_no_primary(&indexes_dir, Arc::clone(&daemon_db), &startup_root).await;
 
     let candidate_path = candidate_root.canonicalize().unwrap();
     let candidate_path_str = candidate_path.to_string_lossy().to_string();
@@ -228,12 +215,8 @@ async fn test_manage_workspace_add_is_rejected_as_unknown_operation() {
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
 
-    let handler = make_deferred_handler_no_primary(
-        &indexes_dir,
-        Arc::clone(&daemon_db),
-        &startup_root,
-    )
-    .await;
+    let handler =
+        make_deferred_handler_no_primary(&indexes_dir, Arc::clone(&daemon_db), &startup_root).await;
 
     let candidate_path_str = candidate_root
         .canonicalize()
@@ -301,7 +284,6 @@ async fn test_manage_workspace_register_in_deferred_cwd_session_via_server_handl
         },
         Some(Arc::clone(&daemon_db)),
         Some(startup_id.clone()),
-        None,
         None,
         None,
     )

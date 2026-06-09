@@ -17,7 +17,7 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
         std::env::set_var("USERPROFILE", fake_home.path());
     }
 
-    let daemon_paths = DaemonPaths::new();
+    let daemon_paths = RegistryPaths::new();
     let indexes_dir = daemon_paths.indexes_dir();
     fs::create_dir_all(&indexes_dir).unwrap();
 
@@ -47,7 +47,6 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
-        None,
         None,
         None,
     )
@@ -135,7 +134,7 @@ async fn test_remove_current_primary_workspace_is_blocked_in_process() {
         std::env::set_var("USERPROFILE", fake_home.path());
     }
 
-    let daemon_paths = DaemonPaths::new();
+    let daemon_paths = RegistryPaths::new();
     let indexes_dir = daemon_paths.indexes_dir();
     fs::create_dir_all(&indexes_dir).unwrap();
 
@@ -162,7 +161,6 @@ async fn test_remove_current_primary_workspace_is_blocked_in_process() {
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
-        None,
         None,
         None,
     )

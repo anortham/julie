@@ -544,7 +544,7 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
 
 #[tokio::test]
 async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::tools::refactoring::resolve_workspace_root;
     use crate::workspace::registry::generate_workspace_id;
 
@@ -570,17 +570,14 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
 
     let original_path = original_root.canonicalize()?;
     let original_id = generate_workspace_id(&original_path.to_string_lossy())?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
         None,
     )
@@ -591,15 +588,13 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
     daemon_db.upsert_workspace(&original_id, &original_path.to_string_lossy(), "ready")?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path.to_string_lossy(), "ready")?;
 
-    let rebound_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
-            .await?);
+    let rebound_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
     let seed_handler = JulieServerHandler::new_with_shared_workspace(
         rebound_ws,
         rebound_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(rebound_id.clone()),
-        None,
         None,
         None,
     )

@@ -21,7 +21,6 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
     };
 
     let active_sessions = health.control_plane.active_sessions;
-    let restart_pending = health.control_plane.restart_pending;
     let errors = state.dashboard.error_entries();
     let workspace_count = health.data_plane.workspace_count;
 
@@ -30,7 +29,6 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
     context.insert("uptime", &uptime_str);
     context.insert("active_sessions", &active_sessions);
     context.insert("workspace_count", &workspace_count);
-    context.insert("restart_pending", &restart_pending);
     context.insert(
         "embedding_available",
         &health.runtime_plane.embedding_available,
@@ -66,7 +64,6 @@ pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, St
         "uptime": uptime_str,
         "active_sessions": active_sessions,
         "workspace_count": workspace_count,
-        "restart_pending": health.control_plane.restart_pending,
         "embedding_available": health.runtime_plane.embedding_available,
         "embedding_initializing": health.runtime_plane.embedding_initializing,
         "health": health,

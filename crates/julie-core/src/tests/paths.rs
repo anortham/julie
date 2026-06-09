@@ -1,10 +1,10 @@
-//! Tests for `DaemonPaths` path helpers (Phase 3b + 3c).
+//! Tests for `RegistryPaths` path helpers (Phase 3b + 3c).
 
-use crate::paths::DaemonPaths;
+use crate::paths::RegistryPaths;
 use std::path::PathBuf;
 
-fn fixed_home() -> DaemonPaths {
-    DaemonPaths::with_home(PathBuf::from("/tmp/julie-home-3b"))
+fn fixed_home() -> RegistryPaths {
+    RegistryPaths::with_home(PathBuf::from("/tmp/julie-home-3b"))
 }
 
 #[cfg(unix)]
@@ -39,20 +39,13 @@ fn embedding_host_pipe_name_is_deterministic_and_prefixed() {
         a.starts_with(r"\\.\pipe\julie-embedding-host-"),
         "unexpected pipe name: {a}"
     );
-    // Shares the same FNV-1a hash suffix as the daemon shutdown event.
-    let shutdown = paths.daemon_shutdown_event();
-    let hash_suffix = shutdown.rsplit('-').next().unwrap();
-    assert!(
-        a.ends_with(hash_suffix),
-        "pipe name {a} should reuse the daemon hash suffix {hash_suffix}"
-    );
 }
 
 // --- Phase 3c: workspace_leader_lock ---
 
 #[test]
 fn workspace_leader_lock_is_inside_workspace_index_dir_and_distinct_from_rebuild_lock() {
-    let paths = DaemonPaths::with_home(PathBuf::from("/tmp/julie-home-3c"));
+    let paths = RegistryPaths::with_home(PathBuf::from("/tmp/julie-home-3c"));
     let ws = "ws123";
 
     let lock = paths.workspace_leader_lock(ws);

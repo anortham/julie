@@ -10,7 +10,7 @@ use tempfile::TempDir;
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_reports_index_requirement_for_reference_without_tantivy()
 -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
     use std::sync::Arc;
 
@@ -40,17 +40,14 @@ async fn test_fast_search_line_mode_reports_index_requirement_for_reference_with
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
         None,
     )
@@ -108,7 +105,7 @@ async fn test_fast_search_line_mode_reports_index_requirement_for_reference_with
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_definitions_reports_index_requirement_for_reference_without_tantivy()
 -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
     use std::sync::Arc;
 
@@ -134,17 +131,14 @@ async fn test_fast_search_definitions_reports_index_requirement_for_reference_wi
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
         None,
     )

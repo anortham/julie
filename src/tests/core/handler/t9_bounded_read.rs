@@ -156,17 +156,17 @@ async fn test_f1_spawned_repair_not_cancelled_on_read_timeout() {
 /// gate condition that routes `call_tool` to the F1 bounded envelope.
 #[tokio::test]
 async fn test_f1_is_in_process_gate_fires_for_leader_and_follower_not_none() {
-    use crate::daemon::discovery::DaemonLockGuard;
     use crate::handler::JulieServerHandler;
     use crate::leadership::LeadershipState;
+    use crate::registry::discovery::DaemonLockGuard;
     use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
     let dir = tempfile::tempdir().unwrap();
 
     // Leader: is_in_process() == true (F1 envelope fires).
     let lock_path = dir.path().join(".leader.lock");
-    let guard = DaemonLockGuard::try_acquire(&lock_path)
-        .expect("lock must be acquirable on fresh path");
+    let guard =
+        DaemonLockGuard::try_acquire(&lock_path).expect("lock must be acquirable on fresh path");
     let leader = JulieServerHandler::new_in_process(
         WorkspaceStartupHint {
             path: dir.path().to_path_buf(),
@@ -232,15 +232,15 @@ async fn test_f1_is_in_process_gate_fires_for_leader_and_follower_not_none() {
 /// once per concurrent in-process read.
 #[tokio::test]
 async fn test_deferred_repair_slot_is_single_flight() {
-    use crate::daemon::discovery::DaemonLockGuard;
     use crate::handler::JulieServerHandler;
     use crate::leadership::LeadershipState;
+    use crate::registry::discovery::DaemonLockGuard;
     use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
     let dir = tempfile::tempdir().unwrap();
     let lock_path = dir.path().join(".leader.lock");
-    let guard = DaemonLockGuard::try_acquire(&lock_path)
-        .expect("lock must be acquirable on fresh path");
+    let guard =
+        DaemonLockGuard::try_acquire(&lock_path).expect("lock must be acquirable on fresh path");
     let handler = JulieServerHandler::new_in_process(
         WorkspaceStartupHint {
             path: dir.path().to_path_buf(),

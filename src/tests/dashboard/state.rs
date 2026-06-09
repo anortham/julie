@@ -1,16 +1,15 @@
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
-use crate::daemon::database::DaemonDatabase;
-use crate::daemon::embedding_service::EmbeddingService;
-use crate::daemon::lifecycle::{LifecyclePhase, ShutdownCause};
-use crate::daemon::session::{SessionLifecyclePhase, SessionTracker};
 use crate::dashboard::state::{DashboardDaemonPhase, DashboardEvent, DashboardState};
 use crate::database::types::FileInfo;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::health::{HealthLevel, ProjectionFreshness, ProjectionState, SystemStatus};
+use crate::registry::database::DaemonDatabase;
+use crate::registry::embedding_service::EmbeddingService;
+use crate::registry::lifecycle::{LifecyclePhase, ShutdownCause};
+use crate::registry::session::{SessionLifecyclePhase, SessionTracker};
 use crate::search::SearchProjection;
 use crate::workspace::registry::generate_workspace_id;
 
@@ -18,7 +17,6 @@ use crate::workspace::registry::generate_workspace_id;
 async fn test_dashboard_health_snapshot_reports_ready_state() {
     let temp_dir = tempfile::tempdir().unwrap();
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(false));
     let daemon_db =
         Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon.db"));
 
@@ -44,7 +42,6 @@ async fn test_dashboard_health_snapshot_reports_ready_state() {
     let state = DashboardState::new(
         Arc::clone(&sessions),
         Some(daemon_db),
-        Arc::clone(&restart_pending),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,
@@ -56,7 +53,6 @@ async fn test_dashboard_health_snapshot_reports_ready_state() {
     assert_eq!(health.overall, HealthLevel::Ready);
     assert_eq!(health.control_plane.level, HealthLevel::Ready);
     assert_eq!(health.control_plane.active_sessions, 2);
-    assert!(!health.control_plane.restart_pending);
     assert_eq!(health.data_plane.level, HealthLevel::Ready);
     assert_eq!(health.data_plane.workspace_count, 2);
     assert_eq!(health.data_plane.active_workspace_count, 1);
@@ -75,10 +71,9 @@ async fn test_dashboard_health_snapshot_reports_ready_state() {
 }
 
 #[tokio::test]
-async fn test_dashboard_health_snapshot_reports_restart_pending_and_embedding_degraded() {
+async fn test_dashboard_health_snapshot_reports_embedding_degraded() {
     let temp_dir = tempfile::tempdir().unwrap();
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(true));
     let service = Arc::new(EmbeddingService::initializing());
 
     let daemon_db =
@@ -95,7 +90,6 @@ async fn test_dashboard_health_snapshot_reports_restart_pending_and_embedding_de
     let state = DashboardState::new(
         Arc::clone(&sessions),
         Some(daemon_db),
-        Arc::clone(&restart_pending),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(service),
@@ -104,8 +98,7 @@ async fn test_dashboard_health_snapshot_reports_restart_pending_and_embedding_de
 
     let health = state.health_snapshot().await;
 
-    assert_eq!(health.control_plane.level, HealthLevel::Degraded);
-    assert!(health.control_plane.restart_pending);
+    assert_eq!(health.control_plane.level, HealthLevel::Ready);
     assert_eq!(health.data_plane.level, HealthLevel::Ready);
     assert_eq!(health.runtime_plane.level, HealthLevel::Degraded);
     assert!(health.runtime_plane.embedding_initializing);
@@ -120,11 +113,9 @@ async fn test_dashboard_health_snapshot_reports_restart_pending_and_embedding_de
 #[test]
 fn test_dashboard_state_creation() {
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(false));
     let state = DashboardState::new(
         sessions,
         None,
-        restart_pending,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // no embedding service
@@ -132,7 +123,6 @@ fn test_dashboard_state_creation() {
     );
 
     assert_eq!(state.sessions().active_count(), 0);
-    assert!(!state.is_restart_pending());
     assert!(state.error_entries().is_empty());
     assert!(!state.embedding_available());
 }
@@ -146,14 +136,11 @@ fn test_dashboard_state_creation() {
 #[test]
 fn test_dashboard_state_embedding_available_reflects_service_live() {
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(false));
-
     // Construct service in Initializing and share the Arc with the dashboard.
     let service = Arc::new(EmbeddingService::initializing());
     let state = DashboardState::new(
         Arc::clone(&sessions),
         None,
-        restart_pending,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(Arc::clone(&service)),
@@ -199,13 +186,10 @@ fn test_dashboard_state_embedding_available_reflects_service_live() {
 #[test]
 fn test_dashboard_state_embedding_initializing_reflects_service_lifecycle() {
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(false));
-
     // No service at all → not initializing (it's "Not configured")
     let state_no_svc = DashboardState::new(
         Arc::clone(&sessions),
         None,
-        Arc::clone(&restart_pending),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,
@@ -221,7 +205,6 @@ fn test_dashboard_state_embedding_initializing_reflects_service_lifecycle() {
     let state = DashboardState::new(
         Arc::clone(&sessions),
         None,
-        Arc::clone(&restart_pending),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(Arc::clone(&service)),
@@ -258,13 +241,10 @@ fn test_dashboard_state_embedding_initializing_reflects_service_lifecycle() {
 #[test]
 fn test_dashboard_state_embedding_unavailable_with_runtime_status() {
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(false));
-
     let service = Arc::new(EmbeddingService::initializing());
     let state = DashboardState::new(
         Arc::clone(&sessions),
         None,
-        restart_pending,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(Arc::clone(&service)),
@@ -295,13 +275,11 @@ fn test_dashboard_state_embedding_unavailable_with_runtime_status() {
 #[tokio::test]
 async fn test_dashboard_health_snapshot_surfaces_embedding_runtime_details() {
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(false));
     let service = Arc::new(EmbeddingService::initializing());
 
     let state = DashboardState::new(
         Arc::clone(&sessions),
         None,
-        restart_pending,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         Some(Arc::clone(&service)),
@@ -333,11 +311,9 @@ async fn test_dashboard_health_snapshot_surfaces_embedding_runtime_details() {
 #[tokio::test]
 async fn test_dashboard_broadcast_send_receive() {
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(false));
     let state = DashboardState::new(
         sessions,
         None,
-        restart_pending,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // embedding service not needed for broadcast test
@@ -371,7 +347,6 @@ async fn test_dashboard_broadcast_send_receive() {
 async fn test_dashboard_health_snapshot_reports_daemon_and_session_phases() {
     let temp_dir = tempfile::tempdir().unwrap();
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(true));
     let daemon_phase = Arc::new(RwLock::new(LifecyclePhase::Draining {
         cause: ShutdownCause::RestartRequired,
     }));
@@ -393,7 +368,6 @@ async fn test_dashboard_health_snapshot_reports_daemon_and_session_phases() {
     let state = DashboardState::new(
         Arc::clone(&sessions),
         Some(daemon_db),
-        Arc::clone(&restart_pending),
         Arc::clone(&daemon_phase),
         Instant::now(),
         None,
@@ -414,7 +388,6 @@ async fn test_dashboard_health_snapshot_reports_daemon_and_session_phases() {
     assert_eq!(health.control_plane.session_phases.bound, 1);
     assert_eq!(health.control_plane.session_phases.serving, 1);
     assert_eq!(health.control_plane.session_phases.closing, 0);
-    assert!(health.control_plane.restart_pending);
 }
 
 fn make_file(path: &str, content: &str) -> FileInfo {
@@ -468,7 +441,6 @@ async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
     let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
 
     let sessions = Arc::new(SessionTracker::new());
-    let restart_pending = Arc::new(AtomicBool::new(false));
     let daemon_db =
         Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon.db"));
     daemon_db
@@ -527,7 +499,6 @@ async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
     let state = DashboardState::new(
         Arc::clone(&sessions),
         Some(daemon_db),
-        restart_pending,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,

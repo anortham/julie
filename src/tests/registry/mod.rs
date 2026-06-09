@@ -10,6 +10,4 @@ pub mod paths;
 pub mod roots;
 pub mod session;
 pub mod session_workspace;
-#[cfg(windows)]
-pub mod shutdown_event;
 pub mod symbol_db_pooled_test;

@@ -97,7 +97,7 @@ fn daemon_http_runtime_files_are_deleted() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
     let deleted_in_3d2b_ii: &[&str] = &[
-        // daemon HTTP-server runtime
+        // old daemon HTTP-server runtime path
         "src/daemon/app.rs",
         "src/daemon/http_transport.rs",
         "src/daemon/transport.rs",
@@ -106,9 +106,21 @@ fn daemon_http_runtime_files_are_deleted() {
         "src/daemon/singleton.rs",
         "src/daemon/fd_limit.rs",
         "src/daemon/shutdown_event.rs",
-        // workspace/watcher pools
+        // renamed registry path must not grow those surfaces either
+        "src/registry/app.rs",
+        "src/registry/http_transport.rs",
+        "src/registry/transport.rs",
+        "src/registry/mcp_session.rs",
+        "src/registry/token_file.rs",
+        "src/registry/singleton.rs",
+        "src/registry/fd_limit.rs",
+        "src/registry/shutdown_event.rs",
+        // old workspace/watcher pools
         "src/daemon/workspace_pool.rs",
         "src/daemon/watcher_pool.rs",
+        // renamed registry path must not grow those pools either
+        "src/registry/workspace_pool.rs",
+        "src/registry/watcher_pool.rs",
     ];
 
     let still_present: Vec<&str> = deleted_in_3d2b_ii
@@ -130,7 +142,11 @@ fn daemon_http_runtime_files_are_deleted() {
 fn pid_and_discovery_runtime_surface_deleted_in_3d3_task2() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
-    let deleted_in_3d3_task2: &[&str] = &["src/daemon/pid.rs"];
+    let deleted_in_3d3_task2: &[&str] = &[
+        "src/daemon/pid.rs",
+        "src/daemon/discovery.rs",
+        "src/registry/pid.rs",
+    ];
 
     let still_present: Vec<&str> = deleted_in_3d3_task2
         .iter()
@@ -144,13 +160,13 @@ fn pid_and_discovery_runtime_surface_deleted_in_3d3_task2() {
          Still present: {still_present:?}"
     );
 
-    let discovery_rs = fs::read_to_string(root.join("src/daemon/discovery.rs"))
-        .expect("read src/daemon/discovery.rs");
+    let discovery_rs = fs::read_to_string(root.join("src/registry/discovery.rs"))
+        .expect("read src/registry/discovery.rs");
     for symbol in ["DiscoveryRecord", "DiscoveryState", "DiscoveryFile"] {
         assert!(
             !discovery_rs.contains(symbol),
             "3d.3 Task 2 deletes the discovery.json reader/writer surface; \
-             src/daemon/discovery.rs must not contain `{symbol}`"
+             src/registry/discovery.rs must not contain `{symbol}`"
         );
     }
 }
@@ -161,7 +177,10 @@ fn pid_and_discovery_runtime_surface_deleted_in_3d3_task2() {
 fn search_compare_data_surface_deleted_in_3d3_task5() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
-    let deleted_in_3d3_task5: &[&str] = &["src/daemon/database/search_compare.rs"];
+    let deleted_in_3d3_task5: &[&str] = &[
+        "src/daemon/database/search_compare.rs",
+        "src/registry/database/search_compare.rs",
+    ];
 
     let still_present: Vec<&str> = deleted_in_3d3_task5
         .iter()

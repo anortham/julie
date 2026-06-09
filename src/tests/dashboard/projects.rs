@@ -1,20 +1,19 @@
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use axum::body::Body;
 use axum::http::Request;
 use tower::ServiceExt;
 
-use crate::daemon::database::DaemonDatabase;
-use crate::daemon::lifecycle::{LifecyclePhase, ShutdownCause};
-use crate::daemon::session::SessionTracker;
 use crate::dashboard::routes::search_session::{
     cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
 };
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
+use crate::registry::database::DaemonDatabase;
+use crate::registry::lifecycle::{LifecyclePhase, ShutdownCause};
+use crate::registry::session::SessionTracker;
 use crate::workspace::registry::generate_workspace_id;
 
 async fn body_to_string(body: Body) -> String {
@@ -25,12 +24,11 @@ async fn body_to_string(body: Body) -> String {
 }
 
 fn action_ready_state() -> (DashboardState, Arc<DaemonDatabase>, tempfile::TempDir) {
-    action_state_with_phase(LifecyclePhase::Ready, false)
+    action_state_with_phase(LifecyclePhase::Ready)
 }
 
 fn action_state_with_phase(
     phase: LifecyclePhase,
-    restart_pending: bool,
 ) -> (DashboardState, Arc<DaemonDatabase>, tempfile::TempDir) {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let daemon_db =
@@ -39,7 +37,6 @@ fn action_state_with_phase(
     let state = DashboardState::new(
         sessions,
         Some(Arc::clone(&daemon_db)),
-        Arc::new(AtomicBool::new(restart_pending)),
         Arc::new(RwLock::new(phase)),
         Instant::now(),
         None,
@@ -54,7 +51,6 @@ fn action_state_without_daemon() -> (DashboardState, tempfile::TempDir) {
     let state = DashboardState::new(
         Arc::new(SessionTracker::new()),
         None,
-        Arc::new(AtomicBool::new(false)),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,
@@ -307,12 +303,9 @@ async fn test_cleanup_dashboard_anchor_does_not_remove_paths_outside_indexes_dir
 
 #[tokio::test]
 async fn test_projects_refresh_action_blocks_while_daemon_is_stopping() {
-    let (state, daemon_db, _temp_dir) = action_state_with_phase(
-        LifecyclePhase::Stopping {
-            cause: ShutdownCause::RestartRequired,
-        },
-        true,
-    );
+    let (state, daemon_db, _temp_dir) = action_state_with_phase(LifecyclePhase::Stopping {
+        cause: ShutdownCause::RestartRequired,
+    });
     let csrf_token = state.action_csrf_token().to_string();
 
     let config = DashboardConfig::default();

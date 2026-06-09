@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::daemon::embedding_service::EmbeddingService;
 use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+use crate::registry::embedding_service::EmbeddingService;
 
 // ---- fake providers ----
 

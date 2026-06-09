@@ -13,8 +13,8 @@ pub mod registry;
 pub mod root_safety;
 pub mod startup_hint;
 
-use julie_core::health_types::{EmbeddingState, ProjectionState, WatcherState};
 use anyhow::{Context, Result, anyhow};
+use julie_core::health_types::{EmbeddingState, ProjectionState, WatcherState};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -163,8 +163,7 @@ impl JulieWorkspace {
             embedding_runtime_status: None,
             config,
             index_root_override: None,
-            indexing_runtime:
-                julie_core::indexing_state::IndexingRuntimeState::shared(),
+            indexing_runtime: julie_core::indexing_state::IndexingRuntimeState::shared(),
         };
 
         // Initialize persistent components
@@ -211,8 +210,7 @@ impl JulieWorkspace {
                     embedding_runtime_status: None,
                     config,
                     index_root_override: None,
-                    indexing_runtime:
-                        julie_core::indexing_state::IndexingRuntimeState::shared(),
+                    indexing_runtime: julie_core::indexing_state::IndexingRuntimeState::shared(),
                 };
 
                 // Validate workspace structure
@@ -316,8 +314,8 @@ impl JulieWorkspace {
     pub fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
         let mut current = start_path.to_path_buf();
 
-        // We use `DaemonPaths::is_any_known_julie_home` to detect the global
-        // Julie home. Unlike a plain `DaemonPaths::try_new().ok()` lookup, this
+        // We use `RegistryPaths::is_any_known_julie_home` to detect the global
+        // Julie home. Unlike a plain `RegistryPaths::try_new().ok()` lookup, this
         // helper ALWAYS treats `~/.julie` as a known home — even when
         // `JULIE_HOME` is set to an empty/invalid value. Without this defense,
         // walking up from a temp dir or any path without a `.git` boundary
@@ -333,7 +331,8 @@ impl JulieWorkspace {
                 // the configured override with the conventional ~/.julie
                 // default, so the guard cannot be silently disabled by a
                 // broken env.
-                let is_global = julie_core::paths::DaemonPaths::is_any_known_julie_home(&julie_dir);
+                let is_global =
+                    julie_core::paths::RegistryPaths::is_any_known_julie_home(&julie_dir);
                 if is_global {
                     debug!(
                         "Skipping global Julie home config dir at: {}",
@@ -792,7 +791,6 @@ impl JulieWorkspace {
         }
         Ok(())
     }
-
 }
 
 /// Health status of a Julie workspace

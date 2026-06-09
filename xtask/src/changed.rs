@@ -9,9 +9,9 @@ use crate::manifest::TestManifest;
 const DEV_FALLBACK_FILES: &[&str] = &[
     "Cargo.toml",
     "Cargo.lock",
-    "src/daemon/http_transport.rs",
-    "src/daemon/transport.rs",
-    "src/daemon/workspace_pool.rs",
+    "src/registry/http_transport.rs",
+    "src/registry/transport.rs",
+    "src/registry/workspace_pool.rs",
     "src/handler.rs",
     "src/lib.rs",
     "src/main.rs",
@@ -22,7 +22,7 @@ const DEV_FALLBACK_FILES: &[&str] = &[
 const DEV_FALLBACK_PREFIXES: &[&str] = &[
     "fixtures/",
     "src/adapter/",
-    "src/tests/daemon/http_transport/",
+    "src/tests/registry/http_transport/",
     "src/tests/fixtures/",
     "src/tests/helpers/",
 ];
@@ -501,10 +501,10 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     // Handler cross-cutting subfiles map to specific buckets so an edit doesn't drag the
     // whole dev tier in.
     if path == "src/handler/session_workspace.rs" {
-        return &["daemon"];
+        return &["registry"];
     }
     if path == "src/handler/tool_metrics.rs" {
-        return &["tools-metrics", "daemon"];
+        return &["tools-metrics", "registry"];
     }
     if path == "src/handler/tool_targets.rs" {
         return &[
@@ -512,14 +512,14 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
             "tools-workspace-indexing",
             "tools-workspace-management",
             "tools-workspace-targeting",
-            "daemon",
+            "registry",
         ];
     }
     if path == "src/handler/tools/mod.rs" {
-        // Pure module declaration file. Re-routes to daemon (handler trait surface);
+        // Pure module declaration file. Re-routes to registry (handler trait surface);
         // any added tool also touches its dedicated handler/tools/<tool>.rs file which
         // pulls the right bucket independently.
-        return &["daemon"];
+        return &["registry"];
     }
 
     // Startup routing touches DaemonDatabase, workspace registry, and indexing;
@@ -573,11 +573,11 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     // julie-core`, which holds the relocated DB/vector tests). The three leaf files
     // whose *behavioral* tests still live in top-crate buckets ALSO pull that bucket,
     // so a localized edit to moved leaf code keeps its original regression coverage
-    // (the pre-split mappings were src/daemon/* -> daemon, src/embeddings/* ->
+    // (the pre-split mappings were src/registry/* -> registry, src/embeddings/* ->
     // core-embeddings, src/utils/* -> core-fast) instead of silently running only the
     // DB slice. Specific files must precede the catch-all prefix (first match wins).
     if path == "crates/julie-core/src/connection_pool.rs" {
-        return &["core-database", "daemon"];
+        return &["core-database", "registry"];
     }
     if path == "crates/julie-core/src/embeddings_contract.rs" {
         return &["core-database", "core-embeddings"];
@@ -759,18 +759,18 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["projection"];
     }
 
-    if matches_exact(path, &["src/daemon/mod.rs", "src/daemon/lifecycle.rs"]) {
-        return &["daemon"];
+    if matches_exact(path, &["src/registry/mod.rs", "src/registry/lifecycle.rs"]) {
+        return &["registry"];
     }
 
     if matches_exact(
         path,
         &[
-            "src/daemon/workspace_registry_store.rs",
-            "src/daemon/workspace_session_attachment.rs",
-            "src/daemon/workspace_cleanup.rs",
+            "src/registry/workspace_registry_store.rs",
+            "src/registry/workspace_session_attachment.rs",
+            "src/registry/workspace_cleanup.rs",
             "src/workspace/registry.rs",
-            "src/tests/daemon/workspace_cleanup.rs",
+            "src/tests/registry/workspace_cleanup.rs",
             "src/tests/tools/workspace/registry.rs",
         ],
     ) || matches_prefix(path, &["src/tools/workspace/commands/registry/"])
@@ -995,8 +995,8 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["core-fast"];
     }
 
-    if matches_prefix(path, &["src/daemon/", "src/tests/daemon/"]) {
-        return &["daemon"];
+    if matches_prefix(path, &["src/registry/", "src/tests/registry/"]) {
+        return &["registry"];
     }
 
     if matches_prefix(path, &["src/dashboard/", "src/tests/dashboard/"]) {
@@ -1281,7 +1281,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "transport",
         "lifecycle",
         "workspace-runtime",
-        "daemon",
+        "registry",
         "dashboard",
         "tools-dogfood-repo-index",
         "workspace-init",

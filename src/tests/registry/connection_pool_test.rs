@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use tempfile::tempdir;
 use tokio::time::timeout;
 
-use crate::daemon::connection_pool::{PoolStats, WorkspaceConnectionPool};
+use crate::registry::connection_pool::{PoolStats, WorkspaceConnectionPool};
 
 fn make_pool(min: usize, max: usize) -> Arc<WorkspaceConnectionPool> {
     let dir = tempdir().unwrap();

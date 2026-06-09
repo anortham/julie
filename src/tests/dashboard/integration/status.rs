@@ -74,7 +74,6 @@ async fn test_status_live_exposes_indexing_health_snapshot() {
     let state = DashboardState::new(
         Arc::new(SessionTracker::new()),
         Some(daemon_db),
-        Arc::new(AtomicBool::new(false)),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,
@@ -204,7 +203,6 @@ async fn test_status_page_renders_health_sections() {
     assert!(html.contains("Runtime Plane"));
     assert!(html.contains("Overall Health"));
     assert!(html.contains("Daemon Phase"));
-    assert!(html.contains("Restart Required"));
     assert!(html.contains("Session Phases"));
     assert!(html.contains("Projection Freshness"));
     assert!(html.contains("Canonical / Projected Revision"));

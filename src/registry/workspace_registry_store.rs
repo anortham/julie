@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::daemon::database::{DaemonDatabase, WorkspaceRow};
+use crate::registry::database::{DaemonDatabase, WorkspaceRow};
 
 #[derive(Clone)]
 pub struct WorkspaceRegistryStore {

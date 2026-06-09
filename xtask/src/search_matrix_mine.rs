@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::Result;
-use julie::daemon::database::DaemonDatabase;
+use julie::registry::database::DaemonDatabase;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -68,7 +68,7 @@ pub fn mine_search_matrix_seed_report(
 }
 
 fn candidate_from_row(
-    row: &julie::daemon::database::SearchToolCallRow,
+    row: &julie::registry::database::SearchToolCallRow,
 ) -> Result<Option<SearchMatrixSeedCandidate>> {
     let Some(metadata_text) = row.metadata.as_deref() else {
         return Ok(None);

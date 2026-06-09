@@ -23,7 +23,6 @@ async fn test_secondary_scoped_request_does_not_consume_dirty_roots() -> Result<
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
@@ -40,7 +39,6 @@ async fn test_secondary_scoped_request_does_not_consume_dirty_roots() -> Result<
         Some(Arc::clone(&daemon_db)),
         Some(startup_workspace_id.clone()),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;
@@ -185,7 +183,6 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
@@ -202,7 +199,6 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
         Some(Arc::clone(&daemon_db)),
         Some(startup_workspace_id.clone()),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;
@@ -238,7 +234,6 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
         Some(Arc::clone(&daemon_db)),
         Some(startup_workspace_id.clone()),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;
@@ -324,7 +319,6 @@ async fn test_fast_search_startup_workspace_id_first_request_succeeds_without_pr
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
@@ -341,7 +335,6 @@ async fn test_fast_search_startup_workspace_id_first_request_succeeds_without_pr
         Some(Arc::clone(&daemon_db)),
         Some(startup_workspace_id.clone()),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;
@@ -379,7 +372,6 @@ async fn test_fast_search_startup_workspace_id_first_request_succeeds_without_pr
         Some(Arc::clone(&daemon_db)),
         Some(startup_workspace_id.clone()),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;
@@ -459,7 +451,6 @@ async fn test_manage_workspace_stats_secondary_target_does_not_consume_dirty_roo
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
@@ -476,7 +467,6 @@ async fn test_manage_workspace_stats_secondary_target_does_not_consume_dirty_roo
         Some(Arc::clone(&daemon_db)),
         Some(startup_workspace_id.clone()),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;
@@ -611,7 +601,6 @@ async fn test_roots_list_changed_unbound_empty_refresh_settles_dirty_state() -> 
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
@@ -628,7 +617,6 @@ async fn test_roots_list_changed_unbound_empty_refresh_settles_dirty_state() -> 
         Some(Arc::clone(&daemon_db)),
         Some(startup_workspace_id.clone()),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;

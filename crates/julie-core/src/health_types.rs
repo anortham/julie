@@ -41,7 +41,6 @@ impl HealthLevel {
 pub enum DaemonLifecycleState {
     Direct,
     Serving,
-    RestartPending,
 }
 
 impl DaemonLifecycleState {
@@ -49,7 +48,6 @@ impl DaemonLifecycleState {
         match self {
             Self::Direct => "DIRECT",
             Self::Serving => "SERVING",
-            Self::RestartPending => "RESTART PENDING",
         }
     }
 }

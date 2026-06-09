@@ -82,7 +82,7 @@ pub const BLACKLISTED_FILENAMES: &[&str] = &[
     // extension and excludes it; the indexer accepts extensionless text files).
     ".julieignore",
     // Julie daemon state files. The primary defense for these files is
-    // `DaemonPaths::is_under_julie_home`, which catches anything under the
+    // `RegistryPaths::is_under_julie_home`, which catches anything under the
     // configured `JULIE_HOME` regardless of name. The filename blacklist below
     // is belt-and-suspenders for the small set of filenames that are
     // specific enough to Julie that no real project would legitimately

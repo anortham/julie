@@ -48,7 +48,7 @@ fn test_should_index_file_rejects_daemon_state_filenames() {
 #[test]
 #[serial_test::serial(julie_home_env)]
 fn test_should_index_file_rejects_paths_under_julie_home() {
-    use crate::paths::DaemonPaths;
+    use crate::paths::RegistryPaths;
 
     let tool = create_tool();
     let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
@@ -66,7 +66,7 @@ fn test_should_index_file_rejects_paths_under_julie_home() {
 
     // Verify the helper resolves the configured home to what we just set.
     let paths =
-        DaemonPaths::try_new().expect("DaemonPaths::try_new should succeed with absolute path");
+        RegistryPaths::try_new().expect("RegistryPaths::try_new should succeed with absolute path");
     assert!(paths.is_under_julie_home(&julie_home));
 
     // A daemon discovery file inside the JULIE_HOME tree must be rejected

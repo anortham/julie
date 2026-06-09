@@ -1,9 +1,9 @@
-use crate::paths::DaemonPaths;
+use crate::paths::RegistryPaths;
 use serial_test::serial;
 use std::path::PathBuf;
 
 /// Helper that sets the env var and returns a guard that restores the previous
-/// value on drop. Mirrors the pattern in `src/tests/daemon/drain_timeout.rs`.
+/// value on drop. Mirrors the pattern in `src/tests/registry/drain_timeout.rs`.
 fn with_env(key: &str, value: &str) -> EnvGuard {
     let previous = std::env::var(key).ok();
     // SAFETY: single-threaded by serial attribute; no other threads read this var.
@@ -48,7 +48,7 @@ const JULIE_HOME_ENV: &str = "JULIE_HOME";
 #[serial(julie_home_env, home_env)]
 fn test_julie_home_uses_home_dir() {
     let _guard = without_env(JULIE_HOME_ENV);
-    let paths = DaemonPaths::new();
+    let paths = RegistryPaths::new();
     let home = dirs::home_dir().unwrap();
     assert_eq!(paths.julie_home(), home.join(".julie"));
 }
@@ -60,7 +60,7 @@ fn test_julie_home_env_override() {
     let override_home = tmp.path().join("external-julie-home");
     let _guard = with_env(JULIE_HOME_ENV, override_home.to_str().unwrap());
 
-    let paths = DaemonPaths::try_new().expect("try_new should succeed when JULIE_HOME is set");
+    let paths = RegistryPaths::try_new().expect("try_new should succeed when JULIE_HOME is set");
     assert_eq!(paths.julie_home(), override_home);
     assert_eq!(paths.indexes_dir(), override_home.join("indexes"));
     assert_eq!(paths.registry_db(), override_home.join("registry.db"));
@@ -71,7 +71,7 @@ fn test_julie_home_env_override() {
 fn test_julie_home_env_empty_is_rejected() {
     let _guard = with_env(JULIE_HOME_ENV, "");
 
-    match DaemonPaths::try_new() {
+    match RegistryPaths::try_new() {
         Ok(_) => panic!("empty JULIE_HOME must be rejected"),
         Err(err) => {
             assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
@@ -92,7 +92,7 @@ fn test_julie_home_env_empty_is_rejected() {
 fn test_julie_home_env_relative_is_rejected() {
     let _guard = with_env(JULIE_HOME_ENV, "relative/path");
 
-    match DaemonPaths::try_new() {
+    match RegistryPaths::try_new() {
         Ok(_) => panic!("relative JULIE_HOME must be rejected"),
         Err(err) => {
             assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
@@ -116,7 +116,7 @@ fn test_julie_home_env_relative_dot_is_rejected() {
     // A single "." is the canonical relative-path footgun.
     let _guard = with_env(JULIE_HOME_ENV, ".");
 
-    match DaemonPaths::try_new() {
+    match RegistryPaths::try_new() {
         Ok(_) => panic!("a relative '.' JULIE_HOME must be rejected"),
         Err(err) => assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput),
     }
@@ -127,7 +127,7 @@ fn test_is_julie_home_matches_canonicalized_path() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
-    let paths = DaemonPaths::with_home(home.clone());
+    let paths = RegistryPaths::with_home(home.clone());
     assert!(paths.is_julie_home(&home));
 }
 
@@ -138,7 +138,7 @@ fn test_is_julie_home_rejects_unrelated_path() {
     let other = tmp.path().join("other");
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&other).unwrap();
-    let paths = DaemonPaths::with_home(home);
+    let paths = RegistryPaths::with_home(home);
     assert!(!paths.is_julie_home(&other));
 }
 
@@ -154,7 +154,7 @@ fn test_is_julie_home_does_not_lowercase_nonexistent_paths() {
     // and we fall back to raw PathBuf comparison.
     let home = tmp.path().join("Home-Nonexistent");
     let lower = tmp.path().join("home-nonexistent");
-    let paths = DaemonPaths::with_home(home);
+    let paths = RegistryPaths::with_home(home);
     assert!(
         !paths.is_julie_home(&lower),
         "case-only differing non-existent paths must NOT be treated as equal — \
@@ -173,7 +173,7 @@ fn test_is_julie_home_canonicalizes_existing_paths_on_macos() {
     let upper = tmp.path().join("Home");
     std::fs::create_dir_all(&upper).unwrap();
     let lower = tmp.path().join("home");
-    let paths = DaemonPaths::with_home(upper);
+    let paths = RegistryPaths::with_home(upper);
     // On a case-insensitive filesystem, canonicalize on `lower` resolves to
     // the same canonical path as the created `Home`. We rely on canonicalize
     // here rather than string-level lowercasing.
@@ -188,7 +188,7 @@ fn test_is_julie_home_canonicalizes_existing_paths_on_macos() {
 fn test_indexes_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("explicit-test-home");
-    let paths = DaemonPaths::with_home(home.clone());
+    let paths = RegistryPaths::with_home(home.clone());
     assert_eq!(paths.indexes_dir(), home.join("indexes"));
 }
 
@@ -196,7 +196,7 @@ fn test_indexes_dir() {
 fn test_workspace_index_path() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("explicit-test-home");
-    let paths = DaemonPaths::with_home(home.clone());
+    let paths = RegistryPaths::with_home(home.clone());
     assert_eq!(
         paths.workspace_index_dir("myproject_abc12345"),
         home.join("indexes").join("myproject_abc12345"),
@@ -207,7 +207,7 @@ fn test_workspace_index_path() {
 fn test_workspace_db_path() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("explicit-test-home");
-    let paths = DaemonPaths::with_home(home.clone());
+    let paths = RegistryPaths::with_home(home.clone());
     assert_eq!(
         paths.workspace_db_path("myproject_abc12345"),
         home.join("indexes")
@@ -221,7 +221,7 @@ fn test_workspace_db_path() {
 fn test_workspace_tantivy_path() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("explicit-test-home");
-    let paths = DaemonPaths::with_home(home.clone());
+    let paths = RegistryPaths::with_home(home.clone());
     assert_eq!(
         paths.workspace_tantivy_path("myproject_abc12345"),
         home.join("indexes")
@@ -231,35 +231,11 @@ fn test_workspace_tantivy_path() {
 }
 
 #[test]
-fn test_daemon_pid_path() {
-    let tmp = tempfile::tempdir().unwrap();
-    let home = tmp.path().join("explicit-test-home");
-    let paths = DaemonPaths::with_home(home.clone());
-    assert_eq!(paths.daemon_pid(), home.join("daemon.pid"));
-}
-
-#[test]
-fn test_daemon_lock_path() {
-    let tmp = tempfile::tempdir().unwrap();
-    let home = tmp.path().join("explicit-test-home");
-    let paths = DaemonPaths::with_home(home.clone());
-    assert_eq!(paths.daemon_lock(), home.join("daemon.lock"));
-}
-
-#[test]
-fn test_daemon_log_path() {
-    let tmp = tempfile::tempdir().unwrap();
-    let home = tmp.path().join("explicit-test-home");
-    let paths = DaemonPaths::with_home(home.clone());
-    assert_eq!(paths.daemon_log(), home.join("daemon.log"));
-}
-
-#[test]
 fn test_project_log_dir() {
     // project_log_dir does NOT depend on julie_home — confirm with an
     // explicit home that we still get `<project>/.julie/logs`.
     let tmp = tempfile::tempdir().unwrap();
-    let paths = DaemonPaths::with_home(tmp.path().join("explicit-test-home"));
+    let paths = RegistryPaths::with_home(tmp.path().join("explicit-test-home"));
     let project = PathBuf::from("/Users/murphy/source/julie");
     assert_eq!(
         paths.project_log_dir(&project),
@@ -268,34 +244,8 @@ fn test_project_log_dir() {
 }
 
 #[test]
-fn test_migration_state_path() {
-    let tmp = tempfile::tempdir().unwrap();
-    let home = tmp.path().join("explicit-test-home");
-    let paths = DaemonPaths::with_home(home.clone());
-    assert_eq!(paths.migration_state(), home.join("migration.json"));
-}
-
-#[test]
-fn test_daemon_mcp_transport_paths_are_distinct_from_dashboard_port() {
-    let paths = DaemonPaths::with_home(PathBuf::from("/tmp/test-julie"));
-    assert_eq!(
-        paths.daemon_mcp_transport(),
-        PathBuf::from("/tmp/test-julie/daemon-mcp-transport.json")
-    );
-    assert_eq!(
-        paths.daemon_mcp_token(),
-        PathBuf::from("/tmp/test-julie/daemon-mcp.token")
-    );
-    assert_ne!(
-        paths.daemon_mcp_transport(),
-        paths.daemon_port(),
-        "MCP Streamable HTTP discovery must not reuse the dashboard port file"
-    );
-}
-
-#[test]
 fn test_custom_julie_home() {
-    let paths = DaemonPaths::with_home(PathBuf::from("/tmp/test-julie"));
+    let paths = RegistryPaths::with_home(PathBuf::from("/tmp/test-julie"));
     assert_eq!(paths.julie_home(), PathBuf::from("/tmp/test-julie"));
     assert_eq!(
         paths.indexes_dir(),
@@ -306,7 +256,7 @@ fn test_custom_julie_home() {
 #[test]
 fn test_ensure_dirs_creates_directories() {
     let tmp = tempfile::tempdir().unwrap();
-    let paths = DaemonPaths::with_home(tmp.path().join("julie-test-home"));
+    let paths = RegistryPaths::with_home(tmp.path().join("julie-test-home"));
     // Directory should not exist yet
     assert!(!paths.julie_home().exists());
     // ensure_dirs should create both julie_home and indexes
@@ -322,8 +272,8 @@ fn test_default_impl() {
     // Default should behave the same as new(). We don't assert on a specific
     // path (which would require reading `dirs::home_dir()` here as well);
     // we just verify the equivalence of the two constructors.
-    let default_paths = DaemonPaths::default();
-    let new_paths = DaemonPaths::new();
+    let default_paths = RegistryPaths::default();
+    let new_paths = RegistryPaths::new();
     assert_eq!(default_paths.julie_home(), new_paths.julie_home());
 }
 
@@ -338,7 +288,7 @@ fn test_is_under_julie_home_accepts_nested_path() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("julie-home");
     std::fs::create_dir_all(&home).unwrap();
-    let paths = DaemonPaths::with_home(home.clone());
+    let paths = RegistryPaths::with_home(home.clone());
     // File directly under the home root.
     let token = home.join("daemon.token");
     std::fs::write(&token, b"secret").unwrap();
@@ -356,7 +306,7 @@ fn test_is_under_julie_home_accepts_the_home_itself() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("julie-home");
     std::fs::create_dir_all(&home).unwrap();
-    let paths = DaemonPaths::with_home(home.clone());
+    let paths = RegistryPaths::with_home(home.clone());
     // The home directory itself is "under" the home for exclusion purposes.
     assert!(paths.is_under_julie_home(&home));
 }
@@ -368,7 +318,7 @@ fn test_is_under_julie_home_rejects_unrelated_path() {
     let other = tmp.path().join("workspace");
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&other).unwrap();
-    let paths = DaemonPaths::with_home(home);
+    let paths = RegistryPaths::with_home(home);
     let file = other.join("src.rs");
     std::fs::write(&file, b"fn main() {}").unwrap();
     assert!(!paths.is_under_julie_home(&file));
@@ -384,7 +334,7 @@ fn test_is_under_julie_home_does_not_match_sibling_prefix() {
     let sibling = tmp.path().join("julie-homework");
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&sibling).unwrap();
-    let paths = DaemonPaths::with_home(home);
+    let paths = RegistryPaths::with_home(home);
     let file = sibling.join("file.rs");
     std::fs::write(&file, b"").unwrap();
     assert!(!paths.is_under_julie_home(&file));
@@ -402,10 +352,10 @@ fn test_is_any_known_julie_home_matches_default_home_dir() {
     let _guard = without_env(JULIE_HOME_ENV);
     let default = dirs::home_dir().unwrap().join(".julie");
     // We don't require `default` to exist; the helper should match it
-    // structurally via DaemonPaths::is_julie_home (which falls back to raw
+    // structurally via RegistryPaths::is_julie_home (which falls back to raw
     // PathBuf comparison when canonicalize fails).
     assert!(
-        DaemonPaths::is_any_known_julie_home(&default),
+        RegistryPaths::is_any_known_julie_home(&default),
         "default ~/.julie should always be recognized as a known Julie home",
     );
 }
@@ -420,7 +370,7 @@ fn test_is_any_known_julie_home_when_julie_home_is_empty() {
     let _guard = with_env(JULIE_HOME_ENV, "");
     let default = dirs::home_dir().unwrap().join(".julie");
     assert!(
-        DaemonPaths::is_any_known_julie_home(&default),
+        RegistryPaths::is_any_known_julie_home(&default),
         "with JULIE_HOME=\"\" the conventional ~/.julie must still be skipped",
     );
 }
@@ -434,7 +384,7 @@ fn test_is_any_known_julie_home_matches_configured_override() {
     let _guard = with_env(JULIE_HOME_ENV, override_home.to_str().unwrap());
 
     assert!(
-        DaemonPaths::is_any_known_julie_home(&override_home),
+        RegistryPaths::is_any_known_julie_home(&override_home),
         "configured JULIE_HOME must be recognized as a known Julie home",
     );
 }
@@ -447,26 +397,7 @@ fn test_is_any_known_julie_home_rejects_unrelated_path() {
     let unrelated = tmp.path().join("some-random-dir");
     std::fs::create_dir_all(&unrelated).unwrap();
     assert!(
-        !DaemonPaths::is_any_known_julie_home(&unrelated),
+        !RegistryPaths::is_any_known_julie_home(&unrelated),
         "unrelated paths must not be misidentified as Julie home",
-    );
-}
-
-#[cfg(windows)]
-#[test]
-fn test_daemon_shutdown_event_is_scoped_to_julie_home() {
-    let paths_a = DaemonPaths::with_home(PathBuf::from(r"C:\Users\test-a\.julie"));
-    let paths_b = DaemonPaths::with_home(PathBuf::from(r"C:\Users\test-b\.julie"));
-    let paths_a_again = DaemonPaths::with_home(PathBuf::from(r"C:\Users\test-a\.julie"));
-
-    assert_ne!(
-        paths_a.daemon_shutdown_event(),
-        paths_b.daemon_shutdown_event(),
-        "Different JULIE_HOME values must have different shutdown events"
-    );
-    assert_eq!(
-        paths_a.daemon_shutdown_event(),
-        paths_a_again.daemon_shutdown_event(),
-        "Shutdown event names must be deterministic for one JULIE_HOME"
     );
 }

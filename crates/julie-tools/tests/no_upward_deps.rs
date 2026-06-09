@@ -22,7 +22,7 @@ const FORBIDDEN_SOURCE: &[&str] = &[
     "julie::",
     // Top-crate handler / daemon / session infrastructure.
     "crate::handler",
-    "crate::daemon",
+    "crate::registry",
     "crate::session",
     "crate::watcher",
     "crate::external_extract",

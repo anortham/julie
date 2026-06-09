@@ -43,7 +43,6 @@ async fn build_primary_bound_handler_for_swap_guard_test()
         Some(primary_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");

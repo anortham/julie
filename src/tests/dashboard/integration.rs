@@ -1,19 +1,18 @@
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use axum::body::Body;
 use axum::http::Request;
 use tower::ServiceExt;
 
-use crate::daemon::database::DaemonDatabase;
-use crate::daemon::lifecycle::LifecyclePhase;
-use crate::daemon::session::SessionTracker;
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
 use crate::database::types::FileInfo;
 use crate::extractors::{AnnotationMarker, Symbol, SymbolKind};
+use crate::registry::database::DaemonDatabase;
+use crate::registry::lifecycle::LifecyclePhase;
+use crate::registry::session::SessionTracker;
 use crate::search::SearchProjection;
 use crate::tools::workspace::indexing::state::{
     IndexingOperation, IndexingRepairReason, IndexingStage,
@@ -24,7 +23,6 @@ fn test_state() -> DashboardState {
     DashboardState::new(
         Arc::new(SessionTracker::new()),
         None,
-        Arc::new(AtomicBool::new(false)),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // no embedding service in tests
@@ -46,7 +44,6 @@ fn test_state_with_db() -> (DashboardState, tempfile::TempDir) {
     let state = DashboardState::new(
         Arc::new(SessionTracker::new()),
         Some(daemon_db),
-        Arc::new(AtomicBool::new(false)),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None,
@@ -221,7 +218,6 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
         DashboardState::new(
             Arc::new(SessionTracker::new()),
             Some(daemon_db),
-            Arc::new(AtomicBool::new(false)),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
             None,
@@ -298,7 +294,6 @@ async fn state_with_signal_workspace() -> (DashboardState, tempfile::TempDir, St
         DashboardState::new(
             Arc::new(SessionTracker::new()),
             Some(daemon_db),
-            Arc::new(AtomicBool::new(false)),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
             None,
@@ -367,7 +362,6 @@ async fn state_with_search_workspace(
         DashboardState::new(
             Arc::new(SessionTracker::new()),
             Some(daemon_db),
-            Arc::new(AtomicBool::new(false)),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
             None,

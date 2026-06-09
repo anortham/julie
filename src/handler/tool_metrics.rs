@@ -25,7 +25,7 @@ pub(crate) struct MetricsTask {
     pub output_bytes: u64,
     pub success: bool,
     pub metadata_str: Option<String>,
-    pub daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+    pub daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
     pub workspace_id: Option<String>,
 }
 

@@ -74,14 +74,14 @@ impl ManageWorkspaceTool {
         // This prevents walking up and finding a parent workspace when an explicit
         // workspace path is provided (fixes fixture test isolation bug).
         //
-        // We use `DaemonPaths::is_any_known_julie_home` here (not just the
+        // We use `RegistryPaths::is_any_known_julie_home` here (not just the
         // configured override): it ALWAYS treats the conventional `~/.julie`
         // as a known Julie home, even when JULIE_HOME is unset or invalid.
         // Otherwise an invalid env would silently disable the guard and
         // the walker could capture `~/.julie` as a workspace.
         let julie_dir = start_path.join(".julie");
         if julie_dir.exists() && julie_dir.is_dir() {
-            if crate::paths::DaemonPaths::is_any_known_julie_home(&julie_dir) {
+            if crate::paths::RegistryPaths::is_any_known_julie_home(&julie_dir) {
                 debug!(
                     "Skipping global Julie home config dir at: {}",
                     start_path.display()

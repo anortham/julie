@@ -1,4 +1,4 @@
-//! Julie daemon: background-process state, session tracking, and recovery-marker reads.
+//! Julie registry: background-process state, session tracking, and recovery-marker reads.
 
 pub mod database;
 

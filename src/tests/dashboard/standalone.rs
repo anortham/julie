@@ -1,7 +1,7 @@
 #[tokio::test]
 async fn dashboard_launcher_starts_background_server_without_browser() {
     let temp_dir = tempfile::tempdir().expect("temp JULIE_HOME should be created");
-    let paths = crate::paths::DaemonPaths::with_home(temp_dir.path().join(".julie"));
+    let paths = crate::paths::RegistryPaths::with_home(temp_dir.path().join(".julie"));
 
     let launch = crate::dashboard::standalone::launch_dashboard_for_paths(
         paths,

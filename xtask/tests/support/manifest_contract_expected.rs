@@ -120,14 +120,14 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "daemon",
+            "registry",
             ExpectedBucket {
                 // Bumped to 60s/180s after the 2026-05 daemon-split bucket additions.
                 // Discovery-file tests were deleted in Phase 3d.3; token_file_test,
                 // app_test, and shutdown_drain_test were deleted in Phase 3d.2b.
                 expected_seconds: 60,
                 timeout_seconds: 180,
-                commands: &["cargo nextest run --lib tests::daemon -- --skip search_quality"],
+                commands: &["cargo nextest run --lib tests::registry -- --skip search_quality"],
             },
         ),
         (
@@ -651,12 +651,12 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
             },
         ),
         (
-            "daemon",
+            "registry",
             ExpectedBucketMetadata {
-                scope_label: "daemon",
+                scope_label: "registry",
                 owner: "lead",
                 expensive: false,
-                notes: Some("daemon-mode protocol coverage"),
+                notes: Some("registry-mode protocol coverage"),
             },
         ),
         (

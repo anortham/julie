@@ -4,8 +4,8 @@ use std::sync::{Arc, RwLock as StdRwLock};
 use anyhow::Result;
 use tracing::warn;
 
-use crate::daemon::database::DaemonDatabase;
 use crate::handler::session_workspace::SessionWorkspaceState;
+use crate::registry::database::DaemonDatabase;
 
 #[derive(Clone)]
 pub struct WorkspaceSessionAttachment {

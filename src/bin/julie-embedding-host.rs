@@ -11,15 +11,13 @@ use tracing::{error, info};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Resolve $JULIE_HOME (or the platform default) into structured paths.
-    let paths = julie::paths::DaemonPaths::try_new()
+    let paths = julie::paths::RegistryPaths::try_new()
         .map_err(|e| anyhow::anyhow!("JULIE_HOME misconfiguration: {e}"))?;
 
     // File tracing → $JULIE_HOME/embedding-host.<date>.log
-    if let Err(e) = julie::logging::install_file_tracing(
-        &paths.julie_home(),
-        "embedding-host",
-        "julie=info",
-    ) {
+    if let Err(e) =
+        julie::logging::install_file_tracing(&paths.julie_home(), "embedding-host", "julie=info")
+    {
         eprintln!("julie-embedding-host: failed to install file tracing: {e}");
     }
 
@@ -40,12 +38,8 @@ async fn main() -> anyhow::Result<()> {
         cancel_signal.cancel();
     });
 
-    julie_pipeline::embeddings::host_server::run_embedding_host_default(
-        &addr,
-        &lock_path,
-        cancel,
-    )
-    .await
+    julie_pipeline::embeddings::host_server::run_embedding_host_default(&addr, &lock_path, cancel)
+        .await
 }
 
 // ---------------------------------------------------------------------------

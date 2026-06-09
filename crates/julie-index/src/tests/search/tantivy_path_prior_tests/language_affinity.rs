@@ -96,7 +96,7 @@ fn test_language_affinity_runs_after_path_prior_in_pipeline_order() {
             10.0,
             "python",
         ),
-        make_result_with_language("rust_src", "src/daemon/lifecycle.rs", 10.0, "rust"),
+        make_result_with_language("rust_src", "src/registry/lifecycle.rs", 10.0, "rust"),
     ];
 
     crate::search::scoring::apply_nl_path_prior(&mut results, "where is the version gate");

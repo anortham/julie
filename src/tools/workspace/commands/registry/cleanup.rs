@@ -5,8 +5,8 @@ use std::time::Duration;
 use anyhow::Result;
 use tracing::{info, warn};
 
-use crate::daemon::database::WorkspaceRow;
-use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
+use crate::registry::database::WorkspaceRow;
+use crate::registry::workspace_registry_store::WorkspaceRegistryStore;
 
 pub(crate) const CLEANUP_ACTION_AUTO_PRUNE: &str = "auto_prune";
 pub(crate) const CLEANUP_ACTION_MANUAL_DELETE: &str = "manual_delete";

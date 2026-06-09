@@ -1,6 +1,6 @@
 //! Tests for SessionTracker (daemon idle detection).
 
-use crate::daemon::session::{SessionLifecyclePhase, SessionTracker};
+use crate::registry::session::{SessionLifecyclePhase, SessionTracker};
 
 #[test]
 fn test_new_session_increments_count() {

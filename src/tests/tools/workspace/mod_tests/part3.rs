@@ -1,6 +1,6 @@
 #[tokio::test]
 async fn test_manage_workspace_health_uses_rebound_session_primary() {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
 
     unsafe {
@@ -45,7 +45,6 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
         loaded_primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(loaded_primary_id.clone()),
-        None,
         None,
         None,
     )
@@ -144,7 +143,7 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
 #[ignore = "daemon multi-workspace write lifecycle (pool-backed); fate decided in Phase 3d.3 registry rework"]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swap() {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::health::{HealthChecker, SystemStatus};
     use crate::workspace::registry::generate_workspace_id;
     use futures::poll;
@@ -247,7 +246,6 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
         Some(original_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .unwrap();
@@ -289,7 +287,7 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::health::HealthChecker;
     use crate::workspace::registry::generate_workspace_id;
 
@@ -335,7 +333,6 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
         loaded_primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(loaded_primary_id.clone()),
-        None,
         None,
         None,
     )

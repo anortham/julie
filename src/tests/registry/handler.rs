@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use crate::daemon::session::SessionLifecyclePhase;
 use crate::handler::JulieServerHandler;
+use crate::registry::session::SessionLifecyclePhase;
 
 fn temp_workspace_root() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("Failed to create temp dir");

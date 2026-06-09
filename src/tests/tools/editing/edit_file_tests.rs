@@ -1,8 +1,8 @@
 //! Golden master tests for the edit_file tool.
 
-use crate::daemon::database::DaemonDatabase;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::registry::database::DaemonDatabase;
 use crate::tests::helpers::workspace::mark_workspace_root;
 use crate::tools::editing::edit_file::{
     EditFileTool, EditOccurrence, apply_edit, clear_before_commit_hook_for_test,
@@ -385,9 +385,8 @@ async fn test_edit_file_routes_to_target_workspace() -> Result<()> {
     let primary_path_str = primary_path.to_string_lossy().to_string();
     let primary_id = generate_workspace_id(&primary_path_str)?;
     daemon_db.upsert_workspace(&primary_id, &primary_path_str, "ready")?;
-    let primary_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
-            .await?);
+    let primary_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(primary_path.clone()).await?);
 
     let target_path = target_root.canonicalize()?;
     let target_path_str = target_path.to_string_lossy().to_string();
@@ -399,7 +398,6 @@ async fn test_edit_file_routes_to_target_workspace() -> Result<()> {
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
         None,
     )

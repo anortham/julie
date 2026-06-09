@@ -151,7 +151,7 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
 
 #[tokio::test]
 async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
     use std::sync::Arc;
 
@@ -177,17 +177,14 @@ async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> R
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
         None,
     )
@@ -200,9 +197,8 @@ async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> R
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
-    let rebound_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
-            .await?);
+    let rebound_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
     {
         let rebound_db = rebound_ws.db.as_ref().unwrap().clone();
         let mut rebound_db = rebound_db.lock().unwrap();
@@ -269,7 +265,7 @@ async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> R
 
 #[tokio::test]
 async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
     use std::sync::Arc;
 
@@ -295,17 +291,14 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
         None,
     )
@@ -318,9 +311,8 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
-    let rebound_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
-            .await?);
+    let rebound_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
     {
         let rebound_db = rebound_ws.db.as_ref().unwrap().clone();
         let mut rebound_db = rebound_db.lock().unwrap();
@@ -387,7 +379,7 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
 
 #[tokio::test]
 async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new()?;
@@ -408,17 +400,15 @@ async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Res
 
     let startup_path = startup_root.canonicalize()?;
     let startup_id = generate_workspace_id(&startup_path.to_string_lossy())?;
-    let startup_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
-            .await?);
+    let startup_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(startup_path.clone()).await?);
 
     let roots_path = roots_root.canonicalize()?;
     let roots_id = generate_workspace_id(&roots_path.to_string_lossy())?;
     daemon_db.upsert_workspace(&startup_id, &startup_path.to_string_lossy(), "ready")?;
     daemon_db.upsert_workspace(&roots_id, &roots_path.to_string_lossy(), "ready")?;
-    let roots_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(roots_path.clone())
-            .await?);
+    let roots_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(roots_path.clone()).await?);
     {
         let rebound_db = roots_ws.db.as_ref().unwrap().clone();
         let mut rebound_db = rebound_db.lock().unwrap();
@@ -469,7 +459,6 @@ async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Res
         },
         Some(Arc::clone(&daemon_db)),
         Some(startup_id.clone()),
-        None,
         None,
         None,
     )

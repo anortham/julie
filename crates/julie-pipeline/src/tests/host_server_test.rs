@@ -12,7 +12,7 @@ mod unix {
 
     use julie_core::{
         embeddings_contract::{DeviceInfo, EmbeddingProvider},
-        paths::DaemonPaths,
+        paths::RegistryPaths,
     };
     use tokio_util::sync::CancellationToken;
 
@@ -20,9 +20,8 @@ mod unix {
         host_server::run_embedding_host,
         host_transport::{HostAddress, HostClientConn, HostListener},
         sidecar_protocol::{
-            EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult,
-            HealthResult, RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA,
-            SIDECAR_PROTOCOL_VERSION,
+            EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, HealthResult,
+            RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
         },
     };
 
@@ -96,7 +95,7 @@ mod unix {
         // Build the address from the tmp root — we need to do it here so we
         // can return an Arc, and again inside the spawn because HostAddress is
         // not Clone.
-        let paths = DaemonPaths::with_home(tmp_root.clone());
+        let paths = RegistryPaths::with_home(tmp_root.clone());
         let addr = Arc::new(HostAddress::from_paths(&paths));
 
         let addr_inner = Arc::clone(&addr);
@@ -121,40 +120,40 @@ mod unix {
     async fn health_embed_query_embed_batch_round_trip() {
         let dir = tempfile::tempdir().expect("tempdir");
         let lock_path = dir.path().join("embedding-host.lock");
-        let (cancel, handle, addr) =
-            spawn_host(dir.path().to_path_buf(), lock_path).await;
+        let (cancel, handle, addr) = spawn_host(dir.path().to_path_buf(), lock_path).await;
 
         let addr_c = Arc::clone(&addr);
-        let (health_line, query_line, batch_line) =
-            tokio::task::spawn_blocking(move || {
-                let mut conn = HostClientConn::connect(&addr_c).expect("connect");
+        let (health_line, query_line, batch_line) = tokio::task::spawn_blocking(move || {
+            let mut conn = HostClientConn::connect(&addr_c).expect("connect");
 
-                let h = conn
-                    .round_trip(&request_line("health", "h1", serde_json::json!({})))
-                    .expect("health round_trip");
+            let h = conn
+                .round_trip(&request_line("health", "h1", serde_json::json!({})))
+                .expect("health round_trip");
 
-                let q = conn
-                    .round_trip(&request_line(
-                        "embed_query",
-                        "q1",
-                        EmbedQueryRequest { text: "hello".to_string() }, // len=5
-                    ))
-                    .expect("embed_query round_trip");
+            let q = conn
+                .round_trip(&request_line(
+                    "embed_query",
+                    "q1",
+                    EmbedQueryRequest {
+                        text: "hello".to_string(),
+                    }, // len=5
+                ))
+                .expect("embed_query round_trip");
 
-                let b = conn
-                    .round_trip(&request_line(
-                        "embed_batch",
-                        "b1",
-                        EmbedBatchRequest {
-                            texts: vec!["hi".to_string(), "there".to_string()], // len 2,5
-                        },
-                    ))
-                    .expect("embed_batch round_trip");
+            let b = conn
+                .round_trip(&request_line(
+                    "embed_batch",
+                    "b1",
+                    EmbedBatchRequest {
+                        texts: vec!["hi".to_string(), "there".to_string()], // len 2,5
+                    },
+                ))
+                .expect("embed_batch round_trip");
 
-                (h, q, b)
-            })
-            .await
-            .expect("spawn_blocking");
+            (h, q, b)
+        })
+        .await
+        .expect("spawn_blocking");
 
         // --- health ---
         let hr: ResponseEnvelope<HealthResult> =
@@ -165,7 +164,11 @@ mod unix {
         assert_eq!(hr.dims, Some(FAKE_DIMS), "health.dims");
         assert_eq!(hr.device.as_deref(), Some("cpu"), "health.device");
         assert_eq!(hr.runtime.as_deref(), Some("fake"), "health.runtime");
-        assert_eq!(hr.model_id.as_deref(), Some("fake-model"), "health.model_id");
+        assert_eq!(
+            hr.model_id.as_deref(),
+            Some("fake-model"),
+            "health.model_id"
+        );
 
         // --- embed_query: "hello" len=5 → [5.0; 4] ---
         let qr: ResponseEnvelope<EmbedQueryResult> =
@@ -195,8 +198,7 @@ mod unix {
     async fn two_concurrent_connections_both_succeed() {
         let dir = tempfile::tempdir().expect("tempdir");
         let lock_path = dir.path().join("embedding-host.lock");
-        let (cancel, handle, addr) =
-            spawn_host(dir.path().to_path_buf(), lock_path).await;
+        let (cancel, handle, addr) = spawn_host(dir.path().to_path_buf(), lock_path).await;
 
         let addr1 = Arc::clone(&addr);
         let addr2 = Arc::clone(&addr);
@@ -207,7 +209,9 @@ mod unix {
             conn.round_trip(&request_line(
                 "embed_query",
                 "c1",
-                EmbedQueryRequest { text: "abcde".to_string() }, // len=5
+                EmbedQueryRequest {
+                    text: "abcde".to_string(),
+                }, // len=5
             ))
             .expect("c1 round_trip")
         });
@@ -216,7 +220,9 @@ mod unix {
             conn.round_trip(&request_line(
                 "embed_query",
                 "c2",
-                EmbedQueryRequest { text: "ab".to_string() }, // len=2
+                EmbedQueryRequest {
+                    text: "ab".to_string(),
+                }, // len=2
             ))
             .expect("c2 round_trip")
         });
@@ -227,8 +233,14 @@ mod unix {
         let r2: ResponseEnvelope<EmbedQueryResult> =
             serde_json::from_str(&r2.expect("t2")).expect("parse c2");
 
-        assert_eq!(r1.result.expect("c1 result").vector, vec![5.0f32; FAKE_DIMS]);
-        assert_eq!(r2.result.expect("c2 result").vector, vec![2.0f32; FAKE_DIMS]);
+        assert_eq!(
+            r1.result.expect("c1 result").vector,
+            vec![5.0f32; FAKE_DIMS]
+        );
+        assert_eq!(
+            r2.result.expect("c2 result").vector,
+            vec![2.0f32; FAKE_DIMS]
+        );
 
         cancel.cancel();
         handle.await.expect("join").expect("server ok");
@@ -242,17 +254,22 @@ mod unix {
         let lock_path = dir.path().join("embedding-host.lock");
         let tmp_root = dir.path().to_path_buf();
 
-        let paths = DaemonPaths::with_home(tmp_root.clone());
+        let paths = RegistryPaths::with_home(tmp_root.clone());
         let addr_ref = HostAddress::from_paths(&paths);
         let socket_path = addr_ref.socket_path().to_path_buf();
 
-        let (cancel, handle, _addr) =
-            spawn_host(tmp_root.clone(), lock_path.clone()).await;
+        let (cancel, handle, _addr) = spawn_host(tmp_root.clone(), lock_path.clone()).await;
 
-        assert!(socket_path.exists(), "socket should exist while server is running");
+        assert!(
+            socket_path.exists(),
+            "socket should exist while server is running"
+        );
 
         cancel.cancel();
-        handle.await.expect("server join").expect("server ok after cancel");
+        handle
+            .await
+            .expect("server join")
+            .expect("server ok after cancel");
 
         // Socket file removed by HostListener's Drop impl.
         assert!(
@@ -273,7 +290,7 @@ mod unix {
         );
 
         // Listener can be re-bound on the same address.
-        let paths2 = DaemonPaths::with_home(tmp_root);
+        let paths2 = RegistryPaths::with_home(tmp_root);
         let addr2 = HostAddress::from_paths(&paths2);
         HostListener::bind(&addr2)
             .await
@@ -285,8 +302,7 @@ mod unix {
     async fn unknown_method_returns_error_envelope() {
         let dir = tempfile::tempdir().expect("tempdir");
         let lock_path = dir.path().join("embedding-host.lock");
-        let (cancel, handle, addr) =
-            spawn_host(dir.path().to_path_buf(), lock_path).await;
+        let (cancel, handle, addr) = spawn_host(dir.path().to_path_buf(), lock_path).await;
 
         let addr_c = Arc::clone(&addr);
         let reply = tokio::task::spawn_blocking(move || {
@@ -303,7 +319,10 @@ mod unix {
 
         let env: ResponseEnvelope<serde_json::Value> =
             serde_json::from_str(&reply).expect("parse error envelope");
-        assert!(env.result.is_none(), "result must be None for unknown method");
+        assert!(
+            env.result.is_none(),
+            "result must be None for unknown method"
+        );
         let err = env.error.expect("error field must be set");
         assert_eq!(err.code, "unknown_method");
 

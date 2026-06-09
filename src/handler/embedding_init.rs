@@ -69,7 +69,7 @@ pub(crate) async fn wait_for_embedding_provider_settled(
     // SECOND Python sidecar alongside the daemon's shared one, wasting
     // resources and masking the real provider.
     if let Some(svc) = handler.embedding_service.as_ref() {
-        use crate::daemon::embedding_service::EmbeddingServiceSettled;
+        use crate::registry::embedding_service::EmbeddingServiceSettled;
         match svc.wait_until_settled(daemon_timeout).await {
             EmbeddingServiceSettled::Ready { provider, .. } => {
                 debug!(

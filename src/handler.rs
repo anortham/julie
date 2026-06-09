@@ -32,9 +32,9 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
-use crate::daemon::session::{SessionLifecycleHandle, SessionLifecyclePhase};
-use crate::daemon::workspace_session_attachment::WorkspaceSessionAttachment;
 use crate::dashboard::state::DashboardEvent;
+use crate::registry::session::{SessionLifecycleHandle, SessionLifecyclePhase};
+use crate::registry::workspace_session_attachment::WorkspaceSessionAttachment;
 
 use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
 use crate::database::SymbolDatabase;
@@ -228,19 +228,16 @@ pub struct JulieServerHandler {
     tool_router: ToolRouter<Self>,
     /// Per-project log for daemon mode (writes to {project}/.julie/logs/).
     /// None in stdio mode (tracing handles project logging directly).
-    pub(crate) project_log: Option<Arc<crate::daemon::project_log::ProjectLog>>,
+    pub(crate) project_log: Option<Arc<crate::registry::project_log::ProjectLog>>,
     /// Daemon-level database for persistent metrics and workspace registry.
     /// None in stdio mode, Some in daemon mode.
-    pub(crate) daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+    pub(crate) daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
     /// Workspace ID for the workspace currently stored in `handler.workspace`.
     /// Keep this separate from `current_workspace_id()`, which reads session-owned
     /// mutable state and may diverge during rebinding.
     pub(crate) workspace_id: Arc<StdRwLock<Option<String>>>,
     /// Shared embedding service for daemon mode. None in stdio mode.
-    pub(crate) embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
-    /// True when the daemon detects its binary has been rebuilt.
-    /// Surfaced in `manage_workspace health`. None in stdio mode.
-    pub(crate) restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+    pub(crate) embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
     /// Set when on_initialized defers auto-indexing until the primary workspace
     /// is resolved from client roots. Consumed by the first successful bind.
     deferred_auto_index_pending: Arc<AtomicBool>,
@@ -814,7 +811,6 @@ impl JulieServerHandler {
             daemon_db: None,
             workspace_id: Arc::new(StdRwLock::new(None)),
             embedding_service: None,
-            restart_pending: None,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
@@ -847,10 +843,9 @@ impl JulieServerHandler {
     pub async fn new_with_shared_workspace(
         workspace: Arc<JulieWorkspace>,
         workspace_root: PathBuf,
-        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+        daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
         workspace_id: Option<String>,
-        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
-        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         Self::new_with_shared_workspace_startup_hint(
@@ -862,7 +857,6 @@ impl JulieServerHandler {
             daemon_db,
             workspace_id,
             embedding_service,
-            restart_pending,
             dashboard_tx,
         )
         .await
@@ -871,10 +865,9 @@ impl JulieServerHandler {
     pub async fn new_with_shared_workspace_startup_hint(
         workspace: Arc<JulieWorkspace>,
         workspace_startup_hint: WorkspaceStartupHint,
-        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+        daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
         workspace_id: Option<String>,
-        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
-        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         let workspace_root = workspace_startup_hint.path.clone();
@@ -908,7 +901,7 @@ impl JulieServerHandler {
         }
 
         // Create per-project logger for daemon mode
-        let project_log = Some(Arc::new(crate::daemon::project_log::ProjectLog::new(
+        let project_log = Some(Arc::new(crate::registry::project_log::ProjectLog::new(
             &workspace_root,
         )));
 
@@ -928,7 +921,6 @@ impl JulieServerHandler {
             daemon_db,
             workspace_id: Arc::new(StdRwLock::new(workspace_id)),
             embedding_service,
-            restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
@@ -958,16 +950,14 @@ impl JulieServerHandler {
 
     pub async fn new_deferred_daemon_startup_hint(
         workspace_startup_hint: WorkspaceStartupHint,
-        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
-        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
-        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
+        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         Self::new_deferred_daemon_startup_hint_with_project_log(
             workspace_startup_hint,
             daemon_db,
             embedding_service,
-            restart_pending,
             dashboard_tx,
             true,
         )
@@ -976,16 +966,14 @@ impl JulieServerHandler {
 
     pub async fn new_deferred_daemon_startup_hint_without_project_log(
         workspace_startup_hint: WorkspaceStartupHint,
-        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
-        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
-        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
+        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         Self::new_deferred_daemon_startup_hint_with_project_log(
             workspace_startup_hint,
             daemon_db,
             embedding_service,
-            restart_pending,
             dashboard_tx,
             false,
         )
@@ -994,9 +982,8 @@ impl JulieServerHandler {
 
     async fn new_deferred_daemon_startup_hint_with_project_log(
         workspace_startup_hint: WorkspaceStartupHint,
-        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
-        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
-        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
+        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
         enable_project_writes: bool,
     ) -> Result<Self> {
@@ -1021,7 +1008,7 @@ impl JulieServerHandler {
             embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log: if enable_project_writes {
-                Some(Arc::new(crate::daemon::project_log::ProjectLog::new(
+                Some(Arc::new(crate::registry::project_log::ProjectLog::new(
                     &workspace_root,
                 )))
             } else {
@@ -1030,7 +1017,6 @@ impl JulieServerHandler {
             daemon_db,
             workspace_id: Arc::new(StdRwLock::new(None)),
             embedding_service,
-            restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
@@ -1090,7 +1076,7 @@ impl JulieServerHandler {
         embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
         leader: LeadershipState,
         index_root: Option<PathBuf>,
-        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+        daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
     ) -> Result<Self> {
         // Build on top of the deferred-startup path, which wires up everything
         // except the project-log and sets startup_hint on the session state.
@@ -1098,7 +1084,6 @@ impl JulieServerHandler {
             startup_hint,
             daemon_db,
             /*embedding_service=*/ None,
-            /*restart_pending=*/ None,
             /*dashboard_tx=*/ None,
             /*enable_project_writes=*/ true,
         )
@@ -1128,7 +1113,7 @@ impl JulieServerHandler {
         Ok(handler)
     }
 
-    // Orphaned by the Phase 3d.2b deletion of `src/daemon/mcp_session.rs` (the
+    // Orphaned by the Phase 3d.2b deletion of `src/registry/mcp_session.rs` (the
     // per-HTTP-session wiring that attached lifecycle handles and drove the
     // serving/closing phase transitions). The in-process server does not yet
     // publish session-lifecycle phases; the `SessionLifecycleHandle` plumbing is

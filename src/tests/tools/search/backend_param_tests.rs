@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
-use crate::daemon::embedding_service::EmbeddingService;
 use crate::embeddings::{DeviceInfo, EmbeddingProvider};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::registry::embedding_service::EmbeddingService;
 use crate::tools::search::{FastSearchTool, SearchBackend};
 use crate::tools::workspace::ManageWorkspaceTool;
 

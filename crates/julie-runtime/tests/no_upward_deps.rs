@@ -19,7 +19,7 @@ const FORBIDDEN_SOURCE: &[&str] = &[
     "julie::",
     // Top-crate handler / daemon / tool / startup infrastructure.
     "crate::handler",
-    "crate::daemon",
+    "crate::registry",
     "crate::tools",
     "crate::startup",
     // health:: with trailing :: avoids false-positives on bare `health` identifiers.

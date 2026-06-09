@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 const FORBIDDEN_SOURCE: &[&str] = &[
     "crate::tools",
     "crate::handler",
-    "crate::daemon",
+    "crate::registry",
     "crate::indexing_core",
     "crate::watcher",
     "crate::workspace",
@@ -86,7 +86,9 @@ fn no_upward_source_references() {
                 if code.contains(needle) {
                     violations.push(format!(
                         "{}:{}: forbidden upward reference `{}`",
-                        file.strip_prefix(&src).unwrap_or_else(|_| file.as_path()).display(),
+                        file.strip_prefix(&src)
+                            .unwrap_or_else(|_| file.as_path())
+                            .display(),
                         lineno + 1,
                         needle
                     ));

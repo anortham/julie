@@ -6,12 +6,12 @@ nano = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
 # Dev: fast branch-level gate. Keep under 10 minutes expected; full keeps broad coverage.
-dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-zero-hit", "tools-search-promotion", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-get-symbols", "tools-deep-dive", "tools-fast-refs", "tools-blast-spillover", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard"]
+dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-zero-hit", "tools-search-promotion", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-get-symbols", "tools-deep-dive", "tools-fast-refs", "tools-blast-spillover", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard"]
 # System coverage kept separate from fast local buckets.
 system = ["projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -476,18 +476,14 @@ scope_label = "core"
 notes = "julie-runtime crate: watcher + workspace lifecycle layer above julie-pipeline"
 commands = ["cargo nextest run -p julie-runtime"]
 
-[buckets.daemon]
-# Daemon-mode tests: handler construction, HTTP session lifecycle,
+[buckets.registry]
+# Registry-mode tests: handler construction, session lifecycle,
 # MCP roots flow, and SessionWorkspaceState invariants.
-#
-# The 2026-05 daemon split (A1.2-A1.8) added lock coverage.
-# Discovery-file tests were deleted in Phase 3d.3; app_test, token_file_test,
-# and shutdown_drain_test were deleted in Phase 3d.2b.
 expected_seconds = 60
 timeout_seconds = 180
-scope_label = "daemon"
-notes = "daemon-mode protocol coverage"
-commands = ["cargo nextest run --lib tests::daemon -- --skip search_quality"]
+scope_label = "registry"
+notes = "registry-mode protocol coverage"
+commands = ["cargo nextest run --lib tests::registry -- --skip search_quality"]
 
 [buckets.dashboard]
 # Dashboard routes, templates, and state snapshots must stay in fast local coverage.
@@ -521,7 +517,7 @@ notes = "projection repair gate (backed by integration::projection_repair)"
 commands = ["cargo nextest run --lib tests::integration::projection_repair -- --skip search_quality"]
 
 [buckets.workspace-runtime]
-# Workspace registry specialist gate. (Pool/watcher + the daemon-registry
+# Workspace registry specialist gate. (Pool/watcher + the registry
 # workspace_cleanup tests were deleted in 3d.2b; cleanup coverage is restored
 # in 3d.3 alongside the daemon.db -> registry.db rework.)
 expected_seconds = 20

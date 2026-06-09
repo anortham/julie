@@ -95,7 +95,10 @@ struct BucketPlan {
 }
 
 const PROGRAM_TIERS: &[(&str, &[&str])] = &[
-    ("reliability", &["daemon", "workspace-init", "integration"]),
+    (
+        "reliability",
+        &["registry", "workspace-init", "integration"],
+    ),
     ("benchmark", &["system-health"]),
 ];
 
@@ -886,14 +889,14 @@ mod tests {
         TestManifest::from_str(
             r#"
 [tiers]
-daemon = ["daemon"]
+daemon = ["registry"]
 workspace-init = ["workspace-init"]
 integration = ["integration"]
 
-[buckets.daemon]
+[buckets.registry]
 expected_seconds = 1
 timeout_seconds = 2
-commands = ["daemon cmd"]
+commands = ["registry cmd"]
 
 [buckets.workspace-init]
 expected_seconds = 1
@@ -932,7 +935,7 @@ commands = ["integration cmd"]
                 },
             ),
             (
-                "daemon cmd",
+                "registry cmd",
                 CommandOutcome::Passed {
                     elapsed: Duration::from_millis(10),
                 },
@@ -957,7 +960,7 @@ commands = ["integration cmd"]
         assert_eq!(
             summary.bucket_names,
             vec![
-                "daemon".to_string(),
+                "registry".to_string(),
                 "workspace-init".to_string(),
                 "integration".to_string(),
             ]
@@ -966,7 +969,7 @@ commands = ["integration cmd"]
             executor.calls(),
             vec![
                 "cargo nextest run --no-run --lib".to_string(),
-                "daemon cmd".to_string(),
+                "registry cmd".to_string(),
                 "workspace init cmd".to_string(),
                 "integration cmd".to_string(),
             ]

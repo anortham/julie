@@ -9,14 +9,14 @@ use rmcp::{
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::daemon::database::DaemonDatabase;
 use crate::handler::JulieServerHandler;
-use crate::paths::DaemonPaths;
+use crate::handler::workspace_resolution::resolve_workspace_filter;
+use crate::paths::RegistryPaths;
+use crate::registry::database::DaemonDatabase;
 use crate::tests::helpers::mcp::{
     answer_next_list_roots_request, call_tool_result_text as extract_text_from_result,
 };
 use crate::tools::FastSearchTool;
-use crate::handler::workspace_resolution::resolve_workspace_filter;
 use crate::tools::navigation::resolution::{
     WorkspaceResolutionFailureKind, workspace_resolution_failure_kind,
 };
@@ -81,7 +81,6 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
         Some(primary_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("seed handler should initialize");
@@ -123,7 +122,6 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
         None,
     )

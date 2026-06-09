@@ -33,7 +33,7 @@ const FORBIDDEN_SOURCE: &[&str] = &[
     // NOTE: "crate::workspace::" (with trailing ::) to avoid matching
     // the legitimate in-crate module "crate::workspace_target".
     "crate::handler",
-    "crate::daemon",
+    "crate::registry",
     "crate::watcher",
     "crate::workspace::",
     "crate::external_extract",
@@ -67,11 +67,7 @@ fn workspace_dep_name(trimmed: &str) -> Option<&str> {
     }
     let end = trimmed.find([' ', '=', '.'])?;
     let name = &trimmed[..end];
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {

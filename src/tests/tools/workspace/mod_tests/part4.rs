@@ -1,6 +1,6 @@
 #[tokio::test]
 async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_missing() {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::extractors::SymbolKind;
     use crate::workspace::registry::generate_workspace_id;
 
@@ -87,7 +87,6 @@ async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_mis
         },
         Some(Arc::clone(&daemon_db)),
         Some(startup_id.clone()),
-        None,
         None,
         None,
     )

@@ -88,7 +88,7 @@ async fn test_startup_repair_cleans_deleted_file_and_clears_next_check() -> Resu
 
 #[tokio::test]
 async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tree() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
 
     let temp_dir = TempDir::new()?;
     let indexes_dir = temp_dir.path().join("daemon-indexes");
@@ -118,7 +118,6 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
         workspace_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(workspace_id.clone()),
-        None,
         None,
         None,
     )
@@ -160,9 +159,9 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
 
 #[tokio::test]
 async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
     use crate::database::types::FileInfo;
     use crate::extractors::{Symbol, SymbolKind};
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new()?;
@@ -187,10 +186,8 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
     daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
 
     let handler = JulieServerHandler::new_with_shared_workspace(
@@ -200,16 +197,14 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
         Some(original_id),
         None,
         None,
-        None,
     )
     .await?;
 
     let rebound_path = rebound_root.canonicalize()?;
     let rebound_path_str = rebound_path.to_string_lossy().to_string();
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
-    let rebound_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
-            .await?);
+    let rebound_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
     {
@@ -278,7 +273,7 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
 
 #[tokio::test]
 async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new()?;
@@ -303,9 +298,8 @@ async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot(
     let loaded_path = loaded_root.canonicalize()?;
     let loaded_path_str = loaded_path.to_string_lossy().to_string();
     let loaded_id = generate_workspace_id(&loaded_path_str)?;
-    let loaded_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(loaded_path.clone())
-            .await?);
+    let loaded_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(loaded_path.clone()).await?);
     daemon_db.upsert_workspace(&loaded_id, &loaded_path_str, "ready")?;
 
     let mut handler = JulieServerHandler::new_with_shared_workspace(
@@ -313,7 +307,6 @@ async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot(
         loaded_path,
         Some(Arc::clone(&daemon_db)),
         Some(loaded_id.clone()),
-        None,
         None,
         None,
     )

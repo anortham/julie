@@ -14,9 +14,9 @@
 //!      non-canonical and canonical forms of one dir yield the same id (the
 //!      property that couples the leader lock to the request-time binding).
 
-use crate::daemon::discovery::DaemonLockGuard;
 use crate::handler::JulieServerHandler;
 use crate::leadership::LeadershipState;
+use crate::registry::discovery::DaemonLockGuard;
 use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -75,8 +75,12 @@ async fn test_request_prefers_client_roots_pins_in_process_to_hint() {
 
     // none() (daemon/stdio) with Cwd source — keeps source-driven rebind.
     let dir3 = tempfile::tempdir().unwrap();
-    let none_cwd =
-        build_in_process(dir3.path(), LeadershipState::none(), WorkspaceStartupSource::Cwd).await;
+    let none_cwd = build_in_process(
+        dir3.path(),
+        LeadershipState::none(),
+        WorkspaceStartupSource::Cwd,
+    )
+    .await;
     assert!(
         none_cwd.request_prefers_client_roots(),
         "daemon/stdio (none()) with Cwd source MUST still prefer client roots \
@@ -85,8 +89,12 @@ async fn test_request_prefers_client_roots_pins_in_process_to_hint() {
 
     // none() with Cli source — pinned by source, not by in-process gate.
     let dir4 = tempfile::tempdir().unwrap();
-    let none_cli =
-        build_in_process(dir4.path(), LeadershipState::none(), WorkspaceStartupSource::Cli).await;
+    let none_cli = build_in_process(
+        dir4.path(),
+        LeadershipState::none(),
+        WorkspaceStartupSource::Cli,
+    )
+    .await;
     assert!(
         !none_cli.request_prefers_client_roots(),
         "Cli source never prefers client roots"

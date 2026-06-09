@@ -10,9 +10,9 @@
 //!   leader → is_in_process_follower() == false (metrics_tx write proceeds)
 
 use super::*;
-use crate::daemon::discovery::DaemonLockGuard;
 use crate::handler::JulieServerHandler;
 use crate::leadership::LeadershipState;
+use crate::registry::discovery::DaemonLockGuard;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -23,8 +23,8 @@ const REFUSAL_MSG: &str = "read-only follower";
 /// the handler's lifetime — no need to return it separately.
 async fn make_leader(workspace_dir: &tempfile::TempDir) -> JulieServerHandler {
     let lock_path = workspace_dir.path().join(".leader.lock");
-    let guard = DaemonLockGuard::try_acquire(&lock_path)
-        .expect("lock must be acquirable on a fresh path");
+    let guard =
+        DaemonLockGuard::try_acquire(&lock_path).expect("lock must be acquirable on a fresh path");
     let hint = WorkspaceStartupHint {
         path: workspace_dir.path().to_path_buf(),
         source: Some(WorkspaceStartupSource::Cli),

@@ -44,10 +44,10 @@ mod unix {
     use tokio_util::sync::CancellationToken;
 
     use crate::embedding_host_launch::connect_or_spawn_host;
-    use crate::paths::DaemonPaths;
+    use crate::paths::RegistryPaths;
+    use julie_pipeline::embeddings::EmbeddingProvider;
     use julie_pipeline::embeddings::host_server::run_embedding_host_default;
     use julie_pipeline::embeddings::host_transport::{HostAddress, HostClientConn};
-    use julie_pipeline::embeddings::EmbeddingProvider;
 
     /// Dimensionality the stub sidecar advertises.
     const STUB_DIMS: usize = 4;
@@ -66,13 +66,19 @@ mod unix {
         fn set(key: &str, value: impl AsRef<std::ffi::OsStr>) -> Self {
             let previous = std::env::var_os(key);
             unsafe { std::env::set_var(key, value.as_ref()) };
-            Self { key: key.to_owned(), previous }
+            Self {
+                key: key.to_owned(),
+                previous,
+            }
         }
 
         fn remove(key: &str) -> Self {
             let previous = std::env::var_os(key);
             unsafe { std::env::remove_var(key) };
-            Self { key: key.to_owned(), previous }
+            Self {
+                key: key.to_owned(),
+                previous,
+            }
         }
     }
 
@@ -231,7 +237,7 @@ while True:
         );
 
         let julie_home = dir.path().join("julie_home");
-        let paths = DaemonPaths::with_home(julie_home.clone());
+        let paths = RegistryPaths::with_home(julie_home.clone());
         paths.ensure_dirs().expect("ensure_dirs");
 
         let lock_path = paths.embedding_host_lock();
@@ -262,11 +268,9 @@ while True:
 
         // 2. Wait until the winner's socket is accepting connections.
         let addr_wait = HostAddress::from_paths(&paths);
-        tokio::task::spawn_blocking(move || {
-            wait_for_live(&addr_wait, Duration::from_secs(15))
-        })
-        .await
-        .expect("wait_for_live join");
+        tokio::task::spawn_blocking(move || wait_for_live(&addr_wait, Duration::from_secs(15)))
+            .await
+            .expect("wait_for_live join");
 
         // -------------------------------------------------------------------
         // 3. Three concurrent sessions via connect_or_spawn_host.
@@ -343,7 +347,11 @@ while True:
             assert_eq!(qv.len(), STUB_DIMS, "session {session} embed_query dims");
             assert_eq!(bv.len(), 2, "session {session} embed_batch count");
             for (j, v) in bv.iter().enumerate() {
-                assert_eq!(v.len(), STUB_DIMS, "session {session} embed_batch[{j}] dims");
+                assert_eq!(
+                    v.len(),
+                    STUB_DIMS,
+                    "session {session} embed_batch[{j}] dims"
+                );
             }
         }
 
@@ -366,8 +374,7 @@ while True:
         let counter_contents = std::fs::read_to_string(&counter_file).unwrap_or_default();
         let launch_count = counter_contents.lines().count();
         assert_eq!(
-            launch_count,
-            1,
+            launch_count, 1,
             "HARD GATE: expected exactly 1 sidecar launch, got {launch_count}.\n\
              Counter file:\n{counter_contents}"
         );
@@ -375,7 +382,10 @@ while True:
         // -------------------------------------------------------------------
         // HARD GATE (c): cancel → 1 Ok / 2 Err (lock ordering) → clean shutdown.
         // -------------------------------------------------------------------
-        assert!(socket_path.exists(), "socket must exist while host is running");
+        assert!(
+            socket_path.exists(),
+            "socket must exist while host is running"
+        );
 
         cancel.cancel();
 

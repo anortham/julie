@@ -21,7 +21,6 @@ pub(crate) async fn dashboard_handler(
         },
         state.dashboard.daemon_db().cloned(),
         None,
-        None,
         Some(state.dashboard.sender()),
     )
     .await?;

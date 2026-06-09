@@ -19,7 +19,7 @@ use anyhow::Context;
 use tracing::{info, warn};
 
 use crate::embeddings::EmbeddingProvider;
-use crate::paths::DaemonPaths;
+use crate::paths::RegistryPaths;
 
 /// Acquire the shared resident embedding provider for an in-process session.
 ///
@@ -59,7 +59,7 @@ use crate::paths::DaemonPaths;
 /// [`connect_or_spawn_host`]: crate::embedding_host_launch::connect_or_spawn_host
 /// [`RpcEmbeddingProvider::ensure_ready`]: julie_pipeline::embeddings::rpc_client::RpcEmbeddingProvider::ensure_ready
 pub async fn acquire_in_process_embedding_provider(
-    paths: &DaemonPaths,
+    paths: &RegistryPaths,
 ) -> Option<Arc<dyn EmbeddingProvider>> {
     // Force-disable check: reuse the same JULIE_EMBEDDING_PROVIDER=none logic
     // as create_embedding_provider() (crates/julie-pipeline/src/embeddings/init.rs).
@@ -168,14 +168,14 @@ pub async fn acquire_in_process_embedding_provider(
 pub async fn run_in_process_server(
     startup_hint: crate::workspace::startup_hint::WorkspaceStartupHint,
 ) -> anyhow::Result<()> {
-    use crate::daemon::discovery::{AcquireError, DaemonLockGuard};
     use crate::handler::JulieServerHandler;
     use crate::leadership::LeadershipState;
+    use crate::registry::discovery::{AcquireError, DaemonLockGuard};
     use crate::workspace::registry::generate_workspace_id;
     use rmcp::ServiceExt;
 
     // 1. Resolve the daemon paths (respects $JULIE_HOME).
-    let paths = DaemonPaths::try_new().context("Failed to resolve Julie home directory")?;
+    let paths = RegistryPaths::try_new().context("Failed to resolve Julie home directory")?;
 
     // 2. Canonicalize the startup-hint path, then derive the workspace ID from
     //    the CANONICAL form (codex 3c.2 F-A). The request-time primary binding
@@ -264,7 +264,7 @@ pub async fn run_in_process_server(
     // be opened (e.g. a filesystem/permission error on ~/.julie/) rather than
     // aborting the whole MCP server: pass None and log a warning, matching the
     // best-effort posture of the per-swap registry upsert.
-    let daemon_db = match crate::daemon::database::DaemonDatabase::open(&paths.registry_db()) {
+    let daemon_db = match crate::registry::database::DaemonDatabase::open(&paths.registry_db()) {
         Ok(db) => Some(Arc::new(db)),
         Err(e) => {
             warn!(

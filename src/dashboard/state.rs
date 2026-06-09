@@ -2,16 +2,11 @@
 
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tokio::sync::broadcast;
 
-use crate::daemon::database::DaemonDatabase;
-use crate::daemon::embedding_service::EmbeddingService;
-use crate::daemon::lifecycle::{LifecyclePhase, LifecyclePhaseKind, ShutdownCause};
-use crate::daemon::session::{SessionPhaseCounts, SessionTracker};
 use crate::dashboard::error_buffer::{ErrorBuffer, LogEntry};
 use crate::embeddings::EmbeddingBackend;
 use crate::embeddings::EmbeddingRuntimeStatus;
@@ -19,6 +14,10 @@ use crate::health::{
     EmbeddingRuntimeHealth, HealthLevel, ProjectionFreshness, ProjectionState,
     SearchProjectionHealth, SystemStatus, overall_from_planes, project_embedding_runtime,
 };
+use crate::registry::database::DaemonDatabase;
+use crate::registry::embedding_service::EmbeddingService;
+use crate::registry::lifecycle::{LifecyclePhase, LifecyclePhaseKind, ShutdownCause};
+use crate::registry::session::{SessionPhaseCounts, SessionTracker};
 
 // ---------------------------------------------------------------------------
 // DashboardEvent
@@ -41,7 +40,7 @@ pub enum DashboardEvent {
 // DashboardHealth
 // ---------------------------------------------------------------------------
 
-pub use crate::daemon::lifecycle::LifecyclePhaseKind as DashboardDaemonPhase;
+pub use crate::registry::lifecycle::LifecyclePhaseKind as DashboardDaemonPhase;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DashboardHealthSnapshot {
@@ -57,7 +56,6 @@ pub struct DashboardControlPlaneHealth {
     pub daemon_phase: DashboardDaemonPhase,
     pub shutdown_cause: Option<ShutdownCause>,
     pub active_sessions: usize,
-    pub restart_pending: bool,
     pub session_phases: SessionPhaseCounts,
     pub daemon_db_connected: bool,
     pub workspace_pool_connected: bool,
@@ -127,14 +125,13 @@ pub struct DashboardState {
     sessions: Arc<SessionTracker>,
     daemon_db: Option<Arc<DaemonDatabase>>,
     action_csrf_token: Arc<String>,
-    restart_pending: Arc<AtomicBool>,
     daemon_phase: Arc<RwLock<LifecyclePhase>>,
     start_time: Instant,
     error_buffer: ErrorBuffer,
     /// Recovery markers from a previous unclean daemon shutdown (A1.7).
     /// Surfaced through the `/api/status` endpoint until the operator
     /// clears them. Default empty.
-    recovery_markers: Arc<Vec<crate::daemon::shutdown::RecoveryMarker>>,
+    recovery_markers: Arc<Vec<crate::registry::shutdown::RecoveryMarker>>,
     /// Live reference to the daemon's shared embedding service. Stored as a
     /// reference (not a snapshot bool) so the dashboard reflects state
     /// transitions as the background init task progresses from
@@ -154,7 +151,6 @@ impl DashboardState {
     pub fn new(
         sessions: Arc<SessionTracker>,
         daemon_db: Option<Arc<DaemonDatabase>>,
-        restart_pending: Arc<AtomicBool>,
         daemon_phase: Arc<RwLock<LifecyclePhase>>,
         start_time: Instant,
         embedding_service: Option<Arc<EmbeddingService>>,
@@ -166,7 +162,6 @@ impl DashboardState {
             sessions,
             daemon_db,
             action_csrf_token: Arc::new(uuid::Uuid::new_v4().to_string()),
-            restart_pending,
             daemon_phase,
             start_time,
             error_buffer,
@@ -183,14 +178,14 @@ impl DashboardState {
     /// will still report the field but with an empty array.
     pub fn with_recovery_markers(
         mut self,
-        markers: Arc<Vec<crate::daemon::shutdown::RecoveryMarker>>,
+        markers: Arc<Vec<crate::registry::shutdown::RecoveryMarker>>,
     ) -> Self {
         self.recovery_markers = markers;
         self
     }
 
     /// Snapshot of recovery markers visible to dashboard handlers.
-    pub fn recovery_markers(&self) -> &[crate::daemon::shutdown::RecoveryMarker] {
+    pub fn recovery_markers(&self) -> &[crate::registry::shutdown::RecoveryMarker] {
         &self.recovery_markers
     }
 
@@ -208,11 +203,6 @@ impl DashboardState {
         self.action_csrf_token.as_str()
     }
 
-    /// Whether a daemon restart is pending.
-    pub fn is_restart_pending(&self) -> bool {
-        self.restart_pending.load(Ordering::Relaxed)
-    }
-
     /// Current daemon phase as observed by the dashboard.
     pub fn daemon_phase_kind(&self) -> DashboardDaemonPhase {
         self.daemon_phase
@@ -223,7 +213,7 @@ impl DashboardState {
 
     /// Whether dashboard routes may start workspace mutations.
     pub fn accepts_workspace_actions(&self) -> bool {
-        self.daemon_phase_kind() == DashboardDaemonPhase::Ready && !self.is_restart_pending()
+        self.daemon_phase_kind() == DashboardDaemonPhase::Ready
     }
 
     /// Time elapsed since the daemon started.
@@ -245,7 +235,6 @@ impl DashboardState {
     /// available to the dashboard server.
     pub async fn health_snapshot(&self) -> DashboardHealthSnapshot {
         let active_sessions = self.sessions.active_count();
-        let restart_pending = self.is_restart_pending();
         let daemon_phase_snapshot = *self.daemon_phase.read().unwrap_or_else(|p| p.into_inner());
         let daemon_phase = daemon_phase_snapshot.kind();
         let shutdown_cause = daemon_phase_snapshot.shutdown_cause();
@@ -291,7 +280,7 @@ impl DashboardState {
         let control_plane = DashboardControlPlaneHealth {
             level: if !daemon_db_connected {
                 HealthLevel::Unavailable
-            } else if restart_pending || daemon_phase != LifecyclePhaseKind::Ready {
+            } else if daemon_phase != LifecyclePhaseKind::Ready {
                 HealthLevel::Degraded
             } else {
                 HealthLevel::Ready
@@ -299,7 +288,6 @@ impl DashboardState {
             daemon_phase,
             shutdown_cause,
             active_sessions,
-            restart_pending,
             session_phases,
             daemon_db_connected,
             workspace_pool_connected,
@@ -340,12 +328,7 @@ impl DashboardState {
         let indexing = self.indexing_health().await;
 
         let data_plane = DashboardDataPlaneHealth {
-            level: overall_from_planes(
-                data_plane_level,
-                indexing.level,
-                HealthLevel::Ready,
-                false,
-            ),
+            level: overall_from_planes(data_plane_level, indexing.level, HealthLevel::Ready, false),
             readiness,
             workspace_count,
             active_workspace_count,

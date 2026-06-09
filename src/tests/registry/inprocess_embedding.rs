@@ -14,7 +14,7 @@
 //! The full "three concurrent sessions share exactly ONE resident model"
 //! assertion (multi-session HARD GATE) requires a real Python sidecar and the
 //! `embeddings-sidecar` feature; it lives in
-//! `src/tests/daemon/embedding_host_multi_session.rs`.  The tests here cover
+//! `src/tests/registry/embedding_host_multi_session.rs`.  The tests here cover
 //! the lighter invariants that can be exercised with a fake `HostListener`:
 //!
 //! (a) `ensure_ready()` gates Ready-vs-None — an unhealthy host (ready=false)
@@ -26,7 +26,7 @@
 mod tests {
     use serial_test::serial;
 
-    use crate::paths::DaemonPaths;
+    use crate::paths::RegistryPaths;
 
     // -----------------------------------------------------------------------
     // RAII env guard — restores the previous value on drop.
@@ -43,14 +43,20 @@ mod tests {
             let previous = std::env::var(key).ok();
             // SAFETY: serialised by #[serial]
             unsafe { std::env::set_var(key, value) };
-            Self { key: key.to_owned(), previous }
+            Self {
+                key: key.to_owned(),
+                previous,
+            }
         }
 
         fn remove(key: &str) -> Self {
             let previous = std::env::var(key).ok();
             // SAFETY: serialised by #[serial]
             unsafe { std::env::remove_var(key) };
-            Self { key: key.to_owned(), previous }
+            Self {
+                key: key.to_owned(),
+                previous,
+            }
         }
     }
 
@@ -63,9 +69,9 @@ mod tests {
         }
     }
 
-    fn temp_paths() -> (tempfile::TempDir, DaemonPaths) {
+    fn temp_paths() -> (tempfile::TempDir, RegistryPaths) {
         let dir = tempfile::tempdir().expect("tempdir");
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        let paths = RegistryPaths::with_home(dir.path().to_path_buf());
         (dir, paths)
     }
 
@@ -83,8 +89,7 @@ mod tests {
         let (_dir, paths) = temp_paths();
         let _guard = EnvGuard::set("JULIE_EMBEDDING_PROVIDER", "none");
 
-        let result =
-            crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
+        let result = crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
 
         assert!(
             result.is_none(),
@@ -131,8 +136,7 @@ mod tests {
                 .await
                 .expect("read health request")
                 .expect("health request line present");
-            let req: serde_json::Value =
-                serde_json::from_str(&line).expect("parse health request");
+            let req: serde_json::Value = serde_json::from_str(&line).expect("parse health request");
             let request_id = req["request_id"].as_str().unwrap_or("1").to_string();
 
             // Reply with ready=false — host still warming up.
@@ -158,8 +162,7 @@ mod tests {
             conn.write_line(&resp).await.expect("write health response");
         });
 
-        let result =
-            crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
+        let result = crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
 
         assert!(
             result.is_none(),
@@ -200,8 +203,7 @@ mod tests {
                 .await
                 .expect("read health request")
                 .expect("health request line present");
-            let req: serde_json::Value =
-                serde_json::from_str(&line).expect("parse health request");
+            let req: serde_json::Value = serde_json::from_str(&line).expect("parse health request");
             let request_id = req["request_id"].as_str().unwrap_or("1").to_string();
 
             let resp = serde_json::to_string(&ResponseEnvelope {
@@ -226,8 +228,7 @@ mod tests {
             conn.write_line(&resp).await.expect("write health response");
         });
 
-        let result =
-            crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
+        let result = crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
 
         assert!(
             result.is_some(),

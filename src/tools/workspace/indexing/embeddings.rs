@@ -61,7 +61,7 @@ pub(crate) async fn spawn_workspace_embedding(
         // settled, use the result immediately. Otherwise hand off to a
         // deferred task that waits for settlement without blocking the
         // index response.
-        use crate::daemon::embedding_service::EmbeddingServiceSettled;
+        use crate::registry::embedding_service::EmbeddingServiceSettled;
         match svc.try_settled() {
             Some(EmbeddingServiceSettled::Ready { provider: p, .. }) => {
                 debug!("Daemon embedding service Ready; proceeding inline");
@@ -255,7 +255,7 @@ async fn run_pipeline_body(
     workspace_id: String,
     cancel_for_pipeline: Arc<std::sync::atomic::AtomicBool>,
     self_cancel_flag: Arc<std::sync::atomic::AtomicBool>,
-    daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+    daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
     embedding_task_slot: Arc<
         tokio::sync::Mutex<
             std::collections::HashMap<
@@ -338,7 +338,7 @@ async fn spawn_deferred_daemon_embedding(
     handler: &JulieServerHandler,
     workspace_id: String,
 ) -> EmbeddingOutcome {
-    use crate::daemon::embedding_service::EmbeddingServiceSettled;
+    use crate::registry::embedding_service::EmbeddingServiceSettled;
 
     let svc = match handler.embedding_service.as_ref() {
         Some(s) => Arc::clone(s),
@@ -519,7 +519,7 @@ async fn spawn_deferred_daemon_embedding(
 /// `daemon.db` so it doesn't show stale numbers left over from a prior run
 /// (e.g. after force-reindex cleared embeddings).
 pub(crate) async fn sync_vector_count_on_terminal(
-    daemon_db: &Option<Arc<crate::daemon::database::DaemonDatabase>>,
+    daemon_db: &Option<Arc<crate::registry::database::DaemonDatabase>>,
     workspace_id: &str,
     db_path: &std::path::Path,
 ) {

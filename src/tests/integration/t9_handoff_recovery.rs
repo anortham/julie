@@ -19,8 +19,8 @@
 use anyhow::Result;
 use tempfile::TempDir;
 
+use crate::database::SymbolDatabase;
 use crate::database::types::FileInfo;
-use crate::database::{SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
 use crate::search::{SearchIndex, SearchProjection};
 
@@ -97,8 +97,15 @@ fn test_leader_handoff_recovery_reconciles_tantivy_from_canonical_sqlite() -> Re
     // Tantivy is intentionally left empty — simulates the crash/restart gap
     // where the SQLite commit succeeded but Tantivy apply did not.
     db.bulk_store_fresh_atomic(
-        &[handoff_file("src/leader.rs", "fn promoted_leader_fn() {}\n")],
-        &[handoff_symbol("sym_leader", "promoted_leader_fn", "src/leader.rs")],
+        &[handoff_file(
+            "src/leader.rs",
+            "fn promoted_leader_fn() {}\n",
+        )],
+        &[handoff_symbol(
+            "sym_leader",
+            "promoted_leader_fn",
+            "src/leader.rs",
+        )],
         &[],
         &[],
         &[],
@@ -126,7 +133,11 @@ fn test_leader_handoff_recovery_reconciles_tantivy_from_canonical_sqlite() -> Re
         Some(1),
         "canonical_revision must be 1 after first bulk_store"
     );
-    assert_eq!(state.status.as_str(), "ready", "projection status must be ready");
+    assert_eq!(
+        state.status.as_str(),
+        "ready",
+        "projection status must be ready"
+    );
 
     // Step 4: Search finds the promoted leader's symbol.
     let results = index.search_symbols("promoted_leader_fn", &Default::default(), 10)?;
@@ -175,10 +186,7 @@ async fn test_follower_structural_gate_is_in_process_follower() {
         "follower must report is_in_process_follower() == true \
          (guard condition for the T9 writing-recovery skip)"
     );
-    assert!(
-        !follower.is_leader(),
-        "follower must not claim leadership"
-    );
+    assert!(!follower.is_leader(), "follower must not claim leadership");
     assert!(
         follower.is_in_process(),
         "follower must report is_in_process() == true (participates in election)"
@@ -190,15 +198,15 @@ async fn test_follower_structural_gate_is_in_process_follower() {
 /// recovery for leaders.
 #[tokio::test]
 async fn test_leader_structural_gate_is_leader_not_follower() {
-    use crate::daemon::discovery::DaemonLockGuard;
     use crate::handler::JulieServerHandler;
     use crate::leadership::LeadershipState;
+    use crate::registry::discovery::DaemonLockGuard;
     use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
     let workspace_dir = tempfile::tempdir().unwrap();
     let lock_path = workspace_dir.path().join(".leader.lock");
-    let guard = DaemonLockGuard::try_acquire(&lock_path)
-        .expect("lock must be acquirable on fresh path");
+    let guard =
+        DaemonLockGuard::try_acquire(&lock_path).expect("lock must be acquirable on fresh path");
 
     let hint = WorkspaceStartupHint {
         path: workspace_dir.path().to_path_buf(),
@@ -210,10 +218,7 @@ async fn test_leader_structural_gate_is_leader_not_follower() {
             .await
             .expect("leader handler must build");
 
-    assert!(
-        leader.is_leader(),
-        "leader must report is_leader() == true"
-    );
+    assert!(leader.is_leader(), "leader must report is_leader() == true");
     assert!(
         !leader.is_in_process_follower(),
         "leader must NOT report is_in_process_follower() (repair must NOT be skipped for leaders)"

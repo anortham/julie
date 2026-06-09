@@ -20,12 +20,12 @@
 
 use tempfile::TempDir;
 
-use crate::daemon::discovery::DaemonLockGuard;
-use crate::database::types::FileInfo;
 use crate::database::SymbolDatabase;
+use crate::database::types::FileInfo;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::leadership::LeadershipState;
+use crate::registry::discovery::DaemonLockGuard;
 use crate::search::{SearchIndex, SearchProjection};
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -135,7 +135,9 @@ fn setup_repair_required_fixture() -> (TempDir, std::path::PathBuf, std::path::P
             WS,
         )
         .unwrap();
-        projection.ensure_current_from_database(&mut db, &index).unwrap();
+        projection
+            .ensure_current_from_database(&mut db, &index)
+            .unwrap();
         assert_eq!(index.num_docs(), 2, "fixture setup should create docs");
     }
     // Delete the compat marker → next open is a recreated-empty (repair_required) open.

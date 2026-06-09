@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 const FORBIDDEN_SOURCE: &[&str] = &[
     "crate::handler",
     "crate::tools",
-    "crate::daemon",
+    "crate::registry",
     "crate::indexing_core",
     "crate::watcher",
     "crate::analysis",

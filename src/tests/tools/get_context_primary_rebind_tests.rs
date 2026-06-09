@@ -5,8 +5,8 @@ use std::sync::atomic::Ordering;
 use anyhow::Result;
 use tempfile::TempDir;
 
-use crate::daemon::database::DaemonDatabase;
 use crate::handler::JulieServerHandler;
+use crate::registry::database::DaemonDatabase;
 use crate::tools::get_context::GetContextTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
@@ -43,17 +43,14 @@ async fn setup_rebound_primary_get_context_handler()
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
         None,
     )
@@ -66,15 +63,13 @@ async fn setup_rebound_primary_get_context_handler()
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
-    let rebound_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
-            .await?);
+    let rebound_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
     let seed_handler = JulieServerHandler::new_with_shared_workspace(
         rebound_ws,
         rebound_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(rebound_id.clone()),
-        None,
         None,
         None,
     )

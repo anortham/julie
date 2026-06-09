@@ -212,7 +212,7 @@ pub fn resolve_workspace_file_input(
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// VCS_ROOT_MARKERS + DaemonPaths
+// VCS_ROOT_MARKERS + RegistryPaths
 // (moved from the root `julie` crate so that `julie-runtime` can reference
 //  workspace-root discovery and the Julie-home guard without depending upward)
 // ──────────────────────────────────────────────────────────────────────────────
@@ -233,18 +233,18 @@ pub fn resolve_workspace_file_input(
 /// `.svn`. We accept this rare residual rather than drop SVN-root detection.
 pub const VCS_ROOT_MARKERS: &[&str] = &[".git", ".hg", ".svn", ".jj", ".bzr", "_darcs"];
 
-/// Centralized path resolution for Julie daemon infrastructure.
+/// Centralized path resolution for Julie registry and runtime infrastructure.
 ///
-/// All daemon-related paths derive from `julie_home`. The default is `~/.julie/`,
+/// All Julie home paths derive from `julie_home`. The default is `~/.julie/`,
 /// which can be overridden by setting the `JULIE_HOME` environment variable to
 /// an absolute path. An empty `JULIE_HOME` is rejected as a misconfiguration
 /// (rather than silently falling back to `~/.julie/`).
 #[derive(Clone)]
-pub struct DaemonPaths {
+pub struct RegistryPaths {
     julie_home: PathBuf,
 }
 
-impl DaemonPaths {
+impl RegistryPaths {
     /// Create using the resolved Julie home directory.
     ///
     /// Resolution order:
@@ -377,16 +377,7 @@ impl DaemonPaths {
         self.workspace_index_dir(workspace_id).join("leader.lock")
     }
 
-    /// Named event for graceful daemon shutdown (Windows).
-    #[cfg(windows)]
-    pub fn daemon_shutdown_event(&self) -> String {
-        format!(
-            "Local\\julie-daemon-shutdown-{:016x}",
-            self.julie_home_hash()
-        )
-    }
-
-    /// FNV-1a hash of `julie_home`, used for Windows shutdown event names.
+    /// FNV-1a hash of `julie_home`, used for Windows embedding host pipe names.
     #[cfg(windows)]
     fn julie_home_hash(&self) -> u64 {
         let path_str = self.julie_home.to_string_lossy();
@@ -396,16 +387,6 @@ impl DaemonPaths {
             hash = hash.wrapping_mul(1099511628211);
         }
         hash
-    }
-
-    /// PID file for daemon lifecycle.
-    pub fn daemon_pid(&self) -> PathBuf {
-        self.julie_home.join("daemon.pid")
-    }
-
-    /// Kernel-held singleton lock for the running daemon.
-    pub fn daemon_lock(&self) -> PathBuf {
-        self.julie_home.join("daemon.lock")
     }
 
     /// Unix domain socket for the resident embedding-host (Phase 3b).
@@ -426,30 +407,12 @@ impl DaemonPaths {
     }
 
     /// Named pipe for the resident embedding-host (Windows, Phase 3b).
-    ///
-    /// Reuses the same FNV-1a `julie_home` hash as [`daemon_shutdown_event`] so
-    /// the name is stable per `$JULIE_HOME`.
     #[cfg(windows)]
     pub fn embedding_host_pipe_name(&self) -> String {
         format!(
             "\\\\.\\pipe\\julie-embedding-host-{:016x}",
             self.julie_home_hash()
         )
-    }
-
-    /// Short-lived adapter lock for serializing spawn attempts only.
-    pub fn daemon_startup_lock(&self) -> PathBuf {
-        self.julie_home.join("daemon-startup.lock")
-    }
-
-    /// Legacy singleton lock file held by pre-split daemon processes.
-    pub fn daemon_singleton_lock(&self) -> PathBuf {
-        self.julie_home.join("daemon.singleton.lock")
-    }
-
-    /// Daemon lifecycle log.
-    pub fn daemon_log(&self) -> PathBuf {
-        self.julie_home.join("daemon.log")
     }
 
     /// Per-project log directory (written by daemon, scoped to project).
@@ -462,53 +425,13 @@ impl DaemonPaths {
         self.julie_home.join("registry.db")
     }
 
-    /// Deprecated 3d.3 compatibility shim. New code should use `registry_db`.
-    pub fn daemon_db(&self) -> PathBuf {
-        self.registry_db()
-    }
-
-    /// Path to the file storing the dashboard HTTP port.
-    pub fn daemon_port(&self) -> PathBuf {
-        self.julie_home.join("daemon.port")
-    }
-
-    /// Structured discovery file for the daemon MCP Streamable HTTP endpoint.
-    pub fn daemon_mcp_transport(&self) -> PathBuf {
-        self.julie_home.join("daemon-mcp-transport.json")
-    }
-
-    /// Per-daemon bearer token read by local MCP transport clients.
-    pub fn daemon_mcp_token(&self) -> PathBuf {
-        self.julie_home.join("daemon-mcp.token")
-    }
-
-    /// Discovery file for the daemon's HTTP endpoint.
-    pub fn discovery_file(&self) -> PathBuf {
-        self.julie_home.join("discovery.json")
-    }
-
-    /// Daemon bearer token file (mode 0600 on POSIX).
-    pub fn token_file(&self) -> PathBuf {
-        self.julie_home.join("daemon.token")
-    }
-
-    /// Daemon lifecycle state file (starting/ready/stopping).
-    pub fn daemon_state(&self) -> PathBuf {
-        self.julie_home.join("daemon.state")
-    }
-
-    /// Migration state file.
-    pub fn migration_state(&self) -> PathBuf {
-        self.julie_home.join("migration.json")
-    }
-
     /// Ensure `julie_home` and `indexes` directories exist.
     pub fn ensure_dirs(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(self.indexes_dir())
     }
 }
 
-impl Default for DaemonPaths {
+impl Default for RegistryPaths {
     fn default() -> Self {
         Self::new()
     }

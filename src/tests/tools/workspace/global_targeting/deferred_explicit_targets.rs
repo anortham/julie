@@ -32,7 +32,6 @@ async fn test_manage_workspace_stats_explicit_target_succeeds_without_bound_prim
         Some(startup_id),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -108,7 +107,6 @@ async fn test_manage_workspace_refresh_by_workspace_id_succeeds_without_bound_pr
         Some(startup_id),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -179,7 +177,6 @@ async fn test_manage_workspace_open_by_workspace_id_succeeds_without_bound_prima
         },
         Some(Arc::clone(&daemon_db)),
         Some(startup_id),
-        None,
         None,
         None,
     )

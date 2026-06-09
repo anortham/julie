@@ -209,5 +209,4 @@ impl SessionTracker {
         let sessions = self.sessions.read().unwrap_or_else(|p| p.into_inner());
         sessions.len()
     }
-
 }

@@ -7,9 +7,9 @@ use rmcp::{
     service::{RequestContext, serve_directly},
 };
 
-use crate::daemon::database::DaemonDatabase;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::registry::database::DaemonDatabase;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::route::IndexRoute;
 use crate::workspace::registry::generate_workspace_id;
@@ -56,7 +56,6 @@ async fn test_primary_force_refresh_uses_full_index_path() {
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
-        None,
         None,
         None,
     )
@@ -125,7 +124,6 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
         original_primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(original_primary_id.clone()),
-        None,
         None,
         None,
     )
@@ -215,7 +213,6 @@ async fn test_daemon_rebound_primary_storage_anchor_keeps_shared_index_root() {
         Some(startup_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -273,7 +270,6 @@ async fn test_roots_list_error_falls_back_to_startup_hint() {
         },
         Some(Arc::clone(&daemon_db)),
         Some(startup_id.clone()),
-        None,
         None,
         None,
     )
@@ -363,7 +359,6 @@ async fn test_manage_workspace_refresh_force_reference_keeps_reference_snapshot_
         loaded_primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(loaded_primary_id.clone()),
-        None,
         None,
         None,
     )
@@ -466,7 +461,6 @@ async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_
         Some(loaded_primary_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -550,7 +544,6 @@ async fn test_manage_workspace_index_non_force_uses_rebound_session_primary_root
         loaded_primary_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(loaded_primary_id.clone()),
-        None,
         None,
         None,
     )
@@ -778,7 +771,6 @@ async fn test_manage_workspace_refresh_non_force_uses_rebound_session_primary_ro
         loaded_primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(loaded_primary_id.clone()),
-        None,
         None,
         None,
     )

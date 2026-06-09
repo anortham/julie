@@ -1,5 +1,5 @@
-use crate::daemon::embedding_service::{EmbeddingService, EmbeddingServiceSettled};
 use crate::handler::JulieServerHandler;
+use crate::registry::embedding_service::{EmbeddingService, EmbeddingServiceSettled};
 use std::sync::Arc;
 use std::time::Duration;
 

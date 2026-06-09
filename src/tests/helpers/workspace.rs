@@ -1,7 +1,7 @@
 //! Test workspace builders with proper isolation
 
-use crate::daemon::database::DaemonDatabase;
 use crate::handler::JulieServerHandler;
+use crate::registry::database::DaemonDatabase;
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,7 +16,9 @@ pub fn create_unique_test_workspace(test_name: &str) -> Result<TempDir> {
 
 // Pure-fs workspace root markers now live in julie-test-support so both the
 // top-crate and julie-runtime test binaries can share them without a dep cycle.
-pub use julie_test_support::workspace_markers::{make_isolated_workspace_root, mark_workspace_root};
+pub use julie_test_support::workspace_markers::{
+    make_isolated_workspace_root, mark_workspace_root,
+};
 
 /// Get fixture path (existing helper, centralized)
 pub fn get_fixture_path(name: &str) -> PathBuf {
@@ -86,7 +88,9 @@ impl julie_context::ToolContext for IsolatedStorageHandler {
         julie_core::database::SymbolDatabase,
         Arc<std::sync::Mutex<julie_index::search::SearchIndex>>,
     )> {
-        self.handler.primary_pooled_database_and_search_index().await
+        self.handler
+            .primary_pooled_database_and_search_index()
+            .await
     }
     async fn get_pooled_database_for_workspace(
         &self,
@@ -110,10 +114,7 @@ impl julie_context::ToolContext for IsolatedStorageHandler {
             .get_search_index_for_workspace(workspace_id)
             .await
     }
-    async fn get_workspace_root_for_target(
-        &self,
-        workspace_id: &str,
-    ) -> anyhow::Result<PathBuf> {
+    async fn get_workspace_root_for_target(&self, workspace_id: &str) -> anyhow::Result<PathBuf> {
         self.handler
             .get_workspace_root_for_target(workspace_id)
             .await

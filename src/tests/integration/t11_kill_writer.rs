@@ -43,10 +43,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
-use crate::database::types::FileInfo;
 use crate::database::SymbolDatabase;
-use crate::daemon::discovery::{AcquireError, DaemonLockGuard};
+use crate::database::types::FileInfo;
 use crate::extractors::{Symbol, SymbolKind};
+use crate::registry::discovery::{AcquireError, DaemonLockGuard};
 use crate::search::{SearchIndex, SearchProjection};
 
 /// Env var that flips `t11_writer_subprocess` from no-op into the leader role.
@@ -153,11 +153,13 @@ fn t11_writer_subprocess() {
         .expect("subprocess: fresh leader lock must be acquirable");
 
     // 2. Commit the orphan symbol to canonical SQLite. Tantivy stays empty.
-    std::fs::create_dir_all(db_path(&ws).parent().unwrap())
-        .expect("subprocess: create db dir");
+    std::fs::create_dir_all(db_path(&ws).parent().unwrap()).expect("subprocess: create db dir");
     let mut db = SymbolDatabase::new(&db_path(&ws)).expect("subprocess: open SQLite");
     db.bulk_store_fresh_atomic(
-        &[writer_file("src/killed.rs", "fn killed_writer_orphan_fn() {}\n")],
+        &[writer_file(
+            "src/killed.rs",
+            "fn killed_writer_orphan_fn() {}\n",
+        )],
         &[writer_symbol("sym_orphan", ORPHAN_SYMBOL, "src/killed.rs")],
         &[],
         &[],

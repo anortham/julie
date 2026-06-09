@@ -17,7 +17,6 @@ async fn test_roots_list_changed_resolves_deferred_auto_index() -> Result<()> {
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let restart_pending = Arc::new(AtomicBool::new(false));
 
     let startup_path = startup_root.path().canonicalize()?;
     let startup_workspace_id =
@@ -34,7 +33,6 @@ async fn test_roots_list_changed_resolves_deferred_auto_index() -> Result<()> {
         Some(Arc::clone(&daemon_db)),
         Some(startup_workspace_id.clone()),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;
@@ -133,7 +131,6 @@ async fn build_cwd_path_handler(
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
-    let restart_pending = Arc::new(AtomicBool::new(false));
 
     let handler = JulieServerHandler::new_deferred_daemon_startup_hint_without_project_log(
         WorkspaceStartupHint {
@@ -142,7 +139,6 @@ async fn build_cwd_path_handler(
         },
         Some(Arc::clone(&daemon_db)),
         Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&restart_pending)),
         None,
     )
     .await?;

@@ -56,9 +56,9 @@ mod tests {
     use tokio::task::JoinSet;
     use tokio::time::timeout;
 
-    use crate::daemon::database::DaemonDatabase;
     use crate::handler::JulieServerHandler;
     use crate::mcp_compat::CallToolResult;
+    use crate::registry::database::DaemonDatabase;
     use crate::tools::deep_dive::{DeepDiveDepth, DeepDiveTool};
     use crate::tools::editing::edit_file::{EditFileTool, EditOccurrence};
     use crate::tools::navigation::FastRefsTool;
@@ -146,7 +146,7 @@ mod tests {
                 crate::workspace::JulieWorkspace::initialize(ws_root.clone()),
             )
             .await
-            .map_err(|_| anyhow!("setup hung in JulieWorkspace::initialize (>20s)"))??
+            .map_err(|_| anyhow!("setup hung in JulieWorkspace::initialize (>20s)"))??,
         );
 
         let handler = Arc::new(
@@ -157,7 +157,6 @@ mod tests {
                     ws_root.clone(),
                     Some(Arc::clone(&daemon_db)),
                     Some(workspace_id.clone()),
-                    None,
                     None,
                     None,
                 ),
@@ -369,20 +368,16 @@ mod tests {
             &sentinel_path,
             "pub fn sentinel_watcher_proof() { let _ = 9; }\n",
         )?;
-        wait_for_symbol_via_handler(
-            &handler,
-            "sentinel_watcher_proof",
-            Duration::from_secs(10),
-        )
-        .await
-        .map_err(|e| {
-            anyhow!(
-                "concurrent_mcp setup precondition failed: {e}. The file \
+        wait_for_symbol_via_handler(&handler, "sentinel_watcher_proof", Duration::from_secs(10))
+            .await
+            .map_err(|e| {
+                anyhow!(
+                    "concurrent_mcp setup precondition failed: {e}. The file \
                  watcher must observe sentinel.rs before the workload fires; \
                  otherwise we're not exercising the watcher event-processor \
                  path that this test exists to cover."
-            )
-        })?;
+                )
+            })?;
 
         // ── Background watcher driver ──
         // After proof-of-life, drive alpha.rs at 100ms cadence so the event
@@ -646,21 +641,17 @@ mod tests {
         // re-indexing under load would false-pass. Asserting the new symbol
         // landed in the DB proves the watcher event-processor DID process
         // the edit AND crossed the gate.
-        wait_for_symbol_via_handler(
-            &handler,
-            "disposable_marker_v2",
-            Duration::from_secs(10),
-        )
-        .await
-        .map_err(|e| {
-            anyhow!(
-                "real-mutation post-condition failed: {e}. The watcher did \
+        wait_for_symbol_via_handler(&handler, "disposable_marker_v2", Duration::from_secs(10))
+            .await
+            .map_err(|e| {
+                anyhow!(
+                    "real-mutation post-condition failed: {e}. The watcher did \
                  not re-index src/disposable.rs after the edit_file commit, \
                  which means the mutation_gate write path didn't actually \
                  cross under load — exactly the lock-order regression this \
                  test exists to catch."
-            )
-        })?;
+                )
+            })?;
 
         Ok(())
     }

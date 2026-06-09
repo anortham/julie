@@ -106,9 +106,6 @@ setInterval(async () => {
     if (el('control-plane-shutdown-cause')) {
       el('control-plane-shutdown-cause').textContent = formatUpperValue(d.health.control_plane.shutdown_cause);
     }
-    if (el('control-plane-restart')) {
-      el('control-plane-restart').textContent = formatBool(d.health.control_plane.restart_pending);
-    }
     if (el('control-plane-connecting')) el('control-plane-connecting').textContent = d.health.control_plane.session_phases.connecting;
     if (el('control-plane-bound')) el('control-plane-bound').textContent = d.health.control_plane.session_phases.bound;
     if (el('control-plane-serving')) el('control-plane-serving').textContent = d.health.control_plane.session_phases.serving;

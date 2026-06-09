@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::daemon::database::SearchToolCallRow;
+use crate::registry::database::SearchToolCallRow;
 
 const USEFUL_ACTIONS: &[&str] = &[
     "deep_dive",

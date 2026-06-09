@@ -15,16 +15,16 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::daemon::database::DaemonDatabase;
-use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
 use crate::handler::JulieServerHandler;
+use crate::registry::database::DaemonDatabase;
+use crate::registry::workspace_registry_store::WorkspaceRegistryStore;
 
 use self::cleanup::WorkspaceCleanupActivity;
 
 pub(crate) fn registry_store_for(
     daemon_db: &Arc<DaemonDatabase>,
 ) -> Result<WorkspaceRegistryStore> {
-    let indexes_dir = crate::paths::DaemonPaths::try_new()?.indexes_dir();
+    let indexes_dir = crate::paths::RegistryPaths::try_new()?.indexes_dir();
 
     Ok(WorkspaceRegistryStore::new(
         Arc::clone(daemon_db),

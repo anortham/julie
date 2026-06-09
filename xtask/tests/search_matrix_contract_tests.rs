@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use julie::daemon::database::DaemonDatabase;
+use julie::registry::database::DaemonDatabase;
 use serde_json::json;
 use tempfile::TempDir;
 use xtask::cli::{Ablation, CliCommand, SearchMatrixCommand, parse_cli_command};
@@ -374,7 +374,7 @@ fn search_matrix_contract_tests_mine_ignores_non_search_rows_and_preserves_trace
             "zero_hit_reason": null,
             "file_pattern_diagnostic": null,
             "hint_kind": null,
-            "top_hits": [{"name": "WorkspacePool", "file": "src/daemon/workspace_pool.rs"}]
+            "top_hits": [{"name": "WorkspacePool", "file": "src/registry/workspace_pool.rs"}]
         }
     });
     db.insert_tool_call(

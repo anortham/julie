@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, Result};
 use tracing::{debug, info};
 
-use crate::paths::DaemonPaths;
+use crate::paths::RegistryPaths;
 use julie_pipeline::embeddings::{
     host_transport::{HostAddress, HostClientConn},
     rpc_client::RpcEmbeddingProvider,
@@ -38,7 +38,7 @@ use julie_pipeline::embeddings::{
 ///
 /// Returns an [`RpcEmbeddingProvider`] whose connection is lazy: the first
 /// real embedding call triggers the health handshake.
-pub fn connect_or_spawn_host(paths: &DaemonPaths) -> Result<RpcEmbeddingProvider> {
+pub fn connect_or_spawn_host(paths: &RegistryPaths) -> Result<RpcEmbeddingProvider> {
     let addr = HostAddress::from_paths(paths);
 
     if is_host_live(&addr) {
@@ -130,7 +130,7 @@ fn poll_for_liveness(addr: &HostAddress, timeout: Duration) -> Result<()> {
 /// parent's own `$JULIE_HOME`, e.g. in tests).  The `JULIE_EMBEDDING_*` vars are
 /// inherited from the parent environment.  Process-group detachment mirrors
 /// `spawn_daemon` in `src/adapter/launcher.rs`.
-fn spawn_host_process(paths: &DaemonPaths) -> io::Result<()> {
+fn spawn_host_process(paths: &RegistryPaths) -> io::Result<()> {
     let host_exe = locate_embedding_host()?;
     info!("Spawning embedding-host: {}", host_exe.display());
 
@@ -253,6 +253,9 @@ mod tests {
         );
         assert_eq!(parse_spawn_timeout(None), DEFAULT_HOST_SPAWN_TIMEOUT);
         // "0" is treated as "use the default" (not a valid timeout).
-        assert_eq!(parse_spawn_timeout(Some("0".into())), DEFAULT_HOST_SPAWN_TIMEOUT);
+        assert_eq!(
+            parse_spawn_timeout(Some("0".into())),
+            DEFAULT_HOST_SPAWN_TIMEOUT
+        );
     }
 }

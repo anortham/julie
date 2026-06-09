@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use tempfile::TempDir;
 
     fn create_test_db() -> (DaemonDatabase, TempDir) {
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_and_retrieve_codehealth() {
-        use crate::daemon::database::CodehealthSnapshot;
+        use crate::registry::database::CodehealthSnapshot;
 
         let (db, _tmp) = create_test_db();
         db.upsert_workspace("ws1", "/path", "ready").unwrap();
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_history() {
-        use crate::daemon::database::CodehealthSnapshot;
+        use crate::registry::database::CodehealthSnapshot;
 
         let (db, _tmp) = create_test_db();
         db.upsert_workspace("ws1", "/path", "ready").unwrap();
@@ -610,7 +610,7 @@ mod tests {
         .unwrap();
 
         // Insert codehealth snapshot
-        use crate::daemon::database::CodehealthSnapshot;
+        use crate::registry::database::CodehealthSnapshot;
         db.insert_codehealth_snapshot("julie_316c0b08", &CodehealthSnapshot::default())
             .unwrap();
 
@@ -692,7 +692,7 @@ mod tests {
         db.upsert_workspace("new_tmp_ws", "/private/tmp/julie", "pending")
             .unwrap();
 
-        use crate::daemon::database::CodehealthSnapshot;
+        use crate::registry::database::CodehealthSnapshot;
         db.insert_codehealth_snapshot("old_tmp_ws", &CodehealthSnapshot::default())
             .unwrap();
         db.insert_cleanup_event("old_tmp_ws", "/tmp/julie", "auto_prune", "missing_path")

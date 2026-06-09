@@ -8,9 +8,9 @@ use axum::response::{Html, IntoResponse};
 use serde::Serialize;
 use tera::Context;
 
-use crate::daemon::database::{WorkspaceCleanupEventRow, WorkspaceRow};
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
+use crate::registry::database::{WorkspaceCleanupEventRow, WorkspaceRow};
 use crate::tools::workspace::commands::registry::cleanup::{
     CLEANUP_ACTION_AUTO_PRUNE, WorkspaceCleanupActivity, WorkspaceCleanupState,
     inspect_workspace_cleanup_state,

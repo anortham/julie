@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new()?;
@@ -29,17 +29,14 @@ async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
         None,
     )
@@ -51,9 +48,8 @@ async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()
     daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
-    let rebound_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
-            .await?);
+    let rebound_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
     {
         let rebound_file_path = rebound_root.join("src").join("test.rs");
         let rebound_hash = crate::database::calculate_file_hash(&rebound_file_path)?;
@@ -131,7 +127,7 @@ async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "daemon multi-workspace session/roots lifecycle (pool-backed); reworked in Phase 3d.3 registry rework"]
 async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window() -> Result<()> {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new()?;
@@ -157,10 +153,8 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
     daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
-    let original_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(original_path.clone())
-            .await?,
-    );
+    let original_ws =
+        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
     {
         let original_file_path = original_root.join("src").join("test.rs");
         let original_hash = crate::database::calculate_file_hash(&original_file_path)?;
@@ -223,7 +217,6 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
         Some(original_id.clone()),
         None,
         None,
-        None,
     )
     .await?;
 
@@ -231,9 +224,7 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
     let rebound_path_str = rebound_path.to_string_lossy().to_string();
     let rebound_id = generate_workspace_id(&rebound_path_str)?;
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
-    Arc::new(
-        crate::workspace::JulieWorkspace::initialize(rebound_path.clone())
-            .await?);
+    Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
 
     let workspace_write_guard = handler.workspace.write().await;
     let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {

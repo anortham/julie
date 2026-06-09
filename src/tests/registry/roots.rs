@@ -1,6 +1,5 @@
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -12,9 +11,9 @@ use rmcp::{
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::time::sleep;
 
-use crate::daemon::database::DaemonDatabase;
-use crate::daemon::embedding_service::EmbeddingService;
 use crate::handler::JulieServerHandler;
+use crate::registry::database::DaemonDatabase;
+use crate::registry::embedding_service::EmbeddingService;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
 async fn send_json_line(

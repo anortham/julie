@@ -7,13 +7,13 @@
 #[cfg(all(test, unix))]
 mod unix {
     use crate::embeddings::host_transport::{HostAddress, HostClientConn, HostListener};
-    use julie_core::paths::DaemonPaths;
+    use julie_core::paths::RegistryPaths;
     use std::path::PathBuf;
     use std::time::Duration;
 
     fn temp_address() -> (tempfile::TempDir, HostAddress) {
         let dir = tempfile::tempdir().expect("tempdir");
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        let paths = RegistryPaths::with_home(dir.path().to_path_buf());
         let addr = HostAddress::from_paths(&paths);
         (dir, addr)
     }
@@ -48,7 +48,7 @@ mod unix {
     #[tokio::test]
     async fn connect_fails_when_no_host_is_listening() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        let paths = RegistryPaths::with_home(dir.path().to_path_buf());
         let addr = HostAddress::from_paths(&paths);
         let err = tokio::task::spawn_blocking(move || HostClientConn::connect(&addr))
             .await
@@ -138,10 +138,7 @@ mod unix {
         // "0" → None (infinite — escape hatch).
         assert_eq!(parse_rpc_timeout(Some("0".into())), None);
         // None (env var absent) → Some(default = 120 s).
-        assert_eq!(
-            parse_rpc_timeout(None),
-            Some(Duration::from_secs(120))
-        );
+        assert_eq!(parse_rpc_timeout(None), Some(Duration::from_secs(120)));
         // Valid positive integer → Some(that many seconds).
         assert_eq!(
             parse_rpc_timeout(Some("3".into())),

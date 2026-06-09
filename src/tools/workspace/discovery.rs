@@ -105,10 +105,10 @@ impl ManageWorkspaceTool {
         // Reject anything under the configured Julie home. This catches all
         // daemon state files (tokens, transport metadata, discovery, …)
         // even when the operator points `JULIE_HOME` inside the workspace
-        // tree. Resolving `DaemonPaths::try_new()` may fail (empty env, no
+        // tree. Resolving `RegistryPaths::try_new()` may fail (empty env, no
         // home dir); we treat that as "no exclusion" since the daemon
         // cannot be running anyway.
-        if let Ok(paths) = crate::paths::DaemonPaths::try_new() {
+        if let Ok(paths) = crate::paths::RegistryPaths::try_new() {
             if paths.is_under_julie_home(file_path) {
                 debug!(
                     "⏭️  Skipping file under JULIE_HOME: {}",

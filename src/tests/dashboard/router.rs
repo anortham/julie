@@ -1,22 +1,20 @@
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
-use crate::daemon::lifecycle::LifecyclePhase;
-use crate::daemon::session::SessionTracker;
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
+use crate::registry::lifecycle::LifecyclePhase;
+use crate::registry::session::SessionTracker;
 
 fn test_state() -> DashboardState {
     DashboardState::new(
         Arc::new(SessionTracker::new()),
         None,
-        Arc::new(AtomicBool::new(false)),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // no embedding service in tests
@@ -95,7 +93,7 @@ async fn body_to_string(body: Body) -> String {
 /// shutdown timed out with in-flight requests. Default is an empty array.
 #[tokio::test]
 async fn test_router_status_live_includes_recovery_markers() {
-    use crate::daemon::shutdown::RecoveryMarker;
+    use crate::registry::shutdown::RecoveryMarker;
 
     let markers = Arc::new(vec![RecoveryMarker {
         shutdown_timestamp_micros: 1_700_000_000_000_000,

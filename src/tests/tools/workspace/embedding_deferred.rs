@@ -6,8 +6,8 @@
 //! returns immediately with `EmbeddingOutcome { deferred: true, symbols: 0 }`
 //! and queues a deferred task that runs the pipeline once the service settles.
 
-use crate::daemon::embedding_service::{EmbeddingService, EmbeddingServiceSettled};
 use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
+use crate::registry::embedding_service::{EmbeddingService, EmbeddingServiceSettled};
 use std::sync::Arc;
 
 /// `try_settled()` returns `None` while the service is still `Initializing` and
@@ -121,7 +121,7 @@ async fn sync_vector_count_noop_when_no_daemon_db() {
 /// should be set to 0 (the DB can't be read, so there are no embeddings).
 #[tokio::test]
 async fn sync_vector_count_zero_when_db_missing() {
-    use crate::daemon::database::DaemonDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::tools::workspace::indexing::embeddings::sync_vector_count_on_terminal;
 
     let tmp = tempfile::TempDir::new().unwrap();
@@ -151,8 +151,8 @@ async fn sync_vector_count_zero_when_db_missing() {
 /// SymbolDatabase, vector count should reflect the actual embedding count (0).
 #[tokio::test]
 async fn sync_vector_count_reads_actual_from_existing_db() {
-    use crate::daemon::database::DaemonDatabase;
     use crate::database::SymbolDatabase;
+    use crate::registry::database::DaemonDatabase;
     use crate::tools::workspace::indexing::embeddings::sync_vector_count_on_terminal;
 
     let tmp = tempfile::TempDir::new().unwrap();

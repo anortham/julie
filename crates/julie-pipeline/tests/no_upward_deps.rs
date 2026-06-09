@@ -34,7 +34,7 @@ const FORBIDDEN_SOURCE: &[&str] = &[
     // inside julie-pipeline and would be compile errors, but the explicit needle
     // yields an actionable message if someone wires up a path-dep first).
     "crate::handler",
-    "crate::daemon",
+    "crate::registry",
     "crate::watcher",
     "crate::workspace",
     "crate::external_extract",
@@ -74,11 +74,7 @@ fn workspace_dep_name(trimmed: &str) -> Option<&str> {
     }
     let end = trimmed.find([' ', '=', '.'])?;
     let name = &trimmed[..end];
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {

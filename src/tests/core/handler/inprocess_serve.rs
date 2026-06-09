@@ -24,10 +24,10 @@
 //! provides full MCP round-trip coverage for the daemon HTTP path; a future task
 //! can add a stdio pipe harness using `tokio::io::duplex`.
 
-use crate::daemon::discovery::{AcquireError, DaemonLockGuard};
 use crate::handler::JulieServerHandler;
 use crate::leadership::LeadershipState;
-use crate::paths::DaemonPaths;
+use crate::paths::RegistryPaths;
+use crate::registry::discovery::{AcquireError, DaemonLockGuard};
 use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -46,11 +46,10 @@ use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSourc
 #[tokio::test]
 async fn test_f2_inode_coupling_same_index_tree() {
     let home_dir = tempfile::tempdir().unwrap();
-    let paths = DaemonPaths::with_home(home_dir.path().to_path_buf());
+    let paths = RegistryPaths::with_home(home_dir.path().to_path_buf());
 
     let project_dir = tempfile::tempdir().unwrap();
-    let workspace_id =
-        generate_workspace_id(&project_dir.path().to_string_lossy()).unwrap();
+    let workspace_id = generate_workspace_id(&project_dir.path().to_string_lossy()).unwrap();
 
     let index_root = paths.workspace_index_dir(&workspace_id);
     let lock_path = paths.workspace_leader_lock(&workspace_id);
@@ -95,8 +94,8 @@ async fn test_f2_inode_coupling_same_index_tree() {
 
     // Release and verify a third acquire succeeds (guard was not leaked).
     drop(guard);
-    let _third = DaemonLockGuard::try_acquire(&lock_path)
-        .expect("after drop, lock must be re-acquirable");
+    let _third =
+        DaemonLockGuard::try_acquire(&lock_path).expect("after drop, lock must be re-acquirable");
 }
 
 // ---------------------------------------------------------------------------
@@ -113,11 +112,10 @@ async fn test_f2_inode_coupling_same_index_tree() {
 #[tokio::test]
 async fn test_inprocess_handler_f2_storage_under_index_root() {
     let home_dir = tempfile::tempdir().unwrap();
-    let paths = DaemonPaths::with_home(home_dir.path().to_path_buf());
+    let paths = RegistryPaths::with_home(home_dir.path().to_path_buf());
 
     let project_dir = tempfile::tempdir().unwrap();
-    let workspace_id =
-        generate_workspace_id(&project_dir.path().to_string_lossy()).unwrap();
+    let workspace_id = generate_workspace_id(&project_dir.path().to_string_lossy()).unwrap();
 
     // Mirror the run_in_process_server build sequence exactly.
     let index_root = paths.workspace_index_dir(&workspace_id);
@@ -200,7 +198,7 @@ async fn test_inprocess_handler_f2_storage_under_index_root() {
 #[tokio::test]
 async fn test_inprocess_force_reindex_keeps_f2_storage_and_preserves_lock() {
     let home_dir = tempfile::tempdir().unwrap();
-    let paths = DaemonPaths::with_home(home_dir.path().to_path_buf());
+    let paths = RegistryPaths::with_home(home_dir.path().to_path_buf());
 
     let project_dir = tempfile::tempdir().unwrap();
     let workspace_id = generate_workspace_id(&project_dir.path().to_string_lossy()).unwrap();

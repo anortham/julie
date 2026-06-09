@@ -1,7 +1,7 @@
-use crate::handler::embedding_init::take_nl_definition_embedding_init_attempts;
-use crate::tools::search::nl_embeddings::maybe_initialize_embeddings_for_nl_definitions;
-use crate::daemon::embedding_service::EmbeddingService;
 use crate::handler::JulieServerHandler;
+use crate::handler::embedding_init::take_nl_definition_embedding_init_attempts;
+use crate::registry::embedding_service::EmbeddingService;
+use crate::tools::search::nl_embeddings::maybe_initialize_embeddings_for_nl_definitions;
 use std::sync::Arc;
 use std::time::Duration;
 

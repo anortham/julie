@@ -29,7 +29,6 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
         Some(primary_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -115,7 +114,6 @@ async fn test_manage_workspace_index_path_rebind_updates_daemon_stats_for_new_pr
         Some(workspace_a_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -192,7 +190,6 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
         Some(startup_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -259,7 +256,6 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
         },
         Some(Arc::clone(&daemon_db)),
         Some(startup_id.clone()),
-        None,
         None,
         None,
     )

@@ -461,7 +461,6 @@ mod relationship_text_test {
             Some(workspace_id),
             None,
             None,
-            None,
         )
         .await
         .unwrap();

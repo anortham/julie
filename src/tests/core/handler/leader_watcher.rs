@@ -6,9 +6,9 @@
 //!   loser  → `loaded_workspace_file_watcher_running_for_test()` = false
 //!   loser  → workspace is still loaded for read-only access
 
-use crate::daemon::discovery::DaemonLockGuard;
 use crate::handler::JulieServerHandler;
 use crate::leadership::LeadershipState;
+use crate::registry::discovery::DaemonLockGuard;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
 /// Exactly one of two in-process handlers on one workspace starts a watcher;
@@ -26,8 +26,8 @@ async fn test_leader_watcher_started_loser_watcher_not_started() {
 
     // ---- leader -------------------------------------------------------
     let lock_path = workspace_dir.path().join(".leader.lock");
-    let guard = DaemonLockGuard::try_acquire(&lock_path)
-        .expect("lock must be acquirable on a fresh path");
+    let guard =
+        DaemonLockGuard::try_acquire(&lock_path).expect("lock must be acquirable on a fresh path");
 
     let leader_hint = WorkspaceStartupHint {
         path: workspace_dir.path().to_path_buf(),
@@ -66,7 +66,9 @@ async fn test_leader_watcher_started_loser_watcher_not_started() {
 
     // Leader: watcher must be running.
     assert!(
-        leader.loaded_workspace_file_watcher_running_for_test().await,
+        leader
+            .loaded_workspace_file_watcher_running_for_test()
+            .await,
         "leader must have its file watcher running after initialize_workspace_with_force"
     );
 

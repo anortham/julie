@@ -1,7 +1,6 @@
 use crate::handler::JulieServerHandler;
 use crate::handler::session_workspace::PrimaryWorkspaceBinding;
 use anyhow::Result;
-use std::sync::atomic::Ordering;
 
 use super::evaluation::{overall_from_planes, readiness_from_data_plane};
 use super::{
@@ -240,10 +239,10 @@ impl HealthChecker {
         handler: &JulieServerHandler,
         primary: &PrimaryWorkspaceHealth,
     ) -> Result<ControlPlaneHealth> {
-        let daemon_state = match handler.restart_pending.as_ref() {
-            Some(flag) if flag.load(Ordering::Relaxed) => DaemonLifecycleState::RestartPending,
-            Some(_) => DaemonLifecycleState::Serving,
-            None => DaemonLifecycleState::Direct,
+        let daemon_state = if handler.daemon_db.is_some() {
+            DaemonLifecycleState::Serving
+        } else {
+            DaemonLifecycleState::Direct
         };
 
         let primary_workspace_id = match primary {
@@ -264,8 +263,8 @@ impl HealthChecker {
                 (WatcherState::Unavailable, None, false)
             };
 
-        let level = if daemon_state == DaemonLifecycleState::RestartPending
-            || matches!(watcher_state, WatcherState::Unavailable) && primary_workspace_id.is_some()
+        let level = if matches!(watcher_state, WatcherState::Unavailable)
+            && primary_workspace_id.is_some()
         {
             HealthLevel::Degraded
         } else {
@@ -275,9 +274,6 @@ impl HealthChecker {
         let detail = match daemon_state {
             DaemonLifecycleState::Direct => "Direct stdio session".to_string(),
             DaemonLifecycleState::Serving => "Shared daemon serving workspace sessions".to_string(),
-            DaemonLifecycleState::RestartPending => {
-                "Daemon restart is pending after a binary refresh".to_string()
-            }
         };
 
         Ok(ControlPlaneHealth {

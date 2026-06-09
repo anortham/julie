@@ -1,5 +1,4 @@
 use std::net::SocketAddr;
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Instant;
 
@@ -8,7 +7,7 @@ use axum::Router;
 use tokio::net::TcpListener;
 
 use crate::dashboard::{DashboardConfig, create_router};
-use crate::paths::DaemonPaths;
+use crate::paths::RegistryPaths;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DashboardLaunchOptions {
@@ -55,7 +54,7 @@ pub async fn launch_dashboard(options: DashboardLaunchOptions) -> Result<Dashboa
 
 #[cfg(test)]
 pub(crate) async fn launch_dashboard_for_paths(
-    paths: DaemonPaths,
+    paths: RegistryPaths,
     options: DashboardLaunchOptions,
 ) -> Result<DashboardLaunch> {
     let server = spawn_background_server(paths).await?;
@@ -75,7 +74,7 @@ pub(crate) async fn launch_dashboard_for_paths(
 }
 
 pub async fn serve_dashboard_forever() -> Result<()> {
-    let (listener, app, server) = build_dashboard_server(DaemonPaths::try_new()?).await?;
+    let (listener, app, server) = build_dashboard_server(RegistryPaths::try_new()?).await?;
 
     println!("Dashboard URL: {}", server.url);
     if let Err(error) = opener::open(&server.url) {
@@ -91,7 +90,7 @@ async fn ensure_background_server() -> Result<DashboardServer> {
         return Ok(server);
     }
 
-    let (listener, app, server) = build_dashboard_server(DaemonPaths::try_new()?).await?;
+    let (listener, app, server) = build_dashboard_server(RegistryPaths::try_new()?).await?;
 
     {
         let cache = DASHBOARD_SERVER.get_or_init(|| Mutex::new(None));
@@ -123,7 +122,7 @@ fn cached_server() -> Option<DashboardServer> {
 }
 
 #[cfg(test)]
-async fn spawn_background_server(paths: DaemonPaths) -> Result<DashboardServer> {
+async fn spawn_background_server(paths: RegistryPaths) -> Result<DashboardServer> {
     let (listener, app, server) = build_dashboard_server(paths).await?;
 
     let url = server.url.clone();
@@ -137,18 +136,19 @@ async fn spawn_background_server(paths: DaemonPaths) -> Result<DashboardServer> 
 }
 
 async fn build_dashboard_server(
-    paths: DaemonPaths,
+    paths: RegistryPaths,
 ) -> Result<(TcpListener, Router, DashboardServer)> {
     paths.ensure_dirs()?;
-    let registry = Arc::new(crate::daemon::database::DaemonDatabase::open(
+    let registry = Arc::new(crate::registry::database::DaemonDatabase::open(
         &paths.registry_db(),
     )?);
-    let recovery_markers = Arc::new(crate::daemon::shutdown::read_recovery_markers(&paths));
+    let recovery_markers = Arc::new(crate::registry::shutdown::read_recovery_markers(&paths));
     let state = crate::dashboard::state::DashboardState::new(
-        Arc::new(crate::daemon::session::SessionTracker::new()),
+        Arc::new(crate::registry::session::SessionTracker::new()),
         Some(registry),
-        Arc::new(AtomicBool::new(false)),
-        Arc::new(RwLock::new(crate::daemon::lifecycle::LifecyclePhase::Ready)),
+        Arc::new(RwLock::new(
+            crate::registry::lifecycle::LifecyclePhase::Ready,
+        )),
         Instant::now(),
         None,
         50,

@@ -1,9 +1,9 @@
 use std::fs;
 use std::sync::Arc;
 
-use crate::daemon::database::DaemonDatabase;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::registry::database::DaemonDatabase;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
@@ -52,7 +52,6 @@ async fn test_manage_workspace_open_path_succeeds_without_bound_primary_in_defer
             source: Some(WorkspaceStartupSource::Cwd),
         },
         Some(Arc::clone(&daemon_db)),
-        None,
         None,
         None,
     )

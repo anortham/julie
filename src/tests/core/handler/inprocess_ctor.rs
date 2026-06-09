@@ -1,7 +1,7 @@
-use crate::daemon::database::DaemonDatabase;
-use crate::daemon::discovery::DaemonLockGuard;
 use crate::handler::JulieServerHandler;
 use crate::leadership::LeadershipState;
+use crate::registry::database::DaemonDatabase;
+use crate::registry::discovery::DaemonLockGuard;
 use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 use std::fs;

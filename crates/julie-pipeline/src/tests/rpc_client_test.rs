@@ -11,7 +11,7 @@
 
 #[cfg(all(test, unix))]
 mod unix {
-    use julie_core::paths::DaemonPaths;
+    use julie_core::paths::RegistryPaths;
 
     use crate::embeddings::host_transport::{HostAddress, HostListener, HostServerConn};
     use crate::embeddings::rpc_client::RpcEmbeddingProvider;
@@ -33,7 +33,7 @@ mod unix {
 
     fn temp_address() -> (tempfile::TempDir, HostAddress) {
         let dir = tempfile::tempdir().expect("tempdir");
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        let paths = RegistryPaths::with_home(dir.path().to_path_buf());
         (dir, HostAddress::from_paths(&paths))
     }
 
@@ -76,14 +76,16 @@ mod unix {
                 schema: SIDECAR_PROTOCOL_SCHEMA.to_string(),
                 version: SIDECAR_PROTOCOL_VERSION,
                 request_id,
-                result: Some(EmbedQueryResult { dims: DIMS, vector: VEC.to_vec() }),
+                result: Some(EmbedQueryResult {
+                    dims: DIMS,
+                    vector: VEC.to_vec(),
+                }),
                 error: None,
             })
             .expect("serialize embed_query"),
 
             "embed_batch" => {
-                let count =
-                    req["params"]["texts"].as_array().map_or(0, |a| a.len());
+                let count = req["params"]["texts"].as_array().map_or(0, |a| a.len());
                 serde_json::to_string(&ResponseEnvelope {
                     schema: SIDECAR_PROTOCOL_SCHEMA.to_string(),
                     version: SIDECAR_PROTOCOL_VERSION,
@@ -173,10 +175,7 @@ mod unix {
             {
                 let mut conn = listener.accept().await.expect("accept conn2");
                 assert_eq!(handle_one(&mut conn).await.as_deref(), Some("health"));
-                assert_eq!(
-                    handle_one(&mut conn).await.as_deref(),
-                    Some("embed_query")
-                );
+                assert_eq!(handle_one(&mut conn).await.as_deref(), Some("embed_query"));
             }
         });
 

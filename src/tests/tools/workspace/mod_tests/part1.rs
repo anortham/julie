@@ -1,7 +1,7 @@
 // Tests for `workspace::JulieWorkspace` extracted from the implementation module.
 
 #[cfg(feature = "embeddings-sidecar")]
-use crate::daemon::embedding_service::EmbeddingService;
+use crate::registry::embedding_service::EmbeddingService;
 use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::daemon::session::SessionLifecyclePhase;
+use crate::registry::session::SessionLifecyclePhase;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

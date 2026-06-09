@@ -4,9 +4,9 @@
 //! based on extension and ignore patterns.
 
 use anyhow::Result;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use julie_core::file_policy;
 use julie_core::shared::BLACKLISTED_DIRECTORIES;
-use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::collections::HashSet;
 use std::path::Path;
 use tracing::warn;
@@ -168,12 +168,12 @@ pub fn is_gitignored(path: &Path, gitignore: &Gitignore, workspace_root: &Path) 
 }
 
 /// Returns true if `path` is under the configured JULIE_HOME and must be
-/// excluded from indexing. Resolving `DaemonPaths::try_new()` may fail
+/// excluded from indexing. Resolving `RegistryPaths::try_new()` may fail
 /// (empty env, no home dir); we treat that as "no exclusion" since the
 /// daemon cannot be running anyway, and the conventional `~/.julie`
 /// fallback is handled separately by the workspace-root finder.
 fn is_under_configured_julie_home(path: &Path) -> bool {
-    match julie_core::paths::DaemonPaths::try_new() {
+    match julie_core::paths::RegistryPaths::try_new() {
         Ok(paths) => paths.is_under_julie_home(path),
         Err(_) => false,
     }

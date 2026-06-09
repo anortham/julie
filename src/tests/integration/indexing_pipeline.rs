@@ -98,7 +98,6 @@ async fn test_handler_and_route(
         Some(workspace_id),
         None,
         None,
-        None,
     )
     .await?;
 

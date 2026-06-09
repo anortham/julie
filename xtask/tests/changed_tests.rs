@@ -151,7 +151,7 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
         // slice). Bucket order is the canonical sort order from sort_bucket_names.
         (
             "crates/julie-core/src/connection_pool.rs",
-            vec!["core-database", "daemon"],
+            vec!["core-database", "registry"],
         ),
         (
             "crates/julie-core/src/embeddings_contract.rs",
@@ -163,7 +163,7 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
         ),
         ("src/tools/editing/edit_file.rs", vec!["tools-editing"]),
         ("src/dashboard/mod.rs", vec!["dashboard"]),
-        ("src/daemon/lifecycle.rs", vec!["daemon"]),
+        ("src/registry/lifecycle.rs", vec!["registry"]),
         // Phase 1 T4: julie-index crate split. Editing search source pulls core-index
         // (the crate's own test binary) AND all search tool buckets whose retained
         // tests still cover the moved code (Phase 0 lesson: localized edits must not
@@ -645,8 +645,11 @@ fn changed_tests_handler_cross_cutting_files_route_to_specific_buckets() {
     let manifest = sample_manifest();
 
     let cases: &[(&str, &[&str])] = &[
-        ("src/handler/session_workspace.rs", &["daemon"]),
-        ("src/handler/tool_metrics.rs", &["tools-metrics", "daemon"]),
+        ("src/handler/session_workspace.rs", &["registry"]),
+        (
+            "src/handler/tool_metrics.rs",
+            &["tools-metrics", "registry"],
+        ),
         (
             "src/handler/tool_targets.rs",
             &[
@@ -654,10 +657,10 @@ fn changed_tests_handler_cross_cutting_files_route_to_specific_buckets() {
                 "tools-workspace-indexing",
                 "tools-workspace-management",
                 "tools-workspace-targeting",
-                "daemon",
+                "registry",
             ],
         ),
-        ("src/handler/tools/mod.rs", &["daemon"]),
+        ("src/handler/tools/mod.rs", &["registry"]),
     ];
 
     for (path, expected) in cases {
@@ -763,27 +766,27 @@ fn changed_tests_routes_projection_pipeline_paths_to_projection_bucket() {
 fn changed_tests_routes_lifecycle_paths_to_daemon_bucket() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(&manifest, &["src/daemon/lifecycle.rs".to_string()]);
+    let selection = select_changed_buckets(&manifest, &["src/registry/lifecycle.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["daemon"]);
+    assert_eq!(selection.bucket_names, vec!["registry"]);
 }
 
 #[test]
 fn changed_tests_routes_daemon_mod_to_daemon_bucket() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(&manifest, &["src/daemon/mod.rs".to_string()]);
+    let selection = select_changed_buckets(&manifest, &["src/registry/mod.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["daemon"]);
+    assert_eq!(selection.bucket_names, vec!["registry"]);
 }
 
 #[test]
 fn changed_tests_deleted_transport_paths_fall_back_to_dev() {
     let manifest = sample_manifest();
 
-    for path in ["src/adapter/mod.rs", "src/daemon/transport.rs"] {
+    for path in ["src/adapter/mod.rs", "src/registry/transport.rs"] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
 
         assert_eq!(
@@ -802,8 +805,8 @@ fn changed_tests_deleted_http_transport_paths_fall_back_to_dev() {
     let selection = select_changed_buckets(
         &manifest,
         &[
-            "src/daemon/http_transport.rs".to_string(),
-            "src/tests/daemon/http_transport/tests/restart_pending.rs".to_string(),
+            "src/registry/http_transport.rs".to_string(),
+            "src/tests/registry/http_transport/tests/restart_pending.rs".to_string(),
         ],
     );
 
@@ -811,8 +814,8 @@ fn changed_tests_deleted_http_transport_paths_fall_back_to_dev() {
     assert_eq!(
         selection.fallback_paths,
         vec![
-            "src/daemon/http_transport.rs".to_string(),
-            "src/tests/daemon/http_transport/tests/restart_pending.rs".to_string(),
+            "src/registry/http_transport.rs".to_string(),
+            "src/tests/registry/http_transport/tests/restart_pending.rs".to_string(),
         ]
     );
 }
@@ -822,12 +825,12 @@ fn changed_tests_deleted_workspace_pool_paths_fall_back_to_dev() {
     let manifest = sample_manifest();
 
     let selection =
-        select_changed_buckets(&manifest, &["src/daemon/workspace_pool.rs".to_string()]);
+        select_changed_buckets(&manifest, &["src/registry/workspace_pool.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
     assert_eq!(
         selection.fallback_paths,
-        vec!["src/daemon/workspace_pool.rs".to_string()]
+        vec!["src/registry/workspace_pool.rs".to_string()]
     );
 }
 
@@ -1108,22 +1111,22 @@ commands = ["cargo nextest run --lib tests::integration::projection_repair -- --
 [buckets.transport]
 expected_seconds = 40
 timeout_seconds = 90
-commands = ["cargo nextest run --lib tests::daemon::transport -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::registry::transport -- --skip search_quality"]
 
 [buckets.lifecycle]
 expected_seconds = 40
 timeout_seconds = 90
-commands = ["cargo nextest run --lib tests::daemon::lifecycle -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::registry::lifecycle -- --skip search_quality"]
 
-[buckets.daemon]
+[buckets.registry]
 expected_seconds = 40
 timeout_seconds = 90
-commands = ["cargo nextest run --lib tests::daemon -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::registry -- --skip search_quality"]
 
 [buckets.workspace-runtime]
 expected_seconds = 40
 timeout_seconds = 90
-commands = ["cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::registry::workspace_pool -- --skip search_quality"]
 
     "#,
     )

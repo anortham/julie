@@ -1,7 +1,7 @@
 use anyhow::Result;
-use julie::daemon::database::{DaemonDatabase, WorkspaceRow};
 use julie::handler::JulieServerHandler;
-use julie::paths::DaemonPaths;
+use julie::paths::RegistryPaths;
+use julie::registry::database::{DaemonDatabase, WorkspaceRow};
 use julie::tools::search::SearchBackend;
 use julie::tools::search::execution::{
     SearchExecutionParams, SearchExecutionWorkspace, execute_search,
@@ -130,7 +130,7 @@ pub fn run_search_matrix_command(
 ) -> Result<()> {
     match command {
         SearchMatrixCommand::Mine { days, out } => {
-            let daemon_paths = DaemonPaths::new();
+            let daemon_paths = RegistryPaths::new();
             let report = mine_search_matrix_seed_report(&daemon_paths.registry_db(), *days, out)?;
             writeln!(
                 stdout,
@@ -145,7 +145,7 @@ pub fn run_search_matrix_command(
             out,
             ablation,
         } => {
-            let daemon_paths = DaemonPaths::new();
+            let daemon_paths = RegistryPaths::new();
             let cases_path =
                 workspace_root().join("fixtures/search-quality/search-matrix-cases.toml");
             let corpus_path =
@@ -193,7 +193,7 @@ pub fn run_search_matrix_baseline_with_home(
 ) -> Result<SearchMatrixBaselineReport> {
     let cases = SearchMatrixCaseSet::load(cases_path)?;
     let corpus = SearchMatrixCorpus::load(corpus_path)?;
-    let daemon_paths = DaemonPaths::with_home(julie_home.to_path_buf());
+    let daemon_paths = RegistryPaths::with_home(julie_home.to_path_buf());
     let daemon_db = DaemonDatabase::open(&daemon_paths.registry_db())?;
     let workspaces = daemon_db.list_workspaces()?;
 
@@ -213,7 +213,7 @@ pub fn run_search_matrix_baseline_with_home(
 }
 
 async fn run_baseline_async(
-    daemon_paths: DaemonPaths,
+    daemon_paths: RegistryPaths,
     cases: &SearchMatrixCaseSet,
     corpus: &SearchMatrixCorpus,
     profile: &str,
@@ -290,7 +290,6 @@ async fn run_baseline_async(
             repo_root,
             Some(Arc::clone(&daemon_db)),
             Some(workspace.workspace_id.clone()),
-            None,
             None,
             None,
         )

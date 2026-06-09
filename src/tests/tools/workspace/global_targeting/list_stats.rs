@@ -21,7 +21,6 @@ async fn test_manage_workspace_list_includes_loaded_primary_without_explicit_reg
         Some(Arc::clone(&daemon_db)),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -93,7 +92,6 @@ async fn test_manage_workspace_list_labels_current_active_and_known_workspaces()
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
-        None,
         None,
         None,
     )
@@ -200,7 +198,6 @@ async fn test_manage_workspace_list_uses_session_primary_binding_for_current_lab
         Some(legacy_primary_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -294,7 +291,6 @@ async fn test_manage_workspace_list_triggers_roots_resolution_when_primary_missi
         Some(startup_id.clone()),
         None,
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -375,7 +371,6 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
-        None,
         None,
         None,
     )
@@ -469,7 +464,6 @@ async fn test_manage_workspace_stats_neutral_gap_returns_registry_summary_withou
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
         None,
     )

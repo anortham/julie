@@ -77,14 +77,17 @@ async fn test_known_workspace_row_does_not_preactivate_on_new_session() {
         .expect("test handler should expose primary workspace id");
 
     let primary_root = temp_dir.path().join("primary").canonicalize().unwrap();
-    let primary_ws = Arc::new(crate::workspace::JulieWorkspace::initialize(primary_root.clone()).await.expect("primary workspace should still be loadable"));
+    let primary_ws = Arc::new(
+        crate::workspace::JulieWorkspace::initialize(primary_root.clone())
+            .await
+            .expect("primary workspace should still be loadable"),
+    );
 
     let fresh_handler = JulieServerHandler::new_with_shared_workspace(
         primary_ws,
         primary_root,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
         None,
     )

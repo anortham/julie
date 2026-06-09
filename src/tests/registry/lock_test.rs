@@ -21,7 +21,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::daemon::discovery::{AcquireError, DaemonLockGuard, LockAlreadyHeld};
+    use crate::registry::discovery::{AcquireError, DaemonLockGuard, LockAlreadyHeld};
     use tempfile::TempDir;
 
     fn temp_lock_path() -> (TempDir, std::path::PathBuf) {

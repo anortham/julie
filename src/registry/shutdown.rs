@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-use crate::paths::DaemonPaths;
+use crate::paths::RegistryPaths;
 
 /// Filename for the recovery-marker JSON file under `julie_home`.
 const RECOVERY_MARKER_FILE: &str = "unclean_shutdown.json";
@@ -39,14 +39,14 @@ pub struct RecoveryMarker {
 }
 
 /// Path to the global recovery-marker file.
-pub fn recovery_marker_path(paths: &DaemonPaths) -> PathBuf {
+pub fn recovery_marker_path(paths: &RegistryPaths) -> PathBuf {
     paths.julie_home().join(RECOVERY_MARKER_FILE)
 }
 
 /// Read all persisted recovery markers, oldest first. Returns an empty Vec
 /// if no marker file exists or it cannot be parsed (the parse failure is
 /// logged but not propagated — recovery surfacing is best-effort).
-pub fn read_recovery_markers(paths: &DaemonPaths) -> Vec<RecoveryMarker> {
+pub fn read_recovery_markers(paths: &RegistryPaths) -> Vec<RecoveryMarker> {
     let path = recovery_marker_path(paths);
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,

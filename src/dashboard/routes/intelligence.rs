@@ -225,8 +225,8 @@ pub(crate) fn open_workspace_db(
     }
 
     let db_path = {
-        let paths =
-            crate::paths::DaemonPaths::try_new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let paths = crate::paths::RegistryPaths::try_new()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         paths.workspace_db_path(workspace_id)
     };
 

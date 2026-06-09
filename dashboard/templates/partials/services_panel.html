@@ -72,10 +72,6 @@
         <td id="control-plane-sessions">{{ health.control_plane.active_sessions }}</td>
       </tr>
       <tr>
-        <td>Restart Required</td>
-        <td id="control-plane-restart">{% if health.control_plane.restart_pending %}Yes{% else %}No{% endif %}</td>
-      </tr>
-      <tr>
         <td>Session Phases</td>
         <td>
           <span id="control-plane-connecting">{{ health.control_plane.session_phases.connecting }}</span> /

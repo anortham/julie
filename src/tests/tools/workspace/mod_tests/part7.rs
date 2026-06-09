@@ -8,7 +8,7 @@ async fn test_refresh_treats_semantic_version_drift_as_full_reindex() {
     let daemon_db_dir = temp_dir.path().join(".julie");
     fs::create_dir_all(&daemon_db_dir).unwrap();
     let daemon_db = Arc::new(
-        crate::daemon::database::DaemonDatabase::open(&daemon_db_dir.join("daemon.db")).unwrap(),
+        crate::registry::database::DaemonDatabase::open(&daemon_db_dir.join("daemon.db")).unwrap(),
     );
 
     let workspace_path_str = temp_dir.path().to_string_lossy().to_string();
@@ -213,7 +213,7 @@ async fn test_refresh_no_changes_skips_embedding_pipeline() {
     let daemon_db_dir = temp_dir.path().join(".julie");
     fs::create_dir_all(&daemon_db_dir).unwrap();
     let daemon_db = Arc::new(
-        crate::daemon::database::DaemonDatabase::open(&daemon_db_dir.join("daemon.db")).unwrap(),
+        crate::registry::database::DaemonDatabase::open(&daemon_db_dir.join("daemon.db")).unwrap(),
     );
 
     let workspace_path_str = temp_dir.path().to_string_lossy().to_string();

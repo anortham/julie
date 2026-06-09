@@ -25,8 +25,10 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::path::PathBuf;
 
-use julie_core::paths::DaemonPaths;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader as TokioBufReader};
+use julie_core::paths::RegistryPaths;
+use tokio::io::{
+    AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader as TokioBufReader,
+};
 
 #[cfg(unix)]
 use std::os::unix::net::UnixStream as StdUnixStream;
@@ -38,7 +40,7 @@ use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 
 /// Platform-specific address of the embedding-host front door.
 ///
-/// Construct once from [`DaemonPaths`]; pass by reference to the client and
+/// Construct once from [`RegistryPaths`]; pass by reference to the client and
 /// server. The inner representation differs per platform (socket path vs pipe
 /// name) but callers never need to branch on it.
 #[derive(Clone, Debug)]
@@ -51,7 +53,7 @@ pub struct HostAddress {
 
 impl HostAddress {
     /// Derive the address for the global per-`$JULIE_HOME` embedding-host.
-    pub fn from_paths(paths: &DaemonPaths) -> Self {
+    pub fn from_paths(paths: &RegistryPaths) -> Self {
         #[cfg(unix)]
         {
             Self {
