@@ -176,6 +176,8 @@ pub async fn handle_file_created_or_modified_static(
             type_argument_usages: Vec::new(),
             literals: Vec::new(),
             source_regions: Vec::new(),
+            structural_facts: Vec::new(),
+            complexity_metrics: Vec::new(),
             parse_diagnostics: Vec::new(),
         },
     };

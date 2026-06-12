@@ -1776,8 +1776,8 @@ dependencies = [
 
 [[package]]
 name = "julie-extractors"
-version = "2.1.0"
-source = "git+https://github.com/anortham/julie-extractors?tag=v2.1.0#c98bab33aff652198d590b487f1174396758ac81"
+version = "2.4.0"
+source = "git+https://github.com/anortham/julie-extractors?tag=v2.4.0#adb5b6cb44c6abe1c7a0525773f0a911d9158e89"
 dependencies = [
  "anyhow",
  "md5",

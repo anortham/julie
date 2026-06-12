@@ -14,7 +14,7 @@ julie-pipeline = { path = "../julie-pipeline" }
 julie-context  = { path = "../julie-context" }
 
 # Julie extractors (symbol types, language parsers)
-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.1.0" }
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.4.0" }
 
 # MCP schema derives (JsonSchema on tool param structs)
 schemars = "1.0"
