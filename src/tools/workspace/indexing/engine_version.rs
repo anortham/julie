@@ -13,5 +13,4 @@ pub const SEMANTIC_INDEX_ENGINE_COMPONENT: &str = "semantic_index_engine";
 /// triggers a stored-index mismatch. Keep this literal in lockstep with
 /// `julie_extractors::EXTRACTION_CONTRACT_VERSION`; the regression test in
 /// `src/tests/core/engine_version.rs` enforces the link.
-pub const SEMANTIC_INDEX_ENGINE_VERSION: &str =
-    "extractors=2026-06-03.ecmascript-swift-shape-v3.source-regions-v1.structural-facts-v1.complexity-metrics-v1+schema=2026-05-05.reference-identifier-v3";
+pub const SEMANTIC_INDEX_ENGINE_VERSION: &str = "extractors=2026-06-20.ecmascript-swift-shape-v3.source-regions-v1.structural-facts-v1.complexity-metrics-v1.file-derived-component-symbols-v1+schema=2026-05-05.reference-identifier-v3";

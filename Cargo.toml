@@ -9,7 +9,7 @@ license = "MIT"
 
 [package]
 name = "julie"
-version = "7.15.1"
+version = "7.15.2"
 edition.workspace = true
 authors.workspace = true
 description = "Julie - Cross-Platform Code Intelligence Server"
@@ -37,7 +37,7 @@ embeddings-sidecar = []
 # Language/parser work happens in anortham/julie-extractors; re-pin the tag here and sync
 # SEMANTIC_INDEX_ENGINE_VERSION (src/tools/workspace/indexing/engine_version.rs) to the
 # tag's EXTRACTION_CONTRACT_VERSION so the changed extraction shape forces a reindex.
-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.5.1" }
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.5.3" }
 
 # Julie leaf crate (bottom of the workspace DAG — no handler/tools/daemon deps)
 julie-core = { path = "crates/julie-core" }

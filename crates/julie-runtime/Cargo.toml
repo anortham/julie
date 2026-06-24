@@ -15,7 +15,7 @@ test-support = ["dep:julie-test-support"]
 julie-core = { path = "../julie-core" }
 julie-index = { path = "../julie-index" }
 julie-pipeline = { path = "../julie-pipeline" }
-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.5.1" }
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.5.3" }
 
 # Test-support helpers (optional; enabled by the test-support feature or cfg(test))
 julie-test-support = { path = "../julie-test-support", optional = true }
