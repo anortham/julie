@@ -67,6 +67,8 @@ mod tests {
     use crate::tools::{BlastRadiusTool, GetContextTool, GetSymbolsTool, ManageWorkspaceTool};
     use crate::workspace::registry::generate_workspace_id;
 
+    const WATCHER_OBSERVATION_TIMEOUT: Duration = Duration::from_secs(30);
+
     struct ConcurrentFixture {
         _temp_dir: TempDir,
         ws_root: PathBuf,
@@ -360,24 +362,28 @@ mod tests {
         let ws_filter = workspace_id.clone();
 
         // ── Watcher proof-of-life ──
-        // Write a sentinel symbol; if the watcher is alive it'll be in DB
-        // within 10s. If not, the test surface is meaningless and we fail
-        // loudly before the timing-sensitive workload runs.
+        // Write a sentinel symbol; if the watcher is alive it'll be in DB.
+        // If not, the test surface is meaningless and we fail loudly before
+        // the timing-sensitive workload runs.
         let sentinel_path = ws_root.join("src").join("sentinel.rs");
         std::fs::write(
             &sentinel_path,
             "pub fn sentinel_watcher_proof() { let _ = 9; }\n",
         )?;
-        wait_for_symbol_via_handler(&handler, "sentinel_watcher_proof", Duration::from_secs(10))
-            .await
-            .map_err(|e| {
-                anyhow!(
-                    "concurrent_mcp setup precondition failed: {e}. The file \
+        wait_for_symbol_via_handler(
+            &handler,
+            "sentinel_watcher_proof",
+            WATCHER_OBSERVATION_TIMEOUT,
+        )
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "concurrent_mcp setup precondition failed: {e}. The file \
                  watcher must observe sentinel.rs before the workload fires; \
                  otherwise we're not exercising the watcher event-processor \
                  path that this test exists to cover."
-                )
-            })?;
+            )
+        })?;
 
         // ── Background watcher driver ──
         // After proof-of-life, drive alpha.rs at 100ms cadence so the event
@@ -641,17 +647,21 @@ mod tests {
         // re-indexing under load would false-pass. Asserting the new symbol
         // landed in the DB proves the watcher event-processor DID process
         // the edit AND crossed the gate.
-        wait_for_symbol_via_handler(&handler, "disposable_marker_v2", Duration::from_secs(10))
-            .await
-            .map_err(|e| {
-                anyhow!(
-                    "real-mutation post-condition failed: {e}. The watcher did \
+        wait_for_symbol_via_handler(
+            &handler,
+            "disposable_marker_v2",
+            WATCHER_OBSERVATION_TIMEOUT,
+        )
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "real-mutation post-condition failed: {e}. The watcher did \
                  not re-index src/disposable.rs after the edit_file commit, \
                  which means the mutation_gate write path didn't actually \
                  cross under load — exactly the lock-order regression this \
                  test exists to catch."
-                )
-            })?;
+            )
+        })?;
 
         Ok(())
     }

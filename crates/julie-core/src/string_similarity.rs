@@ -6,7 +6,7 @@
 /// # Examples
 ///
 /// ```
-/// use julie::utils::string_similarity::levenshtein_distance;
+/// use julie_core::string_similarity::levenshtein_distance;
 ///
 /// assert_eq!(levenshtein_distance("kitten", "sitting"), 3);
 /// assert_eq!(levenshtein_distance("hello", "hello"), 0);
@@ -61,7 +61,7 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
 /// # Examples
 ///
 /// ```
-/// use julie::utils::string_similarity::find_closest_match;
+/// use julie_core::string_similarity::find_closest_match;
 ///
 /// let candidates = vec!["apple", "application", "apply"];
 /// let (best, distance) = find_closest_match("aplication", &candidates).unwrap();

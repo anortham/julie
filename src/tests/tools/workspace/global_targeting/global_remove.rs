@@ -2,7 +2,7 @@ use super::*;
 use serial_test::serial;
 
 #[tokio::test]
-#[serial]
+#[serial(home_env)]
 async fn test_remove_workspace_uses_global_index_dir_shape() {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let fake_home = tempfile::TempDir::new().unwrap();
@@ -119,7 +119,7 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
 }
 
 #[tokio::test]
-#[serial]
+#[serial(home_env)]
 async fn test_remove_current_primary_workspace_is_blocked_in_process() {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let fake_home = tempfile::TempDir::new().unwrap();

@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::debug;
 
-use julie_core::mcp_compat::CallToolResultExt;
 use crate::navigation::resolution::WorkspaceTarget;
-use julie_core::file_utils::secure_path_resolution;
 use julie_context::ToolContext;
+use julie_core::file_utils::secure_path_resolution;
+use julie_core::mcp_compat::CallToolResultExt;
 use julie_core::mcp_compat::{CallToolResult, Content};
 
 use super::EditingTransaction;
@@ -123,18 +123,23 @@ impl EditOccurrence {
 }
 
 #[cfg(any(test, feature = "test-support"))]
-type BeforeCommitHook = Box<dyn Fn(&std::path::Path) + Send + Sync + 'static>;
+type BeforeCommitHook = (
+    std::path::PathBuf,
+    Box<dyn Fn(&std::path::Path) + Send + Sync + 'static>,
+);
 
 #[cfg(any(test, feature = "test-support"))]
 static BEFORE_COMMIT_HOOK: std::sync::Mutex<Option<BeforeCommitHook>> = std::sync::Mutex::new(None);
 
 #[cfg(any(test, feature = "test-support"))]
 pub fn set_before_commit_hook_for_test(
+    expected_path: impl Into<std::path::PathBuf>,
     hook: impl Fn(&std::path::Path) + Send + Sync + 'static,
 ) {
     *BEFORE_COMMIT_HOOK
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(hook));
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+        Some((expected_path.into(), Box::new(hook)));
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -146,10 +151,20 @@ pub fn clear_before_commit_hook_for_test() {
 
 #[cfg(any(test, feature = "test-support"))]
 fn run_before_commit_hook_for_test(path: &std::path::Path) {
-    let hook = BEFORE_COMMIT_HOOK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .take();
+    let hook = {
+        let mut guard = BEFORE_COMMIT_HOOK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        if guard
+            .as_ref()
+            .is_some_and(|(expected_path, _)| expected_path == path)
+        {
+            guard.take().map(|(_, hook)| hook)
+        } else {
+            None
+        }
+    };
     if let Some(hook) = hook {
         hook(path);
     }
@@ -492,7 +507,10 @@ impl EditFileTool {
         &self,
         handler: &dyn ToolContext,
     ) -> Result<std::path::PathBuf> {
-        match handler.resolve_workspace_target(self.workspace.as_deref()).await? {
+        match handler
+            .resolve_workspace_target(self.workspace.as_deref())
+            .await?
+        {
             WorkspaceTarget::Primary => handler.require_primary_workspace_root(),
             WorkspaceTarget::Target(workspace_id) => {
                 handler.get_workspace_root_for_target(&workspace_id).await

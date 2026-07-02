@@ -319,8 +319,9 @@ async fn test_edit_file_apply_rejects_changed_target_before_commit() -> Result<(
     let intervening = "fn main() {\n    external_change();\n}\n";
     fs::write(&file_path, original)?;
 
+    let expected_hook_path = file_path.canonicalize()?;
     let _hook_guard = ClearEditFileHook;
-    set_before_commit_hook_for_test({
+    set_before_commit_hook_for_test(expected_hook_path, {
         move |resolved_path| {
             fs::write(resolved_path, intervening)
                 .expect("test hook should write intervening content");

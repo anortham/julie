@@ -1672,7 +1672,7 @@ dependencies = [
 
 [[package]]
 name = "julie"
-version = "7.15.2"
+version = "7.15.3"
 dependencies = [
  "anyhow",
  "async-recursion",

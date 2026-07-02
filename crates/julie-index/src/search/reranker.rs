@@ -11,8 +11,8 @@
 
 use std::cmp::Ordering;
 
-use julie_extractors::SymbolKind;
 use crate::search::query_parse::{ParsedQuery, QueryIntent};
+use julie_extractors::SymbolKind;
 
 // ---------------------------------------------------------------------------
 // Boost weights (tunable; named so they show up in grep when tuning)
@@ -273,7 +273,7 @@ pub(crate) const FILE_PATH_FULL_COMPACT_BOOST: f32 = 180.0;
 /// Phase-1 helpers deleted in T9 cleanup.
 ///
 /// Scoring formula per candidate:
-/// ```
+/// ```text
 /// final = tantivy_score
 ///       + full_string_boost(c)     // compact whole-query match on title/basename
 ///       + per_term_boosts(c)       // title, path, basename per query term

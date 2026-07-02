@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 // to_relative_unix_style, WorkspaceFileInputResolution, resolve_workspace_file_input,
 // and relative_within_workspace live in julie-core; re-exported publicly so all
 // crate::utils::paths::* callers compile unchanged.
-pub use julie_core::paths::{WorkspaceFileInputResolution, relative_within_workspace, resolve_workspace_file_input, to_relative_unix_style};
+pub use julie_core::paths::{
+    WorkspaceFileInputResolution, relative_within_workspace, resolve_workspace_file_input,
+    to_relative_unix_style,
+};
 
 /// Convert a path to a user-friendly display string.
 ///
@@ -43,13 +46,13 @@ pub fn display_path(path: &Path) -> String {
 ///
 /// # Examples
 /// ```
-/// // Windows
-/// to_absolute_native("src/main.rs", "C:\\Users\\murphy\\project")
-/// // => "C:\\Users\\murphy\\project\\src\\main.rs"
+/// use std::path::Path;
+/// use julie::utils::paths::to_absolute_native;
 ///
-/// // Linux/macOS
-/// to_absolute_native("src/main.rs", "/home/murphy/project")
-/// // => "/home/murphy/project/src/main.rs"
+/// let workspace = Path::new("/home/murphy/project");
+/// let result = to_absolute_native("src/main.rs", workspace);
+///
+/// assert_eq!(result, workspace.join("src/main.rs"));
 /// ```
 ///
 /// # Notes
