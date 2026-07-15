@@ -121,12 +121,12 @@ Required behavior:
 
 ## Real-World Contract
 
-Real-world fixtures are not a substitute for small golden fixtures. They are parser-upgrade regression cases for stable high-value outputs that appear in realistic files.
+Real-world fixtures are not a substitute for small golden fixtures. They are extractor dependency regression cases for stable high-value outputs that appear in realistic files.
 
 Required coverage:
 
 - Every supported language with an existing real-world fixture has expected-output assertions.
-- The parser-upgrade bucket fails on missing expected symbols, identifiers, parent links, representative graph outputs, and type or doc-comment outputs where those are stable for the language.
+- The extractor dependency integration bucket fails on missing expected symbols, identifiers, parent links, representative graph outputs, type or doc-comment outputs where those are stable for the language, and diagnostics in current release syntax fixtures.
 - Real-world fixtures prefer stable facts over exhaustive snapshots. They should catch parser drift without making unrelated fixture formatting expensive.
 
 ## Semantic Repair Contract
@@ -148,7 +148,7 @@ Required evidence:
 - Parser crate versions or git revisions.
 - ABI support range.
 - Fixture corpus revision.
-- Parser-upgrade bucket result at the exact commit being released.
+- Extractor dependency integration bucket result at the exact commit being released.
 
 ## Release Gates
 
@@ -157,7 +157,7 @@ A release can claim this quality bar only when there are no open target gaps and
 | Gate | Command | Required when |
 | --- | --- | --- |
 | Formatter | `cargo fmt --check` | Always |
-| Parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | Always for parser re-pin, extractor contract version changes |
+| Extractor dependency integration | `cargo xtask test bucket extractor-dep-integration` | Always for parser re-pin, extractor contract version changes |
 | Changed tier | `cargo xtask test changed` | Always after localized implementation changes |
 | Dev tier | `cargo xtask test dev` | Always before release handoff |
 | System tier | `cargo xtask test system` | Startup, watcher, workspace, daemon, or repair changes |

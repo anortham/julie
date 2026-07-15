@@ -7,7 +7,7 @@
 use crate::resolver;
 use julie_core::database::{FileInfo, SymbolDatabase};
 use julie_extractors::base::{
-    Identifier, IdentifierKind, PendingRelationship, RelationshipKind,
+    Identifier, IdentifierKind, NormalizedSpan, PendingRelationship, RelationshipKind,
     StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget, Visibility,
 };
 use tempfile::TempDir;
@@ -350,6 +350,48 @@ fn test_resolve_batch_keeps_same_caller_target_calls_distinct_by_line() {
     assert_ne!(resolved[0].id, resolved[1].id);
     assert_eq!(resolved[0].to_symbol_id, "s1");
     assert_eq!(resolved[1].to_symbol_id, "s1");
+}
+
+#[test]
+fn test_resolve_structured_batch_keeps_same_line_calls_distinct_by_span() {
+    let (_tmp, db) = setup_test_db();
+    let first_span = NormalizedSpan {
+        start_line: 9,
+        start_column: 4,
+        end_line: 9,
+        end_column: 18,
+        start_byte: 120,
+        end_byte: 134,
+    };
+    let second_span = NormalizedSpan {
+        start_line: 9,
+        start_column: 22,
+        end_line: 9,
+        end_column: 36,
+        start_byte: 138,
+        end_byte: 152,
+    };
+    let pendings = vec![
+        structured_pending("caller-1", "authenticate", "authenticate", &[], "src/db.rs")
+            .with_span(first_span),
+        structured_pending("caller-1", "authenticate", "authenticate", &[], "src/db.rs")
+            .with_span(second_span),
+    ];
+
+    let (resolved, stats) = resolver::resolve_structured_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 2);
+    assert_eq!(stats.resolved, 2);
+    assert_eq!(resolved.len(), 2);
+    assert_ne!(resolved[0].id, resolved[1].id);
+    assert_eq!(
+        resolved[0].metadata.as_ref().unwrap()["span"],
+        serde_json::to_value(first_span).unwrap()
+    );
+    assert_eq!(
+        resolved[1].metadata.as_ref().unwrap()["span"],
+        serde_json::to_value(second_span).unwrap()
+    );
 }
 
 #[test]

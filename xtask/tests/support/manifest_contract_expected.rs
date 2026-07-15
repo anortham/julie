@@ -116,6 +116,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 commands: &[
                     "cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract",
                     "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
+                    "cargo nextest run --lib current_parser_release_contracts_parse_without_diagnostics",
                 ],
             },
         ),
@@ -646,7 +647,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some(
-                    "extractor dependency integration: contract-version anchor + real-world extraction smoke",
+                    "extractor dependency integration: contract anchor + output and current-syntax parse contracts",
                 ),
             },
         ),

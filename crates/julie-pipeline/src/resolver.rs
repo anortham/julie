@@ -18,6 +18,7 @@ mod rust_reexports;
 mod scoring;
 
 use julie_core::database::SymbolDatabase;
+use julie_extractors::base::relationship_resolution::PendingSpan;
 use julie_extractors::base::{
     PendingRelationship, Relationship, StructuredPendingRelationship, Symbol, SymbolKind,
     UnresolvedTarget,
@@ -207,18 +208,53 @@ fn caller_language_for_pending<'a>(
 
 /// Build a resolved `Relationship` from a pending relationship and its resolved target.
 pub fn build_resolved_relationship(pending: &PendingRelationship, target: &Symbol) -> Relationship {
-    Relationship {
-        id: format!(
+    build_resolved_relationship_with_span(pending, target, None)
+}
+
+fn build_resolved_relationship_with_span(
+    pending: &PendingRelationship,
+    target: &Symbol,
+    span: Option<&PendingSpan>,
+) -> Relationship {
+    let id = match span {
+        Some(span) => format!(
+            "{}_{}_{:?}_{}_{}_{}_{}",
+            pending.from_symbol_id,
+            target.id,
+            pending.kind,
+            pending.file_path,
+            pending.line_number,
+            span.start_byte,
+            span.start_column
+        ),
+        None => format!(
             "{}_{}_{:?}_{}_{}",
             pending.from_symbol_id, target.id, pending.kind, pending.file_path, pending.line_number
         ),
+    };
+    let metadata = span.map(|span| {
+        HashMap::from([(
+            "span".to_string(),
+            serde_json::json!({
+                "start_line": span.start_line,
+                "start_column": span.start_column,
+                "end_line": span.end_line,
+                "end_column": span.end_column,
+                "start_byte": span.start_byte,
+                "end_byte": span.end_byte,
+            }),
+        )])
+    });
+
+    Relationship {
+        id,
         from_symbol_id: pending.from_symbol_id.clone(),
         to_symbol_id: target.id.clone(),
         kind: pending.kind.clone(),
         file_path: pending.file_path.clone(),
         line_number: pending.line_number,
         confidence: pending.confidence,
-        metadata: None,
+        metadata,
     }
 }
 
@@ -261,6 +297,7 @@ pub fn resolve_batch(
             pending: pending.clone(),
             target: UnresolvedTarget::simple(pending.callee_name.clone()),
             caller_scope_symbol_id: None,
+            span: None,
         })
         .collect();
     resolve_structured_batch(&structured, db)
@@ -365,7 +402,11 @@ pub fn resolve_structured_batch(
                     structured.caller_scope_symbol_id.as_deref(),
                     &parent_ctx,
                 ) {
-                    resolved.push(build_resolved_relationship(&structured.pending, target));
+                    resolved.push(build_resolved_relationship_with_span(
+                        &structured.pending,
+                        target,
+                        structured.span.as_ref(),
+                    ));
                     stats.resolved += 1;
                 } else {
                     stats.no_valid_candidates += 1;

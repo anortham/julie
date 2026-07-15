@@ -14,6 +14,11 @@ struct RealWorldCase {
     identifiers: &'static [&'static str],
 }
 
+struct CurrentParserCase {
+    language: &'static str,
+    path: &'static str,
+}
+
 macro_rules! sym {
     ($name:literal) => {
         ExpectedSymbol {
@@ -203,10 +208,7 @@ const CASES: &[RealWorldCase] = &[
     RealWorldCase {
         language: "razor",
         path: "fixtures/real-world/razor/MainLayout.razor",
-        symbols: &[
-            sym!("@inherits", "import"),
-            sym!("rendermode InteractiveWebAssembly", "property"),
-        ],
+        symbols: &[sym!("MainLayout", "class"), sym!("@inherits", "import")],
         identifiers: &[],
     },
     RealWorldCase {
@@ -284,6 +286,29 @@ const CASES: &[RealWorldCase] = &[
     },
 ];
 
+const CURRENT_PARSER_CASES: &[CurrentParserCase] = &[
+    CurrentParserCase {
+        language: "csharp",
+        path: "fixtures/real-world/csharp/csharp14-file-app.cs",
+    },
+    CurrentParserCase {
+        language: "r",
+        path: "fixtures/r/real-world/current-syntax.R",
+    },
+    CurrentParserCase {
+        language: "razor",
+        path: "fixtures/real-world/razor/current-syntax.razor",
+    },
+    CurrentParserCase {
+        language: "sql",
+        path: "fixtures/real-world/sql/tsql-current.sql",
+    },
+    CurrentParserCase {
+        language: "swift",
+        path: "fixtures/real-world/swift/current-syntax.swift",
+    },
+];
+
 #[test]
 fn real_world_parser_upgrade_contracts_assert_expected_outputs() {
     let workspace_root = workspace_root();
@@ -337,6 +362,27 @@ fn real_world_parser_upgrade_contracts_assert_expected_outputs() {
                 identifier_dump
             );
         }
+    }
+}
+
+#[test]
+fn current_parser_release_contracts_parse_without_diagnostics() {
+    let workspace_root = workspace_root();
+
+    for case in CURRENT_PARSER_CASES {
+        let absolute_path = workspace_root.join(case.path);
+        let content = fs::read_to_string(&absolute_path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", absolute_path.display()));
+        let results = extract_canonical(case.path, &content, &workspace_root)
+            .unwrap_or_else(|err| panic!("{} should extract cleanly: {err}", case.path));
+
+        assert!(
+            results.parse_diagnostics.is_empty(),
+            "{} current-syntax fixture {} produced parse diagnostics: {:#?}",
+            case.language,
+            case.path,
+            results.parse_diagnostics
+        );
     }
 }
 

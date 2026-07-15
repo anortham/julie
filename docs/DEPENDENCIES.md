@@ -1,15 +1,15 @@
 # Dependencies Management
 
-**Last Updated:** 2026-05-05
+**Last Updated:** 2026-07-14
 
 ## Tree-Sitter Dependencies
 
-Tree-sitter parser output is a data contract for Julie. Parser dependencies are no longer frozen, but they are not casual upgrades either. Any change to `tree-sitter`, a parser crate version, or a parser git revision must go through the parser-upgrade gate.
+Tree-sitter parser output is a data contract for Julie. Parser dependencies are no longer frozen, but they are not casual upgrades either. Any change to `tree-sitter`, a parser crate version, or a parser git revision must go through the extractor dependency integration gate.
 
 Current baseline:
 
-- `tree-sitter = "0.26.8"` (core ABI)
-- `julie-extractors` is consumed as a pinned git dependency from [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors)
+- `tree-sitter = "0.26.11"` (core ABI)
+- `julie-extractors v2.14.0` is consumed as a pinned git dependency from [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors)
 - Parser crate inventory and decisions live in `docs/TREE_SITTER_UPGRADES.md` (for context) and in the external repo's `Cargo.toml`
 - Parser metadata (`language_spec.rs`), capability coverage (`capabilities.json`), and golden fixtures all live in the external `anortham/julie-extractors` repo
 
@@ -19,7 +19,7 @@ Required parser-change workflow:
 2. Re-pin the `julie-extractors` git-dep in julie's `Cargo.toml` to the new tag.
 3. Sync `SEMANTIC_INDEX_ENGINE_VERSION` in `src/tools/workspace/indexing/engine_version.rs` to match the tag's `EXTRACTION_CONTRACT_VERSION`.
 4. Update `docs/TREE_SITTER_UPGRADES.md` with the decision and evidence (summary of what changed upstream).
-5. Run `cargo xtask test bucket parser-upgrade` in this repo.
+5. Run `cargo xtask test bucket extractor-dep-integration` in this repo.
 
 Git parser dependencies must be pinned with `rev`. Floating branch dependencies are not acceptable for parser infrastructure.
 
@@ -37,4 +37,4 @@ Before adding any dependency:
 Examples:
 
 - Before changing `tokio`, verify the current version and migration notes.
-- Before changing `tree-sitter-*`, update the parser ledger and run the parser-upgrade bucket.
+- Before changing `tree-sitter-*`, update the parser ledger and run the extractor dependency integration bucket.

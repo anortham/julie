@@ -498,14 +498,16 @@ commands = ["cargo nextest run --lib tests::dashboard -- --skip search_quality"]
 # re-pinned (Cargo.toml / Cargo.lock). The per-language golden/capability/
 # certification suites now live UPSTREAM in anortham/julie-extractors; this bucket
 # proves the consumed extractor dependency still produces what julie's pipeline
-# expects: the engine-version drift anchor + the real-world extraction smoke.
+# expects: the engine-version drift anchor, the real-world extraction smoke,
+# and current release syntax parsing without diagnostics.
 expected_seconds = 60
 timeout_seconds = 180
 scope_label = "extractor-dep"
-notes = "extractor dependency integration: contract-version anchor + real-world extraction smoke"
+notes = "extractor dependency integration: contract anchor + output and current-syntax parse contracts"
 commands = [
   "cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract",
   "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
+  "cargo nextest run --lib current_parser_release_contracts_parse_without_diagnostics",
 ]
 
 [buckets.projection]

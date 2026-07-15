@@ -36,7 +36,7 @@
 - **Flow tracing**: call_path > deep_dive the hops you need to understand in detail
 - **Change impact**: blast_radius > inspect likely callers/tests > implement > rerun blast_radius if needed
 - **Extractor changes**: `cargo xtask test bucket extractors`
-- **Parser dependency changes**: `cargo xtask test bucket parser-upgrade`
+- **Parser dependency changes**: `cargo xtask test bucket extractor-dep-integration`
 - **Bug fix**: fast_search > deep_dive > write failing test > fix
 - **Refactor**: fast_refs > deep_dive > rename_symbol (dry_run first)
 
