@@ -14,7 +14,7 @@ embeddings-sidecar = []
 # Julie workspace crates
 julie-core = { path = "../julie-core" }
 julie-index = { path = "../julie-index" }
-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.14.0" }
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.16.0" }
 
 # Async runtime
 tokio = { version = "1.47.1", features = ["full"] }

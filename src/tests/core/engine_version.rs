@@ -12,4 +12,8 @@ fn test_semantic_index_engine_version_includes_extraction_contract() {
         SEMANTIC_INDEX_ENGINE_VERSION,
         julie_extractors::EXTRACTION_CONTRACT_VERSION
     );
+    assert!(
+        SEMANTIC_INDEX_ENGINE_VERSION.contains("consumer-enrichments-v1"),
+        "SEMANTIC_INDEX_ENGINE_VERSION must mark Julie's consumed extractor enrichments"
+    );
 }
