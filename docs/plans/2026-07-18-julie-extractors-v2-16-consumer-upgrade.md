@@ -1534,7 +1534,7 @@ Expected: PASS; record selected buckets and duration.
 - [x] Symbols without metrics have no empty or placeholder line.
 - [x] All depths use the same compact line.
 - [x] Existing token budgets remain green.
-- [ ] Exact tests, `cargo check`, and lead `changed` gate pass.
+- [x] Exact tests, `cargo check`, and lead `changed` gate pass.
 - [x] The verified diff is handed to the lead without a worker commit.
 
 ### Task 7: Synchronize shipped docs and run final gates
@@ -1718,10 +1718,15 @@ contain no untracked or uncommitted task files after the final commit.
 - Do not push or release.
 
 **Acceptance criteria:**
-- [ ] Current docs name v2.16.0 and all three consumed domains.
-- [ ] Agent instructions, CLI examples, README, architecture, external extract, site, and TODO status match code.
-- [ ] Verification ledger contains only observed evidence at exact SHAs.
+- [x] Current docs name v2.16.0 and all three consumed domains.
+- [x] Agent instructions, CLI examples, README, architecture, external extract, site, and TODO status match code.
+- [x] Verification ledger contains only observed evidence at exact SHAs.
 - [ ] Docs contract, fmt, clippy, extractor integration, system, dogfood, and dev gates pass.
-- [ ] Standalone `patterns`, region search, and deep-dive dogfood succeed.
-- [ ] Final related worktree state is clean and intentional.
-- [ ] The owned change is committed and its SHA is recorded; nothing is pushed or released.
+- [x] Standalone `patterns`, region search, and deep-dive dogfood succeed.
+- [x] Final related worktree state is clean and intentional.
+- [x] The owned change is committed and its SHA is recorded; nothing is pushed or released.
+
+The combined gate criterion remains unchecked only because the repository-wide
+`cargo fmt --check` already fails on `origin/main`. The verified branch reduces
+the drift set from 112 files to 110 and introduces zero feature-only formatter
+failures; every other named gate passes.
