@@ -1,43 +1,47 @@
 ---
 id: julie-rescue-de-slop-packaging-keep-the-moat
-title: Julie Maintenance Mode; Miller is the replacement
+title: Julie Maintenance Mode; v2.16 compatibility upgrade approved
 status: active
 created: 2026-06-03T14:35:36.960Z
-updated: 2026-06-06T22:59:48.848Z
+updated: 2026-07-19T00:45:17.151Z
 tags:
   - julie
   - maintenance-mode
   - miller
   - replacement
-  - current-status
+  - julie-extractors
+  - v2.16
+  - active-upgrade
 ---
 
 ## Decision
 
-Julie is now in maintenance mode. Miller is the replacement project for new code-intelligence development.
+Julie remains in maintenance mode. Miller is the replacement project for new code-intelligence development.
 
-## Current Status (2026-06-06)
+## Current Status (2026-07-18)
 
-- Julie v7.13.3 is published as the final single-server rescue release line for existing users.
-- `README.md` now tells users Julie is in maintenance mode and links to Miller: https://github.com/anortham/miller.
-- Existing Julie users can keep using the current release line, especially deployments that depend on the MCP server, extraction behavior, or plugin packaging.
-- New agent workflows should start with Miller instead of Julie.
+- Julie v7.15.4 is the current release and consumes `julie-extractors` v2.14.0.
+- The owner explicitly approved a maintenance consumer upgrade to `julie-extractors` v2.16.0 so existing Julie users retain extraction compatibility and can use the upstream source-region, structural-fact, and complexity data already being computed.
+- The approved architecture and execution plan are `docs/plans/2026-07-18-julie-extractors-v2-16-consumer-upgrade-design.md` and `docs/plans/2026-07-18-julie-extractors-v2-16-consumer-upgrade.md`.
+- New agent workflows should still start with Miller instead of Julie.
 
 ## Constraints
 
 - Do not present Julie as the preferred tool for new installs or new agent workflows.
-- Maintenance work should focus on keeping existing Julie users unblocked, not building new strategic product surface.
-- Avoid broad new Julie features unless explicitly approved; Miller should receive new code-intelligence investment.
-- Do not push, tag, publish, or release further changes without explicit user approval.
+- Treat the v2.16 work as an explicitly approved existing-user compatibility and extraction-consumer upgrade, not a reversal of maintenance mode.
+- Keep extraction-language ownership in `anortham/julie-extractors`; Julie only consumes released contracts.
+- Do not push, tag, publish, or release without explicit user approval.
 
 ## Success Criteria
 
-- User-facing docs clearly state Julie maintenance mode and point new users to Miller.
-- Existing Julie release/plugin paths remain usable for current users.
-- Future sessions start from the Miller-replacement direction rather than the old rescue framing.
+- Every Julie extractor dependency pins v2.16.0 and the engine stamp forces enrichment backfill.
+- Full indexing, watcher updates, and external extraction persist the same typed enrichment data.
+- Existing users can query structural facts, search source regions, and see symbol complexity without breaking current tools.
+- User-facing docs continue to state Julie maintenance mode and direct new users to Miller.
 
 ## References
 
 - Julie README: `README.md`
-- Julie release: https://github.com/anortham/julie/releases/tag/v7.13.3
+- Approved design: `docs/plans/2026-07-18-julie-extractors-v2-16-consumer-upgrade-design.md`
+- Approved plan: `docs/plans/2026-07-18-julie-extractors-v2-16-consumer-upgrade.md`
 - Miller repo: https://github.com/anortham/miller
