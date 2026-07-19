@@ -1,7 +1,7 @@
 # Julie Search Architecture
 
 **Purpose**: Technical reference for Julie's Tantivy-based search engine
-**Last Updated**: 2026-02-25
+**Last Updated**: 2026-07-18
 **Status**: Production (Tantivy full-text search + graph centrality + stemming)
 
 ---
@@ -18,7 +18,12 @@ Source Files
      v
 tree-sitter extraction
      |
-     +---> SQLite (symbols, identifiers, relationships, types, files)
+     +---> shared normalization
+     |         |
+     |         +-- symbols, identifiers, relationships, types, files
+     |         +-- source_regions, structural_facts, complexity_metrics
+     |
+     +---> SQLite (canonical normalized state)
      |         |
      |         | symbol/file data
      |         v
@@ -30,6 +35,24 @@ tree-sitter extraction
 
 Both document types share one Tantivy index per workspace, distinguished by a
 `doc_type` field (`"symbol"` or `"file"`).
+
+### Shared Extractor Consumer Path
+
+Full indexing, external extraction, and watcher replacement all use
+`normalize_extraction_results`. That function classifies literals and test
+roles, flattens type arguments, and carries `source_regions`,
+`structural_facts`, and `complexity_metrics` into one `NormalizedExtractionData`
+value. The canonical SQLite write replaces all domains atomically, so the
+database cannot observe a partially updated extractor result. Tantivy
+projection follows the committed canonical state.
+
+`fast_search` remains Tantivy-backed for candidate retrieval. When `regions`
+is present, only content mode is allowed: Julie parses a comma-separated list
+of `comment`, `doc_comment` (or `docstring`), `string_literal`, and `embedded`,
+loads matching `source_regions` from the selected workspace database, and
+keeps query-matching lines whose 1-based line falls inside an allowed span.
+Definition and semantic/hybrid region requests are rejected instead of
+silently ignoring the filter.
 
 **Key files:**
 

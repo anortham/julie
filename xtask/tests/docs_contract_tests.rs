@@ -205,6 +205,30 @@ fn docs_contract_tests_public_surface_includes_patterns() {
     assert!(public_tool_names().contains("patterns"));
 }
 
+#[test]
+fn docs_contract_tests_extractor_enrichment_surfaces_are_documented() {
+    let readme = read_repo_file("README.md");
+    let instructions = read_repo_file("JULIE_AGENT_INSTRUCTIONS.md");
+    let dependencies = read_repo_file("docs/DEPENDENCIES.md");
+    let extraction = read_repo_file("docs/EXTRACTION_CONTRACT.md");
+
+    for required in [
+        "patterns",
+        "regions",
+        "source_regions",
+        "structural_facts",
+        "complexity_metrics",
+    ] {
+        assert!(readme.contains(required), "README missing {required}");
+        assert!(
+            instructions.contains(required),
+            "agent instructions missing {required}"
+        );
+    }
+    assert!(dependencies.contains("julie-extractors v2.16.0"));
+    assert!(extraction.contains("Schema version 29"));
+}
+
 fn extract_tool_names(section: &str) -> BTreeSet<String> {
     let marker = "class=\"tool-name\">";
     let mut names = BTreeSet::new();

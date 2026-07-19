@@ -10,18 +10,23 @@
 
 ## Tools
 
-- `fast_search`: Find code by text. Returns mixed-kind results; each hit carries `kind`. `file_pattern` scopes searches to matching paths, such as `src/**/*.rs`, `tests/**`, or a specific file. Optional `backend`: omit for normal search; if lexical returns zero hits on an identifier-like unscoped query and embeddings are ready, Julie may show labeled semantic fallback candidates. Use explicit `backend="lexical"` for pure lexical/file/path searches and bakeoffs. Use `backend="semantic"` or `backend="hybrid"` for concept-to-symbol discovery. Semantic/hybrid backends return symbol-backed hits only and fall back to lexical with a note if embeddings are unavailable. For symbol structure within a specific file, prefer `get_symbols(file_path=...)` over `file_pattern`.
+- `fast_search`: Find code by text. Returns mixed-kind results; each hit carries `kind`. `file_pattern` scopes searches to matching paths, such as `src/**/*.rs`, `tests/**`, or a specific file. Optional `backend`: omit for normal search; if lexical returns zero hits on an identifier-like unscoped query and embeddings are ready, Julie may show labeled semantic fallback candidates. Use explicit `backend="lexical"` for pure lexical/file/path searches and bakeoffs. Use `backend="semantic"` or `backend="hybrid"` for concept-to-symbol discovery. Semantic/hybrid backends return symbol-backed hits only and fall back to lexical with a note if embeddings are unavailable. For content-only searches, `regions="comment,doc_comment"` filters to persisted `source_regions`; accepted kinds are `comment`, `doc_comment` (alias `docstring`), `string_literal`, and `embedded`. For symbol structure within a specific file, prefer `get_symbols(file_path=...)` over `file_pattern`.
 - `get_symbols`: File structure without reading full content. Use `target` + `mode="minimal"` to extract one symbol.
-- `deep_dive`: Investigate a symbol: definition, callers, callees, children, types. Always use before modifying.
+- `deep_dive`: Investigate a symbol: definition, callers, callees, children, types, and persisted extractor complexity counts when available. Always use before modifying.
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
 - `call_path`: One shortest call-graph path between two symbols. Use it for "how does A reach B?" or "what caller chain connects these symbols?" questions. Traverses calls, instantiations, and overrides only. Use `from_file_path` / `to_file_path` when names are ambiguous.
 - `get_context`: Token-budgeted area orientation (pivots + neighbors). Supports task inputs like `edited_files`, `entry_symbols`, `stack_trace`, `failing_test`, `max_hops`, and `prefer_tests`.
 - `blast_radius`: Deterministic impact analysis for changed files, internal symbol IDs, or revision ranges. Returns impacts ranked by centrality and hops plus linked tests. Use before refactoring or after a change. Prefer `file_paths` when you know a symbol name or file path; `symbol_ids` are internal Julie IDs, not names like `AuthService::validate`.
 - `spillover_get`: Fetch the next page for large `get_context` or `blast_radius` result sets when a spillover handle is returned.
+- `patterns`: Query persisted `structural_facts` without writing raw grammar-specific tree-sitter queries. Use `operation="list"` to discover observed pattern IDs, `operation="search"` with `pattern_id` or `query`, and `operation="summary"` with `group_by` or `facet`. Optional filters are `path`, `language`, `where`, and `limit`.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
 - `manage_workspace`: Index, open, register/remove workspace metadata, list, refresh, stats, and health-check workspaces. For cross-workspace work, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
 - `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
 - `rewrite_symbol`: Rewrite a symbol by name. Operations: replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc. Always `dry_run=true` first.
+
+The persisted extractor-enrichment domains are `source_regions`,
+`structural_facts`, and `complexity_metrics`. Use their public tool surfaces
+instead of reading those SQLite tables directly.
 
 ## Editing Workflow
 
@@ -47,6 +52,8 @@ Use named CLI wrappers for quick tool behavior checks before live MCP tests:
 - Flow tracing: `julie-server call-path "LoginButton::onClick" "insert_session" --standalone`
 - Ambiguous symbols: `julie-server call-path handle_request write_response --from-file src/server.rs --to-file src/response.rs --standalone`
 - Impact checks: `julie-server blast-radius --files src/auth/login_flow.rs --standalone`
+- Structural facts: `julie-server patterns --operation search --query route --workspace . --standalone --json`
+- Comments and docs only: `julie-server search "TODO" --regions comment,doc_comment --workspace . --standalone --json`
 - Generic fallback remains available for raw MCP parameters: `julie-server tool call_path --params '{"from":"handle_request","to":"write_response"}' --standalone`
 
 Standalone CLI mode does not prove in-process MCP serving, leader/follower routing, or session behavior. Use MCP integration tests for those.
@@ -74,7 +81,7 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
 
     ## Code Intelligence Tools (use instead of Grep/Glob/Read)
     You have Julie MCP tools. Use them instead of basic Glob/Grep/Read chains:
-    - fast_search(query, backend?) returns mixed-kind results by default. Omit backend for normal search with labeled semantic fallback on identifier-like zero-hit queries when embeddings are ready. Use explicit backend="lexical" for pure lexical/file/path search and bakeoffs; backend="semantic" or "hybrid" for concept-to-symbol discovery (symbol-backed hits only). file_pattern scopes searches; for symbol structure in one file, use get_symbols(file_path=...)
+    - fast_search(query, backend?, regions?) returns mixed-kind results by default. Omit backend for normal search with labeled semantic fallback on identifier-like zero-hit queries when embeddings are ready. Use explicit backend="lexical" for pure lexical/file/path search and bakeoffs; backend="semantic" or "hybrid" for concept-to-symbol discovery (symbol-backed hits only). `regions` filters content lines to `comment`, `doc_comment`, `string_literal`, or `embedded`. file_pattern scopes searches; for symbol structure in one file, use get_symbols(file_path=...)
     - get_symbols(file_path) to see file structure before reading
     - deep_dive(symbol) to understand a symbol before modifying it
     - fast_refs(symbol) to find all references (REQUIRED before any change)
@@ -82,6 +89,7 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
     - get_context(query, edited_files?, entry_symbols?, stack_trace?, failing_test?, max_hops?, prefer_tests?) for task-shaped context
     - blast_radius(file_paths?, symbol_ids?, from_revision?, to_revision?, max_depth?, include_tests?) for likely impact and linked tests. Prefer file_paths for human-facing symbol or file work; symbol_ids are internal Julie IDs returned by search/navigation tools, not names like AuthService::validate
     - spillover_get(spillover_handle) to continue a large paged result
+    - patterns(operation?, pattern_id?, query?, path?, language?, where?, facet?, group_by?, limit?) to query persisted structural_facts
     - edit_file(old_text, new_text, dry_run=true) to edit without reading first
     - rewrite_symbol(symbol, operation, content, dry_run=true) to edit by name
     Do NOT fall back to Glob/Read/Grep chains. Julie tools return targeted context in 1-2 calls.

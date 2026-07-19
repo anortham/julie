@@ -396,7 +396,7 @@
   <!-- Section 9: Tools -->
   <section id="tools" class="section">
     <h2 class="section-title">Tools</h2>
-    <p class="section-subtitle">12 focused tools. Each one replaces scattershot file reads.</p>
+    <p class="section-subtitle">13 focused tools. Each one replaces scattershot file reads.</p>
 
     <div class="card-grid">
       <div class="card tool-card animate-on-scroll" data-delay="0">
@@ -429,6 +429,7 @@
         <div class="terminal" aria-label="deep_dive showing callers, callees, and types for process_payment">
           <div><span class="prompt">$ </span><span class="command">deep_dive("process_payment", overview)</span></div>
           <div><span class="result">Callers (3) · Callees (3) · Types (2)</span></div>
+          <div><span class="result">complexity: decisions=3 loops=1 nesting=2 params=2 lines=28</span></div>
           <div><span class="result">Centrality: </span><span class="highlight">0.82</span></div>
           <div><span class="comment">&nbsp; ~400 tokens</span></div>
         </div>
@@ -544,6 +545,18 @@
           <div><span class="comment">&nbsp; More available: spillover_handle=br_c3d4</span></div>
         </div>
         <span class="token-badge">~120 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="1200">
+        <div class="tool-name">patterns</div>
+        <div class="tool-desc">Search typed structural facts across languages</div>
+        <div class="terminal" aria-label="patterns finding HTTP client request facts">
+          <div><span class="prompt">$ </span><span class="command">julie-server patterns --operation search --query http --json</span></div>
+          <div><span class="highlight">http.client_request.v1</span></div>
+          <div><span class="result">&nbsp; src/client.rs:42 · capture=request</span></div>
+          <div><span class="comment">&nbsp; Filter by path, language, or metadata</span></div>
+        </div>
+        <span class="token-badge">~200 tokens</span>
       </div>
     </div>
   </section>

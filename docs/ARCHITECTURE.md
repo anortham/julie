@@ -1,5 +1,29 @@
 # Julie Architecture Documentation
 
+## Extractor Consumer Architecture
+
+**Last Updated:** 2026-07-18
+
+The pinned `julie-extractors v2.16.0` dependency is the sole producer of
+language-specific extraction data. Julie consumes every `ExtractionResults`
+value through `normalize_extraction_results`, producing one
+`NormalizedExtractionData` contract for full indexing, external extraction,
+and watcher updates.
+
+That shared path:
+
+1. classifies literal carriers and test roles;
+2. flattens ordered type-argument usages;
+3. carries symbols, relationships, identifiers, types, diagnostics,
+   `source_regions`, `structural_facts`, and `complexity_metrics`;
+4. writes the complete file state atomically through `CanonicalWriteSet`.
+
+Schema version 29 stores the three new enrichment domains in dedicated tables.
+`fast_search regions=...` consumes `source_regions`, `patterns` queries
+`structural_facts`, and `deep_dive` renders a selected symbol's stored
+complexity metric. File replacement and deletion remove those rows in the same
+dependent-first cleanup as the rest of the canonical extraction state.
+
 ## Token Optimization Architecture
 
 **Last Updated:** 2026-02-25

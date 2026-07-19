@@ -310,12 +310,13 @@ All `env` values are optional — see the table below for defaults.
 
 Julie indexes your workspace automatically on first connection or first primary tool call. Ask your agent to run `manage_workspace(operation="health")` if you want to confirm which workspace is bound. First indexing may take a few seconds on small projects and longer on large repos; later sessions reuse the cached index and file watcher updates.
 
-## Tools (12)
+## Tools (13)
 
 ### Search & Navigation
 
 - `fast_search` - Full-text code search with code-aware tokenization
   - Content search (grep-style line matches) or definition search (symbol names with signatures)
+  - `regions="comment,doc_comment"` limits content results to extractor-provided source regions; accepted kinds are `comment`, `doc_comment` (alias `docstring`), `string_literal`, and `embedded`
   - Definition search promotes exact symbol matches with kind, visibility, and signature
   - <5ms search latency with CamelCase/snake_case splitting, English stemming
   - Automatic OR-fallback when strict AND returns zero results
@@ -329,8 +330,19 @@ Julie indexes your workspace automatically on first connection or first primary 
 - `deep_dive` - Progressive-depth symbol investigation
   - Overview (~200 tokens), context (~600 tokens), or full (~1500 tokens) detail levels
   - Kind-aware: functions show callers/callees/types, traits show implementations, structs show fields/methods
+  - Prints persisted extractor complexity counts (`decisions`, `loops`, `nesting`, `params`, `lines`) when the selected symbol has a metric
   - Includes test locations with quality tiers and centrality scores
   - Identifier fallback for references that relationships miss
+- `patterns` - Query typed structural facts maintained by `julie-extractors`
+  - List observed IDs: `julie-server patterns --workspace . --standalone --json`
+  - Search by exact pattern or substring: `julie-server patterns --operation search --pattern-id http.client_request.v1 --workspace . --standalone --json`
+  - Summarize with `--operation summary`, `--group-by language_pattern_capture|file|directory`, and optional `--facet`
+  - Filter with `--path`, `--language`, and repeatable `--where key=value`; results are bounded by `--limit`
+
+Julie persists the upstream `source_regions`, `structural_facts`, and
+`complexity_metrics` domains in the same atomic file write as symbols and
+relationships. Those typed tables power region search, `patterns`, and
+`deep_dive` complexity output respectively.
 - `fast_refs` - Find all references to a symbol with structured output
 - `call_path` - Trace one shortest call-graph path between two symbols
   - Answers "how does A reach B?" in a single call
@@ -593,7 +605,7 @@ src/
 ├── cli_tools/       # Standalone CLI command bootstrap
 ├── daemon/          # Registry DB, leader-lock compatibility, project logging
 ├── dashboard/       # Standalone read-only dashboard (htmx + Tera templates)
-├── extractors/      # Language-specific symbol extraction (34 languages)
+├── extractors/      # Thin re-export of the external 34-language extractor crate
 ├── external_extract/ # Process-facing extractor commands
 ├── health/          # Health report and diagnostics
 ├── indexing_core/   # Shared indexing orchestration
@@ -605,6 +617,7 @@ src/
 │   ├── impact/      # blast_radius
 │   ├── metrics/     # Session metrics for the dashboard
 │   ├── navigation/  # fast_refs, call_path
+│   ├── patterns/    # patterns
 │   ├── refactoring/ # rename_symbol
 │   ├── search/      # fast_search
 │   ├── spillover/   # spillover_get

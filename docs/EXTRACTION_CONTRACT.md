@@ -36,8 +36,8 @@ entries for current `SymbolKind`, `RelationshipKind`, and
 
 ## `ExtractionResults` Shape
 
-The crate returns `ExtractionResults` (defined in `src/base/extraction_results.rs` of the external `anortham/julie-extractors` repo)
-with seven fields:
+The crate returns `ExtractionResults` (defined in `src/base/types.rs` of the external `anortham/julie-extractors` repo)
+with twelve fields:
 
 - `symbols: Vec<Symbol>` — every named entity (file, function, class,
   method, field, import, etc.). Each `Symbol` carries `id`,
@@ -63,8 +63,28 @@ with seven fields:
   an optional `containing_symbol_id`.
 - `types: HashMap<String, TypeInfo>` — symbol-id → type metadata
   for languages with static types.
+- `type_argument_usages: Vec<TypeArgumentUsage>` — ordered and nested
+  generic arguments captured at identifier use sites.
+- `literals: Vec<Literal>` — string literals captured at supported
+  call-argument carrier sites.
+- `source_regions: Vec<SourceRegion>` — typed `comment`, `doc_comment`,
+  `string_literal`, and `embedded` spans. Julie persists these rows and
+  `fast_search regions="comment,doc_comment"` uses them to filter content
+  results.
+- `structural_facts: Vec<StructuralFact>` — registry-backed, language-neutral
+  code-shape facts. Julie persists them and exposes list, summary, and search
+  operations through `patterns`.
+- `complexity_metrics: Vec<ComplexityMetric>` — extractor-calculated decision,
+  loop, nesting, parameter, and covered-span counts. Julie persists them and
+  prints the selected symbol's metric in `deep_dive` when present.
 - `parse_diagnostics: Vec<ParseDiagnostic>` — tree-sitter error and
   missing-node spans.
+
+Julie database **Schema version 29** adds `source_regions`,
+`structural_facts`, and `complexity_metrics`. Full indexing, external extract,
+and watcher replacement all pass `ExtractionResults` through the same
+normalizer before one atomic canonical write, so every consumer path keeps the
+same enrichment set and cleanup behavior.
 
 See
 `src/base/types.rs` in the external `anortham/julie-extractors` repo

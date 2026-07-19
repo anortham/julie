@@ -186,6 +186,18 @@ Initial public read tables:
 - `relationships`
 - `identifiers`
 - `types`
+- `source_regions` — typed source spans (`comment`, `doc_comment`,
+  `string_literal`, `embedded`) with optional containing-symbol linkage.
+- `structural_facts` — registry pattern IDs, captures, node kinds, spans,
+  confidence, and JSON metadata.
+- `complexity_metrics` — symbol/file scope, algorithm ID, covered span,
+  decisions, loops, maximum nesting, and optional parameter count.
+
+Schema version 29 introduced these three extractor-enrichment tables. They are
+written in the same transaction as files, symbols, relationships, identifiers,
+types, type arguments, and literals. Incremental update, delete, full scan, and
+workspace cleanup replace or remove their rows with the rest of the file's
+canonical state.
 
 Internal tables may exist and can change unless promoted in a future contract.
 Use `extract info` for metadata, counts, latest revision, and analysis state.

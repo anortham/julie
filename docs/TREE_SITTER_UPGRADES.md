@@ -1,6 +1,6 @@
 # Tree-Sitter Upgrade Ledger
 
-Updated: 2026-07-14
+Updated: 2026-07-18
 
 Julie treats parser output as a data contract. A tree-sitter dependency upgrade is accepted only when every registry language still passes the production-path golden gate and the real-world parser contract.
 
@@ -40,6 +40,24 @@ Julie moved from `julie-extractors v2.5.3` to `v2.14.0` at release commit `dc270
 - C# uses the owned grammar fork at `688cf95ae4c984638557dab73253bd66719bdd5c`, including C# 14 file-based app and compound-assignment syntax.
 - Swift moved to `0.7.3`, R moved to `1.3.0`, and the shared Tree-sitter runtime moved to `0.26.11`.
 - Julie's consumer contract test covers current C#, R, Razor, T-SQL, and Swift syntax through `extract_canonical` and requires zero parse diagnostics.
+
+## `julie-extractors v2.15.0` → `v2.16.0`
+
+Julie moved from `julie-extractors v2.14.0` to `v2.16.0` and now consumes all
+three enrichment domains already present in the upstream contract:
+`source_regions`, `structural_facts`, and `complexity_metrics`.
+
+- [v2.15.0](https://github.com/anortham/julie-extractors/releases/tag/v2.15.0)
+  expands and hardens the 194-pattern structural-fact registry across SQL,
+  PHP/Symfony, Kotlin/Ktor, HTML, embedded CSS, and related web patterns.
+- [v2.16.0](https://github.com/anortham/julie-extractors/releases/tag/v2.16.0)
+  completes typed `http.client_request.v1` facts for major Kotlin, PHP, Elixir,
+  and Rust clients with stricter import and receiver proofs.
+- Julie pins tag `v2.16.0`, resolved at upstream commit `c8324f84`, while the
+  shared tree-sitter runtime remains `0.26.11`.
+- Schema version 29 persists `source_regions`, `structural_facts`, and
+  `complexity_metrics`; `fast_search`, `patterns`, and `deep_dive` expose those
+  domains without embedding grammar-specific logic in the consumer.
 
 ## Parser Inventory
 
