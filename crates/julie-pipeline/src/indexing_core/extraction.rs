@@ -35,7 +35,7 @@ pub struct ParserFileProcessResult {
 type TextFileProcessResult = (Vec<Symbol>, Vec<Relationship>, julie_core::database::FileInfo);
 
 enum ExtractOutcome {
-    WithParser(Result<ParserFileProcessResult>),
+    WithParser(Result<Box<ParserFileProcessResult>>),
     WithoutParser(Result<TextFileProcessResult>),
 }
 
@@ -108,7 +108,8 @@ pub async fn extract_files_for_indexing_with_records(
                             workspace_root,
                             configs,
                         )
-                        .await,
+                        .await
+                        .map(Box::new),
                     )
                 } else {
                     ExtractOutcome::WithoutParser(
@@ -137,7 +138,7 @@ pub async fn extract_files_for_indexing_with_records(
                 let ParserFileProcessResult {
                     normalized,
                     file_info,
-                } = result;
+                } = *result;
                 records.push(ExtractedFileRecord {
                     relative_path: relative_path.clone(),
                     language: file_info.language.clone(),
