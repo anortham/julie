@@ -1,19 +1,18 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::Result;
 use futures::stream::{self, StreamExt};
-use julie_extractors::base::{ParseDiagnostic, StructuredPendingRelationship};
 use tracing::{debug, info, trace, warn};
 
-use julie_extractors::{
-    ExtractionResults, Identifier, Literal, PendingRelationship, Relationship, Symbol,
-};
 use crate::indexing_core::batch::ExtractedBatch;
+use crate::indexing_core::normalized::{NormalizedExtractionData, normalize_extraction_results};
 use crate::indexing_core::paths::relative_path_for_storage;
 use julie_core::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
 };
+use julie_extractors::{ExtractionResults, Relationship, Symbol};
 
 pub enum ExtractedFileDisposition {
     Parsed,
@@ -27,18 +26,11 @@ pub struct ExtractedFileRecord {
     pub disposition: ExtractedFileDisposition,
 }
 
-type ParserFileProcessResult = (
-    Vec<Symbol>,
-    Vec<Relationship>,
-    Vec<PendingRelationship>,
-    Vec<StructuredPendingRelationship>,
-    Vec<Identifier>,
-    HashMap<String, julie_extractors::base::TypeInfo>,
-    Vec<julie_extractors::base::TypeArgumentUsage>,
-    Vec<Literal>,
-    Vec<ParseDiagnostic>,
-    julie_core::database::FileInfo,
-);
+#[derive(Debug)]
+pub struct ParserFileProcessResult {
+    pub normalized: NormalizedExtractionData,
+    pub file_info: julie_core::database::FileInfo,
+}
 
 type TextFileProcessResult = (Vec<Symbol>, Vec<Relationship>, julie_core::database::FileInfo);
 
@@ -103,18 +95,28 @@ pub async fn extract_files_for_indexing_with_records(
     }
 
     let extract_start = std::time::Instant::now();
+    let configs = Arc::new(julie_index::search::LanguageConfigs::load_embedded());
     let outcomes: Vec<(String, PathBuf, ExtractOutcome)> = stream::iter(work)
-        .map(|(language, file_path, has_parser)| async move {
-            let outcome = if has_parser {
-                ExtractOutcome::WithParser(
-                    process_file_with_parser(&file_path, &language, workspace_root).await,
-                )
-            } else {
-                ExtractOutcome::WithoutParser(
-                    process_file_without_parser(&file_path, &language, workspace_root).await,
-                )
-            };
-            (language, file_path, outcome)
+        .map(|(language, file_path, has_parser)| {
+            let configs = Arc::clone(&configs);
+            async move {
+                let outcome = if has_parser {
+                    ExtractOutcome::WithParser(
+                        process_file_with_parser_using_configs(
+                            &file_path,
+                            &language,
+                            workspace_root,
+                            configs,
+                        )
+                        .await,
+                    )
+                } else {
+                    ExtractOutcome::WithoutParser(
+                        process_file_without_parser(&file_path, &language, workspace_root).await,
+                    )
+                };
+                (language, file_path, outcome)
+            }
         })
         .buffer_unordered(concurrency)
         .collect()
@@ -131,18 +133,11 @@ pub async fn extract_files_for_indexing_with_records(
     for (language, file_path, outcome) in outcomes {
         let relative_path = relative_path_for_storage(&file_path, workspace_root);
         match outcome {
-            ExtractOutcome::WithParser(Ok((
-                symbols,
-                relationships,
-                pending_rels,
-                structured_pending_rels,
-                identifiers,
-                types,
-                type_argument_usages,
-                literals,
-                parse_diagnostics,
-                file_info,
-            ))) => {
+            ExtractOutcome::WithParser(Ok(result)) => {
+                let ParserFileProcessResult {
+                    normalized,
+                    file_info,
+                } = result;
                 records.push(ExtractedFileRecord {
                     relative_path: relative_path.clone(),
                     language: file_info.language.clone(),
@@ -152,27 +147,34 @@ pub async fn extract_files_for_indexing_with_records(
                 trace!(
                     "File {} extracted {} symbols, {} pending relationships",
                     file_path.display(),
-                    symbols.len(),
-                    pending_rels.len()
+                    normalized.symbols.len(),
+                    normalized.pending_relationships.len()
                 );
                 batch.files_to_clean.push(relative_path.clone());
-                batch.all_symbols.extend(symbols);
-                batch.all_relationships.extend(relationships);
-                batch.all_pending_relationships.extend(pending_rels);
+                batch.all_symbols.extend(normalized.symbols);
+                batch.all_relationships.extend(normalized.relationships);
+                batch
+                    .all_pending_relationships
+                    .extend(normalized.pending_relationships);
                 batch
                     .all_structured_pending_relationships
-                    .extend(structured_pending_rels);
-                batch.all_identifiers.extend(identifiers);
-                batch.all_types.extend(types.into_values());
-                batch.all_type_argument_rows.extend(
-                    julie_core::database::bulk::type_arguments::flatten_type_argument_usages(
-                        &type_argument_usages,
-                    ),
-                );
-                batch.all_literals.extend(literals);
+                    .extend(normalized.structured_pending_relationships);
+                batch.all_identifiers.extend(normalized.identifiers);
+                batch.all_types.extend(normalized.types);
+                batch
+                    .all_type_argument_rows
+                    .extend(normalized.type_argument_rows);
+                batch.all_literals.extend(normalized.literals);
+                batch.all_source_regions.extend(normalized.source_regions);
+                batch
+                    .all_structural_facts
+                    .extend(normalized.structural_facts);
+                batch
+                    .all_complexity_metrics
+                    .extend(normalized.complexity_metrics);
                 batch
                     .parse_diagnostics_by_file
-                    .push((relative_path, parse_diagnostics));
+                    .push((relative_path, normalized.parse_diagnostics));
                 batch.all_file_infos.push(file_info);
                 if batch.files_processed.is_multiple_of(50) {
                     debug!(
@@ -241,37 +243,6 @@ pub async fn extract_files_for_indexing_with_records(
         }
     }
 
-    // Carrier classification (Miller bridge Phase 3) + test-role classification
-    // (test-role enrichment Phase 1). This is the shared chokepoint for BOTH the
-    // live indexing pipeline and the external-extract CLI (`operations.rs`) —
-    // both route through this function — so Miller's extract DB gets gated
-    // literals AND `test_role`/container `is_test` exactly like the live daemon.
-    // (The single-file watcher path runs the same gates separately.) The language
-    // configs are loaded once and reused for both gates; skip the load entirely
-    // when nothing was captured.
-    if !batch.all_literals.is_empty() || !batch.all_symbols.is_empty() {
-        let configs = julie_index::search::LanguageConfigs::load_embedded();
-        // Non-carrier literals are dropped here; only recognized url/sql/route
-        // literals survive into the batch.
-        if !batch.all_literals.is_empty() {
-            let carrier_configs = configs.build_literal_carrier_configs();
-            julie_index::analysis::literals::classify_literals_by_carrier(
-                &mut batch.all_literals,
-                &carrier_configs,
-            );
-        }
-        // Annotation/convention-driven; sets metadata.test_role and is_test —
-        // including class/struct containers ([TestClass], @Nested) that the
-        // callable-only per-extractor is_test can never flag.
-        if !batch.all_symbols.is_empty() {
-            let role_configs = configs.build_test_role_configs();
-            julie_index::analysis::test_roles::classify_symbols_by_role(
-                &mut batch.all_symbols,
-                &role_configs,
-            );
-        }
-    }
-
     Ok((batch, records))
 }
 
@@ -310,6 +281,21 @@ pub async fn process_file_with_parser(
     language: &str,
     workspace_root: &Path,
 ) -> Result<ParserFileProcessResult> {
+    process_file_with_parser_using_configs(
+        file_path,
+        language,
+        workspace_root,
+        Arc::new(julie_index::search::LanguageConfigs::load_embedded()),
+    )
+    .await
+}
+
+async fn process_file_with_parser_using_configs(
+    file_path: &Path,
+    language: &str,
+    workspace_root: &Path,
+    configs: Arc<julie_index::search::LanguageConfigs>,
+) -> Result<ParserFileProcessResult> {
     process_file_with_parser_using(
         file_path,
         language,
@@ -317,6 +303,7 @@ pub async fn process_file_with_parser(
         |relative_path, content, workspace_root_path| {
             julie_extractors::extract_canonical(&relative_path, &content, &workspace_root_path)
         },
+        configs,
     )
     .await
 }
@@ -330,7 +317,14 @@ pub async fn process_file_with_parser_for_test<F>(
 where
     F: FnOnce(String, String, PathBuf) -> Result<ExtractionResults> + Send + 'static,
 {
-    process_file_with_parser_using(file_path, language, workspace_root, extract).await
+    process_file_with_parser_using(
+        file_path,
+        language,
+        workspace_root,
+        extract,
+        Arc::new(julie_index::search::LanguageConfigs::load_embedded()),
+    )
+    .await
 }
 
 async fn process_file_with_parser_using<F>(
@@ -338,6 +332,7 @@ async fn process_file_with_parser_using<F>(
     _language: &str,
     workspace_root: &Path,
     extract: F,
+    configs: Arc<julie_index::search::LanguageConfigs>,
 ) -> Result<ParserFileProcessResult>
 where
     F: FnOnce(String, String, PathBuf) -> Result<ExtractionResults> + Send + 'static,
@@ -372,18 +367,10 @@ where
             file_path.display(),
             language
         );
-        return Ok((
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            HashMap::new(),
-            Vec::new(), // type_argument_usages
-            Vec::new(), // literals
-            Vec::new(),
+        return Ok(ParserFileProcessResult {
+            normalized: normalize_extraction_results(ExtractionResults::empty(), &configs),
             file_info,
-        ));
+        });
     }
 
     let relative_path = relative_path_for_storage(file_path, workspace_root);
@@ -409,45 +396,29 @@ where
         );
     }
 
-    let symbols = results.symbols;
-    file_info.symbol_count = symbols.len() as i32;
-    let relationships = results.relationships;
-    let pending_relationships = results.pending_relationships;
-    let structured_pending_relationships = results.structured_pending_relationships;
-    let identifiers = results.identifiers;
-    let types = results.types;
-    let type_argument_usages = results.type_argument_usages;
-    let literals = results.literals;
-    let parse_diagnostics = results.parse_diagnostics;
+    let normalized = normalize_extraction_results(results, &configs);
+    file_info.symbol_count = normalized.symbols.len() as i32;
 
-    if symbols.len() > 10 {
+    if normalized.symbols.len() > 10 {
         debug!(
             "📊 Extracted {} symbols from {}",
-            symbols.len(),
+            normalized.symbols.len(),
             relative_path
         );
     }
 
-    if !pending_relationships.is_empty() {
+    if !normalized.pending_relationships.is_empty() {
         debug!(
             "📎 Found {} pending relationships in {} (need cross-file resolution)",
-            pending_relationships.len(),
+            normalized.pending_relationships.len(),
             relative_path
         );
     }
 
-    Ok((
-        symbols,
-        relationships,
-        pending_relationships,
-        structured_pending_relationships,
-        identifiers,
-        types,
-        type_argument_usages,
-        literals,
-        parse_diagnostics,
+    Ok(ParserFileProcessResult {
+        normalized,
         file_info,
-    ))
+    })
 }
 
 pub async fn process_file_without_parser(

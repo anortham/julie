@@ -1,5 +1,7 @@
+use julie_extractors::base::{
+    ComplexityMetric, ParseDiagnostic, SourceRegion, StructuralFact, StructuredPendingRelationship,
+};
 use julie_extractors::{Identifier, Literal, PendingRelationship, Relationship, Symbol};
-use julie_extractors::base::{ParseDiagnostic, StructuredPendingRelationship};
 
 #[derive(Debug)]
 pub struct ExtractedBatch {
@@ -12,12 +14,16 @@ pub struct ExtractedBatch {
     /// Flattened ordered/nested generic type-argument rows (Miller bridge
     /// Phase 2), accumulated per file from each result's `TypeArgumentUsage`
     /// trees. Borrowed by `canonical_write_set()` for persistence.
-    pub(crate) all_type_argument_rows: Vec<julie_core::database::bulk::type_arguments::TypeArgumentRow>,
+    pub(crate) all_type_argument_rows:
+        Vec<julie_core::database::bulk::type_arguments::TypeArgumentRow>,
     /// String-literal call-args captured at carrier sites (Miller bridge Phase
     /// 3). Already carrier-classified-and-gated by the time the batch leaves
     /// `extract_files_for_indexing_with_records` (non-carrier literals dropped).
     /// Borrowed by `canonical_write_set()` for persistence.
     pub all_literals: Vec<Literal>,
+    pub all_source_regions: Vec<SourceRegion>,
+    pub all_structural_facts: Vec<StructuralFact>,
+    pub all_complexity_metrics: Vec<ComplexityMetric>,
     pub all_file_infos: Vec<julie_core::database::FileInfo>,
     pub parse_diagnostics_by_file: Vec<(String, Vec<ParseDiagnostic>)>,
     pub files_to_clean: Vec<String>,
@@ -35,9 +41,7 @@ impl ExtractedBatch {
     /// `CanonicalWriteSet`, this constructor fails to compile until the new
     /// field is wired — which is the whole point of the parameter object (plan
     /// cross-cutting Rule 3): no production path can silently drop the new data.
-    pub fn canonical_write_set(
-        &self,
-    ) -> julie_core::database::bulk::atomic::CanonicalWriteSet<'_> {
+    pub fn canonical_write_set(&self) -> julie_core::database::bulk::atomic::CanonicalWriteSet<'_> {
         julie_core::database::bulk::atomic::CanonicalWriteSet {
             files: &self.all_file_infos,
             symbols: &self.all_symbols,
@@ -46,9 +50,9 @@ impl ExtractedBatch {
             types: &self.all_types,
             type_arguments: &self.all_type_argument_rows,
             literals: &self.all_literals,
-            source_regions: &[],
-            structural_facts: &[],
-            complexity_metrics: &[],
+            source_regions: &self.all_source_regions,
+            structural_facts: &self.all_structural_facts,
+            complexity_metrics: &self.all_complexity_metrics,
         }
     }
 
@@ -62,6 +66,9 @@ impl ExtractedBatch {
             all_types: Vec::new(),
             all_type_argument_rows: Vec::new(),
             all_literals: Vec::new(),
+            all_source_regions: Vec::new(),
+            all_structural_facts: Vec::new(),
+            all_complexity_metrics: Vec::new(),
             all_file_infos: Vec::new(),
             parse_diagnostics_by_file: Vec::new(),
             files_to_clean: Vec::new(),

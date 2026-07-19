@@ -204,13 +204,13 @@ async fn test_markdown_with_long_lines_is_not_skipped_as_minified() {
     fs::write(&file_path, &content).unwrap();
 
     let tool = workspace_tool();
-    let (symbols, _, _, _, _, _, _, _, _, _) = tool
+    let result = tool
         .process_file_with_parser(&file_path, "markdown", &workspace_root)
         .await
         .expect("markdown processing should succeed");
 
     assert!(
-        !symbols.is_empty(),
+        !result.normalized.symbols.is_empty(),
         "Markdown with long prose lines must be parsed, not skipped as minified. \
          Got 0 symbols, indicating the long-line heuristic incorrectly suppressed extraction."
     );
@@ -232,12 +232,14 @@ fn caller() {
     .unwrap();
 
     let tool = workspace_tool();
-    let (_, _, _, structured_pending, _, _, _, _, _, _) = tool
+    let result = tool
         .process_file_with_parser(&file_path, "rust", &workspace_root)
         .await
         .expect("rust processing should preserve structured pending relationships");
 
-    let pending = structured_pending
+    let pending = result
+        .normalized
+        .structured_pending_relationships
         .iter()
         .find(|pending| {
             pending.target.display_name == "crate::search::hybrid::should_use_semantic_fallback"
@@ -271,18 +273,7 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
     let expected_diagnostic = diagnostic.clone();
 
     let tool = workspace_tool();
-    let (
-        symbols,
-        relationships,
-        pending_relationships,
-        structured_pending_relationships,
-        identifiers,
-        types,
-        _type_argument_usages,
-        _literals,
-        parse_diagnostics,
-        file_info,
-    ) = tool
+    let result = tool
         .process_file_with_parser_for_test(
             &file_path,
             "rust",
@@ -299,12 +290,15 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
         .await
         .expect("degraded parse result should still produce indexable file metadata");
 
-    assert!(symbols.is_empty());
-    assert!(relationships.is_empty());
-    assert!(pending_relationships.is_empty());
-    assert!(structured_pending_relationships.is_empty());
-    assert!(identifiers.is_empty());
-    assert!(types.is_empty());
+    let normalized = result.normalized;
+    let file_info = result.file_info;
+    let parse_diagnostics = normalized.parse_diagnostics;
+    assert!(normalized.symbols.is_empty());
+    assert!(normalized.relationships.is_empty());
+    assert!(normalized.pending_relationships.is_empty());
+    assert!(normalized.structured_pending_relationships.is_empty());
+    assert!(normalized.identifiers.is_empty());
+    assert!(normalized.types.is_empty());
     assert_eq!(parse_diagnostics, vec![expected_diagnostic.clone()]);
     assert_eq!(file_info.path, "broken.rs");
     assert_eq!(file_info.language, "rust");

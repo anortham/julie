@@ -12,6 +12,7 @@
 //! This separation prevents blocking on file I/O or database operations.
 
 pub mod events;
+mod extraction_write;
 pub mod filtering; // Public for tests
 pub mod handlers; // Public for tests
 pub mod observability; // INFO-level event observability helpers

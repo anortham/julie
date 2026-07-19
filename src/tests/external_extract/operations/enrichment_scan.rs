@@ -1,4 +1,60 @@
 use super::*;
+use crate::database::StructuralFactQuery;
+use julie_extractors::base::SourceRegionKind;
+
+#[tokio::test]
+async fn extract_scan_persists_v2_16_enrichment_domains() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+    fs::copy(
+        "fixtures/extraction/consumer-upgrade/rust_http_client.rs",
+        root.join("rust_http_client.rs"),
+    )
+    .expect("copy Rust enrichment fixture");
+
+    let db_path = tmp.path().join("external.sqlite");
+    let report = run_external_scan(&scan_args(db_path.clone(), root, false))
+        .await
+        .expect("scan succeeds");
+    assert_eq!(report.files_scanned, 1);
+
+    let db = SymbolDatabase::new(&db_path).expect("open db");
+    let regions = db
+        .get_source_regions_for_file("rust_http_client.rs", &[])
+        .expect("read source regions");
+    assert!(
+        regions
+            .iter()
+            .any(|region| region.kind == SourceRegionKind::DocComment)
+    );
+
+    let facts = db
+        .search_structural_facts(&StructuralFactQuery {
+            pattern_ids: vec!["http.client_request.v1".into()],
+            ..Default::default()
+        })
+        .expect("read structural facts");
+    assert!(facts.iter().any(|fact| {
+        fact.metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.get("client") == Some(&serde_json::json!("reqwest")))
+    }));
+
+    let symbol = db
+        .find_symbols_by_name("fetch_user")
+        .expect("find fetch_user")
+        .into_iter()
+        .next()
+        .expect("fetch_user symbol");
+    let metric = db
+        .get_complexity_metric_for_symbol(&symbol.id)
+        .expect("read complexity metric")
+        .expect("fetch_user complexity metric");
+    assert!(metric.decision_count >= 1);
+    assert!(metric.loop_count >= 1);
+    assert_eq!(metric.parameter_count, Some(2));
+}
 
 #[tokio::test]
 async fn extract_scan_persists_polyglot_type_arguments() {

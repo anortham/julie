@@ -3,16 +3,17 @@
 //! These tests verify that file creation, modification, deletion, and rename
 //! operations correctly update the database with proper path handling.
 
-use julie_core::database::SymbolDatabase;
-use julie_extractors::ExtractorManager;
-use julie_core::indexing_state::IndexingRepairReason;
 use crate::watcher::handlers::{
     handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
 };
 use crate::workspace::mutation_gate::acquire_gate;
+use julie_core::database::SymbolDatabase;
+use julie_core::indexing_state::IndexingRepairReason;
+use julie_extractors::ExtractorManager;
 use std::fs;
 use std::sync::{Arc, Mutex};
 
+mod enrichment_domains;
 mod repair_projection;
 
 /// Regression test for Bug: File watcher drops identifiers, types, and relationships

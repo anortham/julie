@@ -3,6 +3,9 @@
 //! This module implements the core logic for handling Create, Modify, Delete,
 //! and Rename operations on indexed files.
 
+use crate::watcher::extraction_write::WatcherExtractionWrite;
+use crate::workspace::mutation_gate::MutationGuard;
+use anyhow::{Context, Result};
 use julie_core::database::SymbolDatabase;
 use julie_core::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
@@ -11,9 +14,8 @@ use julie_core::indexing_state::IndexingRepairReason;
 use julie_extractors::ExtractorManager;
 use julie_index::search::SearchIndex;
 use julie_pipeline::finalize::resolve_pending_relationships;
-use crate::workspace::mutation_gate::MutationGuard;
-use anyhow::{Context, Result};
-use std::collections::{HashMap, HashSet};
+use julie_pipeline::indexing_core::normalized::normalize_extraction_results;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -122,7 +124,7 @@ pub async fn handle_file_created_or_modified_static(
         detect_language_for_indexing_with_content(Path::new(&relative_path), &content_str);
     let extraction_mode = determine_extraction_mode(&language, &content_str);
 
-    let mut results = match extraction_mode {
+    let results = match extraction_mode {
         ExtractionMode::ParserBacked => {
             let relative_path_clone = relative_path.clone();
             let content_clone = content_str.clone();
@@ -166,20 +168,7 @@ pub async fn handle_file_created_or_modified_static(
                 }
             }
         }
-        ExtractionMode::TextOnly => julie_extractors::ExtractionResults {
-            symbols: Vec::new(),
-            relationships: Vec::new(),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
-            types: HashMap::new(),
-            identifiers: Vec::new(),
-            type_argument_usages: Vec::new(),
-            literals: Vec::new(),
-            source_regions: Vec::new(),
-            structural_facts: Vec::new(),
-            complexity_metrics: Vec::new(),
-            parse_diagnostics: Vec::new(),
-        },
+        ExtractionMode::TextOnly => julie_extractors::ExtractionResults::empty(),
     };
 
     info!(
@@ -191,9 +180,39 @@ pub async fn handle_file_created_or_modified_static(
         language
     );
 
-    let pending_relationships = results.pending_relationships.clone();
-    let structured_pending_relationships = results.structured_pending_relationships.clone();
-    let parse_diagnostics = results.parse_diagnostics.clone();
+    let configs = julie_index::search::LanguageConfigs::load_embedded();
+    let normalized = normalize_extraction_results(results, &configs);
+    let pending_relationships = normalized.pending_relationships.clone();
+    let structured_pending_relationships = normalized.structured_pending_relationships.clone();
+    let parse_diagnostics = normalized.parse_diagnostics.clone();
+
+    let new_hash_str = hex::encode(new_hash.as_bytes());
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+    let file_info_rel_path = julie_core::paths::to_relative_unix_style(&canonical, workspace_root)
+        .context("Failed to convert path to relative for file info")?;
+    let metadata = std::fs::metadata(&path)
+        .map_err(|e| anyhow::anyhow!("Failed to read metadata for {:?}: {}", path, e))?;
+    let last_modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0);
+    let line_count = content_str.lines().count() as i32;
+    let watcher_write = WatcherExtractionWrite {
+        file_info: julie_core::database::FileInfo {
+            path: file_info_rel_path,
+            language: language.clone(),
+            hash: new_hash_str.clone(),
+            size: metadata.len() as i64,
+            last_modified,
+            last_indexed: 0,
+            symbol_count: normalized.symbols.len() as i32,
+            line_count,
+            content: Some(content_str.clone()),
+        },
+        normalized,
+    };
 
     let old_symbol_ids: Vec<String>;
     let new_symbol_ids: Vec<String>;
@@ -238,7 +257,7 @@ pub async fn handle_file_created_or_modified_static(
 
         // Safeguard against data loss
         if extraction_mode == ExtractionMode::ParserBacked
-            && results.symbols.is_empty()
+            && watcher_write.normalized.symbols.is_empty()
             && !existing_symbols.is_empty()
         {
             let detail = format!(
@@ -261,87 +280,8 @@ pub async fn handle_file_created_or_modified_static(
             ));
         }
 
-        // Build FileInfo from the already-read content and hash to avoid a TOCTOU race:
-        // create_file_info() re-reads the file, so a rapid save between the initial read
-        // and this point would cause the stored hash to mismatch the stored content,
-        // leading to perpetual re-indexing on every subsequent save.
-        let new_hash_str = hex::encode(new_hash.as_bytes());
-        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
-        let file_info_rel_path =
-            julie_core::paths::to_relative_unix_style(&canonical, workspace_root)
-                .context("Failed to convert path to relative for file info")?;
-        let metadata = std::fs::metadata(&path)
-            .map_err(|e| anyhow::anyhow!("Failed to read metadata for {:?}: {}", path, e))?;
-        let last_modified = metadata
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-        let line_count = content_str.lines().count() as i32;
-        let file_info = julie_core::database::FileInfo {
-            path: file_info_rel_path,
-            language: language.clone(),
-            hash: new_hash_str.clone(),
-            size: metadata.len() as i64,
-            last_modified,
-            last_indexed: 0,
-            symbol_count: 0,
-            line_count,
-            content: Some(content_str.clone()),
-        };
-
-        let types_vec: Vec<_> = results.types.into_values().collect();
-        let type_argument_rows =
-            julie_core::database::bulk::type_arguments::flatten_type_argument_usages(
-                &results.type_argument_usages,
-            );
-
-        // Carrier classification + bloat gate (Miller bridge Phase 3) AND
-        // test-role classification (test-role enrichment Phase 1). The
-        // single-file watcher is a distinct persistence path from the
-        // pipeline/extract-CLI (which gate inside extract_files_for_indexing),
-        // so the same classification must run here too — otherwise live saves
-        // would inject ungated literals and unclassified test symbols. Non-carrier
-        // literals are dropped before the write; test_role/is_test are set on the
-        // symbols (including class/struct containers). Load configs once.
-        let mut literals_vec = results.literals;
-        if !literals_vec.is_empty() || !results.symbols.is_empty() {
-            let configs = julie_index::search::LanguageConfigs::load_embedded();
-            if !literals_vec.is_empty() {
-                let carrier_configs = configs.build_literal_carrier_configs();
-                julie_index::analysis::literals::classify_literals_by_carrier(
-                    &mut literals_vec,
-                    &carrier_configs,
-                );
-            }
-            if !results.symbols.is_empty() {
-                let role_configs = configs.build_test_role_configs();
-                julie_index::analysis::test_roles::classify_symbols_by_role(
-                    &mut results.symbols,
-                    &role_configs,
-                );
-            }
-        }
-
-        // Live single-file watcher path (Rule 2: a distinct persistence entry
-        // point from the pipeline and extract-CLI). Build the write-set struct
-        // explicitly so any future canonical collection is compile-forced here
-        // too — the watcher has no ExtractedBatch to map from.
         let files_to_clean = [relative_path.clone()];
-        let watcher_files = [file_info];
-        let write_set = julie_core::database::bulk::atomic::CanonicalWriteSet {
-            files: &watcher_files,
-            symbols: &results.symbols,
-            relationships: &results.relationships,
-            identifiers: &results.identifiers,
-            types: &types_vec,
-            type_arguments: &type_argument_rows,
-            literals: &literals_vec,
-            source_regions: &[],
-            structural_facts: &[],
-            complexity_metrics: &[],
-        };
+        let write_set = watcher_write.canonical_write_set();
         // Capture canonical_revision so we can stamp projected_revision after a
         // successful Tantivy apply.  Previously this return value was discarded,
         // which meant canonical > projected was always true and could never serve
@@ -353,7 +293,12 @@ pub async fn handle_file_created_or_modified_static(
             julie_core::database::bulk::atomic::AtomicPersistenceMetadata::default(),
         )?;
 
-        new_symbol_ids = results.symbols.iter().map(|s| s.id.clone()).collect();
+        new_symbol_ids = watcher_write
+            .normalized
+            .symbols
+            .iter()
+            .map(|symbol| symbol.id.clone())
+            .collect();
 
         db_lock.update_file_hash(&relative_path, &new_hash_str)?;
         db_lock.store_file_parse_diagnostics(&relative_path, &parse_diagnostics)?;
@@ -399,7 +344,7 @@ pub async fn handle_file_created_or_modified_static(
     };
 
     let tantivy_ok = if let Some(search_index) = search_index {
-        let symbols = results.symbols.clone();
+        let symbols = watcher_write.normalized.symbols.clone();
         let file_to_clean = relative_path.clone();
         let file_content = content_str.clone();
         let file_language = language.clone();

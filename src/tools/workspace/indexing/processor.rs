@@ -19,18 +19,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
-type ParserFileProcessResult = (
-    Vec<crate::extractors::Symbol>,
-    Vec<crate::extractors::Relationship>,
-    Vec<crate::extractors::PendingRelationship>,
-    Vec<julie_extractors::base::StructuredPendingRelationship>,
-    Vec<crate::extractors::Identifier>,
-    std::collections::HashMap<String, crate::extractors::base::TypeInfo>,
-    Vec<crate::extractors::base::TypeArgumentUsage>,
-    Vec<crate::extractors::Literal>,
-    Vec<crate::extractors::base::ParseDiagnostic>,
-    crate::database::FileInfo,
-);
+type ParserFileProcessResult = julie_pipeline::indexing_core::extraction::ParserFileProcessResult;
 
 #[cfg(test)]
 impl ManageWorkspaceTool {
@@ -72,18 +61,7 @@ impl ManageWorkspaceTool {
         language: &str,
         workspace_root: &Path,
         extract: F,
-    ) -> Result<(
-        Vec<crate::extractors::Symbol>,
-        Vec<crate::extractors::Relationship>,
-        Vec<crate::extractors::PendingRelationship>,
-        Vec<julie_extractors::base::StructuredPendingRelationship>,
-        Vec<crate::extractors::Identifier>,
-        std::collections::HashMap<String, crate::extractors::base::TypeInfo>,
-        Vec<crate::extractors::base::TypeArgumentUsage>,
-        Vec<crate::extractors::Literal>,
-        Vec<crate::extractors::base::ParseDiagnostic>,
-        crate::database::FileInfo,
-    )>
+    ) -> Result<ParserFileProcessResult>
     where
         F: FnOnce(String, String, PathBuf) -> Result<ExtractionResults> + Send + 'static,
     {
