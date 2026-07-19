@@ -58,6 +58,24 @@ pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Resu
         params![file_path],
     )?;
     tx.execute(
+        "DELETE FROM source_regions
+         WHERE file_path = ?1
+            OR containing_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+        params![file_path],
+    )?;
+    tx.execute(
+        "DELETE FROM structural_facts
+         WHERE file_path = ?1
+            OR containing_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+        params![file_path],
+    )?;
+    tx.execute(
+        "DELETE FROM complexity_metrics
+         WHERE file_path = ?1
+            OR symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+        params![file_path],
+    )?;
+    tx.execute(
         "DELETE FROM identifiers
          WHERE file_path = ?1
             OR containing_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
@@ -83,6 +101,9 @@ pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Resu
 pub(super) fn delete_all_indexed_rows_tx(tx: &Transaction<'_>) -> Result<()> {
     for sql in [
         "DELETE FROM symbol_vectors",
+        "DELETE FROM source_regions",
+        "DELETE FROM structural_facts",
+        "DELETE FROM complexity_metrics",
         "DELETE FROM literals",
         "DELETE FROM type_arguments",
         "DELETE FROM identifiers",

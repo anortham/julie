@@ -7,9 +7,12 @@ use julie_extractors::Relationship;
 
 pub mod atomic;
 pub mod cleanup;
+pub mod complexity_metrics;
 pub mod identifiers;
 pub mod literals;
 pub mod relationships;
+pub mod source_regions;
+pub mod structural_facts;
 pub mod type_arguments;
 pub mod types;
 pub mod write_set;
@@ -19,6 +22,9 @@ pub(crate) fn collect_referenced_symbol_ids(
     identifiers: &[julie_extractors::Identifier],
     types: &[julie_extractors::base::TypeInfo],
     literals: &[julie_extractors::Literal],
+    source_regions: &[julie_extractors::base::SourceRegion],
+    structural_facts: &[julie_extractors::base::StructuralFact],
+    complexity_metrics: &[julie_extractors::base::ComplexityMetric],
 ) -> HashSet<String> {
     let mut ids = HashSet::new();
     for rel in relationships {
@@ -38,6 +44,21 @@ pub(crate) fn collect_referenced_symbol_ids(
     }
     for literal in literals {
         if let Some(symbol_id) = &literal.containing_symbol_id {
+            ids.insert(symbol_id.clone());
+        }
+    }
+    for region in source_regions {
+        if let Some(symbol_id) = &region.containing_symbol_id {
+            ids.insert(symbol_id.clone());
+        }
+    }
+    for fact in structural_facts {
+        if let Some(symbol_id) = &fact.containing_symbol_id {
+            ids.insert(symbol_id.clone());
+        }
+    }
+    for metric in complexity_metrics {
+        if let Some(symbol_id) = &metric.symbol_id {
             ids.insert(symbol_id.clone());
         }
     }

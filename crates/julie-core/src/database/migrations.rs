@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 28;
+pub const LATEST_SCHEMA_VERSION: i32 = 29;
 
 impl SymbolDatabase {
     // ============================================================
@@ -124,6 +124,7 @@ impl SymbolDatabase {
             26 => self.migration_026_add_external_extract_metadata()?,
             27 => self.migration_027_add_type_arguments()?,
             28 => self.migration_028_add_literals()?,
+            29 => self.migration_029_add_extractor_enrichments()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -160,6 +161,7 @@ impl SymbolDatabase {
             26 => "Add external extract metadata table",
             27 => "Add type_arguments table",
             28 => "Add literals table",
+            29 => "Add extractor enrichment tables",
             _ => "Unknown migration",
         };
 
@@ -913,6 +915,15 @@ impl SymbolDatabase {
         info!("Running migration 028: Add literals table");
         self.create_literals_table()?;
         info!("Migration 028 complete: literals table added");
+        Ok(())
+    }
+
+    fn migration_029_add_extractor_enrichments(&self) -> Result<()> {
+        info!("Running migration 029: Add extractor enrichment tables");
+        self.create_source_regions_table()?;
+        self.create_structural_facts_table()?;
+        self.create_complexity_metrics_table()?;
+        info!("Migration 029 complete: extractor enrichment tables added");
         Ok(())
     }
 

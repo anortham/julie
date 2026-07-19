@@ -338,6 +338,9 @@ pub async fn handle_file_created_or_modified_static(
             types: &types_vec,
             type_arguments: &type_argument_rows,
             literals: &literals_vec,
+            source_regions: &[],
+            structural_facts: &[],
+            complexity_metrics: &[],
         };
         // Capture canonical_revision so we can stamp projected_revision after a
         // successful Tantivy apply.  Previously this return value was discarded,

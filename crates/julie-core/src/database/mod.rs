@@ -19,6 +19,7 @@ use julie_extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 pub mod analytics;
 pub mod bulk;
 mod bulk_operations;
+mod complexity_metrics;
 mod files;
 mod helpers;
 mod identifiers;
@@ -33,6 +34,8 @@ mod revision_changes;
 mod revisions;
 mod schema;
 mod schema_enrichments;
+mod source_regions;
+mod structural_facts;
 mod symbols;
 mod tool_calls;
 mod type_queries;
@@ -43,6 +46,7 @@ pub use analytics::*;
 pub use projections::{ProjectionState, ProjectionStatus};
 pub use revision_changes::{RevisionChangeKind, RevisionFileChange};
 pub use revisions::{CanonicalRevision, CanonicalRevisionKind};
+pub use structural_facts::*;
 pub use tool_calls::{HistorySummary, ToolCallSummary};
 
 /// Register sqlite-vec extension as a global auto-extension (once per process).

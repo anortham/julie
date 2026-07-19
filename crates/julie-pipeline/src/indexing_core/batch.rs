@@ -46,6 +46,9 @@ impl ExtractedBatch {
             types: &self.all_types,
             type_arguments: &self.all_type_argument_rows,
             literals: &self.all_literals,
+            source_regions: &[],
+            structural_facts: &[],
+            complexity_metrics: &[],
         }
     }
 

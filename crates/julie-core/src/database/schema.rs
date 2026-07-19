@@ -30,6 +30,9 @@ impl SymbolDatabase {
         self.create_identifiers_table()?; // Reference tracking
         self.create_type_arguments_table()?; // Ordered/nested generic use-site args
         self.create_literals_table()?; // String-literal call-args at carrier sites
+        self.create_source_regions_table()?;
+        self.create_structural_facts_table()?;
+        self.create_complexity_metrics_table()?;
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
 

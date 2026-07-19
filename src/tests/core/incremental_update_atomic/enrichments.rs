@@ -1,5 +1,126 @@
 use super::*;
 
+#[test]
+fn test_extractor_enrichment_domains_roundtrip_replace_and_delete() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let file_info = make_file("src/lib.rs");
+    let symbol = make_symbol("symbol-1", "request", "src/lib.rs");
+    let source_region = julie_extractors::base::SourceRegion {
+        id: "region-1".into(),
+        file_path: "src/lib.rs".into(),
+        language: "rust".into(),
+        kind: julie_extractors::base::SourceRegionKind::DocComment,
+        containing_symbol_id: Some("symbol-1".into()),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 12,
+        start_byte: 0,
+        end_byte: 12,
+        metadata: Some(std::collections::HashMap::from([(
+            "style".into(),
+            serde_json::json!("outer"),
+        )])),
+    };
+    let structural_fact = julie_extractors::base::StructuralFact {
+        id: "fact-1".into(),
+        file_path: "src/lib.rs".into(),
+        language: "rust".into(),
+        pattern_id: "http.client_request.v1".into(),
+        capture_name: "request".into(),
+        node_kind: "call_expression".into(),
+        containing_symbol_id: Some("symbol-1".into()),
+        start_line: 3,
+        start_column: 4,
+        end_line: 3,
+        end_column: 42,
+        start_byte: 30,
+        end_byte: 68,
+        confidence: 0.95,
+        metadata: Some(std::collections::HashMap::from([
+            ("client".into(), serde_json::json!("reqwest")),
+            ("method".into(), serde_json::json!("GET")),
+        ])),
+    };
+    let complexity_metric = julie_extractors::base::ComplexityMetric {
+        id: "complexity-1".into(),
+        file_path: "src/lib.rs".into(),
+        language: "rust".into(),
+        scope: "function".into(),
+        symbol_id: Some("symbol-1".into()),
+        algorithm_id: "structural-v1".into(),
+        covered_lines: 8,
+        covered_bytes: 96,
+        decision_count: 2,
+        loop_count: 1,
+        max_nesting_depth: 2,
+        parameter_count: Some(1),
+        start_line: 2,
+        start_column: 0,
+        end_line: 9,
+        end_column: 1,
+        start_byte: 13,
+        end_byte: 109,
+        metadata: None,
+    };
+
+    let write_set = CanonicalWriteSet {
+        files: std::slice::from_ref(&file_info),
+        symbols: std::slice::from_ref(&symbol),
+        source_regions: std::slice::from_ref(&source_region),
+        structural_facts: std::slice::from_ref(&structural_fact),
+        complexity_metrics: std::slice::from_ref(&complexity_metric),
+        ..Default::default()
+    };
+    db.incremental_update_atomic_with_metadata(
+        &["src/lib.rs".into()],
+        &write_set,
+        "workspace-a",
+        AtomicPersistenceMetadata::default(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        db.get_source_regions_for_file("src/lib.rs", &[]).unwrap(),
+        vec![source_region]
+    );
+    assert_eq!(
+        db.search_structural_facts(&crate::database::StructuralFactQuery::default())
+            .unwrap(),
+        vec![structural_fact]
+    );
+    assert_eq!(
+        db.get_complexity_metric_for_symbol("symbol-1").unwrap(),
+        Some(complexity_metric)
+    );
+
+    db.incremental_update_atomic_with_metadata(
+        &["src/lib.rs".into()],
+        &CanonicalWriteSet::default(),
+        "workspace-a",
+        AtomicPersistenceMetadata::default(),
+    )
+    .unwrap();
+
+    assert!(
+        db.get_source_regions_for_file("src/lib.rs", &[])
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        db.search_structural_facts(&crate::database::StructuralFactQuery::default())
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        db.get_complexity_metric_for_symbol("symbol-1").unwrap(),
+        None
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Type arguments (Miller bridge Phase 2): re-index must clean stale rows
 // ---------------------------------------------------------------------------
@@ -31,6 +152,7 @@ fn test_incremental_update_atomic_cleans_and_replaces_type_arguments() {
         types: &[],
         type_arguments: &rows_v1,
         literals: &[],
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -84,6 +206,7 @@ fn test_incremental_update_atomic_cleans_and_replaces_type_arguments() {
         types: &[],
         type_arguments: &rows_v2,
         literals: &[],
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &["file_a.rs".to_string()],
@@ -140,6 +263,7 @@ fn test_replace_workspace_data_atomic_clears_stale_type_arguments() {
         types: &[],
         type_arguments: &rows_v1,
         literals: &[],
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -165,6 +289,7 @@ fn test_replace_workspace_data_atomic_clears_stale_type_arguments() {
         types: &[],
         type_arguments: &rows_v2,
         literals: &[],
+        ..Default::default()
     };
     db.replace_workspace_data_atomic(
         &write_set_v2,
@@ -230,6 +355,7 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         types: &[],
         type_arguments: &ta_rows,
         literals: &[],
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -254,6 +380,7 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         types: &[],
         type_arguments: &[],
         literals: &lit_rows,
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -262,6 +389,71 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         AtomicPersistenceMetadata::default(),
     )
     .expect("seeding literals should succeed");
+
+    let orphan_source_regions = vec![julie_extractors::base::SourceRegion {
+        id: "orphan-region".into(),
+        file_path: "orphan.rs".into(),
+        language: "rust".into(),
+        kind: julie_extractors::base::SourceRegionKind::Comment,
+        containing_symbol_id: None,
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 8,
+        start_byte: 0,
+        end_byte: 8,
+        metadata: None,
+    }];
+    let orphan_structural_facts = vec![julie_extractors::base::StructuralFact {
+        id: "orphan-fact".into(),
+        file_path: "orphan.rs".into(),
+        language: "rust".into(),
+        pattern_id: "http.client_request.v1".into(),
+        capture_name: "request".into(),
+        node_kind: "call_expression".into(),
+        containing_symbol_id: None,
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 8,
+        start_byte: 0,
+        end_byte: 8,
+        confidence: 1.0,
+        metadata: None,
+    }];
+    let orphan_complexity_metrics = vec![julie_extractors::base::ComplexityMetric {
+        id: "orphan-complexity".into(),
+        file_path: "orphan.rs".into(),
+        language: "rust".into(),
+        scope: "file".into(),
+        symbol_id: None,
+        algorithm_id: "structural-v1".into(),
+        covered_lines: 1,
+        covered_bytes: 8,
+        decision_count: 0,
+        loop_count: 0,
+        max_nesting_depth: 0,
+        parameter_count: None,
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 8,
+        start_byte: 0,
+        end_byte: 8,
+        metadata: None,
+    }];
+    db.incremental_update_atomic_with_metadata(
+        &[],
+        &CanonicalWriteSet {
+            source_regions: &orphan_source_regions,
+            structural_facts: &orphan_structural_facts,
+            complexity_metrics: &orphan_complexity_metrics,
+            ..Default::default()
+        },
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("seeding extractor enrichments should succeed");
 
     assert!(count_rows(&db, "symbols") > 0, "precondition: symbols");
     assert!(count_rows(&db, "files") > 0, "precondition: files");
@@ -287,6 +479,18 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         "precondition: type_arguments"
     );
     assert!(count_rows(&db, "literals") > 0, "precondition: literals");
+    assert!(
+        count_rows(&db, "source_regions") > 0,
+        "precondition: source_regions"
+    );
+    assert!(
+        count_rows(&db, "structural_facts") > 0,
+        "precondition: structural_facts"
+    );
+    assert!(
+        count_rows(&db, "complexity_metrics") > 0,
+        "precondition: complexity_metrics"
+    );
 
     db.delete_workspace_data()
         .expect("workspace cleanup should succeed");
@@ -330,6 +534,21 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         "type_arguments must be cleared"
     );
     assert_eq!(count_rows(&db, "literals"), 0, "literals must be cleared");
+    assert_eq!(
+        count_rows(&db, "source_regions"),
+        0,
+        "source_regions must be cleared"
+    );
+    assert_eq!(
+        count_rows(&db, "structural_facts"),
+        0,
+        "structural_facts must be cleared"
+    );
+    assert_eq!(
+        count_rows(&db, "complexity_metrics"),
+        0,
+        "complexity_metrics must be cleared"
+    );
 }
 
 #[test]
@@ -354,6 +573,7 @@ fn test_literals_roundtrip_persists_all_columns() {
         types: &[],
         type_arguments: &[],
         literals: &literals,
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -421,6 +641,7 @@ fn test_incremental_update_atomic_cleans_and_replaces_literals() {
         types: &[],
         type_arguments: &[],
         literals: &literals_v1,
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -451,6 +672,7 @@ fn test_incremental_update_atomic_cleans_and_replaces_literals() {
         types: &[],
         type_arguments: &[],
         literals: &literals_v2,
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &["api.ts".to_string()],
@@ -494,6 +716,7 @@ fn test_replace_workspace_data_atomic_clears_stale_literals() {
         types: &[],
         type_arguments: &[],
         literals: &literals_v1,
+        ..Default::default()
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -520,6 +743,7 @@ fn test_replace_workspace_data_atomic_clears_stale_literals() {
         types: &[],
         type_arguments: &[],
         literals: &literals_v2,
+        ..Default::default()
     };
     db.replace_workspace_data_atomic(
         &write_set_v2,

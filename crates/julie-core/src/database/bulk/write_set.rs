@@ -33,4 +33,7 @@ pub struct CanonicalWriteSet<'a> {
     /// String-literal call arguments captured by extractors and classified by
     /// the indexing pipeline before persistence.
     pub literals: &'a [julie_extractors::Literal],
+    pub source_regions: &'a [julie_extractors::base::SourceRegion],
+    pub structural_facts: &'a [julie_extractors::base::StructuralFact],
+    pub complexity_metrics: &'a [julie_extractors::base::ComplexityMetric],
 }

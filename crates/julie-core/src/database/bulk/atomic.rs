@@ -18,9 +18,12 @@ use super::cleanup::{
     persist_batch_metadata_tx, record_incremental_file_changes, require_workspace_id,
     unix_timestamp,
 };
+use super::complexity_metrics::insert_complexity_metrics_tx;
 use super::identifiers::{insert_identifiers_tx, insert_identifiers_with_deferred_indexes_tx};
 use super::literals::insert_literals_tx;
 use super::relationships::insert_relationships_tx;
+use super::source_regions::insert_source_regions_tx;
+use super::structural_facts::insert_structural_facts_tx;
 use super::type_arguments::insert_type_arguments_tx;
 use super::types::insert_types_tx;
 pub use super::write_set::{AtomicPersistenceMetadata, CanonicalWriteSet};
@@ -35,6 +38,9 @@ struct InsertCounts {
     types: i64,
     type_arguments: i64,
     literals: i64,
+    source_regions: i64,
+    structural_facts: i64,
+    complexity_metrics: i64,
 }
 
 impl InsertCounts {
@@ -47,6 +53,9 @@ impl InsertCounts {
             || self.types > 0
             || self.type_arguments > 0
             || self.literals > 0
+            || self.source_regions > 0
+            || self.structural_facts > 0
+            || self.complexity_metrics > 0
     }
 }
 
@@ -67,11 +76,11 @@ impl SymbolDatabase {
             relationships: new_relationships,
             identifiers: new_identifiers,
             types: new_types,
-            // Positional convenience wrapper (tests / non-extraction callers):
-            // no type-argument rows. Production paths build the full write-set
-            // from ExtractedBatch / the watcher, which populate this.
             type_arguments: &[],
             literals: &[],
+            source_regions: &[],
+            structural_facts: &[],
+            complexity_metrics: &[],
         };
         self.incremental_update_atomic_with_metadata(
             files_to_clean,
@@ -158,6 +167,9 @@ impl SymbolDatabase {
             types,
             type_arguments: &[],
             literals: &[],
+            source_regions: &[],
+            structural_facts: &[],
+            complexity_metrics: &[],
         };
         self.bulk_store_fresh_atomic_with_metadata(
             &write_set,
@@ -312,8 +324,17 @@ fn insert_batch_tx(
             write_set.identifiers,
             write_set.types,
             write_set.literals,
+            write_set.source_regions,
+            write_set.structural_facts,
+            write_set.complexity_metrics,
         ),
     )?;
+    counts.source_regions =
+        insert_source_regions_tx(tx, write_set.source_regions, Some(&valid_symbol_ids))?;
+    counts.structural_facts =
+        insert_structural_facts_tx(tx, write_set.structural_facts, Some(&valid_symbol_ids))?;
+    counts.complexity_metrics =
+        insert_complexity_metrics_tx(tx, write_set.complexity_metrics, Some(&valid_symbol_ids))?;
     counts.relationships =
         insert_relationships_tx(tx, write_set.relationships, Some(&valid_symbol_ids))?;
     counts.identifiers = if defer_identifier_indexes {

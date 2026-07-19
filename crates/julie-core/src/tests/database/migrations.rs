@@ -670,3 +670,40 @@ fn test_literals_schema_fresh_matches_migrated() {
         "literals index set must be identical fresh vs migrated"
     );
 }
+
+fn build_v28_database_with_rows(db_path: &std::path::Path) {
+    {
+        let mut db = SymbolDatabase::new(db_path).unwrap();
+        let file = file_info_builder("legacy.rs").build();
+        let symbol = symbol_builder("sym-legacy", "legacy", "legacy.rs").build();
+        db.bulk_store_fresh_atomic(&[file], &[symbol], &[], &[], &[], "primary")
+            .unwrap();
+    }
+
+    let conn = open_test_connection(db_path).unwrap();
+    conn.execute("DROP TABLE IF EXISTS source_regions", [])
+        .unwrap();
+    conn.execute("DROP TABLE IF EXISTS structural_facts", [])
+        .unwrap();
+    conn.execute("DROP TABLE IF EXISTS complexity_metrics", [])
+        .unwrap();
+    conn.execute("DELETE FROM schema_version WHERE version >= 29", [])
+        .unwrap();
+}
+
+#[test]
+fn test_migration_029_adds_extractor_enrichment_tables() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("v28.db");
+    build_v28_database_with_rows(&db_path);
+
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    assert_eq!(db.get_schema_version().unwrap(), 29);
+    for table in ["source_regions", "structural_facts", "complexity_metrics"] {
+        assert!(
+            table_exists(&db.conn, table),
+            "migration 029 must create {table}"
+        );
+    }
+}
