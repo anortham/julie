@@ -1,7 +1,7 @@
 //! Generic tool dispatcher for the `julie-server tool <name>` subcommand.
 //!
 //! Maps tool names to their struct types, deserializes JSON params via serde,
-//! and calls the tool through the shared `.call_tool(&handler)` path. All 12
+//! and calls the tool through the shared `.call_tool(&handler)` path. All 13
 //! public MCP tools are reachable through this dispatcher.
 
 use anyhow::Result;
@@ -21,6 +21,7 @@ pub const AVAILABLE_TOOLS: &[&str] = &[
     "get_context",
     "get_symbols",
     "manage_workspace",
+    "patterns",
     "rename_symbol",
     "rewrite_symbol",
     "spillover_get",
@@ -77,6 +78,10 @@ pub async fn dispatch_generic_tool(
             let tool: crate::tools::ManageWorkspaceTool = deserialize_params(name, params)?;
             tool.call_tool(handler).await
         }
+        "patterns" => {
+            let tool: crate::tools::PatternsTool = deserialize_params(name, params)?;
+            tool.call_tool(handler).await
+        }
         "edit_file" => {
             let tool: crate::tools::editing::edit_file::EditFileTool =
                 deserialize_params(name, params)?;
@@ -112,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_available_tools_count() {
-        assert_eq!(AVAILABLE_TOOLS.len(), 12, "All 12 MCP tools must be listed");
+        assert_eq!(AVAILABLE_TOOLS.len(), 13, "All 13 MCP tools must be listed");
     }
 
     #[test]

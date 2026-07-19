@@ -4,6 +4,7 @@ use crate::tools::editing::edit_file::EditFileTool;
 use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
 use crate::tools::get_context::GetContextTool;
 use crate::tools::navigation::{CallPathTool, FastRefsTool};
+use crate::tools::patterns::PatternsTool;
 use crate::tools::spillover::SpilloverGetTool;
 use crate::tools::{BlastRadiusTool, DeepDiveTool, GetSymbolsTool, RenameSymbolTool};
 
@@ -70,6 +71,23 @@ pub(crate) fn deep_dive_metadata(params: &DeepDiveTool) -> Value {
         "context_file": params.context_file,
         "workspace": params.workspace,
         "target": target_metadata(Some(&params.symbol), params.context_file.as_deref(), None),
+    })
+}
+
+pub(crate) fn patterns_metadata(params: &PatternsTool) -> Value {
+    json!({
+        "operation": params.operation,
+        "pattern_id": params.pattern_id,
+        "query": params.query,
+        "path": params.path,
+        "language": params.language,
+        "where": params.where_filter,
+        "facet": params.facet,
+        "group_by": params.group_by,
+        "limit": params.limit,
+        "workspace": params.workspace,
+        "format": params.format,
+        "target": target_metadata(None, params.path.as_deref(), None),
     })
 }
 

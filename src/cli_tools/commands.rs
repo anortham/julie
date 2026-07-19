@@ -14,8 +14,8 @@ use crate::mcp_compat::CallToolResult;
 
 use super::CliToolCommand;
 use super::subcommands::{
-    BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, RefsArgs, SearchArgs, SymbolsArgs,
-    WorkspaceArgs,
+    BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, PatternsArgs, RefsArgs,
+    SearchArgs, SymbolsArgs, WorkspaceArgs,
 };
 
 fn resolve_git_diff_file_paths(rev: &str) -> Result<Vec<String>> {
@@ -155,6 +155,45 @@ impl CliToolCommand for SearchArgs {
             exclude_tests: if self.exclude_tests { Some(true) } else { None },
             ..Default::default()
         };
+        tool.call_tool(handler).await
+    }
+}
+
+#[async_trait]
+impl CliToolCommand for PatternsArgs {
+    fn tool_name(&self) -> &'static str {
+        "patterns"
+    }
+
+    fn to_tool_args(&self) -> Result<Value> {
+        let mut args = serde_json::json!({
+            "operation": self.operation,
+            "group_by": self.group_by,
+            "limit": self.limit,
+        });
+        if let Some(pattern_id) = &self.pattern_id {
+            args["pattern_id"] = Value::String(pattern_id.clone());
+        }
+        if let Some(query) = &self.query {
+            args["query"] = Value::String(query.clone());
+        }
+        if let Some(path) = &self.path {
+            args["path"] = Value::String(path.clone());
+        }
+        if let Some(language) = &self.language {
+            args["language"] = Value::String(language.clone());
+        }
+        if !self.where_filters.is_empty() {
+            args["where"] = Value::String(self.where_filters.join(";"));
+        }
+        if let Some(facet) = &self.facet {
+            args["facet"] = Value::String(facet.clone());
+        }
+        Ok(args)
+    }
+
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let tool: crate::tools::PatternsTool = serde_json::from_value(self.to_tool_args()?)?;
         tool.call_tool(handler).await
     }
 }

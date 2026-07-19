@@ -10,6 +10,7 @@ use crate::tools::ManageWorkspaceTool;
 use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
 use crate::tools::navigation::CallPathTool;
 use crate::tools::navigation::FastRefsTool;
+use crate::tools::patterns::{PatternsFormat, PatternsGroupBy, PatternsOperation, PatternsTool};
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::trace::{
     FilePatternDiagnostic, HintKind, LineEnrichmentStatus, SearchExecutionKind,
@@ -856,4 +857,35 @@ fn test_rewrite_symbol_metadata_carries_disambiguation_and_dry_run() {
     assert_eq!(metadata["dry_run"], true);
     assert_eq!(metadata["file_path"], "src/auth.rs");
     assert_eq!(metadata["target"]["target_file_path"], "src/auth.rs");
+}
+
+#[test]
+fn test_patterns_metadata_carries_query_filters_and_workspace() {
+    let params = PatternsTool {
+        operation: PatternsOperation::Search,
+        pattern_id: Some("http.client_request.v1".to_string()),
+        query: Some("client".to_string()),
+        path: Some("src/**".to_string()),
+        language: Some("rust".to_string()),
+        where_filter: Some("client=reqwest;method=GET".to_string()),
+        facet: None,
+        group_by: PatternsGroupBy::Directory,
+        limit: 25,
+        workspace: Some("target-workspace".to_string()),
+        format: PatternsFormat::Json,
+    };
+
+    let metadata = tool_targets::patterns_metadata(&params);
+
+    assert_eq!(metadata["operation"], "search");
+    assert_eq!(metadata["pattern_id"], "http.client_request.v1");
+    assert_eq!(metadata["query"], "client");
+    assert_eq!(metadata["path"], "src/**");
+    assert_eq!(metadata["language"], "rust");
+    assert_eq!(metadata["where"], "client=reqwest;method=GET");
+    assert_eq!(metadata["group_by"], "directory");
+    assert_eq!(metadata["limit"], 25);
+    assert_eq!(metadata["workspace"], "target-workspace");
+    assert_eq!(metadata["format"], "json");
+    assert_eq!(metadata["target"]["target_file_path"], "src/**");
 }

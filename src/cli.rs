@@ -2,8 +2,8 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use crate::cli_tools::subcommands::{
-    BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, GlobalToolFlags, RefsArgs,
-    SearchArgs, SignalsArgs, SymbolsArgs, WorkspaceArgs,
+    BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, GlobalToolFlags, PatternsArgs,
+    RefsArgs, SearchArgs, SignalsArgs, SymbolsArgs, WorkspaceArgs,
 };
 use crate::external_extract::ExternalExtractRawArgs;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
@@ -45,6 +45,8 @@ pub enum Command {
     CallPath(CallPathArgs),
     /// Analyze blast radius of changes
     BlastRadius(BlastRadiusArgs),
+    /// Query generic structural patterns
+    Patterns(PatternsArgs),
     /// Manage workspaces (index, list, stats, health, etc.)
     #[command(name = "workspace")]
     Workspace(WorkspaceArgs),

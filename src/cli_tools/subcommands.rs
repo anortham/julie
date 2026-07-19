@@ -276,6 +276,47 @@ pub struct BlastRadiusArgs {
     pub report_format: Option<String>,
 }
 
+/// Query generic code-shape facts extracted across supported languages.
+#[derive(Debug, Clone, Parser)]
+pub struct PatternsArgs {
+    /// Operation: list, summary, or search
+    #[arg(long, default_value = "list")]
+    pub operation: String,
+
+    /// Exact structural pattern ID
+    #[arg(long)]
+    pub pattern_id: Option<String>,
+
+    /// Case-insensitive substring matched against observed pattern IDs
+    #[arg(long)]
+    pub query: Option<String>,
+
+    /// Workspace-relative glob filter
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Language filter
+    #[arg(long)]
+    pub language: Option<String>,
+
+    /// Top-level metadata equality filter, repeatable
+    #[arg(long = "where", value_name = "KEY=VALUE")]
+    pub where_filters: Vec<String>,
+
+    /// Summary metadata facet key
+    #[arg(long)]
+    pub facet: Option<String>,
+
+    /// Summary grouping: language_pattern_capture, file, or directory
+    #[arg(long, default_value = "language_pattern_capture")]
+    pub group_by: String,
+
+    /// Maximum search or summary rows
+    #[arg(long, default_value = "50")]
+    pub limit: u32,
+
+}
+
 // ---------------------------------------------------------------------------
 // workspace
 // ---------------------------------------------------------------------------

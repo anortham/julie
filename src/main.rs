@@ -44,6 +44,9 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::BlastRadius(args)) => {
             run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
+        Some(Command::Patterns(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
         Some(Command::Workspace(args)) => {
             run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }

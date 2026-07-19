@@ -17,6 +17,7 @@ pub(crate) mod fast_search;
 pub(crate) mod get_context;
 pub(crate) mod get_symbols;
 pub(crate) mod manage_workspace;
+pub(crate) mod patterns;
 pub(crate) mod rename_symbol;
 pub(crate) mod rewrite_symbol;
 pub(crate) mod spillover_get;

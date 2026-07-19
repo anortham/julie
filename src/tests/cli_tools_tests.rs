@@ -72,6 +72,86 @@ fn test_search_short_flags() {
     assert!(args.exclude_tests);
 }
 
+#[test]
+fn test_patterns_all_flags_and_tool_args() {
+    let args = PatternsArgs::parse_from([
+        "patterns",
+        "--operation",
+        "search",
+        "--pattern-id",
+        "http.client_request.v1",
+        "--query",
+        "client_request",
+        "--path",
+        "src/**",
+        "--language",
+        "rust",
+        "--where",
+        "client=reqwest",
+        "--where",
+        "method=GET",
+        "--facet",
+        "method",
+        "--group-by",
+        "directory",
+        "--limit",
+        "25",
+    ]);
+
+    let tool_args = args.to_tool_args().unwrap();
+    assert_eq!(args.tool_name(), "patterns");
+    assert_eq!(tool_args["operation"], "search");
+    assert_eq!(tool_args["pattern_id"], "http.client_request.v1");
+    assert_eq!(tool_args["query"], "client_request");
+    assert_eq!(tool_args["path"], "src/**");
+    assert_eq!(tool_args["language"], "rust");
+    assert_eq!(tool_args["where"], "client=reqwest;method=GET");
+    assert_eq!(tool_args["facet"], "method");
+    assert_eq!(tool_args["group_by"], "directory");
+    assert_eq!(tool_args["limit"], 25);
+    assert!(tool_args.get("workspace").is_none());
+    assert!(tool_args.get("format").is_none());
+}
+
+#[test]
+fn test_patterns_defaults() {
+    let args = PatternsArgs::parse_from(["patterns"]);
+    assert_eq!(args.operation, "list");
+    assert!(args.pattern_id.is_none());
+    assert!(args.query.is_none());
+    assert!(args.path.is_none());
+    assert!(args.language.is_none());
+    assert!(args.where_filters.is_empty());
+    assert!(args.facet.is_none());
+    assert_eq!(args.group_by, "language_pattern_capture");
+    assert_eq!(args.limit, 50);
+}
+
+#[test]
+fn test_patterns_full_cli_preserves_tool_workspace_and_format() {
+    use crate::cli::{Cli, Command};
+
+    let cli = Cli::try_parse_from([
+        "julie-server",
+        "patterns",
+        "--workspace",
+        "target-workspace",
+        "--format",
+        "json",
+    ])
+    .unwrap();
+    assert_eq!(
+        cli.workspace.as_deref(),
+        Some(std::path::Path::new("target-workspace"))
+    );
+    assert_eq!(cli.tool_flags.format, Some(OutputFormat::Json));
+    let Command::Patterns(args) = cli.command.unwrap() else {
+        panic!("expected Patterns");
+    };
+
+    assert_eq!(args.operation, "list");
+}
+
 // ---------------------------------------------------------------------------
 // refs
 // ---------------------------------------------------------------------------

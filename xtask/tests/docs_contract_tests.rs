@@ -200,6 +200,11 @@ fn public_tool_names() -> BTreeSet<String> {
     names
 }
 
+#[test]
+fn docs_contract_tests_public_surface_includes_patterns() {
+    assert!(public_tool_names().contains("patterns"));
+}
+
 fn extract_tool_names(section: &str) -> BTreeSet<String> {
     let marker = "class=\"tool-name\">";
     let mut names = BTreeSet::new();

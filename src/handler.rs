@@ -2549,6 +2549,7 @@ impl JulieServerHandler {
             + Self::tool_router_spillover_get()
             + Self::tool_router_rename_symbol()
             + Self::tool_router_manage_workspace()
+            + Self::tool_router_patterns()
             + Self::tool_router_edit_file()
             + Self::tool_router_rewrite_symbol()
     }
