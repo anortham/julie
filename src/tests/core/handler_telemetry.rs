@@ -889,3 +889,29 @@ fn test_patterns_metadata_carries_query_filters_and_workspace() {
     assert_eq!(metadata["format"], "json");
     assert_eq!(metadata["target"]["target_file_path"], "src/**");
 }
+
+#[test]
+fn test_fast_search_metadata_serializes_source_region_filtering() {
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        0,
+        "fast_search_regions",
+        SearchExecutionKind::Content {
+            workspace_label: Some("workspace-a".to_string()),
+            file_level: false,
+        },
+    );
+    execution.trace.zero_hit_reason = Some(ZeroHitReason::RegionFiltered);
+
+    let metadata = search_telemetry::fast_search_metadata_with_regions(
+        &search_tool("needle", "content"),
+        Some("comment,docstring"),
+        Some(&execution),
+    );
+
+    assert_eq!(metadata["regions"], "comment,docstring");
+    assert_eq!(metadata["region_filtered"], true);
+    assert_eq!(metadata["trace"]["region_filtered"], true);
+    assert_eq!(metadata["trace"]["zero_hit_reason"], "region_filtered");
+}

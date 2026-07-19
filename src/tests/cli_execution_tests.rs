@@ -74,6 +74,7 @@ fn test_search_args_tool_name() {
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        regions: None,
         target: None,
     };
     assert_eq!(args.tool_name(), "fast_search");
@@ -172,6 +173,7 @@ fn test_search_to_tool_args_minimal() {
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        regions: None,
         target: None,
     };
     let json = args.to_tool_args().unwrap();
@@ -194,6 +196,7 @@ fn test_search_to_tool_args_full() {
         file_pattern: Some("src/**/*.rs".into()),
         context_lines: Some(3),
         exclude_tests: true,
+        regions: Some("comment,docstring".into()),
         target: None,
     };
     let json = args.to_tool_args().unwrap();
@@ -205,6 +208,7 @@ fn test_search_to_tool_args_full() {
     assert_eq!(json["file_pattern"], "src/**/*.rs");
     assert_eq!(json["context_lines"], 3);
     assert_eq!(json["exclude_tests"], true);
+    assert_eq!(json["regions"], "comment,docstring");
 }
 
 #[test]
@@ -514,6 +518,7 @@ async fn test_run_cli_tool_standalone_definition_search_uses_bootstrapped_index(
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        regions: None,
         target: None,
     };
 
@@ -557,6 +562,7 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        regions: None,
         target: None,
     };
 

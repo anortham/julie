@@ -600,6 +600,7 @@ fn test_full_depth_output_under_token_budget() {
 
     let ctx = SymbolContext {
         symbol: sym,
+        complexity: None,
         incoming,
         incoming_total: 50,
         incoming_calls_total: 50,
@@ -666,6 +667,7 @@ fn test_overview_depth_under_token_budget() {
 
     let ctx = SymbolContext {
         symbol: sym,
+        complexity: None,
         incoming,
         incoming_total: 20,
         incoming_calls_total: 20,

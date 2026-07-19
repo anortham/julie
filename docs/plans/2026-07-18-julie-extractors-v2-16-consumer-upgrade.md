@@ -61,12 +61,14 @@ Baseline evidence already collected on clean `d3dcda40c16a8f93b2dc4a9de9bd20ac62
 | Task 1: Pin and lock v2.16 | None - serial | Root/workspace Cargo manifests, `Cargo.lock`, engine-version stamp, dependency contract test | Yes | Establishes the exact upstream types and lockfile used by every later task. |
 | Task 2: Add canonical enrichment storage | None - serial | `julie-core` schema, migrations, bulk write/cleanup/query modules, core persistence tests | Yes | Defines the database and `CanonicalWriteSet` contracts consumed by all writers and tools. |
 | Task 3: Unify extraction writers | None - serial | `julie-pipeline` normalization/batch extraction, runtime watcher adapter, external-extract and indexing tests/fixture | Yes | Requires Task 2's write shape and must land before any consumer tool can query real indexed data. |
-| Task 4: Add the `patterns` tool | Batch A | Structural-fact tool module, handler/router, CLI command, tool metadata/docs-contract tests | No | None - safe parallel batch. |
-| Task 5: Add region-scoped `fast_search` | Batch A | Fast-search wire params, source-region line-search path, region tests and telemetry | No | None - safe parallel batch. |
+| Task 4: Add the `patterns` tool | None - serial | Structural-fact tool module, handler/router, CLI command, tool metadata/docs-contract tests | Yes | Shares CLI routing with Task 5 and the root test registry with Task 6, so it lands first. |
+| Task 5: Add region-scoped `fast_search` | Batch A | Fast-search wire params, source-region line-search path, region tests and telemetry | No | Starts after Task 4; then disjoint from Task 6. |
 | Task 6: Add complexity to `deep_dive` | Batch A | Deep-dive data/formatting and complexity tests | No | None - safe parallel batch. |
 | Task 7: Synchronize docs and run branch gates | None - serial | Current product/dependency/extraction docs, TODO closure, verification ledger | Yes | Requires all code slices and their final public contracts. |
 
-Tasks 1–3 and 7 use `serial-worker-commit`. Tasks 4–6 use `parallel-lead-commit`; workers hand verified diffs to the lead, and the lead reviews, stages, and commits the combined non-overlapping batch.
+Tasks 1–4 and 7 use `serial-worker-commit`. Tasks 5 and 6 use
+`parallel-lead-commit`; their workers hand verified diffs to the lead, and the
+lead reviews, stages, and commits the non-overlapping Batch A changes.
 
 ### Task 1: Pin and lock `julie-extractors` v2.16.0
 
@@ -897,6 +899,7 @@ Expected: PASS; record selected buckets and duration.
 - Create: `src/handler/tools/patterns.rs`
 - Create: `src/tests/tools/patterns.rs`
 - Modify: `crates/julie-tools/src/lib.rs:17-29`
+- Modify: `crates/julie-test-support/src/fake_tool_context.rs` (distinct target-workspace DB fixtures)
 - Modify: `src/tools/mod.rs:20-36`
 - Modify: `src/handler/tools/mod.rs`
 - Modify: `src/handler.rs:2541-2554`
@@ -907,9 +910,11 @@ Expected: PASS; record selected buckets and duration.
 - Modify: `src/cli_tools/mod.rs`
 - Modify: `src/cli.rs:30-59`
 - Modify: `src/main.rs`
-- Modify: `src/tests/tools/mod.rs`
+- Modify: `src/tests/mod.rs`
 - Modify: `src/tests/cli_tools_tests.rs`
 - Modify: `src/tests/core/handler_telemetry.rs`
+- Modify: `xtask/test_tiers.toml` (register source-region tests in the full search gate)
+- Modify: `xtask/tests/support/manifest_contract_expected.rs` (sync exact test-manifest contract)
 - Modify: `xtask/tests/docs_contract_tests.rs:168-217`
 
 **Interfaces:**
@@ -1114,7 +1119,9 @@ Compose `Self::tool_router_patterns()` in `tool_router`, add `PatternsArgs` and
 `impl CliToolCommand`, dispatch `"patterns"` in the generic CLI, and include
 `patterns` in `public_tool_names()`. Named CLI flags mirror every field:
 `--operation`, `--pattern-id`, `--query`, `--path`, `--language`, repeated
-`--where`, `--facet`, `--group-by`, `--limit`, `--workspace`, and `--format`.
+`--where`, `--facet`, `--group-by`, and `--limit`; reuse the existing global
+`--workspace` and `--format` flags rather than redeclaring duplicate clap
+options. MCP and generic JSON keep every `PatternsTool` field.
 
 **Step 5: Run checks and exact tests**
 
@@ -1132,16 +1139,16 @@ Expected: PASS.
 
 **Step 6: Apply commit mode**
 
-- `parallel-lead-commit`: do not commit. Hand the owned diff and exact-test
-  output to the lead for inline review and batch commit.
+- `serial-worker-commit`: commit only the owned files with
+  `feat(patterns): expose structural facts` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] MCP and standalone CLI expose the same `patterns` contract.
-- [ ] List, summary, exact search, substring search, path/language filters, metadata AND filters, facet, limits, compact, and JSON work.
-- [ ] Unknown or malformed inputs return invalid-parameter errors.
-- [ ] Workspace routing never crosses the selected workspace.
-- [ ] Exact tests and `cargo check` pass.
-- [ ] The verified diff is handed to the lead without a worker commit.
+- [x] MCP and standalone CLI expose the same `patterns` contract.
+- [x] List, summary, exact search, substring search, path/language filters, metadata AND filters, facet, limits, compact, and JSON work.
+- [x] Unknown or malformed inputs return invalid-parameter errors.
+- [x] Workspace routing never crosses the selected workspace.
+- [x] Exact tests and `cargo check` pass.
+- [x] The worker commits and lead-reviewed follow-up are recorded.
 
 ### Task 5: Add source-region filtering to `fast_search`
 
@@ -1157,6 +1164,8 @@ Expected: PASS.
 - Modify: `src/cli_tools/subcommands.rs`
 - Modify: `src/cli_tools/commands.rs:119-166`
 - Modify: `src/cli_tools/generic.rs`
+- Modify: `src/tests/cli_execution_tests.rs` (mechanical `SearchArgs.regions: None` updates)
+- Modify: `src/tests/cli_tools_tests.rs` (mechanical `SearchArgs.regions: None` updates)
 - Modify: `src/tests/tools/search/mod.rs:14-29`
 - Modify: `src/tests/core/handler_telemetry.rs`
 
@@ -1362,13 +1371,13 @@ Expected: PASS.
   output to the lead for inline review and batch commit.
 
 **Acceptance criteria:**
-- [ ] Region requests search only stored source spans and return exact matching lines.
-- [ ] All four kinds and the `docstring` alias parse exactly.
-- [ ] Ordinary fast search output, fallback, ranking, and struct literals remain unchanged.
-- [ ] Semantic/hybrid plus regions is rejected clearly.
-- [ ] Target-workspace isolation and telemetry are covered.
-- [ ] Exact tests and `cargo check` pass.
-- [ ] The verified diff is handed to the lead without a worker commit.
+- [x] Region requests search only stored source spans and return exact matching lines.
+- [x] All four kinds and the `docstring` alias parse exactly.
+- [x] Ordinary fast search output, fallback, ranking, and struct literals remain unchanged.
+- [x] Semantic/hybrid plus regions is rejected clearly.
+- [x] Target-workspace isolation and telemetry are covered.
+- [x] Exact tests and `cargo check` pass.
+- [x] The verified diff is handed to the lead without a worker commit.
 
 ### Task 6: Show complexity metrics in `deep_dive`
 
@@ -1379,7 +1388,7 @@ Expected: PASS.
 - Modify: `crates/julie-tools/src/tests/deep_dive_regression_tests.rs:111-125`
 - Modify: `crates/julie-tools/src/tests/deep_dive_tests/formatting_tests.rs:50-64`
 - Modify: `crates/julie-tools/src/tests/deep_dive_tests/formatting_tests/refs_quality_budget.rs`
-- Modify: `src/tests/tools/mod.rs`
+- Modify: `src/tests/mod.rs`
 
 **Interfaces:**
 - Consumes: Task 2's `get_complexity_metric_for_symbol`.
@@ -1521,12 +1530,12 @@ Expected: PASS; record selected buckets and duration.
   `feat(tools): expose extractor enrichments`.
 
 **Acceptance criteria:**
-- [ ] Deep dive shows exact stored counts for a selected symbol.
-- [ ] Symbols without metrics have no empty or placeholder line.
-- [ ] All depths use the same compact line.
-- [ ] Existing token budgets remain green.
+- [x] Deep dive shows exact stored counts for a selected symbol.
+- [x] Symbols without metrics have no empty or placeholder line.
+- [x] All depths use the same compact line.
+- [x] Existing token budgets remain green.
 - [ ] Exact tests, `cargo check`, and lead `changed` gate pass.
-- [ ] The verified diff is handed to the lead without a worker commit.
+- [x] The verified diff is handed to the lead without a worker commit.
 
 ### Task 7: Synchronize shipped docs and run final gates
 

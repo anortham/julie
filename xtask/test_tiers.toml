@@ -137,6 +137,7 @@ commands = [
   "cargo nextest run -j 1 --lib tests::tools::search::line_mode::filters -- --skip search_quality",
   "cargo nextest run -j 1 --lib tests::tools::search::line_mode_or_fallback_tests -- --skip search_quality",
   "cargo nextest run -j 1 --lib tests::tools::search::line_mode_second_pass_tests -- --skip search_quality",
+  "cargo nextest run -j 1 --lib tests::tools::search::source_regions -- --skip search_quality",
 ]
 
 [buckets.tools-search-line-primary]

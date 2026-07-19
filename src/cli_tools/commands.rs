@@ -139,21 +139,27 @@ impl CliToolCommand for SearchArgs {
         if self.exclude_tests {
             args["exclude_tests"] = Value::Bool(true);
         }
+        if let Some(ref regions) = self.regions {
+            args["regions"] = Value::String(regions.clone());
+        }
 
         Ok(args)
     }
 
     async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use crate::tools::search::FastSearchTool;
+        use crate::tools::search::{FastSearchParams, FastSearchTool};
 
-        let tool = FastSearchTool {
-            query: self.query.clone(),
-            limit: self.limit,
-            language: self.language.clone(),
-            file_pattern: self.file_pattern.clone(),
-            context_lines: self.context_lines,
-            exclude_tests: if self.exclude_tests { Some(true) } else { None },
-            ..Default::default()
+        let tool = FastSearchParams {
+            search: FastSearchTool {
+                query: self.query.clone(),
+                limit: self.limit,
+                language: self.language.clone(),
+                file_pattern: self.file_pattern.clone(),
+                context_lines: self.context_lines,
+                exclude_tests: if self.exclude_tests { Some(true) } else { None },
+                ..Default::default()
+            },
+            regions: self.regions.clone(),
         };
         tool.call_tool(handler).await
     }

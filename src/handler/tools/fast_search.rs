@@ -8,7 +8,7 @@ use tracing::debug;
 
 use crate::handler::tools::error::classify_tool_failure;
 use crate::handler::{JulieServerHandler, search_telemetry};
-use crate::tools::FastSearchTool;
+use crate::tools::search::FastSearchParams;
 use crate::tools::metrics::session::ToolCallReport;
 use crate::handler::workspace_resolution::resolve_workspace_filter;
 
@@ -16,7 +16,7 @@ use crate::handler::workspace_resolution::resolve_workspace_filter;
 impl JulieServerHandler {
     #[tool(
         name = "fast_search",
-        description = "Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional `backend`: omitted/default lexical returns mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit `lexical` stays pure lexical; `semantic` and `hybrid` are symbol-only concept search. Use lexical for file/path queries.",
+        description = "Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional `regions` restricts lexical line matches to stored comment, doc_comment/docstring, string_literal, or embedded spans. Optional `backend`: omitted/default lexical returns mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit `lexical` stays pure lexical; `semantic` and `hybrid` are symbol-only concept search. Use lexical for file/path or region queries.",
         annotations(
             title = "Fast Code Search",
             read_only_hint = true,
@@ -27,7 +27,7 @@ impl JulieServerHandler {
     )]
     async fn fast_search(
         &self,
-        Parameters(params): Parameters<FastSearchTool>,
+        Parameters(params): Parameters<FastSearchParams>,
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast search: {:?}", params);
         let start = std::time::Instant::now();
@@ -36,10 +36,14 @@ impl JulieServerHandler {
         // and the actual tool call below, so bad workspace_id surfaces as
         // invalid_params before any other work happens.
         let workspace_target =
-            match resolve_workspace_filter(params.workspace.as_deref(), self).await {
+            match resolve_workspace_filter(params.search.workspace.as_deref(), self).await {
                 Ok(target) => target,
                 Err(e) => {
-                    let metadata = search_telemetry::fast_search_metadata(&params, None);
+                    let metadata = search_telemetry::fast_search_metadata_with_regions(
+                        &params.search,
+                        params.regions.as_deref(),
+                        None,
+                    );
                     let message = format!("fast_search failed: {}", e);
                     self.record_tool_failure(
                         "fast_search",
@@ -63,7 +67,11 @@ impl JulieServerHandler {
         {
             Ok(executed) => executed,
             Err(e) => {
-                let metadata = search_telemetry::fast_search_metadata(&params, None);
+                let metadata = search_telemetry::fast_search_metadata_with_regions(
+                    &params.search,
+                    params.regions.as_deref(),
+                    None,
+                );
                 let message = format!("fast_search failed: {}", e);
                 self.record_tool_failure(
                     "fast_search",
@@ -77,7 +85,11 @@ impl JulieServerHandler {
                 return Err(classify_tool_failure("fast_search", &e));
             }
         };
-        let metadata = search_telemetry::fast_search_metadata(&params, executed.execution.as_ref());
+        let metadata = search_telemetry::fast_search_metadata_with_regions(
+            &params.search,
+            params.regions.as_deref(),
+            executed.execution.as_ref(),
+        );
         let result = executed.result;
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths =

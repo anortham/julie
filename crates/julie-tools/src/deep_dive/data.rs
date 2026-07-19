@@ -19,6 +19,8 @@ use julie_core::shared::NOISE_CALLEE_NAMES;
 pub struct SymbolContext {
     /// The primary symbol being investigated
     pub symbol: Symbol,
+    /// Extractor-provided structural complexity metric
+    pub complexity: Option<julie_extractors::base::ComplexityMetric>,
     /// Incoming references: who calls/uses this symbol
     pub incoming: Vec<RefEntry>,
     /// Total incoming before capping
@@ -308,6 +310,7 @@ pub fn build_symbol_context(
     } else {
         symbol.clone()
     };
+    let complexity = db.get_complexity_metric_for_symbol(&symbol.id)?;
 
     // === Test locations (context and full depth) ===
     let test_refs = if depth == "full" || depth == "context" {
@@ -325,6 +328,7 @@ pub fn build_symbol_context(
 
     Ok(SymbolContext {
         symbol,
+        complexity,
         incoming,
         incoming_total,
         incoming_calls_total,

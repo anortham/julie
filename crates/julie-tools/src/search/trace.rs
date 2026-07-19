@@ -262,6 +262,8 @@ pub enum ZeroHitReason {
     FileContentUnavailable,
     /// Line-level post-processing did not match any content lines.
     LineMatchMiss,
+    /// Query-matching lines existed, but none were inside requested source regions.
+    RegionFiltered,
 }
 
 /// Root-cause diagnostics for `file_pattern`-specific content zero-hits.

@@ -39,7 +39,8 @@ pub async fn dispatch_generic_tool(
 ) -> Result<CallToolResult> {
     match name {
         "fast_search" => {
-            let tool: crate::tools::FastSearchTool = deserialize_params(name, params)?;
+            let tool: crate::tools::search::FastSearchParams =
+                deserialize_params(name, params)?;
             tool.call_tool(handler).await
         }
         "fast_refs" => {

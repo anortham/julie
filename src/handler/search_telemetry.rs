@@ -7,11 +7,24 @@ use crate::tools::search::trace::SearchExecutionResult;
 
 const TRACE_VERSION: &str = "fast_search_trace_v1";
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn fast_search_metadata(
     params: &FastSearchTool,
     execution: Option<&SearchExecutionResult>,
 ) -> Value {
+    fast_search_metadata_with_regions(params, None, execution)
+}
+
+pub(crate) fn fast_search_metadata_with_regions(
+    params: &FastSearchTool,
+    regions: Option<&str>,
+    execution: Option<&SearchExecutionResult>,
+) -> Value {
     let intent = infer_intent(&params.query);
+    let region_filtered = execution.is_some_and(|result| {
+        result.trace.zero_hit_reason
+            == Some(crate::tools::search::ZeroHitReason::RegionFiltered)
+    });
     let trace = execution.map(|result| {
         let kind_distribution = compute_kind_distribution(result);
         json!({
@@ -37,6 +50,8 @@ pub(crate) fn fast_search_metadata(
             "scope_rescue_count": result.trace.scope_rescue_count,
             "or_disjunction_detected": result.trace.or_disjunction_detected,
             "backend_fallback": result.trace.backend_fallback,
+            "region_filtered": result.trace.zero_hit_reason
+                == Some(crate::tools::search::ZeroHitReason::RegionFiltered),
             "kind_distribution": kind_distribution,
         })
     });
@@ -49,6 +64,8 @@ pub(crate) fn fast_search_metadata(
         "limit": params.effective_limit(),
         "exclude_tests": params.exclude_tests,
         "workspace": params.workspace,
+        "regions": regions,
+        "region_filtered": region_filtered,
         "intent": intent,
         "trace_version": TRACE_VERSION,
         "trace": trace,

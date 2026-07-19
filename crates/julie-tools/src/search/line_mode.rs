@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 
 use julie_core::database::SymbolDatabase;
+use julie_extractors::base::SourceRegion;
 use julie_index::search::SearchFilter;
 use julie_index::search::index::SearchIndex;
 use julie_index::search::query_parse::{QueryIntent, parse_query};
@@ -20,6 +21,7 @@ use super::query::{
     line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
     term_matches_line, tokenize_text_for_line_match,
 };
+use super::regions::SourceRegionFilter;
 use super::trace::{FilePatternDiagnostic, ZeroHitReason};
 use super::types::{LineMatch, LineMatchStrategy};
 
@@ -77,6 +79,8 @@ pub struct LineModeStageCounts {
     pub file_content_unavailable_dropped: usize,
     /// Files that passed every filter but produced zero line-level matches.
     pub line_match_miss_dropped: usize,
+    /// Files with line matches only outside the requested source regions.
+    pub region_dropped: usize,
 }
 
 pub fn effective_content_exclude_tests(
@@ -237,6 +241,7 @@ fn collect_matches_from_file_results(
     exclude_test_files: bool,
     match_strategy: &LineMatchStrategy,
     base_limit: usize,
+    region_filter: Option<&SourceRegionFilter>,
 ) -> Result<(Vec<LineMatch>, LineModeStageCounts, bool)> {
     let mut counts = LineModeStageCounts::default();
     let mut matches = Vec::new();
@@ -273,15 +278,25 @@ fn collect_matches_from_file_results(
         match db.get_file_content(&file_result.file_path)? {
             Some(content) => {
                 let before = matches.len();
-                collect_line_matches(
+                let allowed_regions = region_filter
+                    .map(|filter| {
+                        db.get_source_regions_for_file(&file_result.file_path, &filter.0)
+                    })
+                    .transpose()?;
+                let region_filtered = collect_line_matches_filtered(
                     &mut matches,
                     &content,
                     &file_result.file_path,
                     match_strategy,
                     base_limit,
+                    allowed_regions.as_deref(),
                 );
                 if matches.len() == before {
-                    counts.line_match_miss_dropped += 1;
+                    if region_filtered {
+                        counts.region_dropped += 1;
+                    } else {
+                        counts.line_match_miss_dropped += 1;
+                    }
                 }
             }
             None => {
@@ -327,6 +342,7 @@ where
         counts.test_dropped = collected_counts.test_dropped;
         counts.file_content_unavailable_dropped = collected_counts.file_content_unavailable_dropped;
         counts.line_match_miss_dropped = collected_counts.line_match_miss_dropped;
+        counts.region_dropped = collected_counts.region_dropped;
 
         let zero_hit_reason = if matches.is_empty() {
             attribute_zero_hit_reason(&counts)
@@ -375,6 +391,7 @@ fn run_line_mode_workspace_fetch(
     language: Option<String>,
     exclude_test_files: bool,
     base_limit: usize,
+    region_filter: Option<&SourceRegionFilter>,
 ) -> Result<LineModeFetchOutcome> {
     let has_file_filter = file_pattern.is_some();
     // The file_pattern filter is applied externally below in
@@ -419,6 +436,7 @@ fn run_line_mode_workspace_fetch(
                 exclude_test_files,
                 &match_strategy,
                 base_limit,
+                region_filter,
             )
         },
         file_pattern.as_deref(),
@@ -442,6 +460,7 @@ fn run_line_mode_with_scope_rescue(
     language: Option<String>,
     exclude_test_files: bool,
     base_limit: usize,
+    region_filter: Option<&SourceRegionFilter>,
 ) -> Result<LineModeScopedOutcome> {
     let first = run_line_mode_workspace_fetch(
         db,
@@ -452,6 +471,7 @@ fn run_line_mode_with_scope_rescue(
         language.clone(),
         exclude_test_files,
         base_limit,
+        region_filter,
     )?;
 
     let zero_hit_reason = if first.matches.is_empty() {
@@ -475,6 +495,7 @@ fn run_line_mode_with_scope_rescue(
             language,
             exclude_test_files,
             base_limit,
+            region_filter,
         )?;
 
         if !fallback.matches.is_empty() {
@@ -497,7 +518,7 @@ fn run_line_mode_with_scope_rescue(
 /// stage that drained the surviving candidate set to zero.
 ///
 /// The walk is top-down: Tantivy → file_pattern → language → test →
-/// content-available → line-match. The first stage where
+/// content-available → line-match → source-region. The first stage where
 /// `count_before > 0 && count_after == 0` wins. Returns `None` if the
 /// pipeline never had any candidates at all AND no single filter stage
 /// drained it (which happens only when the query tokenises to zero
@@ -554,6 +575,14 @@ pub fn attribute_zero_hit_reason(counts: &LineModeStageCounts) -> Option<ZeroHit
         return Some(ZeroHitReason::LineMatchMiss);
     }
 
+    // Stage 6: source-region filter. These files had query-matching lines,
+    // but every matching line was outside the requested stored spans.
+    let before_region = surviving;
+    surviving = surviving.saturating_sub(counts.region_dropped);
+    if before_region > 0 && surviving == 0 {
+        return Some(ZeroHitReason::RegionFiltered);
+    }
+
     // Pipeline had candidates that survived every drop counter but still
     // `matches.is_empty()` at the top level. That can happen when the
     // caller's `limit` was 0 (no files walked) or a future stage is added
@@ -577,6 +606,52 @@ pub async fn line_mode_matches(
     workspace_target: &WorkspaceTarget,
     handler: &dyn ToolContext,
 ) -> Result<LineModeSearchResult> {
+    line_mode_matches_with_regions(
+        query,
+        language,
+        file_pattern,
+        limit,
+        exclude_tests,
+        workspace_target,
+        handler,
+        None,
+    )
+    .await
+}
+
+pub async fn line_mode_matches_in_regions(
+    query: &str,
+    language: &Option<String>,
+    file_pattern: &Option<String>,
+    limit: u32,
+    exclude_tests: Option<bool>,
+    workspace_target: &WorkspaceTarget,
+    handler: &dyn ToolContext,
+    region_filter: &SourceRegionFilter,
+) -> Result<LineModeSearchResult> {
+    line_mode_matches_with_regions(
+        query,
+        language,
+        file_pattern,
+        limit,
+        exclude_tests,
+        workspace_target,
+        handler,
+        Some(region_filter.clone()),
+    )
+    .await
+}
+
+async fn line_mode_matches_with_regions(
+    query: &str,
+    language: &Option<String>,
+    file_pattern: &Option<String>,
+    limit: u32,
+    exclude_tests: Option<bool>,
+    workspace_target: &WorkspaceTarget,
+    handler: &dyn ToolContext,
+    region_filter: Option<SourceRegionFilter>,
+) -> Result<LineModeSearchResult> {
     debug!("📄 Line-level search for: '{}'", query);
 
     let exclude_test_files = effective_content_exclude_tests(query, file_pattern, exclude_tests);
@@ -593,6 +668,7 @@ pub async fn line_mode_matches(
             let match_strategy = match_strategy.clone();
             let file_pattern_clone = file_pattern.clone();
             let language_clone = language.clone();
+            let region_filter_clone = region_filter.clone();
 
             tokio::task::spawn_blocking(move || {
                 run_line_mode_with_scope_rescue(
@@ -604,6 +680,7 @@ pub async fn line_mode_matches(
                     language_clone,
                     exclude_test_files,
                     base_limit,
+                    region_filter_clone.as_ref(),
                 )
             })
             .await??
@@ -620,6 +697,7 @@ pub async fn line_mode_matches(
             let strategy = match_strategy.clone();
             let ref_file_pattern = file_pattern.clone();
             let ref_language = language.clone();
+            let region_filter_clone = region_filter.clone();
 
             tokio::task::spawn_blocking(move || -> Result<LineModeScopedOutcome> {
                 let search_index = match si_arc {
@@ -642,6 +720,7 @@ pub async fn line_mode_matches(
                     ref_language,
                     exclude_test_files,
                     base_limit,
+                    region_filter_clone.as_ref(),
                 )
             })
             .await
@@ -698,10 +777,36 @@ pub fn collect_line_matches(
     strategy: &LineMatchStrategy,
     max_results: usize,
 ) {
+    collect_line_matches_filtered(
+        destination,
+        content,
+        file_path,
+        strategy,
+        max_results,
+        None,
+    );
+}
+
+fn line_is_in_allowed_region(line_number: usize, regions: &[SourceRegion]) -> bool {
+    let line_number = line_number as u32;
+    regions
+        .iter()
+        .any(|region| region.start_line <= line_number && line_number <= region.end_line)
+}
+
+fn collect_line_matches_filtered(
+    destination: &mut Vec<LineMatch>,
+    content: &str,
+    file_path: &str,
+    strategy: &LineMatchStrategy,
+    max_results: usize,
+    allowed_regions: Option<&[SourceRegion]>,
+) -> bool {
     if destination.len() >= max_results {
-        return;
+        return false;
     }
 
+    let mut matched_outside_regions = false;
     match strategy {
         LineMatchStrategy::FileLevel { terms } => {
             // Density-based ranking for FileLevel: collect ALL matched lines,
@@ -716,7 +821,7 @@ pub fn collect_line_matches(
                     .collect()
             };
             if deduped_terms.is_empty() {
-                return;
+                return false;
             }
 
             let mut scratch: Vec<(usize, usize, LineMatch)> = Vec::new();
@@ -727,6 +832,12 @@ pub fn collect_line_matches(
                     .filter(|t| term_matches_line(t, line, &line_tokens))
                     .count();
                 if density > 0 {
+                    if allowed_regions.is_some_and(|regions| {
+                        !line_is_in_allowed_region(line_idx + 1, regions)
+                    }) {
+                        matched_outside_regions = true;
+                        continue;
+                    }
                     scratch.push((
                         density,
                         line_idx,
@@ -749,6 +860,12 @@ pub fn collect_line_matches(
             // Substring and Tokens: preserve source order with early break
             for (line_idx, line) in content.lines().enumerate() {
                 if line_matches(strategy, line) {
+                    if allowed_regions.is_some_and(|regions| {
+                        !line_is_in_allowed_region(line_idx + 1, regions)
+                    }) {
+                        matched_outside_regions = true;
+                        continue;
+                    }
                     destination.push(LineMatch {
                         file_path: file_path.to_string(),
                         line_number: line_idx + 1,
@@ -762,4 +879,5 @@ pub fn collect_line_matches(
             }
         }
     }
+    matched_outside_regions
 }

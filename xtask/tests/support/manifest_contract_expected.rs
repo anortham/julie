@@ -380,11 +380,12 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 150,
                 timeout_seconds: 240,
                 commands: &[
-                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode::filters -- --skip search_quality",
-                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode_or_fallback_tests -- --skip search_quality",
-                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode_second_pass_tests -- --skip search_quality",
-                ],
-            },
+                        "cargo nextest run -j 1 --lib tests::tools::search::line_mode::filters -- --skip search_quality",
+                        "cargo nextest run -j 1 --lib tests::tools::search::line_mode_or_fallback_tests -- --skip search_quality",
+                        "cargo nextest run -j 1 --lib tests::tools::search::line_mode_second_pass_tests -- --skip search_quality",
+                        "cargo nextest run -j 1 --lib tests::tools::search::source_regions -- --skip search_quality",
+                    ],
+                },
         ),
         (
             "tools-search-line-primary",

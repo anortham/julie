@@ -96,6 +96,10 @@ pub struct SearchArgs {
     #[arg(short = 'T', long)]
     pub exclude_tests: bool,
 
+    /// Restrict content matches to stored source-region kinds.
+    #[arg(long)]
+    pub regions: Option<String>,
+
     /// Deprecated and accepted as a no-op since T8 unified-search cutover.
     /// Older harnesses (e.g. the eros bakeoff comparator) still pass
     /// `--target definitions|files|content`; we keep the flag so they can run

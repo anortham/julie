@@ -6,6 +6,8 @@
 //! - Struct/Class: fields, methods, used by
 //! - Module/Namespace: public exports
 
+use std::fmt::Write;
+
 use julie_extractors::base::{RelationshipKind, SymbolKind};
 use julie_core::token_estimation::TokenEstimator;
 
@@ -17,6 +19,7 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
 
     // === Header: location + kind + visibility + signature ===
     format_header(&mut out, ctx);
+    format_complexity(&mut out, ctx);
 
     // === Kind-specific body ===
     match ctx.symbol.kind {
@@ -101,6 +104,26 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
     }
 
     result.trim_end().to_string()
+}
+
+fn format_complexity(out: &mut String, ctx: &SymbolContext) {
+    let Some(metric) = &ctx.complexity else {
+        return;
+    };
+    let params = metric
+        .parameter_count
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    writeln!(
+        out,
+        "complexity: decisions={} loops={} nesting={} params={} lines={}",
+        metric.decision_count,
+        metric.loop_count,
+        metric.max_nesting_depth,
+        params,
+        metric.covered_lines,
+    )
+    .unwrap();
 }
 
 fn format_header(out: &mut String, ctx: &SymbolContext) {

@@ -50,6 +50,7 @@ fn make_ref(kind: RelationshipKind, file: &str, line: u32, sym: Option<Symbol>) 
 fn empty_context(symbol: Symbol) -> SymbolContext {
     SymbolContext {
         symbol,
+        complexity: None,
         incoming: vec![],
         incoming_total: 0,
         incoming_calls_total: 0,

@@ -34,6 +34,7 @@ fn test_search_defaults() {
     assert!(args.file_pattern.is_none());
     assert!(args.context_lines.is_none());
     assert!(!args.exclude_tests);
+    assert!(args.regions.is_none());
 }
 
 #[test]
@@ -50,6 +51,8 @@ fn test_search_all_flags() {
         "--context-lines",
         "3",
         "--exclude-tests",
+        "--regions",
+        "comment,docstring",
     ]);
     assert_eq!(args.query, "parse_token");
     assert_eq!(args.limit, 20);
@@ -57,6 +60,7 @@ fn test_search_all_flags() {
     assert_eq!(args.file_pattern.as_deref(), Some("src/**/*.rs"));
     assert_eq!(args.context_lines, Some(3));
     assert!(args.exclude_tests);
+    assert_eq!(args.regions.as_deref(), Some("comment,docstring"));
 }
 
 #[test]

@@ -60,6 +60,7 @@ pub mod tools {
     pub mod get_symbols_target_workspace; // GetSymbolsTool target-workspace bug test
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
     pub mod patterns;
+    pub mod deep_dive_complexity;
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)
 
     pub mod editing; // EditingTransaction tests (used by rename_symbol)

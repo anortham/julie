@@ -29,6 +29,7 @@ pub mod line_mode;
 pub mod nl_embeddings;
 pub mod query;
 pub mod query_preprocessor; // Public for testing
+pub mod regions;
 pub mod text_search;
 pub mod trace;
 mod types;
@@ -53,7 +54,7 @@ const MAX_LIMIT: u32 = 500;
 //   Search Tools   //
 //******************//
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 /// Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional backend: omitted/default lexical returns mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit "lexical" stays pure lexical; "semantic" and "hybrid" are symbol-only concept search. Use lexical for file/path queries.
 pub struct FastSearchTool {
     /// Search query. Exact symbol names, file path fragments, and natural-language descriptions all work. Too many results? Add file_pattern or language filter. Zero lexical results may show labeled semantic fallback candidates for identifier-like queries when backend is omitted and embeddings are ready. Still zero? Run manage_workspace(operation="index")
@@ -93,6 +94,24 @@ pub struct FastSearchTool {
     /// Return format: "full" (default, code context and rich summaries) or "locations" (file:line only)
     #[serde(default = "default_return_format")]
     pub return_format: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct FastSearchParams {
+    #[serde(flatten)]
+    pub search: FastSearchTool,
+    /// Restrict line-level lexical matches to stored source-region kinds.
+    #[serde(default)]
+    pub regions: Option<String>,
+}
+
+impl From<FastSearchTool> for FastSearchParams {
+    fn from(search: FastSearchTool) -> Self {
+        Self {
+            search,
+            regions: None,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -211,6 +230,154 @@ impl Default for FastSearchTool {
 pub struct FastSearchExecution {
     pub result: CallToolResult,
     pub execution: Option<SearchExecutionResult>,
+}
+
+impl FastSearchParams {
+    pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
+        self.execute_with_trace(handler).await.map(|run| run.result)
+    }
+
+    pub async fn execute_with_trace(
+        &self,
+        handler: &dyn ToolContext,
+    ) -> Result<FastSearchExecution> {
+        if self.regions.is_none() {
+            return self.search.execute_with_trace(handler).await;
+        }
+        let workspace_target = self.search.resolve_workspace_filter(handler).await?;
+        self.execute_with_trace_with_target(handler, workspace_target)
+            .await
+    }
+
+    pub async fn execute_with_trace_with_target(
+        &self,
+        handler: &dyn ToolContext,
+        workspace_target: WorkspaceTarget,
+    ) -> Result<FastSearchExecution> {
+        let Some(regions) = self.regions.as_deref() else {
+            return self
+                .search
+                .execute_with_trace_with_target(handler, workspace_target)
+                .await;
+        };
+        if matches!(
+            self.search.backend,
+            Some(SearchBackend::Semantic | SearchBackend::Hybrid)
+        ) {
+            anyhow::bail!(
+                "regions require lexical search; semantic and hybrid backends search symbols"
+            );
+        }
+
+        let region_filter = regions::SourceRegionFilter::parse(regions)?;
+        let line_result = line_mode::line_mode_matches_in_regions(
+            &self.search.query,
+            &self.search.language,
+            &self.search.file_pattern,
+            self.search.effective_limit(),
+            self.search.exclude_tests,
+            &workspace_target,
+            handler,
+            &region_filter,
+        )
+        .await?;
+        let workspace_label = match &workspace_target {
+            WorkspaceTarget::Primary => handler
+                .require_primary_workspace_identity()
+                .unwrap_or_else(|_| "primary".to_string()),
+            WorkspaceTarget::Target(id) => id.clone(),
+        };
+        let requested_language = self.search.language.clone();
+        let hits = line_result
+            .matches
+            .into_iter()
+            .map(|line_match| {
+                let language = requested_language
+                    .clone()
+                    .or_else(|| {
+                        julie_core::language::detect_language(std::path::Path::new(
+                            &line_match.file_path,
+                        ))
+                        .map(str::to_string)
+                    })
+                    .unwrap_or_else(|| "text".to_string());
+                SearchHit::from_line_match(line_match, workspace_label.clone(), language, 0.0)
+            })
+            .collect::<Vec<_>>();
+        let total_results = hits.len();
+        let mut execution = SearchExecutionResult::new(
+            hits,
+            false,
+            total_results,
+            "fast_search_regions",
+            trace::SearchExecutionKind::Content {
+                workspace_label: Some(workspace_label),
+                file_level: false,
+            },
+        );
+        execution.trace.zero_hit_reason = line_result.zero_hit_reason;
+        execution.trace.line_match_strategy =
+            Some(line_match_strategy_label(&line_result.strategy).to_string());
+        execution.trace.file_pattern_diagnostic = line_result.file_pattern_diagnostic;
+        execution.trace.scope_relaxed = line_result.scope_relaxed;
+        execution.trace.original_file_pattern = line_result.original_file_pattern.clone();
+        if line_result.scope_relaxed {
+            execution.trace.original_zero_hit_reason =
+                Some(ZeroHitReason::FilePatternFiltered);
+            execution.trace.scope_rescue_count = 1;
+        }
+
+        let result = if execution.hits.is_empty() {
+            CallToolResult::text_content(vec![Content::text(format!(
+                "No results found for '{}' inside source regions: {}",
+                self.search.query, regions
+            ))])
+        } else {
+            let output = if self.search.return_format == "locations" {
+                let response =
+                    OptimizedResponse::with_total(execution.hits.clone(), total_results);
+                formatting::format_content_locations_only(&self.search.query, &response)
+            } else {
+                format_region_search_results(&self.search.query, &execution.hits)
+            };
+            let output = if line_result.scope_relaxed
+                && let Some(pattern) = line_result.original_file_pattern.as_deref()
+            {
+                let distinct_files = execution
+                    .hits
+                    .iter()
+                    .map(|hit| hit.file.as_str())
+                    .collect::<std::collections::HashSet<_>>()
+                    .len();
+                format!(
+                    "{}\n\n{}",
+                    hint_formatter::build_scope_rescue_header(pattern, distinct_files),
+                    output
+                )
+            } else {
+                output
+            };
+            CallToolResult::text_content(vec![Content::text(output)])
+        };
+
+        Ok(FastSearchExecution {
+            result,
+            execution: Some(execution),
+        })
+    }
+}
+
+fn format_region_search_results(query: &str, hits: &[SearchHit]) -> String {
+    let mut output = format!("{} matches for \"{}\":\n", hits.len(), query);
+    for hit in hits {
+        output.push_str(&format!(
+            "{}:{}\n  {}\n",
+            hit.file,
+            hit.line.unwrap_or_default(),
+            hit.snippet.as_deref().unwrap_or_default().trim()
+        ));
+    }
+    output.trim_end().to_string()
 }
 
 impl FastSearchTool {
