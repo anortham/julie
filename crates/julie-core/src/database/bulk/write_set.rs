@@ -17,8 +17,9 @@ pub struct AtomicPersistenceMetadata<'a> {
 /// The write set intentionally has borrowed slices so callers can assemble data
 /// from `ExtractedBatch` without cloning. Empty slices are valid and used by
 /// delete / no-op paths; callers should pass all non-symbol child rows
-/// (`relationships`, `identifiers`, `types`, `type_arguments`, `literals`) that
-/// should be inserted after stale file rows are removed.
+/// (`relationships`, `identifiers`, `types`, `type_arguments`, `literals`,
+/// `source_regions`, `structural_facts`, `complexity_metrics`) that should be
+/// inserted after stale file rows are removed.
 #[derive(Clone, Copy, Default)]
 pub struct CanonicalWriteSet<'a> {
     pub files: &'a [FileInfo],
