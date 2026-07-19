@@ -29,6 +29,7 @@ mod tests {
             test_dropped: 0,
             file_content_unavailable_dropped: 0,
             line_match_miss_dropped: 0,
+            region_dropped: 0,
         };
         assert_eq!(
             attribute_zero_hit_reason(&counts),
@@ -52,6 +53,7 @@ mod tests {
             test_dropped: 2,
             file_content_unavailable_dropped: 1,
             line_match_miss_dropped: 1,
+            region_dropped: 0,
         };
         assert_eq!(
             attribute_zero_hit_reason(&counts),
@@ -73,6 +75,7 @@ mod tests {
             test_dropped: 0,
             file_content_unavailable_dropped: 0,
             line_match_miss_dropped: 0,
+            region_dropped: 0,
         };
         assert_eq!(
             attribute_zero_hit_reason(&counts),
@@ -93,6 +96,7 @@ mod tests {
             test_dropped: 3,
             file_content_unavailable_dropped: 0,
             line_match_miss_dropped: 0,
+            region_dropped: 0,
         };
         assert_eq!(
             attribute_zero_hit_reason(&counts),
@@ -113,6 +117,7 @@ mod tests {
             test_dropped: 0,
             file_content_unavailable_dropped: 2,
             line_match_miss_dropped: 0,
+            region_dropped: 0,
         };
         assert_eq!(
             attribute_zero_hit_reason(&counts),
@@ -134,6 +139,7 @@ mod tests {
             test_dropped: 0,
             file_content_unavailable_dropped: 0,
             line_match_miss_dropped: 2,
+            region_dropped: 0,
         };
         assert_eq!(
             attribute_zero_hit_reason(&counts),
@@ -159,6 +165,7 @@ mod tests {
             // caller. Something took the survivors — attribute to the
             // closest thing we instrument rather than leaving None.
             line_match_miss_dropped: 0,
+            region_dropped: 0,
         };
         assert_eq!(
             attribute_zero_hit_reason(&counts),
