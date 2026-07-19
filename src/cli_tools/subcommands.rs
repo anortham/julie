@@ -318,7 +318,6 @@ pub struct PatternsArgs {
     /// Maximum search or summary rows
     #[arg(long, default_value = "50")]
     pub limit: u32,
-
 }
 
 // ---------------------------------------------------------------------------

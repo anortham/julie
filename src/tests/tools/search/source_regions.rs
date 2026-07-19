@@ -3,9 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use julie_context::WorkspaceTarget;
 use julie_core::database::SymbolDatabase;
-use julie_core::database::bulk::atomic::{
-    AtomicPersistenceMetadata, CanonicalWriteSet,
-};
+use julie_core::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
 use julie_extractors::base::{SourceRegion, SourceRegionKind};
 use julie_index::search::index::{SearchDocument, SearchIndex};
 use julie_test_support::FakeToolContext;
@@ -137,8 +135,7 @@ fn region_search_fixture(
 
 #[tokio::test]
 async fn fast_search_regions_returns_only_matching_source_region_lines() -> Result<()> {
-    let fixture =
-        region_search_fixture("// region needle\nlet region_needle = 1;\n", None)?;
+    let fixture = region_search_fixture("// region needle\nlet region_needle = 1;\n", None)?;
 
     let result = FastSearchParams {
         search: FastSearchTool {
@@ -160,9 +157,8 @@ async fn fast_search_regions_returns_only_matching_source_region_lines() -> Resu
 #[tokio::test]
 async fn fast_search_regions_rejects_unknown_region_and_symbol_backends() -> Result<()> {
     let fixture = region_search_fixture("// region needle\n", None)?;
-    let parsed = SourceRegionFilter::parse(
-        "comment,doc_comment,docstring,string_literal,embedded",
-    )?;
+    let parsed =
+        SourceRegionFilter::parse("comment,doc_comment,docstring,string_literal,embedded")?;
     assert_eq!(
         parsed.0,
         vec![
@@ -183,7 +179,11 @@ async fn fast_search_regions_rejects_unknown_region_and_symbol_backends() -> Res
     .call_tool(&fixture.context)
     .await
     .unwrap_err();
-    assert!(unknown.to_string().contains("unknown source region: unknown"));
+    assert!(
+        unknown
+            .to_string()
+            .contains("unknown source region: unknown")
+    );
 
     for backend in [SearchBackend::Semantic, SearchBackend::Hybrid] {
         let error = FastSearchParams {
@@ -192,9 +192,7 @@ async fn fast_search_regions_rejects_unknown_region_and_symbol_backends() -> Res
                 backend: Some(backend),
                 ..Default::default()
             },
-            regions: Some(
-                "comment,doc_comment,docstring,string_literal,embedded".into(),
-            ),
+            regions: Some("comment,doc_comment,docstring,string_literal,embedded".into()),
         }
         .call_tool(&fixture.context)
         .await

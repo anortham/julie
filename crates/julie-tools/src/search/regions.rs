@@ -21,9 +21,7 @@ impl SourceRegionFilter {
             }
         }
         if kinds.is_empty() {
-            return Err(anyhow!(
-                "regions must contain at least one source region"
-            ));
+            return Err(anyhow!("regions must contain at least one source region"));
         }
         Ok(Self(kinds))
     }

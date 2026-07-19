@@ -52,6 +52,7 @@ pub mod core {
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
 pub mod tools {
+    pub mod deep_dive_complexity;
     pub mod get_symbols; // GetSymbolsTool tests
     pub mod get_symbols_relative_paths; // GetSymbolsTool Phase 2 relative path tests (TDD)
     pub mod get_symbols_smart_read; // GetSymbolsTool Phase 2 - Smart Read with code bodies
@@ -60,7 +61,6 @@ pub mod tools {
     pub mod get_symbols_target_workspace; // GetSymbolsTool target-workspace bug test
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
     pub mod patterns;
-    pub mod deep_dive_complexity;
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)
 
     pub mod editing; // EditingTransaction tests (used by rename_symbol)

@@ -22,8 +22,7 @@ pub(crate) fn fast_search_metadata_with_regions(
 ) -> Value {
     let intent = infer_intent(&params.query);
     let region_filtered = execution.is_some_and(|result| {
-        result.trace.zero_hit_reason
-            == Some(crate::tools::search::ZeroHitReason::RegionFiltered)
+        result.trace.zero_hit_reason == Some(crate::tools::search::ZeroHitReason::RegionFiltered)
     });
     let trace = execution.map(|result| {
         let kind_distribution = compute_kind_distribution(result);

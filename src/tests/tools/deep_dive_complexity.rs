@@ -61,8 +61,7 @@ fn deep_dive_prints_stored_complexity_for_selected_symbol() {
     let (_temp, db) = seeded_db(std::slice::from_ref(&metric));
 
     for depth in ["overview", "context", "full"] {
-        let output =
-            deep_dive_query(&db, "process", Some("src/lib.rs"), depth, 20, 20).unwrap();
+        let output = deep_dive_query(&db, "process", Some("src/lib.rs"), depth, 20, 20).unwrap();
 
         assert!(
             output.contains("complexity: decisions=4 loops=2 nesting=3 params=2 lines=8"),
@@ -75,8 +74,7 @@ fn deep_dive_prints_stored_complexity_for_selected_symbol() {
 fn deep_dive_omits_complexity_line_when_metric_is_absent() {
     let (_temp, db) = seeded_db(&[]);
 
-    let output =
-        deep_dive_query(&db, "process", Some("src/lib.rs"), "overview", 20, 20).unwrap();
+    let output = deep_dive_query(&db, "process", Some("src/lib.rs"), "overview", 20, 20).unwrap();
 
     assert!(!output.contains("complexity:"));
 }
