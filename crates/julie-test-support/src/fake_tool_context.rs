@@ -16,6 +16,7 @@
 //! - **Hermetic**: `require_primary_workspace_root` returns the injected path
 //!   verbatim — does NOT walk the filesystem to discover a workspace root.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -51,6 +52,8 @@ pub struct FakeToolContext {
     /// `SymbolDatabase` connection on each call. Use `db()` from
     /// `julie_core::test_support` to get a tempdir-backed path.
     pub primary_db_path: Option<PathBuf>,
+    /// Workspace-specific SQLite paths used by cross-workspace DB methods.
+    pub workspace_db_paths: HashMap<String, PathBuf>,
     /// Optional search index to return from index methods.
     pub primary_search_index: Option<Arc<Mutex<SearchIndex>>>,
 
@@ -74,6 +77,7 @@ impl Default for FakeToolContext {
             swap_in_progress: false,
             spillover: Arc::new(SpilloverStore::default()),
             primary_db_path: None,
+            workspace_db_paths: HashMap::new(),
             primary_search_index: None,
             embedding_provider_val: None,
             resolved_target: WorkspaceTarget::Primary,
@@ -118,6 +122,16 @@ impl FakeToolContext {
         self
     }
 
+    pub fn with_workspace_db_path(
+        mut self,
+        workspace_id: impl Into<String>,
+        path: impl Into<PathBuf>,
+    ) -> Self {
+        self.workspace_db_paths
+            .insert(workspace_id.into(), path.into());
+        self
+    }
+
     pub fn with_search_index(mut self, index: Arc<Mutex<SearchIndex>>) -> Self {
         self.primary_search_index = Some(index);
         self
@@ -153,6 +167,13 @@ impl FakeToolContext {
             )
         })?;
         SymbolDatabase::new(path)
+    }
+
+    fn open_workspace_db(&self, workspace_id: &str, method: &str) -> Result<SymbolDatabase> {
+        match self.workspace_db_paths.get(workspace_id) {
+            Some(path) => SymbolDatabase::new(path),
+            None => self.open_db(method),
+        }
     }
 }
 
@@ -215,15 +236,18 @@ impl ToolContext for FakeToolContext {
 
     // ── Cross-workspace (async) ──────────────────────────────────────────────
 
-    async fn get_pooled_database_for_workspace(&self, _workspace_id: &str) -> Result<SymbolDatabase> {
-        self.open_db("get_pooled_database_for_workspace")
+    async fn get_pooled_database_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<SymbolDatabase> {
+        self.open_workspace_db(workspace_id, "get_pooled_database_for_workspace")
     }
 
     async fn get_database_for_workspace(
         &self,
-        _workspace_id: &str,
+        workspace_id: &str,
     ) -> Result<Arc<Mutex<SymbolDatabase>>> {
-        let db = self.open_db("get_database_for_workspace")?;
+        let db = self.open_workspace_db(workspace_id, "get_database_for_workspace")?;
         Ok(Arc::new(Mutex::new(db)))
     }
 

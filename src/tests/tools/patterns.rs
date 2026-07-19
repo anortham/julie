@@ -185,6 +185,76 @@ async fn patterns_lists_searches_summarizes_and_filters_metadata() -> Result<()>
 }
 
 #[tokio::test]
+async fn patterns_respects_target_workspace() -> Result<()> {
+    let temp = TempDir::new()?;
+    let primary_path = temp.path().join("primary.db");
+    let target_path = temp.path().join("target.db");
+
+    for (db_path, workspace_id, fact_id, pattern_id) in [
+        (
+            &primary_path,
+            "primary-workspace",
+            "primary-fact",
+            "primary.pattern.v1",
+        ),
+        (
+            &target_path,
+            "target-workspace",
+            "target-fact",
+            "target.pattern.v1",
+        ),
+    ] {
+        let mut db = SymbolDatabase::new(db_path)?;
+        let files = vec![
+            file_info_builder(format!("{workspace_id}.rs"))
+                .language("rust")
+                .build(),
+        ];
+        let facts = vec![structural_fact(
+            fact_id,
+            pattern_id,
+            "capture",
+            &format!("{workspace_id}.rs"),
+            "rust",
+            1,
+            serde_json::json!({"workspace": workspace_id}),
+        )];
+        db.incremental_update_atomic_with_metadata(
+            &[],
+            &CanonicalWriteSet {
+                files: &files,
+                structural_facts: &facts,
+                ..Default::default()
+            },
+            workspace_id,
+            AtomicPersistenceMetadata::default(),
+        )?;
+    }
+
+    let context = FakeToolContext::new()
+        .with_workspace_id("primary-workspace")
+        .with_primary_root(temp.path())
+        .with_primary_db_path(&primary_path)
+        .with_workspace_db_path("target-workspace", &target_path)
+        .with_resolved_target(WorkspaceTarget::Target("target-workspace".into()));
+
+    let response = PatternsTool {
+        operation: PatternsOperation::Search,
+        query: Some("pattern".into()),
+        workspace: Some("target-workspace".into()),
+        format: PatternsFormat::Json,
+        ..Default::default()
+    }
+    .call_tool(&context)
+    .await?;
+    let response_text = call_tool_result_text(&response);
+
+    assert!(response_text.contains("\"target-fact\""));
+    assert!(!response_text.contains("\"primary-fact\""));
+    Ok(())
+}
+
+#[tokio::test]
 async fn patterns_rejects_invalid_parameters() -> Result<()> {
     let (_temp, context) = seeded_context()?;
 
