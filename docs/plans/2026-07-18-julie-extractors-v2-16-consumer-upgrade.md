@@ -197,10 +197,10 @@ Expected: PASS.
   `chore(extractors): pin v2.16.0` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] All six manifests and `Cargo.lock` resolve v2.16.0.
-- [ ] The engine version forces a one-time reindex for Julie's newly consumed domains.
-- [ ] Both exact contract tests and `cargo check` pass.
-- [ ] The owned change is committed and its SHA is recorded.
+- [x] All six manifests and `Cargo.lock` resolve v2.16.0.
+- [x] The engine version forces a one-time reindex for Julie's newly consumed domains.
+- [x] Both exact contract tests and `cargo check` pass.
+- [x] The owned change is committed and its SHA is recorded.
 
 ### Task 2: Add canonical storage for all three enrichment domains
 
@@ -219,6 +219,9 @@ Expected: PASS.
 - Modify: `crates/julie-core/src/database/bulk/write_set.rs:23-36`
 - Modify: `crates/julie-core/src/database/bulk/atomic.rs:30-45,299-338`
 - Modify: `crates/julie-core/src/database/bulk/cleanup.rs:14-83`
+- Modify: `crates/julie-core/src/database/workspace.rs` (workspace-wide enrichment cleanup)
+- Modify: `crates/julie-pipeline/src/indexing_core/batch.rs` (temporary empty enrichment slices; Task 3 replaces them)
+- Modify: `crates/julie-runtime/src/watcher/handlers.rs` (temporary empty enrichment slices; Task 3 replaces them)
 - Test: `src/tests/core/incremental_update_atomic/enrichments.rs`
 - Test: `crates/julie-core/src/tests/database/migrations.rs`
 
@@ -228,7 +231,10 @@ Expected: PASS.
 
 **Contract inputs:** Task 1's v2.16 types; upstream field shapes cited in the design; existing `insert_literals_tx`, `create_literals_table`, and `delete_file_rows_tx` are the persistence patterns.
 
-**File ownership:** `julie-core` schema, migrations, bulk write/cleanup/query modules, core persistence tests
+**File ownership:** `julie-core` schema, migrations, bulk and workspace-wide
+write/cleanup/query modules, core persistence tests, and the two existing
+`CanonicalWriteSet` constructors changed only to pass empty enrichment slices
+until Task 3 wires real extraction output.
 
 **Serialization required:** Yes
 
@@ -354,7 +360,7 @@ Run: `cargo nextest run --lib test_extractor_enrichment_domains_roundtrip_replac
 
 Expected: FAIL because `CanonicalWriteSet` and database APIs lack the domains.
 
-Run: `cargo nextest run --lib test_migration_029_adds_extractor_enrichment_tables`
+Run: `cargo nextest run -p julie-core test_migration_029_adds_extractor_enrichment_tables`
 
 Expected: FAIL because schema version 29 does not exist.
 
@@ -581,7 +587,7 @@ Run: `cargo check`
 
 Expected: PASS.
 
-Run: `cargo nextest run --lib test_migration_029_adds_extractor_enrichment_tables`
+Run: `cargo nextest run -p julie-core test_migration_029_adds_extractor_enrichment_tables`
 
 Expected: PASS.
 
@@ -595,24 +601,26 @@ Expected: PASS.
   `feat(database): persist extractor enrichments` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] Fresh and migrated databases have all three typed tables and indexes.
-- [ ] Atomic insert, replace, workspace rebuild, file delete, and full delete cannot leave stale enrichment rows.
-- [ ] Missing symbol references normalize to `NULL`.
-- [ ] Typed read APIs round-trip all upstream fields.
-- [ ] Exact tests and `cargo check` pass.
-- [ ] The owned change is committed and its SHA is recorded.
+- [x] Fresh and migrated databases have all three typed tables and indexes.
+- [x] Atomic insert, replace, workspace rebuild, file delete, and full delete cannot leave stale enrichment rows.
+- [x] Missing symbol references normalize to `NULL`.
+- [x] Typed read APIs round-trip all upstream fields.
+- [x] Exact tests and `cargo check` pass.
+- [x] The owned change is committed and its SHA is recorded.
 
 ### Task 3: Unify full indexing, watcher updates, and external extraction
 
 **Files:**
 - Create: `crates/julie-pipeline/src/indexing_core/normalized.rs`
 - Create: `crates/julie-runtime/src/watcher/extraction_write.rs`
+- Create: `crates/julie-runtime/src/tests/watcher_handlers/enrichment_domains.rs`
 - Create: `fixtures/extraction/consumer-upgrade/rust_http_client.rs`
 - Modify: `crates/julie-pipeline/src/indexing_core/mod.rs`
 - Modify: `crates/julie-pipeline/src/indexing_core/batch.rs:5-72`
 - Modify: `crates/julie-pipeline/src/indexing_core/extraction.rs:45-274,308-444`
 - Modify: `crates/julie-runtime/src/watcher/mod.rs`
 - Modify: `crates/julie-runtime/src/watcher/handlers.rs:76-438`
+- Modify: `src/tools/workspace/indexing/processor.rs` (named parser-result compatibility wrapper)
 - Test: `src/tests/tools/workspace/processor.rs`
 - Test: `src/tests/external_extract/operations/enrichment_scan.rs`
 - Test: `crates/julie-runtime/src/tests/watcher_handlers.rs`
@@ -623,7 +631,9 @@ Expected: PASS.
 
 **Contract inputs:** Existing literal carrier and test-role classifiers, `flatten_type_argument_usages`, relative-path storage, and Task 2 typed slices.
 
-**File ownership:** `julie-pipeline` normalization/batch extraction, runtime watcher adapter, external-extract and indexing tests/fixture
+**File ownership:** `julie-pipeline` normalization/batch extraction, runtime
+watcher adapter, root indexing compatibility wrapper, external-extract and
+indexing tests/fixture
 
 **Serialization required:** Yes
 
@@ -704,7 +714,7 @@ Run: `cargo nextest run --lib extract_scan_persists_v2_16_enrichment_domains`
 
 Expected: FAIL with empty enrichment tables.
 
-Run: `cargo nextest run --lib watcher_replaces_all_extractor_enrichment_domains`
+Run: `cargo nextest run -p julie-runtime watcher_replaces_all_extractor_enrichment_domains`
 
 Expected: FAIL with empty or stale enrichment tables.
 
@@ -714,11 +724,12 @@ Create this complete data contract:
 
 ```rust
 use julie_extractors::base::{
-    ComplexityMetric, SourceRegion, StructuralFact, TypeInfo,
+    ComplexityMetric, SourceRegion, StructuralFact,
+    StructuredPendingRelationship, TypeInfo,
 };
 use julie_extractors::{
     ExtractionResults, Identifier, Literal, PendingRelationship, Relationship,
-    StructuredPendingRelationship, Symbol,
+    Symbol,
 };
 
 #[derive(Debug)]
@@ -857,7 +868,7 @@ Run: `cargo nextest run --lib extract_scan_persists_v2_16_enrichment_domains`
 
 Expected: PASS.
 
-Run: `cargo nextest run --lib watcher_replaces_all_extractor_enrichment_domains`
+Run: `cargo nextest run -p julie-runtime watcher_replaces_all_extractor_enrichment_domains`
 
 Expected: PASS.
 
@@ -871,12 +882,12 @@ Expected: PASS; record selected buckets and duration.
   `feat(indexing): consume extractor enrichment domains` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] The full indexer, watcher, and external extract CLI use one normalization function.
-- [ ] All three domains persist from a real v2.16 Rust extraction.
-- [ ] Watcher replacement removes stale enrichment rows atomically.
-- [ ] Existing literal, type-argument, test-role, and parse-diagnostic behavior remains in the shared seam.
-- [ ] Exact tests, `cargo check`, and lead `changed` gate pass.
-- [ ] The owned change is committed and its SHA is recorded.
+- [x] The full indexer, watcher, and external extract CLI use one normalization function.
+- [x] All three domains persist from a real v2.16 Rust extraction.
+- [x] Watcher replacement removes stale enrichment rows atomically.
+- [x] Existing literal, type-argument, test-role, and parse-diagnostic behavior remains in the shared seam.
+- [x] Exact tests, `cargo check`, and lead `changed` gate pass.
+- [x] The owned change is committed and its SHA is recorded.
 
 ### Task 4: Add the generic `patterns` MCP and CLI tool
 
