@@ -15,8 +15,6 @@ use xtask::runner::{
     ProcessCommandExecutor, render_manifest_listing, render_summary, run_bucket, run_named_buckets,
     run_tier,
 };
-use xtask::search_ablation::run_eval_ablation_command;
-use xtask::search_matrix::run_search_matrix_command;
 use xtask::workspace_root;
 
 fn clean_coverage_data(stdout: &mut dyn Write) -> anyhow::Result<()> {
@@ -51,11 +49,9 @@ fn main() -> anyhow::Result<()> {
             let manifest = TestManifest::load(workspace_root().join("xtask/test_tiers.toml"))?;
             let command = match validate_cli_command(&manifest, CliCommand::Test(command))? {
                 CliCommand::Test(command) => command,
-                CliCommand::SearchMatrix(_)
-                | CliCommand::SyncPlugin(_)
+                CliCommand::SyncPlugin(_)
                 | CliCommand::DevLink(_)
-                | CliCommand::DevRestart(_)
-                | CliCommand::Eval(_) => unreachable!("validated test command changed shape"),
+                | CliCommand::DevRestart(_) => unreachable!("validated test command changed shape"),
             };
 
             match command {
@@ -138,12 +134,6 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-        }
-        CliCommand::SearchMatrix(command) => {
-            run_search_matrix_command(&command, &mut stdout)?;
-        }
-        CliCommand::Eval(command) => {
-            run_eval_ablation_command(&command, &mut stdout)?;
         }
         CliCommand::SyncPlugin(SyncPluginCommand {
             plugin_root,

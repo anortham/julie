@@ -31,6 +31,7 @@ fn docs_contract_tests_cargo_alias_uses_quiet_xtask_runner() {
     let contents = read_repo_file(".cargo/config.toml");
 
     assert!(contents.contains("xtask = \"run -q -p xtask --\""));
+    assert!(contents.contains("xtask-eval = \"run -q -p xtask-eval --\""));
 }
 
 #[test]

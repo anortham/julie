@@ -485,6 +485,10 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["xtask-runner"];
     }
 
+    if matches_prefix(path, &["xtask-eval/"]) {
+        return &["xtask-eval"];
+    }
+
     if let Some(buckets) = handler_tool_buckets_for_path(path) {
         return buckets;
     }
@@ -1240,6 +1244,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
     let order = [
         "cli",
         "xtask-runner",
+        "xtask-eval",
         "core-database",
         "core-embeddings",
         "core-index",

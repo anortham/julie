@@ -5187,6 +5187,16 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde",
+ "tempfile",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "xtask-eval"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "julie",
  "rusqlite",
  "serde",

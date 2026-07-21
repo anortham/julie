@@ -424,6 +424,17 @@ fn changed_tests_xtask_paths_select_xtask_runner_bucket() {
 }
 
 #[test]
+fn changed_tests_xtask_eval_paths_select_xtask_eval_bucket() {
+    let manifest = sample_manifest();
+
+    let selection =
+        select_changed_buckets(&manifest, &["xtask-eval/src/search_matrix.rs".to_string()]);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["xtask-eval"]);
+}
+
+#[test]
 fn changed_tests_harness_docs_select_xtask_runner_bucket() {
     let manifest = sample_manifest();
 
@@ -924,6 +935,11 @@ commands = ["cargo test --lib tests::cli_tests"]
 expected_seconds = 5
 timeout_seconds = 30
 commands = ["cargo nextest run -p xtask"]
+
+[buckets.xtask-eval]
+expected_seconds = 5
+timeout_seconds = 30
+commands = ["cargo nextest run -p xtask-eval"]
 
 [buckets.core-database]
 expected_seconds = 5

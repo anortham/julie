@@ -11,7 +11,7 @@ dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", 
 system = ["projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "xtask-eval", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -37,6 +37,13 @@ timeout_seconds = 60
 scope_label = "tooling"
 notes = "xtask runner and manifest contract"
 commands = ["cargo nextest run -p xtask"]
+
+[buckets.xtask-eval]
+expected_seconds = 30
+timeout_seconds = 120
+scope_label = "tooling"
+notes = "product-linked search-matrix / eval harness"
+commands = ["cargo nextest run -p xtask-eval"]
 
 [buckets.core-database]
 # Core database path; modest runtime but commonly exercised.

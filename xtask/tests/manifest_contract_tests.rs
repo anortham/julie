@@ -201,6 +201,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
             vec![
                 "cli".to_string(),
                 "xtask-runner".to_string(),
+                "xtask-eval".to_string(),
                 "core-database".to_string(),
                 "core-embeddings".to_string(),
                 "core-index".to_string(),

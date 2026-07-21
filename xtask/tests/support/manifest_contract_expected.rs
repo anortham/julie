@@ -41,6 +41,14 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "xtask-eval",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 120,
+                commands: &["cargo nextest run -p xtask-eval"],
+            },
+        ),
+        (
             "core-database",
             ExpectedBucket {
                 expected_seconds: 5,
@@ -574,6 +582,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("xtask runner and manifest contract"),
+            },
+        ),
+        (
+            "xtask-eval",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("product-linked search-matrix / eval harness"),
             },
         ),
         (
