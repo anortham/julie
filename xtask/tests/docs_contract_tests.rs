@@ -20,6 +20,12 @@ fn docs_contract_tests_agents_md_promotes_changed_scope_first() {
     let contents = read_repo_file("AGENTS.md");
 
     assert!(contents.contains("cargo xtask test changed"));
+    assert!(contents.contains("cargo xtask test changed --scale"));
+    assert!(contents.contains("cargo xtask test fast"));
+    assert!(contents.contains("OverBudget"));
+    assert!(contents.contains("PREBUILD"));
+    assert!(contents.contains("COLD WALL"));
+    assert!(contents.contains("cargo xtask-eval"));
     assert!(contents.contains("cargo xtask test dev"));
     assert!(contents.contains("Use raw cargo filters only to narrow failures"));
     assert!(!contents.contains("cargo test --lib -- --skip search_quality"));
@@ -78,6 +84,12 @@ fn docs_contract_tests_testing_guide_documents_bucket_command() {
     assert!(contents.contains("cargo xtask test bucket <name>"));
     assert!(contents.contains("cargo xtask test inventory --bucket <name>"));
     assert!(contents.contains("cargo xtask test inventory --tier dev"));
+    assert!(contents.contains("cargo xtask test fast"));
+    assert!(contents.contains("OverBudget"));
+    assert!(contents.contains("cargo xtask test changed --scale"));
+    assert!(contents.contains("PREBUILD"));
+    assert!(contents.contains("COLD WALL"));
+    assert!(contents.contains("cargo xtask-eval"));
     assert!(contents.contains("Inventory is diagnostic evidence"));
     assert!(contents.contains("not a passing test gate"));
 }
@@ -90,6 +102,12 @@ fn docs_contract_tests_agent_docs_stay_in_sync() {
     for required in [
         "cargo xtask test bucket <name>",
         "cargo xtask test inventory --bucket <name>",
+        "cargo xtask test fast",
+        "cargo xtask test changed --scale",
+        "OverBudget",
+        "PREBUILD",
+        "COLD WALL",
+        "cargo xtask-eval",
         "Workers run exact tests only",
         "The orchestrating session handles regression checks",
     ] {
