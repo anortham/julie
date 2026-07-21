@@ -887,6 +887,7 @@ fn sample_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 dev = [
   "cli",
   "xtask-runner",

@@ -621,6 +621,7 @@ fn sample_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 dev = ["cli", "core-database", "tools-search"]
 system = ["workspace-init"]
@@ -666,6 +667,7 @@ fn multi_command_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"
 [tiers]
+fast = ["tools-search"]
 dev = ["tools-search"]
 
 [buckets.tools-search]

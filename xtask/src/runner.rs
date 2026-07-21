@@ -889,6 +889,7 @@ mod tests {
         TestManifest::from_str(
             r#"
 [tiers]
+fast = ["registry"]
 daemon = ["registry"]
 workspace-init = ["workspace-init"]
 integration = ["integration"]

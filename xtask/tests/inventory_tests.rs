@@ -119,6 +119,7 @@ fn sample_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 dev = ["cli", "tools-search-line-file"]
 
 [buckets.cli]

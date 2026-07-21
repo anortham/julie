@@ -5,6 +5,9 @@ use std::path::Path;
 use anyhow::{Context, anyhow, bail};
 use serde::Deserialize;
 
+const FAST_TIER_MAX_EXPECTED_SECONDS: u64 = 60;
+const DEV_TIER_MAX_EXPECTED_SECONDS: u64 = 600;
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TestManifest {
@@ -123,16 +126,48 @@ impl TestManifest {
             }
         }
 
+        let Some(fast_buckets) = self.tiers.get("fast") else {
+            bail!("manifest must define a 'fast' tier");
+        };
+        let fast_expected_seconds = Self::tier_expected_seconds(&self.buckets, fast_buckets);
+        if fast_expected_seconds > FAST_TIER_MAX_EXPECTED_SECONDS {
+            bail!(
+                "fast tier expected runtime must stay under {FAST_TIER_MAX_EXPECTED_SECONDS}s; got {fast_expected_seconds}s"
+            );
+        }
+
+        if let Some(dev_buckets) = self.tiers.get("dev") {
+            let dev_expected_seconds = Self::tier_expected_seconds(&self.buckets, dev_buckets);
+            if dev_expected_seconds > DEV_TIER_MAX_EXPECTED_SECONDS {
+                bail!(
+                    "dev tier expected runtime must stay under {DEV_TIER_MAX_EXPECTED_SECONDS}s; got {dev_expected_seconds}s"
+                );
+            }
+        }
+
         Ok(self)
+    }
+
+    fn tier_expected_seconds(
+        buckets: &BTreeMap<String, BucketConfig>,
+        tier_buckets: &[String],
+    ) -> u64 {
+        tier_buckets
+            .iter()
+            .map(|bucket_name| {
+                buckets
+                    .get(bucket_name)
+                    .map(|bucket| bucket.expected_seconds)
+                    .unwrap_or(0)
+            })
+            .sum()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::TestManifest;
+    use super::{DEV_TIER_MAX_EXPECTED_SECONDS, TestManifest};
     use std::path::PathBuf;
-
-    const DEV_TIER_MAX_EXPECTED_SECONDS: u64 = 600;
 
     fn manifest_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_tiers.toml")

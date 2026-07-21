@@ -197,6 +197,10 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
             ],
         ),
         (
+            "fast".to_string(),
+            vec!["core-database".to_string(), "core-fast".to_string()],
+        ),
+        (
             "full".to_string(),
             vec![
                 "cli".to_string(),
