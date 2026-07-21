@@ -5,6 +5,7 @@ fn manifest_tests_parse_tiers_and_buckets_from_toml() {
     let manifest = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 
 [buckets.cli]
@@ -30,6 +31,7 @@ fn manifest_tests_parse_bucket_metadata_with_defaults() {
     let manifest = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["legacy"]
 smoke = ["legacy", "rich"]
 
 [buckets.legacy]
@@ -67,6 +69,7 @@ fn manifest_tests_reject_unknown_top_level_fields() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 
 [buckets.cli]
@@ -88,6 +91,7 @@ fn manifest_tests_reject_unknown_bucket_fields() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 
 [buckets.cli]
@@ -107,6 +111,7 @@ fn manifest_tests_reject_tier_references_to_missing_buckets() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["missing"]
 
 [buckets.cli]
@@ -129,6 +134,7 @@ fn manifest_tests_reject_empty_tiers() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 dev = []
 
 [buckets.cli]
@@ -151,6 +157,7 @@ fn manifest_tests_reject_buckets_without_commands() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 
 [buckets.cli]
@@ -173,6 +180,7 @@ fn manifest_tests_reject_zero_expected_seconds() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 
 [buckets.cli]
@@ -191,6 +199,7 @@ fn manifest_tests_reject_zero_timeout_seconds() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 
 [buckets.cli]
@@ -209,6 +218,7 @@ fn manifest_tests_reject_timeout_shorter_than_expected_runtime() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 
 [buckets.cli]
@@ -231,6 +241,7 @@ fn manifest_tests_parse_blocked_tier_notes() {
     let manifest = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 system = ["workspace-init"]
 
@@ -262,6 +273,7 @@ fn manifest_tests_reject_duplicate_bucket_commands() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["alpha", "beta"]
 
 [buckets.alpha]
@@ -290,6 +302,7 @@ fn manifest_tests_reject_duplicate_commands_in_same_bucket() {
     let error = TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["alpha"]
 
 [buckets.alpha]
@@ -308,3 +321,96 @@ commands = [
     assert!(message.contains("'alpha'"));
     assert!(message.contains(duplicate_command));
 }
+
+#[test]
+fn manifest_tests_reject_missing_fast_tier() {
+    let error = TestManifest::from_str(
+        r#"
+[tiers]
+smoke = ["cli"]
+
+[buckets.cli]
+expected_seconds = 1
+timeout_seconds = 60
+commands = ["cargo test --lib tests::cli_tests"]
+"#,
+    )
+    .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("manifest must define a 'fast' tier")
+    );
+}
+
+#[test]
+fn manifest_tests_reject_over_budget_fast_tier() {
+    let error = TestManifest::from_str(
+        r#"
+[tiers]
+fast = ["cli"]
+
+[buckets.cli]
+expected_seconds = 61
+timeout_seconds = 120
+commands = ["cargo test --lib tests::cli_tests"]
+"#,
+    )
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(
+        message.contains("fast tier expected runtime must stay under 60s"),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("got 61s"), "unexpected error: {message}");
+}
+
+#[test]
+fn manifest_tests_accept_valid_fast_tier() {
+    let manifest = TestManifest::from_str(
+        r#"
+[tiers]
+fast = ["cli"]
+
+[buckets.cli]
+expected_seconds = 60
+timeout_seconds = 120
+commands = ["cargo test --lib tests::cli_tests"]
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(manifest.tiers["fast"], vec!["cli"]);
+}
+
+#[test]
+fn manifest_tests_reject_over_budget_dev_tier() {
+    let error = TestManifest::from_str(
+        r#"
+[tiers]
+fast = ["cli"]
+dev = ["heavy"]
+
+[buckets.cli]
+expected_seconds = 1
+timeout_seconds = 60
+commands = ["cargo test --lib tests::cli_tests"]
+
+[buckets.heavy]
+expected_seconds = 601
+timeout_seconds = 700
+commands = ["cargo test --lib tests::heavy"]
+"#,
+    )
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(
+        message.contains("dev tier expected runtime must stay under 600s"),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("got 601s"), "unexpected error: {message}");
+}
+

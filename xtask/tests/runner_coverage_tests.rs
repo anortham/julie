@@ -241,6 +241,7 @@ fn sample_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 
 [buckets.cli]

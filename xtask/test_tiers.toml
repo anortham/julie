@@ -3,6 +3,9 @@
 [tiers]
 # Nano: smallest possible confidence slice for the tight edit-test loop.
 nano = ["core-database", "core-fast"]
+# Fast: local confidence tier (≤60s declared). Membership mirrors nano.
+# Task 6 (2026-07-21): expected_seconds recalibrated from warm p50/p95 evidence.
+fast = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
 # Dev: fast branch-level gate. Keep under 10 minutes expected; full keeps broad coverage.
@@ -11,7 +14,7 @@ dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", 
 system = ["projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "xtask-eval", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -37,6 +40,13 @@ timeout_seconds = 60
 scope_label = "tooling"
 notes = "xtask runner and manifest contract"
 commands = ["cargo nextest run -p xtask"]
+
+[buckets.xtask-eval]
+expected_seconds = 30
+timeout_seconds = 120
+scope_label = "tooling"
+notes = "product-linked search-matrix / eval harness"
+commands = ["cargo nextest run -p xtask-eval"]
 
 [buckets.core-database]
 # Core database path; modest runtime but commonly exercised.
@@ -210,7 +220,10 @@ expected_seconds = 40
 timeout_seconds = 90
 scope_label = "tooling"
 notes = "text search coverage"
-commands = ["cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality"]
+commands = [
+  "cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::structural_facts_text_test -- --skip search_quality",
+]
 
 [buckets.tools-search-hybrid]
 expected_seconds = 40
@@ -416,10 +429,12 @@ commands = [
 
 [buckets.core-fast]
 # Fast non-search core coverage bucket; broad but still local-dev friendly.
-expected_seconds = 60
+# Task 6 warm evidence (2026-07-21, n=3 after warm): p50≈20.1s p95≈23.2s → expected=26
+# (p95 + ~3s headroom). Declared fast sum with core-database(5) = 31 ≤ 60.
+expected_seconds = 26
 timeout_seconds = 120
 scope_label = "core"
-notes = "misc fast core coverage"
+notes = "misc fast core coverage (Task 6 warm p95≈23s → expected=26)"
 # Note: `utils::string_similarity::tests` was removed here — string_similarity
 # relocated to julie-core in PR 2a U1, and its tests run via the `core-database`
 # bucket (`cargo nextest run -p julie-core`). A zero-match nextest filter exits 4,
@@ -557,6 +572,15 @@ timeout_seconds = 90
 scope_label = "system"
 notes = "documentation indexing integration coverage"
 commands = ["cargo nextest run --lib tests::integration::documentation_indexing -- --skip search_quality"]
+
+[buckets.system-health]
+# Benchmark / system-health gate (also reached via PROGRAM_TIERS `benchmark`).
+# Declared seconds must live here so changed-budget pricing cannot treat it as free.
+expected_seconds = 30
+timeout_seconds = 120
+scope_label = "system"
+notes = "system health latency / health-report gate"
+commands = ["cargo nextest run --lib tests::integration::system_health"]
 
 [buckets.tools-dogfood-repo-index]
 # Dogfood test that indexes the full julie repo (~164s). Isolated from tools-misc

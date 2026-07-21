@@ -131,7 +131,7 @@ fn render_baseline_report_markdown(report: &SearchMatrixBaselineReport) -> Strin
 /// # Usage
 ///
 /// ```text
-/// cargo xtask search-matrix diff --left baseline.json --right no-stemming.json
+/// cargo xtask-eval search-matrix diff --left baseline.json --right no-stemming.json
 /// ```
 ///
 /// The diff helper is also called internally by the bakeoff post-processor to

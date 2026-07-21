@@ -5,6 +5,10 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 use crate::manifest::TestManifest;
+use crate::runner::declared_expected_seconds;
+
+/// Declared-seconds ceiling for a mapped `changed` selection before OverBudget.
+const FAST_BUDGET_SECS: u64 = 60;
 
 const DEV_FALLBACK_FILES: &[&str] = &[
     "Cargo.toml",
@@ -171,6 +175,7 @@ const JULIE_TOOLS_SEARCH_BUCKETS: &[&str] = &[
 pub enum ChangedSelectionMode {
     NoChanges,
     Buckets,
+    OverBudget,
     FallbackToDev,
 }
 
@@ -255,7 +260,7 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
 
         let mut path_bucket_names = Vec::new();
         for bucket_name in matched_buckets {
-            if manifest.buckets.contains_key(*bucket_name) || *bucket_name == "system-health" {
+            if manifest.buckets.contains_key(*bucket_name) {
                 path_bucket_names.push((*bucket_name).to_string());
             }
             maybe_push_bucket(&mut bucket_names, manifest, bucket_name);
@@ -319,10 +324,32 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
         };
     }
 
+    let bucket_names = sort_bucket_names(bucket_names);
+    let declared = declared_expected_seconds(
+        manifest,
+        bucket_names.iter().map(String::as_str),
+    );
+    if declared > FAST_BUDGET_SECS {
+        let mut rationale = rationale;
+        rationale.push(format!(
+            "CHANGED: declared expected_seconds = {declared} (fast budget {FAST_BUDGET_SECS})"
+        ));
+        rationale.push("CHANGED: next: cargo xtask test changed --scale".to_string());
+        rationale.push("CHANGED: next: cargo xtask test fast".to_string());
+        return ChangedSelection {
+            mode: ChangedSelectionMode::OverBudget,
+            changed_paths,
+            bucket_names,
+            fallback_paths,
+            rationale,
+            ignored_paths,
+        };
+    }
+
     ChangedSelection {
         mode: ChangedSelectionMode::Buckets,
         changed_paths,
-        bucket_names: sort_bucket_names(bucket_names),
+        bucket_names,
         fallback_paths,
         rationale,
         ignored_paths,
@@ -336,6 +363,10 @@ pub fn render_changed_selection(selection: &ChangedSelection) -> String {
         }
         ChangedSelectionMode::Buckets => format!(
             "CHANGED: selected buckets from local diff: {}\n",
+            selection.bucket_names.join(", ")
+        ),
+        ChangedSelectionMode::OverBudget => format!(
+            "CHANGED: over budget — mapped buckets exceed fast budget: {}\n",
             selection.bucket_names.join(", ")
         ),
         ChangedSelectionMode::FallbackToDev => format!(
@@ -357,6 +388,31 @@ pub fn render_changed_selection(selection: &ChangedSelection) -> String {
     }
 
     output
+}
+
+/// Escalate an [`ChangedSelectionMode::OverBudget`] selection by running
+/// `unique(mapped ∪ dev)` with an explicit scale-union rationale.
+pub fn apply_changed_scale(
+    mut selection: ChangedSelection,
+    manifest: &TestManifest,
+) -> ChangedSelection {
+    if selection.mode != ChangedSelectionMode::OverBudget {
+        return selection;
+    }
+
+    let mapped = selection.bucket_names.clone();
+    let mut bucket_names = mapped.clone();
+    for dev_bucket in manifest.tiers.get("dev").cloned().unwrap_or_default() {
+        maybe_push_bucket(&mut bucket_names, manifest, &dev_bucket);
+    }
+
+    selection.bucket_names = sort_bucket_names(bucket_names);
+    selection.mode = ChangedSelectionMode::Buckets;
+    selection.rationale.push(format!(
+        "CHANGED: scale union: mapped ∪ dev (preserving {})",
+        mapped.join(", ")
+    ));
+    selection
 }
 
 fn has_head(workspace_root: &Path) -> Result<bool> {
@@ -483,6 +539,10 @@ fn render_fallback_rationale(path: &str, rule: FallbackRule, trigger: &str) -> S
 fn buckets_for_path(path: &str) -> &'static [&'static str] {
     if matches_prefix(path, &["xtask/"]) {
         return &["xtask-runner"];
+    }
+
+    if matches_prefix(path, &["xtask-eval/"]) {
+        return &["xtask-eval"];
     }
 
     if let Some(buckets) = handler_tool_buckets_for_path(path) {
@@ -1207,7 +1267,13 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
         return Some(&["tools-search-context"]);
     }
 
-    if matches_exact(path, &["src/tests/tools/text_search_tantivy.rs"]) {
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/text_search_tantivy.rs",
+            "src/tests/tools/search/structural_facts_text_test.rs",
+        ],
+    ) {
         return Some(&["tools-search-text"]);
     }
 
@@ -1225,7 +1291,7 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
 }
 
 fn maybe_push_bucket(bucket_names: &mut Vec<String>, manifest: &TestManifest, bucket_name: &str) {
-    if !manifest.buckets.contains_key(bucket_name) && bucket_name != "system-health" {
+    if !manifest.buckets.contains_key(bucket_name) {
         return;
     }
 
@@ -1240,6 +1306,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
     let order = [
         "cli",
         "xtask-runner",
+        "xtask-eval",
         "core-database",
         "core-embeddings",
         "core-index",
@@ -1325,6 +1392,19 @@ mod tests {
         TestManifest::load(repo_root().join("xtask/test_tiers.toml")).expect("load test manifest")
     }
 
+
+    fn expected_mapped_mode(manifest: &TestManifest, bucket_names: &[String]) -> ChangedSelectionMode {
+        let declared = crate::runner::declared_expected_seconds(
+            manifest,
+            bucket_names.iter().map(String::as_str),
+        );
+        if declared > 60 {
+            ChangedSelectionMode::OverBudget
+        } else {
+            ChangedSelectionMode::Buckets
+        }
+    }
+
     fn bucket_commands<'a>(manifest: &'a TestManifest, bucket_name: &str) -> &'a [String] {
         manifest
             .buckets
@@ -1401,7 +1481,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         assert_eq!(selection.bucket_names, vec!["tools-search-hybrid"]);
         assert!(
             selection.fallback_paths.is_empty(),
@@ -1418,7 +1498,7 @@ mod tests {
             &["src/tests/tools/workspace/global_targeting/target_activation.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         assert_eq!(selection.bucket_names, vec!["tools-workspace-targeting"]);
         assert!(
             selection.fallback_paths.is_empty(),
@@ -1446,7 +1526,7 @@ mod tests {
             ),
         ] {
             let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-            assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+            assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
             assert_eq!(selection.bucket_names, vec![expected_bucket], "{path}");
             assert!(
                 selection.fallback_paths.is_empty(),
@@ -1487,7 +1567,7 @@ mod tests {
             ),
         ] {
             let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-            assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+            assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
             assert_eq!(selection.bucket_names, vec![expected_bucket], "{path}");
             assert!(
                 selection.fallback_paths.is_empty(),
@@ -1505,7 +1585,7 @@ mod tests {
             &["src/tests/tools/target_workspace_fast_refs_tests/tests/limits.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         assert_eq!(selection.bucket_names, vec!["tools-fast-refs"]);
         assert!(
             selection.fallback_paths.is_empty(),
@@ -1525,7 +1605,7 @@ mod tests {
             &["crates/julie-runtime/src/watcher/filtering.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         assert_eq!(
             selection.bucket_names,
             vec!["core-runtime", "workspace-runtime"]
@@ -1545,7 +1625,7 @@ mod tests {
             &["crates/julie-pipeline/src/embeddings/sidecar_supervisor.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         // Embedding behavioral tests stayed in the top crate (core-embeddings) and
         // exercise the moved code via shim re-exports, so both buckets must run.
         assert_eq!(
@@ -1564,7 +1644,7 @@ mod tests {
             &["crates/julie-pipeline/src/indexing_core/extraction.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         // indexing engine: crate unit tests (core-pipeline) + the retained
         // end-to-end indexing guards (R6 co-targeting).
         assert_eq!(
@@ -1591,7 +1671,7 @@ mod tests {
             "crates/julie-pipeline/src/finalize.rs",
         ] {
             let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-            assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "path={path}");
+            assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "path={path}");
             assert_eq!(
                 selection.bucket_names,
                 vec![
@@ -1614,7 +1694,7 @@ mod tests {
         let selection =
             select_changed_buckets(&manifest, &["crates/julie-pipeline/src/lib.rs".to_string()]);
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         assert_eq!(
             selection.bucket_names,
             vec!["core-pipeline"],
@@ -1631,7 +1711,7 @@ mod tests {
             &["src/tests/cli/cli_search_no_target_test.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         assert_eq!(selection.bucket_names, vec!["cli"]);
     }
 
@@ -1656,8 +1736,28 @@ mod tests {
             &["src/tests/core/handler_telemetry.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
         assert_eq!(selection.bucket_names, vec!["core-handler-telemetry"]);
+    }
+
+    #[test]
+    fn changed_tests_system_health_selection_prices_at_declared_seconds() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["src/health/report.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(selection.bucket_names, vec!["system-health".to_string()]);
+        assert_eq!(
+            crate::runner::declared_expected_seconds(
+                &manifest,
+                selection.bucket_names.iter().map(String::as_str),
+            ),
+            30,
+            "system-health selection must price at declared 30s via shared resolver"
+        );
     }
 
     #[test]

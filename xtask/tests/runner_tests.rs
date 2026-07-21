@@ -99,6 +99,7 @@ fn runner_tests_summary_reports_expected_actual_scope_and_slow_buckets() {
         ],
         passed_buckets: 2,
         total_elapsed: Duration::from_millis(68_200),
+        prebuild_elapsed: Duration::ZERO,
     };
 
     let output = render_summary(&summary);
@@ -621,6 +622,7 @@ fn sample_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"
 [tiers]
+fast = ["cli"]
 smoke = ["cli"]
 dev = ["cli", "core-database", "tools-search"]
 system = ["workspace-init"]
@@ -666,6 +668,7 @@ fn multi_command_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"
 [tiers]
+fast = ["tools-search"]
 dev = ["tools-search"]
 
 [buckets.tools-search]

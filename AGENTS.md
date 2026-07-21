@@ -35,10 +35,13 @@ cargo check                    # Type-check only (fastest compilation, no binary
 cargo build                    # Debug build
 cargo build --release          # Release build (for live MCP testing)
 cargo nextest run --lib <test_name>  # Default: narrowest test first
-cargo xtask test nano          # Minimal regression check (~25s)
+cargo xtask test nano          # Minimal regression check (nano ⊆ fast)
+cargo xtask test fast          # Default ≤60s-declared local gate (warm bucket wall)
 cargo xtask test bucket extractor-dep-integration  # Parser/extractor dependency upgrade gate
-cargo xtask test changed       # After a localized change (diff-scoped buckets)
+cargo xtask test changed       # Diff-scoped buckets; OverBudget unless under fast budget
+cargo xtask test changed --scale  # OverBudget only: unique(mapped ∪ dev)
 cargo xtask test dev           # Batch gate before handoff — not per edit
+cargo xtask-eval search-matrix|eval  # Product-linked harnesses (Cargo alias → xtask-eval)
 cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)
 cargo xtask dev-link           # (maintainer-only) Symlink installed plugin binaries → target/release (`--dry-run` to preview)
 cargo xtask dev-restart        # (maintainer-only) Advisory — prints how to load a new binary (in-process server is per-session; no daemon to restart)
@@ -90,14 +93,17 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 |---------|--------------|-------------|
 | `cargo nextest run --lib <name>` | Run one specific test by name | Default during RED/GREEN loop |
 | `cargo xtask test bucket <name>` | Run one named bucket with command timing | Lead-owned focused gate after a coherent batch |
-| `cargo xtask test changed` | Maps the current git diff to the smallest matching bucket set, then falls back to `dev` if shared infrastructure moved | After a localized change |
+| `cargo xtask test changed` | Maps the git diff to buckets; runs them when under the fast declared budget; **OverBudget** (non-zero exit, no auto-`dev`) when mapped sum exceeds it | After a localized change |
+| `cargo xtask test changed --scale` | On OverBudget only: run `unique(mapped ∪ dev)` with an explicit scale-union rationale | When you intentionally want the broader gate |
 | `cargo xtask test inventory --bucket <name>` | Report selected tests and duplicate coverage without running tests | Diagnostic evidence only, never a passing gate |
+| `cargo xtask-eval …` | Product-linked search-matrix / eval harnesses via `.cargo/config.toml` alias | Investigation harnesses; not a substitute for `dogfood` |
 
 ### Canonical Test Tiers
 
 | Tier | Command | What it covers | When to use |
 |------|---------|----------------|-------------|
-| **Nano** | `cargo xtask test nano` | Fastest core buckets (~25s) | Ultra-tight loop: quick sanity before or between edit batches |
+| **Nano** | `cargo xtask test nano` | Smallest core slice (`nano ⊆ fast`) | Ultra-tight loop between edit batches |
+| **Fast** | `cargo xtask test fast` | Declared ≤60s local confidence gate (warm bucket wall) | Default local gate when you want more than a single test |
 | **Smoke** | `cargo xtask test smoke` | Small confidence slice of the fastest buckets | Quick sanity check when you want a tiny run |
 | **Dev** | `cargo xtask test dev` | Fast batch-level regression tier for ordinary code changes (<10m expected) | Once per completed batch, before handoff |
 | **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
@@ -106,6 +112,16 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 | **Reliability** | `cargo xtask test reliability` | Registry/runtime lifecycle + workspace init + integration buckets | Use when hardening lifecycle, watcher, or registry/runtime flows |
 | **Benchmark** | `cargo xtask test benchmark` | Focused `system_health` integration bucket | Use when iterating on health-report latency or a narrow benchmark harness |
 
+### Warm vs cold accounting
+
+Runner summaries report three clocks:
+
+- **Warm** — bucket execution after binaries exist (`SUMMARY: … (warm)`)
+- **PREBUILD** — time spent compiling/linking test binaries before warm work
+- **COLD WALL** — `PREBUILD + warm` (cold `fast` may exceed the 60s **declared** budget without falsifying it)
+
+Lean `cargo xtask …` commands do not compile/link the root `julie` package. Product-linked harnesses live under `cargo xtask-eval …`.
+
 ### Default Workflow
 
 1. **During the local loop (narrow edits)**: run the specific test by name:
@@ -113,8 +129,8 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
    cargo nextest run --lib <exact_test_name>
    ```
    This is the default. One test, seconds of wall-clock.
-2. **After a localized change affecting one subsystem**: `cargo xtask test changed`. Picks the smallest matching bucket set from the git diff.
-3. **If `changed` falls back to `dev`**: accept it, that means shared infrastructure moved. `dev` is the fast branch gate, not the full release gate.
+2. **After a localized change affecting one subsystem**: `cargo xtask test changed`. Under the fast declared budget it runs the mapped buckets; if mapped sum exceeds the budget it prints **OverBudget** (mapped buckets + declared sum + next steps) and exits non-zero — it does **not** silently fall back to bare `dev`.
+3. **If OverBudget**: narrow the diff, run `cargo xtask test fast`, or explicitly escalate with `cargo xtask test changed --scale` (`unique(mapped ∪ dev)`). Shared/unmapped paths still fall back to `dev` as before.
 4. **After a completed batch or before handoff**: run `cargo xtask test dev` once. Not per edit.
 5. **If you changed startup/workspace/system flows**: add `cargo xtask test system`
 6. **If you changed search/scoring/tokenization**: add `cargo xtask test dogfood`
@@ -131,9 +147,9 @@ For the tight edit-test loop during implementation:
 2. **`cargo nextest run --lib <exact_test_name>`** — After `cargo check` passes,
    run the specific test. Incremental rebuilds now take ~5-15 seconds.
 3. **Batch before broader testing** — Make 3-5 edits before running
-   `cargo xtask test changed` or `cargo xtask test dev`.
-4. **`cargo xtask test nano`** — For a quick "did I break anything?" sanity
-   check (~25s) between batches, without running the full dev tier.
+   `cargo xtask test changed` or `cargo xtask test fast` / `dev`.
+4. **`cargo xtask test nano`** or **`cargo xtask test fast`** — Quick local
+   confidence between batches (`nano ⊆ fast`; declared fast sum ≤60s warm wall).
 
 ### Known Pre-Existing Failures
 

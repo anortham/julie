@@ -699,7 +699,7 @@ fn test_migration_029_adds_extractor_enrichment_tables() {
 
     let db = SymbolDatabase::new(&db_path).unwrap();
 
-    assert_eq!(db.get_schema_version().unwrap(), 29);
+    assert_eq!(db.get_schema_version().unwrap(), LATEST_SCHEMA_VERSION);
     for table in ["source_regions", "structural_facts", "complexity_metrics"] {
         assert!(
             table_exists(&db.conn, table),

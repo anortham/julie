@@ -41,6 +41,14 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "xtask-eval",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 120,
+                commands: &["cargo nextest run -p xtask-eval"],
+            },
+        ),
+        (
             "core-database",
             ExpectedBucket {
                 expected_seconds: 5,
@@ -87,7 +95,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "core-fast",
             ExpectedBucket {
-                expected_seconds: 60,
+                expected_seconds: 26,
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
@@ -175,6 +183,14 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 180,
                 timeout_seconds: 300,
                 commands: &["cargo nextest run --lib search_quality"],
+            },
+        ),
+        (
+            "system-health",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 120,
+                commands: &["cargo nextest run --lib tests::integration::system_health"],
             },
         ),
         (
@@ -485,6 +501,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::structural_facts_text_test -- --skip search_quality",
                 ],
             },
         ),
@@ -577,6 +594,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
             },
         ),
         (
+            "xtask-eval",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("product-linked search-matrix / eval harness"),
+            },
+        ),
+        (
             "core-database",
             ExpectedBucketMetadata {
                 scope_label: "core",
@@ -629,7 +655,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "core",
                 owner: "lead",
                 expensive: false,
-                notes: Some("misc fast core coverage"),
+                notes: Some("misc fast core coverage (Task 6 warm p95≈23s → expected=26)"),
             },
         ),
         (
@@ -704,6 +730,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: true,
                 notes: Some("heavy fixture-backed relevance suite"),
+            },
+        ),
+        (
+            "system-health",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some("system health latency / health-report gate"),
             },
         ),
         (

@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use julie::registry::database::DaemonDatabase;
 use serde_json::json;
 use tempfile::TempDir;
-use xtask::cli::{Ablation, CliCommand, SearchMatrixCommand, parse_cli_command};
-use xtask::search_matrix::{
+use xtask_eval::cli::{Ablation, CliCommand, SearchMatrixCommand, parse_cli_command};
+use xtask_eval::search_matrix::{
     SearchMatrixCaseSet, SearchMatrixCorpus, run_search_matrix_baseline_with_home,
 };
-use xtask::search_matrix_mine::mine_search_matrix_seed_report;
-use xtask::workspace_root;
+use xtask_eval::search_matrix_mine::mine_search_matrix_seed_report;
+use xtask_eval::workspace_root;
 
 #[path = "support/toml_fixture.rs"]
 mod toml_fixture;
@@ -56,7 +56,7 @@ fn search_matrix_contract_tests_parse_baseline_command() {
         CliCommand::SearchMatrix(SearchMatrixCommand::Baseline {
             profile: "smoke".to_string(),
             out: Some(PathBuf::from("artifacts/search-matrix/baseline.json")),
-            ablation: xtask::cli::Ablation::None,
+            ablation: xtask_eval::cli::Ablation::None,
         })
     );
 }
@@ -133,7 +133,7 @@ fn search_matrix_contract_tests_reject_unknown_search_matrix_subcommand() {
     assert!(
         error
             .to_string()
-            .contains("unsupported `cargo xtask search-matrix` subcommand `weird`"),
+            .contains("unsupported `cargo xtask-eval search-matrix` subcommand `weird`"),
         "got: {error}"
     );
 }
@@ -156,7 +156,7 @@ fn search_matrix_contract_tests_reject_profile_flag_for_mine() {
     assert!(
         error
             .to_string()
-            .contains("`--profile` is not valid for `cargo xtask search-matrix mine`"),
+            .contains("`--profile` is not valid for `cargo xtask-eval search-matrix mine`"),
         "got: {error}"
     );
 }
@@ -177,7 +177,7 @@ fn search_matrix_contract_tests_reject_days_flag_for_baseline() {
     assert!(
         error
             .to_string()
-            .contains("`--days` is not valid for `cargo xtask search-matrix baseline`"),
+            .contains("`--days` is not valid for `cargo xtask-eval search-matrix baseline`"),
         "got: {error}"
     );
 }

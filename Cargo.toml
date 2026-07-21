@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "xtask", "crates/julie-core", "crates/julie-index", "crates/julie-pipeline", "crates/julie-runtime", "crates/julie-context", "crates/julie-test-support", "crates/julie-tools"]
+members = [".", "xtask", "xtask-eval", "crates/julie-core", "crates/julie-index", "crates/julie-pipeline", "crates/julie-runtime", "crates/julie-context", "crates/julie-test-support", "crates/julie-tools"]
 resolver = "2"
 
 [workspace.package]

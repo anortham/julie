@@ -2,7 +2,8 @@ use std::io::{self, Write};
 
 use anyhow::anyhow;
 use xtask::changed::{
-    ChangedSelectionMode, collect_changed_paths, render_changed_selection, select_changed_buckets,
+    ChangedSelectionMode, apply_changed_scale, collect_changed_paths, render_changed_selection,
+    select_changed_buckets,
 };
 use xtask::cli::{
     CliCommand, DevLinkCommand, DevRestartCommand, SyncPluginCommand, TestCommand,
@@ -15,8 +16,6 @@ use xtask::runner::{
     ProcessCommandExecutor, render_manifest_listing, render_summary, run_bucket, run_named_buckets,
     run_tier,
 };
-use xtask::search_ablation::run_eval_ablation_command;
-use xtask::search_matrix::run_search_matrix_command;
 use xtask::workspace_root;
 
 fn clean_coverage_data(stdout: &mut dyn Write) -> anyhow::Result<()> {
@@ -51,20 +50,31 @@ fn main() -> anyhow::Result<()> {
             let manifest = TestManifest::load(workspace_root().join("xtask/test_tiers.toml"))?;
             let command = match validate_cli_command(&manifest, CliCommand::Test(command))? {
                 CliCommand::Test(command) => command,
-                CliCommand::SearchMatrix(_)
-                | CliCommand::SyncPlugin(_)
+                CliCommand::SyncPlugin(_)
                 | CliCommand::DevLink(_)
-                | CliCommand::DevRestart(_)
-                | CliCommand::Eval(_) => unreachable!("validated test command changed shape"),
+                | CliCommand::DevRestart(_) => unreachable!("validated test command changed shape"),
             };
 
             match command {
                 TestCommand::Changed {
                     timeout_multiplier,
                     coverage,
+                    scale,
                 } => {
                     let changed_paths = collect_changed_paths(&workspace_root())?;
-                    let selection = select_changed_buckets(&manifest, &changed_paths);
+                    let mut selection = select_changed_buckets(&manifest, &changed_paths);
+
+                    if selection.mode == ChangedSelectionMode::OverBudget {
+                        if scale {
+                            selection = apply_changed_scale(selection, &manifest);
+                        } else {
+                            stdout.write_all(render_changed_selection(&selection).as_bytes())?;
+                            return Err(anyhow!(
+                                "changed selection exceeds fast budget; re-run with `--scale` or narrow the diff"
+                            ));
+                        }
+                    }
+
                     stdout.write_all(render_changed_selection(&selection).as_bytes())?;
 
                     if selection.mode == ChangedSelectionMode::NoChanges {
@@ -138,12 +148,6 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-        }
-        CliCommand::SearchMatrix(command) => {
-            run_search_matrix_command(&command, &mut stdout)?;
-        }
-        CliCommand::Eval(command) => {
-            run_eval_ablation_command(&command, &mut stdout)?;
         }
         CliCommand::SyncPlugin(SyncPluginCommand {
             plugin_root,

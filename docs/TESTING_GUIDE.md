@@ -1,6 +1,6 @@
 # Testing Guide
 
-**Last Updated:** 2026-03-25
+**Last Updated:** 2026-07-21
 
 Complete guide to Julie's testing methodology and standards.
 
@@ -40,6 +40,17 @@ struct EditingTestCase {
 ## Running Tests
 
 ```bash
+# Default ≤60s-declared local confidence gate (warm bucket wall)
+cargo xtask test fast
+
+# Smallest core slice (nano ⊆ fast)
+cargo xtask test nano
+
+# Diff-scoped buckets; OverBudget (non-zero) when mapped sum exceeds fast budget
+cargo xtask test changed
+# Explicit scale-up when OverBudget: unique(mapped ∪ dev)
+cargo xtask test changed --scale
+
 # Default batch gate after a completed change set
 cargo xtask test dev
 
@@ -62,22 +73,36 @@ cargo xtask test bucket <name>
 cargo xtask test inventory --bucket <name>
 cargo xtask test inventory --tier dev
 
-# Search matrix investigation harness
-cargo xtask search-matrix mine --days 7 --out artifacts/search-matrix/seeds-YYYY-MM-DD.json
-cargo xtask search-matrix baseline --profile smoke
-cargo xtask search-matrix baseline --profile breadth --out artifacts/search-matrix/breadth-YYYY-MM-DD.json
+# Product-linked search matrix / eval harnesses (Cargo alias → xtask-eval package)
+cargo xtask-eval search-matrix mine --days 7 --out artifacts/search-matrix/seeds-YYYY-MM-DD.json
+cargo xtask-eval search-matrix baseline --profile smoke
+cargo xtask-eval search-matrix baseline --profile breadth --out artifacts/search-matrix/breadth-YYYY-MM-DD.json
 
 # Narrow filter for a specific test
 cargo nextest run --lib test_stemming
 # Note: per-extractor tests now live in the external anortham/julie-extractors repo
 ```
 
+### Warm vs cold accounting
+
+Runner summaries print:
+
+- `SUMMARY: … (warm)` — bucket execution after binaries exist
+- `PREBUILD:` — compile/link time before warm work
+- `COLD WALL:` — `PREBUILD + warm` (may exceed the 60s **declared** fast budget on a cold machine)
+
+Lean `cargo xtask …` does not compile/link the root `julie` package. Use `cargo xtask-eval …` for product-linked harnesses.
+
 ## Test Tiers
 
 | Tier | Command | When to use |
 |------|---------|-------------|
+| nano | `cargo xtask test nano` | Ultra-tight loop (`nano ⊆ fast`) |
+| fast | `cargo xtask test fast` | Default local gate (declared sum ≤60s; warm wall) |
 | smoke | `cargo xtask test smoke` | Quick sanity check |
-| dev | `cargo xtask test dev` | After normal changes (default) |
+| changed | `cargo xtask test changed` | Diff-scoped; **OverBudget** if mapped sum > fast budget (no bare `dev` fallback) |
+| changed --scale | `cargo xtask test changed --scale` | OverBudget escalate: `unique(mapped ∪ dev)` |
+| dev | `cargo xtask test dev` | After normal changes (batch gate) |
 | system | `cargo xtask test system` | Startup/workspace/system changes |
 | dogfood | `cargo xtask test dogfood` | Search/scoring/tokenization changes |
 | full | `cargo xtask test full` | Pre-merge broad pass |
@@ -131,7 +156,7 @@ Evidence may be reused only at the same HEAD commit SHA and the same scope label
 
 ## Search Matrix Harness
 
-`cargo xtask search-matrix` is an investigation harness, not a replacement for `cargo xtask test dogfood`.
+`cargo xtask-eval search-matrix` is an investigation harness (via the `xtask-eval` Cargo alias), not a replacement for `cargo xtask test dogfood`. Do not use deprecated `cargo xtask search-matrix|eval` — those point at the lean runner and error with a migration hint.
 
 - `mine` reads the local daemon DB and writes a seed report under `artifacts/search-matrix/`.
 - `baseline` runs the committed case and corpus manifests against pre-indexed daemon workspaces and writes JSON plus Markdown reports under `artifacts/search-matrix/`.
