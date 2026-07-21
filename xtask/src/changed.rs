@@ -255,7 +255,7 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
 
         let mut path_bucket_names = Vec::new();
         for bucket_name in matched_buckets {
-            if manifest.buckets.contains_key(*bucket_name) || *bucket_name == "system-health" {
+            if manifest.buckets.contains_key(*bucket_name) {
                 path_bucket_names.push((*bucket_name).to_string());
             }
             maybe_push_bucket(&mut bucket_names, manifest, bucket_name);
@@ -1229,7 +1229,7 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
 }
 
 fn maybe_push_bucket(bucket_names: &mut Vec<String>, manifest: &TestManifest, bucket_name: &str) {
-    if !manifest.buckets.contains_key(bucket_name) && bucket_name != "system-health" {
+    if !manifest.buckets.contains_key(bucket_name) {
         return;
     }
 
@@ -1663,6 +1663,26 @@ mod tests {
 
         assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
         assert_eq!(selection.bucket_names, vec!["core-handler-telemetry"]);
+    }
+
+    #[test]
+    fn changed_tests_system_health_selection_prices_at_declared_seconds() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["src/health/report.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.bucket_names, vec!["system-health".to_string()]);
+        assert_eq!(
+            crate::runner::declared_expected_seconds(
+                &manifest,
+                selection.bucket_names.iter().map(String::as_str),
+            ),
+            30,
+            "system-health selection must price at declared 30s via shared resolver"
+        );
     }
 
     #[test]

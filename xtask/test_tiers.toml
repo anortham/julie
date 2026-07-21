@@ -570,6 +570,15 @@ scope_label = "system"
 notes = "documentation indexing integration coverage"
 commands = ["cargo nextest run --lib tests::integration::documentation_indexing -- --skip search_quality"]
 
+[buckets.system-health]
+# Benchmark / system-health gate (also reached via PROGRAM_TIERS `benchmark`).
+# Declared seconds must live here so changed-budget pricing cannot treat it as free.
+expected_seconds = 30
+timeout_seconds = 120
+scope_label = "system"
+notes = "system health latency / health-report gate"
+commands = ["cargo nextest run --lib tests::integration::system_health"]
+
 [buckets.tools-dogfood-repo-index]
 # Dogfood test that indexes the full julie repo (~164s). Isolated from tools-misc
 # so that bucket stays fast.

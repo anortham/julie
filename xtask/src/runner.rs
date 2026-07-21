@@ -87,11 +87,11 @@ struct BucketFailure {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BucketPlan {
-    expected_seconds: u64,
-    timeout_seconds: u64,
-    scope_label: String,
-    commands: Vec<String>,
+pub struct BucketPlan {
+    pub expected_seconds: u64,
+    pub timeout_seconds: u64,
+    pub scope_label: String,
+    pub commands: Vec<String>,
 }
 
 const PROGRAM_TIERS: &[(&str, &[&str])] = &[
@@ -101,13 +101,6 @@ const PROGRAM_TIERS: &[(&str, &[&str])] = &[
     ),
     ("benchmark", &["system-health"]),
 ];
-
-const SPECIAL_BUCKETS: &[(&str, u64, u64, &[&str])] = &[(
-    "system-health",
-    30,
-    120,
-    &["cargo nextest run --lib tests::integration::system_health"],
-)];
 
 pub struct ProcessCommandExecutor;
 
@@ -791,17 +784,31 @@ fn bucket_is_slow(result: &BucketResult) -> bool {
     result.elapsed.as_secs_f64() > (result.expected_seconds as f64 * 1.5)
 }
 
-fn resolve_bucket_plan(manifest: &TestManifest, bucket_name: &str) -> Option<BucketPlan> {
-    manifest
-        .buckets
-        .get(bucket_name)
-        .map(|bucket| BucketPlan {
-            expected_seconds: bucket.expected_seconds,
-            timeout_seconds: bucket.timeout_seconds,
-            scope_label: bucket.scope_label.clone(),
-            commands: bucket.commands.clone(),
-        })
-        .or_else(|| special_bucket_plan(bucket_name))
+/// Resolve a bucket's declared plan from the manifest.
+///
+/// Shared by the runner and changed-budget pricing so every named bucket —
+/// including `system-health` — has a single source of truth for expected seconds.
+pub fn resolve_bucket_plan(manifest: &TestManifest, bucket_name: &str) -> Option<BucketPlan> {
+    manifest.buckets.get(bucket_name).map(|bucket| BucketPlan {
+        expected_seconds: bucket.expected_seconds,
+        timeout_seconds: bucket.timeout_seconds,
+        scope_label: bucket.scope_label.clone(),
+        commands: bucket.commands.clone(),
+    })
+}
+
+/// Sum declared `expected_seconds` for a selection via [`resolve_bucket_plan`].
+///
+/// Unknown names contribute nothing; callers that need OverBudget gating (Task 4)
+/// should use this same path so specials cannot be priced as free/zero.
+pub fn declared_expected_seconds<'a>(
+    manifest: &TestManifest,
+    bucket_names: impl IntoIterator<Item = &'a str>,
+) -> u64 {
+    bucket_names
+        .into_iter()
+        .filter_map(|name| resolve_bucket_plan(manifest, name).map(|plan| plan.expected_seconds))
+        .sum()
 }
 
 fn special_tier_bucket_names(tier_name: &str) -> Option<Vec<String>> {
@@ -809,23 +816,6 @@ fn special_tier_bucket_names(tier_name: &str) -> Option<Vec<String>> {
         .iter()
         .find(|(name, _)| *name == tier_name)
         .map(|(_, buckets)| buckets.iter().map(|bucket| (*bucket).to_string()).collect())
-}
-
-fn special_bucket_plan(bucket_name: &str) -> Option<BucketPlan> {
-    SPECIAL_BUCKETS
-        .iter()
-        .find(|(name, _, _, _)| *name == bucket_name)
-        .map(
-            |(_, expected_seconds, timeout_seconds, commands)| BucketPlan {
-                expected_seconds: *expected_seconds,
-                timeout_seconds: *timeout_seconds,
-                scope_label: "bucket".to_string(),
-                commands: commands
-                    .iter()
-                    .map(|command| (*command).to_string())
-                    .collect(),
-            },
-        )
 }
 
 #[cfg(test)]
@@ -908,9 +898,42 @@ commands = ["workspace init cmd"]
 expected_seconds = 1
 timeout_seconds = 2
 commands = ["integration cmd"]
+
+[buckets.system-health]
+expected_seconds = 30
+timeout_seconds = 120
+commands = ["cargo nextest run --lib tests::integration::system_health"]
 "#,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn runner_tests_declared_expected_seconds_prices_system_health_from_manifest() {
+        let manifest = TestManifest::load(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_tiers.toml"),
+        )
+        .expect("load checked-in test_tiers.toml");
+
+        assert!(
+            manifest.buckets.contains_key("system-health"),
+            "system-health must live in the manifest so pricing is uniform"
+        );
+
+        assert_eq!(
+            declared_expected_seconds(&manifest, ["system-health"]),
+            30,
+            "system-health declared expected_seconds must price at 30s"
+        );
+
+        let plan = resolve_bucket_plan(&manifest, "system-health")
+            .expect("system-health resolves via shared bucket-plan path");
+        assert_eq!(plan.expected_seconds, 30);
+        assert_eq!(plan.timeout_seconds, 120);
+        assert_eq!(
+            plan.commands,
+            vec!["cargo nextest run --lib tests::integration::system_health".to_string()]
+        );
     }
 
     #[test]

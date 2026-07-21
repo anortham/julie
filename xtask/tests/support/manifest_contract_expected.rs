@@ -186,6 +186,14 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "system-health",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 120,
+                commands: &["cargo nextest run --lib tests::integration::system_health"],
+            },
+        ),
+        (
             "tools-dogfood-repo-index",
             ExpectedBucket {
                 expected_seconds: 200,
@@ -721,6 +729,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: true,
                 notes: Some("heavy fixture-backed relevance suite"),
+            },
+        ),
+        (
+            "system-health",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some("system health latency / health-report gate"),
             },
         ),
         (
