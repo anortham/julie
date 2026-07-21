@@ -12,6 +12,7 @@ pub enum TestCommand {
     Changed {
         timeout_multiplier: u64,
         coverage: bool,
+        scale: bool,
     },
     List,
     Tier {
@@ -165,10 +166,20 @@ where
 
     match kind.as_str() {
         "changed" => {
-            let options = parse_options(tail.collect())?;
+            let mut scale = false;
+            let mut rest = Vec::new();
+            for arg in tail {
+                if arg == "--scale" {
+                    scale = true;
+                } else {
+                    rest.push(arg);
+                }
+            }
+            let options = parse_options(rest)?;
             Ok(TestCommand::Changed {
                 timeout_multiplier: options.timeout_multiplier,
                 coverage: options.coverage,
+                scale,
             })
         }
         "list" => {
@@ -396,6 +407,21 @@ commands = ["cargo test --lib tests::cli_tests"]
             TestCommand::Changed {
                 timeout_multiplier: 1,
                 coverage: false,
+                scale: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn cli_tests_parse_changed_scale_flag() {
+        let parsed = parse_test_command(["xtask", "test", "changed", "--scale"]).unwrap();
+
+        assert!(matches!(
+            parsed,
+            TestCommand::Changed {
+                timeout_multiplier: 1,
+                coverage: false,
+                scale: true,
             }
         ));
     }

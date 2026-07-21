@@ -2,7 +2,8 @@ use std::io::{self, Write};
 
 use anyhow::anyhow;
 use xtask::changed::{
-    ChangedSelectionMode, collect_changed_paths, render_changed_selection, select_changed_buckets,
+    ChangedSelectionMode, apply_changed_scale, collect_changed_paths, render_changed_selection,
+    select_changed_buckets,
 };
 use xtask::cli::{
     CliCommand, DevLinkCommand, DevRestartCommand, SyncPluginCommand, TestCommand,
@@ -58,9 +59,22 @@ fn main() -> anyhow::Result<()> {
                 TestCommand::Changed {
                     timeout_multiplier,
                     coverage,
+                    scale,
                 } => {
                     let changed_paths = collect_changed_paths(&workspace_root())?;
-                    let selection = select_changed_buckets(&manifest, &changed_paths);
+                    let mut selection = select_changed_buckets(&manifest, &changed_paths);
+
+                    if selection.mode == ChangedSelectionMode::OverBudget {
+                        if scale {
+                            selection = apply_changed_scale(selection, &manifest);
+                        } else {
+                            stdout.write_all(render_changed_selection(&selection).as_bytes())?;
+                            return Err(anyhow!(
+                                "changed selection exceeds fast budget; re-run with `--scale` or narrow the diff"
+                            ));
+                        }
+                    }
+
                     stdout.write_all(render_changed_selection(&selection).as_bytes())?;
 
                     if selection.mode == ChangedSelectionMode::NoChanges {
