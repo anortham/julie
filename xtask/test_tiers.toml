@@ -428,19 +428,17 @@ commands = [
 # Fast non-search core coverage bucket; broad but still local-dev friendly.
 # Task 6 warm evidence (2026-07-21, n=3 after warm): p50≈20.1s p95≈23.2s → expected=26
 # (p95 + ~3s headroom). Declared fast sum with core-database(5) = 31 ≤ 60.
-# julie-runtime watcher_filtering removed: julie-runtime lib tests do not compile
-# after SearchIndex Mutex removal (repair_projection still wraps Arc<Mutex<…>>).
-# Restore that command once julie-runtime tests compile again.
 expected_seconds = 26
 timeout_seconds = 120
 scope_label = "core"
-notes = "misc fast core coverage (Task 6 warm p95≈23s → expected=26; julie-runtime cmd deferred)"
+notes = "misc fast core coverage (Task 6 warm p95≈23s → expected=26)"
 # Note: `utils::string_similarity::tests` was removed here — string_similarity
 # relocated to julie-core in PR 2a U1, and its tests run via the `core-database`
 # bucket (`cargo nextest run -p julie-core`). A zero-match nextest filter exits 4,
 # so leaving it here made `dev` RED.
 commands = [
   "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
+  "cargo nextest run -p julie-runtime --lib tests::watcher_filtering",
   "cargo nextest run --lib tests::core::handler -- --skip search_quality",
   "cargo nextest run --lib tests::core::language -- --skip search_quality",
   "cargo nextest run --lib tests::core::paths -- --skip search_quality",
