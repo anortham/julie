@@ -9,6 +9,7 @@ use julie_core::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDa
 use julie_extractors::Symbol;
 
 mod apply;
+mod facts_text;
 
 pub use apply::apply_documents;
 #[cfg(any(test, feature = "test-support"))]
@@ -18,9 +19,11 @@ pub use apply::collect_relationship_names_bounded;
 pub use apply::collect_relationship_partner_symbol_ids;
 pub use apply::reproject_partner_symbols;
 use apply::{
-    RELATIONSHIP_TEXT_MAX_BYTES, SymbolIndexContext, apply_documents_with_context,
-    load_symbol_contexts_from_database, symbol_contexts_from_symbols,
+    apply_documents_with_context, load_symbol_contexts_from_database, symbol_contexts_from_symbols,
+    SymbolIndexContext, RELATIONSHIP_TEXT_MAX_BYTES,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use facts_text::collect_structural_facts_text_bounded;
 
 pub const TANTIVY_PROJECTION_NAME: &str = "tantivy";
 

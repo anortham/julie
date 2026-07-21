@@ -41,6 +41,7 @@ mod tool_calls;
 mod type_queries;
 pub mod types;
 pub mod vectors;
+mod web_edges;
 mod workspace;
 pub use analytics::*;
 pub use projections::{ProjectionState, ProjectionStatus};
@@ -48,6 +49,7 @@ pub use revision_changes::{RevisionChangeKind, RevisionFileChange};
 pub use revisions::{CanonicalRevision, CanonicalRevisionKind};
 pub use structural_facts::*;
 pub use tool_calls::{HistorySummary, ToolCallSummary};
+pub use web_edges::*;
 
 /// Register sqlite-vec extension as a global auto-extension (once per process).
 static SQLITE_VEC_INIT: Once = Once::new();

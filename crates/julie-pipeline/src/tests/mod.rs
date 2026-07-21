@@ -8,3 +8,4 @@ pub mod embedding_sidecar_protocol;
 pub mod host_transport_test;
 pub mod host_server_test;
 pub mod rpc_client_test;
+pub mod web_edges;

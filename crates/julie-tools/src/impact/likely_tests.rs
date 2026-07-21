@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 
-use julie_index::analysis::test_linkage::test_linkage_entry;
 use julie_core::database::{IdentifierRef, SymbolDatabase};
+use julie_index::analysis::test_linkage::test_linkage_entry;
 use julie_index::search::scoring::is_test_path;
 
 use super::ranking::RankedImpact;

@@ -261,6 +261,7 @@ mod tests {
                     include_tests: false,
                     format: Some("compact".to_string()),
                     workspace: None,
+                    ..Default::default()
                 }
                 .call_tool(h.as_ref())
                 .await?;

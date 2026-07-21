@@ -117,6 +117,7 @@ fn try_parse_response(text: &str) -> Option<CallPathResponse> {
         hops: hops?,
         path,
         diagnostic,
+        ..Default::default()
     })
 }
 
@@ -187,6 +188,7 @@ async fn test_call_path_failures_return_structured_response() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
     let missing_input_text = extract_text(&missing_input_tool.call_tool(&handler).await?);
     let missing_input = parse_response(&missing_input_text);
@@ -216,6 +218,7 @@ async fn test_call_path_failures_return_structured_response() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
     let lookup_text = extract_text(&lookup_tool.call_tool(&handler).await?);
     let lookup = parse_response(&lookup_text);
@@ -253,6 +256,7 @@ async fn test_call_path_rejects_max_hops_above_cap() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
 
     let text = extract_text(&tool.call_tool(&handler).await?);
@@ -300,6 +304,7 @@ async fn test_call_path_tie_ordering_uses_target_identity() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/start.rs".to_string()),
         to_file_path: None,
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -326,6 +331,7 @@ async fn test_call_path_finds_shortest_call_chain() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -370,6 +376,7 @@ async fn test_call_path_renders_compact_text_instead_of_json() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
 
     let text = extract_text(&tool.call_tool(&handler).await?);
@@ -406,6 +413,7 @@ async fn test_call_path_returns_found_false_when_no_path_exists() -> Result<()> 
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -438,6 +446,7 @@ async fn test_call_path_respects_max_hops() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -479,6 +488,7 @@ async fn test_non_call_edge_not_traversed() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -519,6 +529,7 @@ async fn test_call_path_resolves_rust_crate_scoped_call_to_namespaced_target() -
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/main.rs".to_string()),
         to_file_path: Some("src/search/hybrid.rs".to_string()),
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -548,6 +559,7 @@ async fn test_call_path_resolves_rust_crate_scoped_call_to_namespaced_target() -
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/main.rs".to_string()),
         to_file_path: Some("src/main.rs".to_string()),
+        ..Default::default()
     };
 
     let std_result = std_tool.call_tool(&handler).await?;
@@ -587,6 +599,7 @@ async fn test_call_path_resolves_reexported_crate_call_to_definition_target() ->
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/indexing.rs".to_string()),
         to_file_path: Some("src/pipeline.rs".to_string()),
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -640,6 +653,7 @@ async fn test_call_path_resolves_workspace_crate_glob_reexport_to_definition_tar
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/indexing.rs".to_string()),
         to_file_path: Some("crates/sample-lib/src/pipeline.rs".to_string()),
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -677,6 +691,7 @@ async fn test_call_path_hops_include_target_definition_identity() -> Result<()> 
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -704,6 +719,7 @@ async fn test_call_path_workspace_isolation() -> Result<()> {
         workspace: Some("nonexistent-workspace-id".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
 
     // call_tool may propagate Err when workspace resolution fails outright,

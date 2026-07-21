@@ -15,6 +15,7 @@ pub mod source_regions;
 pub mod structural_facts;
 pub mod type_arguments;
 pub mod types;
+pub mod web_edges;
 pub mod write_set;
 
 pub(crate) fn collect_referenced_symbol_ids(

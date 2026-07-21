@@ -1,7 +1,7 @@
-use crate::impact::LikelyTests;
 use crate::impact::ranking::RankedImpact;
 use crate::impact::seed::SeedContext;
-use crate::spillover::{SpilloverFormat, SpilloverStore, more_available_marker};
+use crate::impact::LikelyTests;
+use crate::spillover::{more_available_marker, SpilloverFormat, SpilloverStore};
 
 /// Extra context that shapes the blast-radius header line.
 ///
@@ -21,6 +21,9 @@ pub struct BlastRadiusHeader {
     pub likely_test_paths_overflow_handle: Option<String>,
     /// Spillover handle for related test symbols beyond the visible cap.
     pub related_test_symbols_overflow_handle: Option<String>,
+    /// Pre-formatted `web`-mode caller rows (e.g. `"fetchUser  src/client.ts:3  via http_call GET /api/users/123"`).
+    /// Empty in `default` mode, so the legacy blast-radius output is byte-identical.
+    pub web_callers: Vec<String>,
 }
 
 pub fn format_blast_radius(
@@ -87,6 +90,12 @@ pub fn format_blast_radius(
                 .join("\n"),
         );
         sections.push(deleted_block);
+    }
+
+    if !header.web_callers.is_empty() {
+        let mut web_block = String::from("Web callers\n");
+        web_block.push_str(&header.web_callers.join("\n"));
+        sections.push(web_block);
     }
 
     if let Some(handle) = header.impact_overflow_handle.as_deref() {

@@ -8,7 +8,7 @@ use crate::workspace::mutation_gate::MutationGuard;
 use anyhow::{Context, Result};
 use julie_core::database::SymbolDatabase;
 use julie_core::file_policy::{
-    ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
+    detect_language_for_indexing_with_content, determine_extraction_mode, ExtractionMode,
 };
 use julie_core::indexing_state::IndexingRepairReason;
 use julie_extractors::ExtractorManager;
@@ -293,6 +293,17 @@ pub async fn handle_file_created_or_modified_static(
             julie_core::database::bulk::atomic::AtomicPersistenceMetadata::default(),
         )?;
 
+        // Recompute derived web edges on every watcher save. A replace may have
+        // removed web-relevant facts (e.g. a route-handler file replaced with a
+        // non-web file); the atomic write above already deleted every
+        // `web_edge` touching this file's symbols, including cross-file edges
+        // from OTHER files' client calls to this file's (now-gone) handlers.
+        // Gating only on the NEW facts would skip the rebuild and silently drop
+        // those cross-file edges. Always rebuilding is correct; the segcount
+        // bucketing in `derive_http_call_edges` keeps the cost bounded. An
+        // incremental rebuild is a tracked follow-up.
+        julie_pipeline::indexing_core::web_edges::rebuild_web_edges(&mut *db_lock)?;
+
         new_symbol_ids = watcher_write
             .normalized
             .symbols
@@ -352,67 +363,69 @@ pub async fn handle_file_created_or_modified_static(
         let search_index = Arc::clone(search_index);
         let db_for_tantivy = Arc::clone(db);
         let partner_ids_for_tantivy = partner_symbol_ids;
-        let tantivy_result = tokio::task::spawn_blocking(move || {
-            let idx = match search_index.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Search index mutex poisoned, recovering");
-                    poisoned.into_inner()
-                }
-            };
-            let db_guard = match db_for_tantivy.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Database mutex poisoned during Tantivy projection, recovering");
-                    poisoned.into_inner()
-                }
-            };
-
-            let ok = match julie_index::search::projection::apply_uncommitted_documents_from_symbols(
-                &idx,
-                &symbols,
-                &file_to_clean,
-                &file_content,
-                &file_language,
-                std::slice::from_ref(&file_to_clean),
-                &db_guard,
-            ) {
-                Ok(()) => true,
-                Err(e) => {
-                    warn!("Failed to update Tantivy docs for {}: {}", file_to_clean, e);
-                    false
-                }
-            };
-
-            // Reproject relationship partner symbols so their relationship_text reflects
-            // the just-indexed symbols. Partners live in other files and are not covered
-            // by apply_uncommitted_documents_from_symbols above.
-            let ok = if ok && !partner_ids_for_tantivy.is_empty() {
-                match julie_index::search::projection::reproject_partner_symbols(
-                    &idx,
-                    &db_guard,
-                    &partner_ids_for_tantivy,
-                ) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        warn!(
-                            "Failed to reproject {} relationship partner symbol(s): {}",
-                            partner_ids_for_tantivy.len(),
-                            e
-                        );
-                        false
+        let tantivy_result =
+            tokio::task::spawn_blocking(move || {
+                let idx = match search_index.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Search index mutex poisoned, recovering");
+                        poisoned.into_inner()
                     }
-                }
-            } else {
-                ok
-            };
+                };
+                let db_guard = match db_for_tantivy.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during Tantivy projection, recovering");
+                        poisoned.into_inner()
+                    }
+                };
 
-            // NOTE: commit is intentionally deferred; the caller batches
-            // multiple file operations and commits once per tick to avoid
-            // Tantivy segment-merge conflicts (FileDoesNotExist on .term files).
-            ok
-        })
-        .await;
+                let ok =
+                    match julie_index::search::projection::apply_uncommitted_documents_from_symbols(
+                        &idx,
+                        &symbols,
+                        &file_to_clean,
+                        &file_content,
+                        &file_language,
+                        std::slice::from_ref(&file_to_clean),
+                        &db_guard,
+                    ) {
+                        Ok(()) => true,
+                        Err(e) => {
+                            warn!("Failed to update Tantivy docs for {}: {}", file_to_clean, e);
+                            false
+                        }
+                    };
+
+                // Reproject relationship partner symbols so their relationship_text reflects
+                // the just-indexed symbols. Partners live in other files and are not covered
+                // by apply_uncommitted_documents_from_symbols above.
+                let ok = if ok && !partner_ids_for_tantivy.is_empty() {
+                    match julie_index::search::projection::reproject_partner_symbols(
+                        &idx,
+                        &db_guard,
+                        &partner_ids_for_tantivy,
+                    ) {
+                        Ok(()) => true,
+                        Err(e) => {
+                            warn!(
+                                "Failed to reproject {} relationship partner symbol(s): {}",
+                                partner_ids_for_tantivy.len(),
+                                e
+                            );
+                            false
+                        }
+                    }
+                } else {
+                    ok
+                };
+
+                // NOTE: commit is intentionally deferred; the caller batches
+                // multiple file operations and commits once per tick to avoid
+                // Tantivy segment-merge conflicts (FileDoesNotExist on .term files).
+                ok
+            })
+            .await;
 
         match tantivy_result {
             Ok(ok) => ok,
@@ -434,9 +447,7 @@ pub async fn handle_file_created_or_modified_static(
             let db_lock = match db.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    warn!(
-                        "Database mutex poisoned during projected_revision stamp, recovering"
-                    );
+                    warn!("Database mutex poisoned during projected_revision stamp, recovering");
                     poisoned.into_inner()
                 }
             };
@@ -474,7 +485,7 @@ pub async fn handle_file_created_or_modified_static(
 /// check here creates a TOCTOU race: embeddings can be deleted by the caller while
 /// this function bails out if the file is recreated between the two checks, leaving
 /// symbols/Tantivy docs orphaned. Trust the caller's decision.
-pub(crate) async fn handle_file_deleted_static(
+pub async fn handle_file_deleted_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
@@ -488,7 +499,7 @@ pub(crate) async fn handle_file_deleted_static(
         .context("Failed to convert path to relative")?;
 
     {
-        let db_lock = match db.lock() {
+        let mut db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
                 warn!(
@@ -535,6 +546,13 @@ pub(crate) async fn handle_file_deleted_static(
             }
         }
         db_lock.clear_indexing_repair(&relative_path)?;
+
+        // Recompute derived web edges after delete. Cross-file client calls that
+        // targeted this file's handlers lose their `to_symbol_id` via FK
+        // `ON DELETE SET NULL`; without a rebuild they stay dangling
+        // (neither target nor `to_external`). Persistence delete already
+        // rebuilds; the live watcher path must too.
+        julie_pipeline::indexing_core::web_edges::rebuild_web_edges(&mut *db_lock)?;
     } // db_lock is dropped here
 
     info!("Successfully removed indexes for {}", path.display());

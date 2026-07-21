@@ -211,6 +211,7 @@ async fn test_blast_radius_ranks_direct_callers_and_uses_spillover() -> Result<(
         include_tests: true,
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     }
     .call_tool(&handler)
     .await?;
@@ -334,6 +335,7 @@ async fn test_blast_radius_likely_tests_include_resolved_refs_to_impacted_symbol
         include_tests: true,
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     }
     .call_tool(&handler)
     .await?;
@@ -404,6 +406,7 @@ async fn test_blast_radius_likely_test_path_overflow_is_retrievable() -> Result<
         include_tests: true,
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     }
     .call_tool(&handler)
     .await?;
@@ -492,6 +495,7 @@ async fn test_blast_radius_related_test_symbol_overflow_is_retrievable() -> Resu
         include_tests: true,
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     }
     .call_tool(&handler)
     .await?;
@@ -575,6 +579,7 @@ async fn test_blast_radius_reports_deleted_files_from_revision_range() -> Result
         include_tests: true,
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     }
     .call_tool(&handler)
     .await?;

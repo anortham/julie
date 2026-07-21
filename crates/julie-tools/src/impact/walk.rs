@@ -2,10 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 
-use julie_core::database::SymbolDatabase;
-use julie_core::database::impact_graph::identifier_incoming_edges;
-use julie_extractors::{Relationship, RelationshipKind, Symbol};
 use crate::impact::ranking::relationship_priority;
+use julie_core::database::impact_graph::identifier_incoming_edges;
+use julie_core::database::SymbolDatabase;
+use julie_core::database::WebEdgeKind;
+use julie_extractors::{Relationship, RelationshipKind, Symbol};
 
 #[derive(Debug, Clone)]
 pub struct ImpactCandidate {
@@ -14,6 +15,81 @@ pub struct ImpactCandidate {
     pub relationship_kind: RelationshipKind,
     pub reference_score: f64,
     pub via_symbol_name: String,
+}
+
+/// A reverse web-edge caller of a seed symbol. For `http_call` edges the seed
+/// is a route handler and the caller is the frontend symbol that issued the
+/// client call; for `sql_query` edges the seed is a table symbol and the
+/// caller is the routine/view that queries it. Populated only in `web` mode
+/// so the default blast-radius output stays byte-identical.
+#[derive(Debug, Clone)]
+pub struct WebCaller {
+    pub caller: Symbol,
+    /// Human-readable endpoint/table label, e.g. `"GET /api/users/123"` for
+    /// matched HTTP edges, `"table:users"` for matched SQL edges, or the
+    /// external-endpoint label for unmatched calls.
+    pub endpoint: String,
+    /// The web-edge kind that produced this caller, rendered as the `via`
+    /// label (`http_call` or `sql_query`).
+    pub via: &'static str,
+}
+
+fn web_edge_via_label(kind: WebEdgeKind) -> &'static str {
+    match kind {
+        WebEdgeKind::HttpCall => "http_call",
+        WebEdgeKind::SqlQuery => "sql_query",
+    }
+}
+
+/// Reverse web-edge lookup: given seed symbol ids (route handlers or table
+/// symbols), return the symbols that call them via derived `http_call` /
+/// `sql_query` edges. Used by the blast-radius tool in `web` mode to surface
+/// "who calls this endpoint / queries this table".
+pub fn walk_web_callers(db: &SymbolDatabase, seed_symbol_ids: &[String]) -> Result<Vec<WebCaller>> {
+    if seed_symbol_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let edges = db.web_edges_to_symbols(seed_symbol_ids)?;
+    let caller_ids: Vec<String> = edges.iter().map(|e| e.from_symbol_id.clone()).collect();
+    let symbols = db.get_symbols_by_ids(&caller_ids)?;
+    let map: HashMap<String, Symbol> = symbols.into_iter().map(|s| (s.id.clone(), s)).collect();
+    let mut callers = Vec::new();
+    for edge in edges {
+        let Some(caller) = map.get(&edge.from_symbol_id).cloned() else {
+            continue;
+        };
+        let via = web_edge_via_label(edge.kind);
+        let endpoint = match edge.kind {
+            WebEdgeKind::SqlQuery => edge
+                .table
+                .clone()
+                .map(|t| format!("table:{t}"))
+                .unwrap_or_else(|| edge.to_external.clone().unwrap_or_default()),
+            WebEdgeKind::HttpCall => {
+                edge.to_external
+                    .clone()
+                    .unwrap_or_else(|| match (&edge.method, &edge.path) {
+                        (Some(method), Some(path)) => format!("{method} {path}"),
+                        (Some(method), None) => method.clone(),
+                        (None, Some(path)) => path.clone(),
+                        (None, None) => String::new(),
+                    })
+            }
+        };
+        callers.push(WebCaller {
+            caller,
+            endpoint,
+            via,
+        });
+    }
+    callers.sort_by(|a, b| {
+        a.caller
+            .id
+            .cmp(&b.caller.id)
+            .then(a.via.cmp(b.via))
+            .then(a.endpoint.cmp(&b.endpoint))
+    });
+    Ok(callers)
 }
 
 #[derive(Debug, Clone, Copy)]

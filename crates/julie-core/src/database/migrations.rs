@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 29;
+pub const LATEST_SCHEMA_VERSION: i32 = 30;
 
 impl SymbolDatabase {
     // ============================================================
@@ -125,6 +125,7 @@ impl SymbolDatabase {
             27 => self.migration_027_add_type_arguments()?,
             28 => self.migration_028_add_literals()?,
             29 => self.migration_029_add_extractor_enrichments()?,
+            30 => self.migration_030_add_web_edges()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -162,6 +163,7 @@ impl SymbolDatabase {
             27 => "Add type_arguments table",
             28 => "Add literals table",
             29 => "Add extractor enrichment tables",
+            30 => "Add web_edges table for derived web navigation edges",
             _ => "Unknown migration",
         };
 
@@ -924,6 +926,13 @@ impl SymbolDatabase {
         self.create_structural_facts_table()?;
         self.create_complexity_metrics_table()?;
         info!("Migration 029 complete: extractor enrichment tables added");
+        Ok(())
+    }
+
+    fn migration_030_add_web_edges(&self) -> Result<()> {
+        info!("Running migration 030: Add web_edges table");
+        self.create_web_edges_table()?;
+        info!("Migration 030 complete: web_edges table added");
         Ok(())
     }
 

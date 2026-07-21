@@ -807,6 +807,7 @@ fn test_blast_radius_metadata_carries_seed_modes() {
         include_tests: true,
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     };
 
     let metadata = tool_targets::blast_radius_metadata(&params);
@@ -828,6 +829,7 @@ fn test_call_path_metadata_carries_file_path_hints() {
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/a.rs".to_string()),
         to_file_path: Some("src/b.rs".to_string()),
+        ..Default::default()
     };
 
     let metadata = tool_targets::call_path_metadata(&params);

@@ -4,6 +4,7 @@
 // corruption if a crash occurs between delete and insert phases.
 
 mod enrichments;
+mod web_edges;
 
 use crate::database::SymbolDatabase;
 use crate::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};

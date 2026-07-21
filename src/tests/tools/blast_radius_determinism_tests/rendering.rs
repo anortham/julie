@@ -16,6 +16,7 @@ async fn test_blast_radius_surfaces_identifier_only_callers() -> Result<()> {
         // Explicit readable so we can assert on section headings.
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     }
     .call_tool(&handler)
     .await?;
@@ -51,6 +52,7 @@ async fn test_blast_radius_is_deterministic_across_repeated_calls() -> Result<()
         include_tests: true,
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     };
 
     let first = extract_text(&tool.call_tool(&handler).await?);
@@ -79,6 +81,7 @@ async fn test_blast_radius_renders_paths_and_related_symbol_headings() -> Result
         include_tests: true,
         format: Some("readable".to_string()),
         workspace: Some("primary".to_string()),
+        ..Default::default()
     }
     .call_tool(&handler)
     .await?;
@@ -141,6 +144,7 @@ async fn test_blast_radius_defaults_to_compact_format() -> Result<()> {
             include_tests: true,
             format: Some("readable".to_string()),
             workspace: Some("primary".to_string()),
+            ..Default::default()
         }
         .call_tool(&handler)
         .await?,
@@ -157,6 +161,7 @@ async fn test_blast_radius_defaults_to_compact_format() -> Result<()> {
             include_tests: true,
             format: None,
             workspace: Some("primary".to_string()),
+            ..Default::default()
         }
         .call_tool(&handler)
         .await?,
@@ -173,6 +178,7 @@ async fn test_blast_radius_defaults_to_compact_format() -> Result<()> {
             include_tests: true,
             format: Some("compact".to_string()),
             workspace: Some("primary".to_string()),
+            ..Default::default()
         }
         .call_tool(&handler)
         .await?,

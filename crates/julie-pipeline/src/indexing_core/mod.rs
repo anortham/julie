@@ -5,3 +5,4 @@ pub mod extraction;
 pub mod normalized;
 pub(crate) mod paths;
 pub mod persistence;
+pub mod web_edges;

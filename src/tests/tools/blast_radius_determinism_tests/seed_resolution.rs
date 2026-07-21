@@ -103,6 +103,7 @@ async fn test_file_path_seeds_filter_noisy_structural_symbols_but_symbol_ids_are
                 include_tests: true,
                 format: Some("compact".to_string()),
                 workspace: Some("primary".to_string()),
+                ..Default::default()
             },
             &guard,
             workspace_id.as_str(),
@@ -153,6 +154,7 @@ async fn test_file_path_seeds_filter_noisy_structural_symbols_but_symbol_ids_are
                 include_tests: true,
                 format: Some("compact".to_string()),
                 workspace: Some("primary".to_string()),
+                ..Default::default()
             },
             &guard,
             workspace_id.as_str(),

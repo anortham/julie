@@ -75,6 +75,17 @@ pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Resu
             OR symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
         params![file_path],
     )?;
+    // Derived web edges: drop any edge originating in this file or pointing at
+    // a symbol in this file. (Edges are fully recomputed by the post-index
+    // rebuild pass, but clearing here keeps the table consistent even if the
+    // rebuild is skipped or fails.)
+    tx.execute(
+        "DELETE FROM web_edges
+         WHERE file_path = ?1
+            OR from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
+            OR to_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+        params![file_path],
+    )?;
     tx.execute(
         "DELETE FROM identifiers
          WHERE file_path = ?1
@@ -104,6 +115,7 @@ pub(super) fn delete_all_indexed_rows_tx(tx: &Transaction<'_>) -> Result<()> {
         "DELETE FROM source_regions",
         "DELETE FROM structural_facts",
         "DELETE FROM complexity_metrics",
+        "DELETE FROM web_edges",
         "DELETE FROM literals",
         "DELETE FROM type_arguments",
         "DELETE FROM identifiers",

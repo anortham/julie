@@ -1,18 +1,18 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use julie_core::mcp_compat::{CallToolResult, Content};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use julie_core::database::SymbolDatabase;
-use julie_extractors::{Relationship, RelationshipKind, Symbol};
-use julie_core::mcp_compat::CallToolResultExt;
 use crate::deep_dive::data::find_symbol;
 use julie_context::ToolContext;
+use julie_core::database::SymbolDatabase;
+use julie_core::mcp_compat::CallToolResultExt;
+use julie_extractors::{Relationship, RelationshipKind, Symbol};
 
-use super::resolution::{WorkspaceTarget, file_path_matches_suffix};
+use super::resolution::{file_path_matches_suffix, WorkspaceTarget};
 
 const DEFAULT_MAX_HOPS: u32 = 6;
 const MAX_HOPS: u32 = 32;
@@ -29,6 +29,9 @@ fn default_workspace() -> Option<String> {
 #[serde(deny_unknown_fields)]
 /// BFS traverses Calls, Instantiates, and Overrides relationships only.
 /// Extends/Implements/TypeUsage/Reference edges are not followed.
+/// Set `mode = "web"` to additionally follow derived `http_call` (and, in
+/// Phase 2, `sql_query`) web edges so a frontend client-call traces through
+/// to its backend handler.
 pub struct CallPathTool {
     /// Source symbol name to start from. Use a qualified name when shared names are ambiguous.
     pub from: String,
@@ -50,9 +53,29 @@ pub struct CallPathTool {
     /// Optional target file hint used to disambiguate the `to` symbol.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to_file_path: Option<String>,
+    /// Traversal mode. `default` (omitted) follows Calls/Instantiates/Overrides
+    /// only — output is byte-identical to the legacy tool. `web` additionally
+    /// follows derived `http_call` edges (client-call symbol -> route handler)
+    /// and reports external endpoints reached by unmatched client calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Default for CallPathTool {
+    fn default() -> Self {
+        Self {
+            from: String::new(),
+            to: String::new(),
+            max_hops: DEFAULT_MAX_HOPS,
+            workspace: default_workspace(),
+            from_file_path: None,
+            to_file_path: None,
+            mode: None,
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CallPathResponse {
     pub found: bool,
     pub hops: u32,
@@ -61,6 +84,12 @@ pub struct CallPathResponse {
     pub path: Vec<CallPathHop>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic: Option<String>,
+    /// External endpoints reached by unmatched client calls during a `web`
+    /// mode traversal (e.g. `"GET /api/foo"`). Empty in `default` mode, so
+    /// the default response stays byte-identical to the legacy tool.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub external_endpoints: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -326,6 +355,14 @@ fn build_hops(
     Ok(hops)
 }
 
+// ---------------------------------------------------------------------------
+// Web mode: BFS that additionally follows derived `http_call`/`sql_query` web
+// edges. Extracted into `call_path_web.rs` for file-size hygiene.
+// ---------------------------------------------------------------------------
+#[path = "call_path_web.rs"]
+mod call_path_web;
+pub use call_path_web::web_call_path_by_name;
+
 impl CallPathTool {
     fn response_result(response: &CallPathResponse) -> Result<CallToolResult> {
         Ok(CallToolResult::text_content(vec![Content::text(
@@ -339,14 +376,15 @@ impl CallPathTool {
             hops: 0,
             path: Vec::new(),
             diagnostic: Some(diagnostic.into()),
+            external_endpoints: Vec::new(),
         }
     }
 
-    async fn resolve_workspace_target(
-        &self,
-        handler: &dyn ToolContext,
-    ) -> Result<SymbolDatabase> {
-        match handler.resolve_workspace_target(self.workspace.as_deref()).await? {
+    async fn resolve_workspace_target(&self, handler: &dyn ToolContext) -> Result<SymbolDatabase> {
+        match handler
+            .resolve_workspace_target(self.workspace.as_deref())
+            .await?
+        {
             WorkspaceTarget::Primary => handler.primary_pooled_database().await,
             WorkspaceTarget::Target(workspace_id) => {
                 handler
@@ -367,6 +405,14 @@ impl CallPathTool {
                 "max_hops must be in the range 1..={MAX_HOPS}"
             )));
         }
+        match self.mode.as_deref() {
+            None | Some("default") | Some("web") => {}
+            Some(other) => {
+                return Self::response_result(&Self::diagnostic_response(format!(
+                    "mode must be 'default' or 'web'; got '{other}'"
+                )));
+            }
+        }
 
         let db = match self.resolve_workspace_target(handler).await {
             Ok(db) => db,
@@ -381,6 +427,7 @@ impl CallPathTool {
         let max_hops = self.max_hops;
         let from_file_path = self.from_file_path.clone();
         let to_file_path = self.to_file_path.clone();
+        let web_mode = self.mode.as_deref() == Some("web");
 
         let response = tokio::task::spawn_blocking(move || -> Result<CallPathResponse> {
             let endpoints = resolve_endpoints(
@@ -390,6 +437,11 @@ impl CallPathTool {
                 from_file_path.as_deref(),
                 to_file_path.as_deref(),
             )?;
+
+            if web_mode {
+                return call_path_web::run_web_call_path(&db, &endpoints, max_hops, &from, &to);
+            }
+
             let search = bfs_shortest_path(&db, &endpoints.from.id, &endpoints.targets, max_hops)?;
 
             if endpoints.targets.contains(&endpoints.from.id) {
@@ -398,6 +450,7 @@ impl CallPathTool {
                     hops: 0,
                     path: Vec::new(),
                     diagnostic: None,
+                    external_endpoints: Vec::new(),
                 });
             }
 
@@ -408,6 +461,7 @@ impl CallPathTool {
                     hops: hops.len() as u32,
                     path: hops,
                     diagnostic: None,
+                    external_endpoints: Vec::new(),
                 });
             }
 
@@ -419,6 +473,7 @@ impl CallPathTool {
                     "No path found from '{}' to '{}' within {} hops.",
                     from, to, max_hops
                 )),
+                external_endpoints: Vec::new(),
             })
         })
         .await;
@@ -460,6 +515,10 @@ fn format_call_path_response(response: &CallPathResponse) -> String {
                 hop.target_file, hop.target_start_line
             ));
         }
+    }
+
+    for endpoint in &response.external_endpoints {
+        out.push_str(&format!("\nexternal_endpoint: {endpoint}"));
     }
 
     out

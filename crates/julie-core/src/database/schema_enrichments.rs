@@ -216,4 +216,52 @@ impl SymbolDatabase {
         debug!("Created complexity_metrics table and indexes");
         Ok(())
     }
+
+    /// Create the `web_edges` table: *derived* navigation edges produced by
+    /// julie-pipeline from `structural_facts` (e.g. `http_call` joining an
+    /// `http.client_request.v1` client-call fact to a route-handler fact).
+    /// Unlike `relationships` (whose `kind` is the extractor's closed
+    /// `RelationshipKind` enum), web edges are Julie-owned derived data, so
+    /// their `kind` is a free-form string (`http_call` / `sql_query`) and the
+    /// table lives in julie-core.
+    ///
+    /// Each edge has either an in-workspace `to_symbol_id` (matched handler /
+    /// table) or a `to_external` endpoint/table label (unmatched call). Carries
+    /// its own `file_path` so per-file cleanup is a flat `DELETE ... WHERE
+    /// file_path = ?1` (cross-cutting Rule 1).
+    ///
+    /// `pub(crate)` so `migration_030_add_web_edges` can call it; the
+    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for both
+    /// fresh DBs (via `initialize_schema`) and upgrades (via migration 030).
+    pub(crate) fn create_web_edges_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS web_edges (
+                id               TEXT PRIMARY KEY,
+                from_symbol_id   TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+                to_symbol_id     TEXT REFERENCES symbols(id) ON DELETE SET NULL,
+                to_external      TEXT,
+                kind             TEXT NOT NULL,   -- http_call | sql_query
+                method           TEXT,
+                path             TEXT,
+                table_name        TEXT,
+                file_path        TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+                line_number      INTEGER NOT NULL,
+                confidence       REAL NOT NULL,
+                metadata         TEXT,
+                last_indexed     INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_web_edges_from
+                ON web_edges(from_symbol_id);
+            CREATE INDEX IF NOT EXISTS idx_web_edges_to
+                ON web_edges(to_symbol_id);
+            CREATE INDEX IF NOT EXISTS idx_web_edges_kind
+                ON web_edges(kind);
+            CREATE INDEX IF NOT EXISTS idx_web_edges_file
+                ON web_edges(file_path);
+            CREATE INDEX IF NOT EXISTS idx_web_edges_external
+                ON web_edges(to_external);",
+        )?;
+        debug!("Created web_edges table and indexes");
+        Ok(())
+    }
 }

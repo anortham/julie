@@ -33,6 +33,7 @@ impl SymbolDatabase {
         self.create_source_regions_table()?;
         self.create_structural_facts_table()?;
         self.create_complexity_metrics_table()?;
+        self.create_web_edges_table()?; // Derived web navigation edges
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
 

@@ -2,12 +2,16 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tracing::warn;
 
-use julie_core::database::{FileInfo, SymbolDatabase};
-use julie_extractors::{AnnotationMarker, Symbol};
-use crate::search::SearchIndex;
-use crate::search::index::{SearchDocument, truncate_utf8_bytes};
+use super::facts_text::{
+    collect_structural_facts_text_bounded, merge_structural_facts_text,
+    truncate_to_whitespace_boundary,
+};
+use crate::search::index::{truncate_utf8_bytes, SearchDocument};
 use crate::search::scoring::{classify_role, test_subrole};
 use crate::search::tokenizer::pretokenize_code;
+use crate::search::SearchIndex;
+use julie_core::database::{FileInfo, SymbolDatabase};
+use julie_extractors::{AnnotationMarker, Symbol};
 
 /// Maximum byte length for `relationship_text` per symbol.
 pub(super) const RELATIONSHIP_TEXT_MAX_BYTES: usize = 512;
@@ -144,24 +148,6 @@ pub fn collect_relationship_partner_symbol_ids(
     Ok(partner_ids)
 }
 
-/// Truncate `s` to at most `max_bytes` bytes on a whitespace boundary.
-///
-/// If `s` fits within `max_bytes`, returns `s` unchanged. Otherwise truncates
-/// to `max_bytes` bytes (respecting UTF-8 char boundaries via
-/// [`truncate_utf8_bytes`]) then backtracks to the last whitespace so partial
-/// identifiers are never left in the index.
-fn truncate_to_whitespace_boundary(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let truncated = truncate_utf8_bytes(s, max_bytes);
-    if let Some(idx) = truncated.rfind(char::is_whitespace) {
-        &truncated[..idx]
-    } else {
-        truncated
-    }
-}
-
 pub fn apply_uncommitted_documents_from_symbols(
     index: &SearchIndex,
     symbols: &[Symbol],
@@ -186,6 +172,22 @@ pub fn apply_uncommitted_documents_from_symbols(
                 }
             }
         };
+    let facts_map =
+        match collect_structural_facts_text_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
+            Ok(map) => map,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("no such table") {
+                    warn!(
+                        "structural_facts_text skipped: DB not yet migrated ({})",
+                        msg
+                    );
+                    HashMap::new()
+                } else {
+                    return Err(e);
+                }
+            }
+        };
 
     for file_path_to_clean in files_to_clean {
         index.remove_by_file_path(file_path_to_clean)?;
@@ -197,7 +199,10 @@ pub fn apply_uncommitted_documents_from_symbols(
             .get(&symbol.id)
             .cloned()
             .unwrap_or_default();
-        let search_doc = symbol_to_search_document(symbol, &context, rel_text);
+        let facts_text = facts_map.get(&symbol.id).cloned().unwrap_or_default();
+        let merged =
+            merge_structural_facts_text(rel_text, &facts_text, RELATIONSHIP_TEXT_MAX_BYTES);
+        let search_doc = symbol_to_search_document(symbol, &context, merged);
         index.add_search_doc(&search_doc)?;
     }
 
@@ -257,7 +262,7 @@ pub fn apply_documents_with_db(
     commit: bool,
 ) -> Result<()> {
     let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-    let relationship_map =
+    let mut relationship_map =
         match collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
             Ok(map) => map,
             Err(e) => {
@@ -270,6 +275,38 @@ pub fn apply_documents_with_db(
                 }
             }
         };
+    let facts_map =
+        match collect_structural_facts_text_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
+            Ok(map) => map,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("no such table") {
+                    warn!(
+                        "structural_facts_text skipped: DB not yet migrated ({})",
+                        msg
+                    );
+                    HashMap::new()
+                } else {
+                    return Err(e);
+                }
+            }
+        };
+    // Fold structural-facts text into the relationship_text blobs so a single
+    // `relationship_text` field carries both partner names and web-fact tokens.
+    // Symbols without facts are untouched (byte-identical parity).
+    //
+    // Tradeoff (v1): facts share the 512-byte `relationship_text` budget with
+    // partner names, so a symbol with many relationships gets little room for
+    // fact tokens. This reuses the existing not-stored, code-tokenized field
+    // and avoids a schema change; giving facts their own field/budget is a
+    // tracked follow-up (see plan open question #3 / doubt-pass M2).
+    for (id, facts_text) in &facts_map {
+        let existing = relationship_map.remove(id.as_str()).unwrap_or_default();
+        let merged = merge_structural_facts_text(existing, facts_text, RELATIONSHIP_TEXT_MAX_BYTES);
+        if !merged.is_empty() {
+            relationship_map.insert(id.clone(), merged);
+        }
+    }
     let symbol_contexts = symbol_contexts_from_symbols(symbols);
     apply_documents_with_context(
         index,

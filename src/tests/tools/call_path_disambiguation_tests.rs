@@ -110,6 +110,7 @@ fn try_parse_response(text: &str) -> Option<CallPathResponse> {
         hops: hops?,
         path,
         diagnostic,
+        ..Default::default()
     })
 }
 
@@ -162,6 +163,7 @@ async fn test_disambiguation_from_file_path() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
     let text = extract_text(&ambiguous_tool.call_tool(&handler).await?);
     assert!(
@@ -177,6 +179,7 @@ async fn test_disambiguation_from_file_path() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/a.rs".to_string()),
         to_file_path: None,
+        ..Default::default()
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
     let response = try_parse_response(&text)
@@ -220,6 +223,7 @@ async fn test_disambiguation_both_file_paths() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
     let text = extract_text(&ambiguous_tool.call_tool(&handler).await?);
     assert!(
@@ -235,6 +239,7 @@ async fn test_disambiguation_both_file_paths() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: Some("src/a.rs".to_string()),
         to_file_path: Some("src/a.rs".to_string()),
+        ..Default::default()
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
     let response = try_parse_response(&text)
@@ -280,6 +285,7 @@ async fn test_disambiguation_to_file_path() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
     let text = extract_text(&tool_without_hint.call_tool(&handler).await?);
     let response = try_parse_response(&text)
@@ -299,6 +305,7 @@ async fn test_disambiguation_to_file_path() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: Some("src/a.rs".to_string()),
+        ..Default::default()
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
     let response = try_parse_response(&text)
@@ -341,6 +348,7 @@ async fn test_disambiguation_still_ambiguous_after_filter() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: Some("handler.rs".to_string()),
         to_file_path: None,
+        ..Default::default()
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
     assert!(
@@ -376,6 +384,7 @@ async fn test_disambiguation_no_substring_false_positive() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: Some("handler.rs".to_string()),
         to_file_path: None,
+        ..Default::default()
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
 
@@ -419,6 +428,7 @@ async fn test_qualified_name_struct_method() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
     let response = try_parse_response(&text)
@@ -455,6 +465,7 @@ async fn test_trait_impl_qualified_name_limitation() -> Result<()> {
         workspace: Some("primary".to_string()),
         from_file_path: None,
         to_file_path: None,
+        ..Default::default()
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
     let response = try_parse_response(&text)

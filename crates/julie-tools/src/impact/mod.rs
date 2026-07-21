@@ -4,20 +4,20 @@ pub mod ranking;
 pub mod seed;
 pub mod walk;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use julie_core::mcp_compat::{CallToolResult, Content};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use tracing::debug;
 
-use julie_core::database::SymbolDatabase;
-use julie_context::ToolContext;
 use crate::navigation::resolution::WorkspaceTarget;
 use crate::spillover::{SpilloverFormat, SpilloverStore};
+use julie_context::ToolContext;
+use julie_core::database::SymbolDatabase;
 
-use self::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows, store_list_overflow};
-pub use self::likely_tests::LikelyTests;
+use self::formatting::{format_blast_radius, impact_rows, store_list_overflow, BlastRadiusHeader};
 use self::likely_tests::collect_likely_tests;
+pub use self::likely_tests::LikelyTests;
 use self::ranking::RankedImpact;
 use self::walk::WalkBudget;
 
@@ -91,6 +91,29 @@ pub struct BlastRadiusTool {
     /// Workspace target. Use `primary` or a workspace id opened through `manage_workspace`.
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    /// Traversal mode. `default` (omitted) walks the stored relationship +
+    /// identifier graph only — output is byte-identical to the legacy tool.
+    /// `web` additionally surfaces reverse `http_call` edges so the blast
+    /// radius of a route handler lists the frontend symbols that call it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+}
+
+impl Default for BlastRadiusTool {
+    fn default() -> Self {
+        Self {
+            symbol_ids: Vec::new(),
+            file_paths: Vec::new(),
+            from_revision: None,
+            to_revision: None,
+            max_depth: default_max_depth(),
+            limit: default_limit(),
+            include_tests: default_include_tests(),
+            format: None,
+            workspace: default_workspace(),
+            mode: None,
+        }
+    }
 }
 
 impl BlastRadiusTool {
@@ -101,7 +124,9 @@ impl BlastRadiusTool {
 }
 
 pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<String> {
-    let workspace_target = handler.resolve_workspace_target(tool.workspace.as_deref()).await?;
+    let workspace_target = handler
+        .resolve_workspace_target(tool.workspace.as_deref())
+        .await?;
     let spillover_store = handler.spillover_store();
     let session_id = handler.session_id().to_string();
     let tool = tool.clone();
@@ -152,6 +177,10 @@ fn run_with_db(
     spillover_store: &SpilloverStore,
     session_id: &str,
 ) -> Result<String> {
+    match tool.mode.as_deref() {
+        None | Some("default") | Some("web") => {}
+        Some(other) => return Ok(format!("mode must be 'default' or 'web'; got '{other}'")),
+    }
     let seed_context = seed::resolve_seed_context(tool, db, workspace_id)?;
     let page_limit = tool.limit.max(1) as usize;
     let default_budget = WalkBudget::default();
@@ -214,6 +243,32 @@ fn run_with_db(
     );
     let visible_likely_tests = likely_tests.visible(LIKELY_TESTS_LIMIT);
 
+    // Web mode: surface reverse http_call callers of the seed (route)
+    // symbols. Default mode leaves this empty so output is byte-identical.
+    let web_callers: Vec<String> = if tool.mode.as_deref() == Some("web") {
+        let seed_ids: Vec<String> = seed_context
+            .seed_symbols
+            .iter()
+            .map(|symbol| symbol.id.clone())
+            .collect();
+        let callers = walk::walk_web_callers(db, &seed_ids)?;
+        callers
+            .into_iter()
+            .map(|caller| {
+                format!(
+                    "- {}  {}:{}  via {} {}",
+                    caller.caller.name,
+                    caller.caller.file_path,
+                    caller.caller.start_line,
+                    caller.via,
+                    caller.endpoint
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     let header = BlastRadiusHeader {
         revision_range: match (tool.from_revision, tool.to_revision) {
             (Some(from), Some(to)) => Some((from, to)),
@@ -223,6 +278,7 @@ fn run_with_db(
         impact_overflow_handle,
         likely_test_paths_overflow_handle,
         related_test_symbols_overflow_handle,
+        web_callers,
     };
 
     Ok(format_blast_radius(
