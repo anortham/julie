@@ -86,7 +86,7 @@ impl julie_context::ToolContext for IsolatedStorageHandler {
         &self,
     ) -> anyhow::Result<(
         julie_core::database::SymbolDatabase,
-        Arc<std::sync::Mutex<julie_index::search::SearchIndex>>,
+        Arc<julie_index::search::SearchIndex>,
     )> {
         self.handler
             .primary_pooled_database_and_search_index()
@@ -109,7 +109,7 @@ impl julie_context::ToolContext for IsolatedStorageHandler {
     async fn get_search_index_for_workspace(
         &self,
         workspace_id: &str,
-    ) -> anyhow::Result<Option<Arc<std::sync::Mutex<julie_index::search::SearchIndex>>>> {
+    ) -> anyhow::Result<Option<Arc<julie_index::search::SearchIndex>>> {
         self.handler
             .get_search_index_for_workspace(workspace_id)
             .await

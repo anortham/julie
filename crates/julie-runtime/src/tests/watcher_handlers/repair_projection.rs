@@ -195,7 +195,7 @@ fn render_rich_text_field() {
 
     // Seed Tantivy with initial file content (simulating what initial indexing does)
     {
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         idx.add_search_doc(&SearchDocument::file_from_parts(
             "rich_component.rs",
             initial_content,
@@ -207,7 +207,7 @@ fn render_rich_text_field() {
 
     // Verify content search works BEFORE incremental update
     {
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         let results = idx
             .search_content("RichTextField", &SearchFilter::default(), 10)
             .unwrap()
@@ -245,13 +245,13 @@ fn render_rich_text_field() {
     // process_pending_changes batch-commits after processing all events).
     // We must commit here to make the changes visible to the reader.
     {
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         idx.commit().unwrap();
     }
 
     // Verify content search STILL works after incremental update
     {
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         let results = idx
             .search_content("RichTextField", &SearchFilter::default(), 10)
             .unwrap()
@@ -268,7 +268,7 @@ fn render_rich_text_field() {
 
     // Also verify the NEW content is searchable (not just the old content)
     {
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         let results = idx
             .search_content("set_value", &SearchFilter::default(), 10)
             .unwrap()
@@ -281,7 +281,7 @@ fn render_rich_text_field() {
 
     // Verify symbol search still works too (sanity check)
     {
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         let results = idx
             .search_symbols("render_rich_text_field", &SearchFilter::default(), 10)
             .unwrap()
@@ -334,7 +334,7 @@ fn watched_annotation_marker() {
     .await
     .expect("incremental indexing should succeed");
 
-    let idx = search_index.lock().unwrap();
+    let idx = search_index;
     idx.commit().unwrap();
     let results = idx
         .search_symbols("@test", &SearchFilter::default(), 10)
@@ -375,7 +375,7 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
         SearchIndex::create(&tantivy_dir).expect("Failed to create search index"),
     ));
     {
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         idx.shutdown()
             .expect("search index should shut down cleanly");
     }
@@ -501,7 +501,7 @@ async fn test_watcher_advances_projected_revision() {
 
     let tantivy_dir = workspace_root.join("tantivy");
     fs::create_dir_all(&tantivy_dir).unwrap();
-    let search_index = Arc::new(Mutex::new(SearchIndex::create(&tantivy_dir).unwrap()));
+    let search_index = Arc::new(SearchIndex::create(&tantivy_dir).unwrap());
 
     let guard = acquire_gate("test_watcher_advances_projected_revision").await;
 

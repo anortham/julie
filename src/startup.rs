@@ -343,7 +343,7 @@ async fn reconcile_projection_lag_if_needed(handler: &JulieServerHandler) -> Res
 
     tokio::task::spawn_blocking(move || {
         let mut db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-        let index = search_index.lock().unwrap_or_else(|p| p.into_inner());
+        let index = search_index;
         projection.ensure_current_from_database(&mut db, &index)?;
         info!(
             %workspace_id,

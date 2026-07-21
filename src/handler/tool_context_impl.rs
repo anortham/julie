@@ -69,7 +69,7 @@ impl ToolContext for JulieServerHandler {
 
     async fn primary_pooled_database_and_search_index(
         &self,
-    ) -> Result<(SymbolDatabase, Arc<Mutex<SearchIndex>>)> {
+    ) -> Result<(SymbolDatabase, Arc<SearchIndex>)> {
         JulieServerHandler::primary_pooled_database_and_search_index(self).await
     }
 
@@ -92,7 +92,7 @@ impl ToolContext for JulieServerHandler {
     async fn get_search_index_for_workspace(
         &self,
         workspace_id: &str,
-    ) -> Result<Option<Arc<Mutex<SearchIndex>>>> {
+    ) -> Result<Option<Arc<SearchIndex>>> {
         JulieServerHandler::get_search_index_for_workspace(self, workspace_id).await
     }
 

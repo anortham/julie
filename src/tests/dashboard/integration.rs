@@ -194,9 +194,7 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
         let search_index = workspace
             .search_index
             .as_ref()
-            .expect("search index")
-            .lock()
-            .expect("index lock");
+            .expect("search index").clone();
         SearchProjection::tantivy(&workspace_id)
             .ensure_current_from_database(&mut db, &search_index)
             .unwrap();
@@ -350,9 +348,7 @@ async fn state_with_search_workspace(
         let search_index = workspace
             .search_index
             .as_ref()
-            .expect("search index")
-            .lock()
-            .expect("index lock");
+            .expect("search index").clone();
         SearchProjection::tantivy(&workspace_id)
             .ensure_current_from_database(&mut db, &search_index)
             .unwrap();

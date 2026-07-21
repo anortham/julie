@@ -83,10 +83,8 @@ pub fn run_pipeline_with_options(
         exclude_tests: false,
     };
     let profile = julie_index::search::weights::SearchWeightProfile::get_context();
-    // Resolve the query embedding.  Callers that hold the SearchIndex lock MUST
-    // supply `precomputed_embedding` (computed before lock acquisition) so the
-    // sidecar round-trip does not happen inside the locked region.  Callers without
-    // a lock (tests, `run_pipeline` wrapper) pass `None` and we compute on-demand.
+    // Prefer a precomputed embedding so the sidecar round-trip (up to 30 s)
+    // does not run on the hybrid search path. Tests / wrappers may pass `None`.
     let effective_embedding = precomputed_embedding.or_else(|| {
         julie_index::search::hybrid::compute_query_embedding_for_hybrid(query, embedding_provider)
     });
@@ -249,16 +247,14 @@ pub async fn run_with_target(
                         "No search index for workspace. Run manage_workspace(operation=\"refresh\") first."
                     )
                 })?;
-                // Compute embedding BEFORE acquiring the SearchIndex lock.
-                // The sidecar RPC can take up to 30 s; holding the lock across it
-                // would starve every other index user on this workspace.
+                // Compute embedding before searching.
+                // The sidecar RPC can take up to 30 s; hybrid search must not
+                // serialize readers behind an outer SearchIndex mutex.
                 let precomputed_embedding = julie_index::search::hybrid::compute_query_embedding_for_hybrid(
                     &query,
                     embedding_provider.as_deref(),
                 );
-                let index = si
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+                let index = si;
                 run_pipeline_with_options(
                     &query,
                     max_tokens,
@@ -285,14 +281,12 @@ pub async fn run_with_target(
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let db = db.into_read_snapshot()?;
-                // Compute embedding BEFORE acquiring the SearchIndex lock.
+                // Compute embedding before searching (sidecar RPC can take tens of seconds).
                 let precomputed_embedding = julie_index::search::hybrid::compute_query_embedding_for_hybrid(
                     &query,
                     embedding_provider.as_deref(),
                 );
-                let index = search_index
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+                let index = search_index;
                 run_pipeline_with_options(
                     &query,
                     max_tokens,

@@ -69,7 +69,7 @@ pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<StdMutex<SymbolDatabase>>,
     extractor_manager: Arc<ExtractorManager>,
-    search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
+    search_index: Option<Arc<julie_index::search::SearchIndex>>,
 
     /// Embedding provider for incremental semantic updates.
     /// Shared with the workspace via Arc<RwLock<...>> so lazy initialization
@@ -128,7 +128,7 @@ pub(super) async fn dispatch_file_event(
     event: FileChangeEvent,
     db: &Arc<StdMutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
-    search_index: &Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
+    search_index: &Option<Arc<julie_index::search::SearchIndex>>,
     embedding_provider: &Option<Arc<dyn julie_pipeline::embeddings::EmbeddingProvider>>,
     workspace_root: &std::path::Path,
     lang_configs: &Arc<julie_index::search::language_config::LanguageConfigs>,
@@ -329,7 +329,7 @@ impl IncrementalIndexer {
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
-        search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
+        search_index: Option<Arc<julie_index::search::SearchIndex>>,
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
     ) -> Result<Self> {
@@ -348,7 +348,7 @@ impl IncrementalIndexer {
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
-        search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
+        search_index: Option<Arc<julie_index::search::SearchIndex>>,
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
         mutation_gate_registry: Arc<MutationGateRegistry>,

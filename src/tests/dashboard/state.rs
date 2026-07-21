@@ -476,9 +476,7 @@ async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
         let search_index = workspace
             .search_index
             .as_ref()
-            .expect("search index")
-            .lock()
-            .expect("index lock");
+            .expect("search index").clone();
         SearchProjection::tantivy(&workspace_id)
             .ensure_current_from_database(&mut db, &search_index)
             .unwrap();

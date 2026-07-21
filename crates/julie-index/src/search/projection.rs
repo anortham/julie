@@ -379,7 +379,7 @@ impl SearchProjection {
     pub fn project_documents_with_locks(
         &self,
         db: &Arc<Mutex<SymbolDatabase>>,
-        index: &Arc<Mutex<SearchIndex>>,
+        index: &Arc<SearchIndex>,
         symbols: &[Symbol],
         file_infos: &[FileInfo],
         files_to_clean: &[String],
@@ -454,20 +454,15 @@ impl SearchProjection {
         };
 
         let apply_start = std::time::Instant::now();
-        let apply_result = {
-            let index = index
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            apply_documents_with_context(
-                &index,
-                symbols,
-                file_infos,
-                files_to_clean,
-                &symbol_contexts,
-                &relationship_map,
-                false,
-            )
-        };
+        let apply_result = apply_documents_with_context(
+            index,
+            symbols,
+            file_infos,
+            files_to_clean,
+            &symbol_contexts,
+            &relationship_map,
+            false,
+        );
         info!(
             "⏱️  projection.apply_documents: {:.2}s ({} symbols, {} files, {} cleaned)",
             apply_start.elapsed().as_secs_f64(),
@@ -489,12 +484,7 @@ impl SearchProjection {
             );
             return Err(err);
         }
-        {
-            let index = index
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            index.release_writer()?;
-        }
+        index.release_writer()?;
 
         let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         db.upsert_projection_state(

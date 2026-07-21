@@ -111,7 +111,7 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
 ///
 /// REGRESSION TEST: Prevents the scenario where:
 /// 1. Auto-index at startup creates SearchIndex A (acquires Tantivy writer lock)
-/// 2. File watcher tasks clone Arc<Mutex<SearchIndex A>>
+/// 2. File watcher tasks clone Arc<SearchIndex A>
 /// 3. Force re-index creates SearchIndex B at the same path
 /// 4. SearchIndex B gets LockBusy because A's writer is still held
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

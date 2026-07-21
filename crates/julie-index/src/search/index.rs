@@ -8,8 +8,8 @@
 //! searching "user" finds both `getUserData` and `get_user_data`.
 
 use std::path::Path;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
@@ -527,6 +527,14 @@ pub struct SearchIndex {
     /// writes are accepted. Set by `shutdown()` after committing + dropping the writer.
     shutdown: AtomicBool,
 }
+
+/// Shared handle for a workspace search index.
+///
+/// `SearchIndex` already uses `&self` APIs with an interior writer mutex and a
+/// Tantivy `IndexReader` that supports concurrent searchers. Callers share this
+/// via `Arc` — do **not** wrap it in an outer `Mutex`, which would serialize
+/// readers and block search behind long-running hybrid embedding RPCs.
+pub type SearchIndexHandle = Arc<SearchIndex>;
 
 impl SearchIndex {
     /// Create a new index at the given directory path using default patterns.
@@ -1737,6 +1745,17 @@ impl SearchIndex {
             *guard = Some(self.index.writer(WRITER_HEAP_SIZE)?);
         }
         Ok(guard)
+    }
+
+    /// Hold the interior writer mutex for contention tests.
+    ///
+    /// Production code should not call this — projection and write paths
+    /// already take the writer briefly via `get_or_create_writer`. Tests use
+    /// this to simulate a long-held write without an outer `Mutex<SearchIndex>`.
+    pub fn acquire_writer_for_test(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, Option<IndexWriter>>> {
+        self.get_or_create_writer()
     }
 
     /// Gracefully shut down this index: commit pending writes, release the

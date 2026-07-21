@@ -569,10 +569,7 @@ async fn test_indexing_pipeline_keeps_search_unready_when_projection_fails() -> 
         .await?
         .expect("search index should open for projection failure test");
     {
-        let idx = search_index
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        idx.shutdown()?;
+        search_index.shutdown()?;
     }
     route.search_index = Some(search_index);
 
@@ -628,9 +625,8 @@ async fn test_projection_waiting_on_tantivy_lock_releases_database_mutex() -> Re
         .search_index_for_write()
         .await?
         .expect("search index should open");
-    let search_guard = search_index
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Hold interior writer mutex (not an outer SearchIndex lock — that is gone).
+    let search_guard = search_index.acquire_writer_for_test()?;
     let runtime = route
         .indexing_runtime
         .as_ref()

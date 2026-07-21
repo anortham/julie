@@ -47,7 +47,7 @@ pub(crate) struct IndexRoute {
     pub tantivy_path: PathBuf,
     pub is_primary: bool,
     pub database: Option<Arc<std::sync::Mutex<SymbolDatabase>>>,
-    pub search_index: Option<Arc<std::sync::Mutex<SearchIndex>>>,
+    pub search_index: Option<Arc<SearchIndex>>,
     pub indexing_runtime: Option<SharedIndexingRuntime>,
 }
 
@@ -127,7 +127,7 @@ impl IndexRoute {
     async fn open_search_index_from_path(
         &self,
         create_if_missing: bool,
-    ) -> Result<Option<Arc<std::sync::Mutex<SearchIndex>>>> {
+    ) -> Result<Option<Arc<SearchIndex>>> {
         let meta_path = self.tantivy_path.join("meta.json");
         if !create_if_missing && !meta_path.exists() {
             return Ok(None);
@@ -166,7 +166,7 @@ impl IndexRoute {
                     .repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
             }
 
-            Ok::<_, anyhow::Error>(Some(Arc::new(std::sync::Mutex::new(index))))
+            Ok::<_, anyhow::Error>(Some(Arc::new(index)))
         })
         .await??;
 
@@ -311,7 +311,7 @@ impl IndexRoute {
 
     pub(crate) async fn search_index_for_write(
         &self,
-    ) -> Result<Option<Arc<std::sync::Mutex<SearchIndex>>>> {
+    ) -> Result<Option<Arc<SearchIndex>>> {
         if let Some(search_index) = &self.search_index {
             return Ok(Some(Arc::clone(search_index)));
         }

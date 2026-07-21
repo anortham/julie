@@ -27,7 +27,7 @@ const MAX_TANTIVY_RETRY_ATTEMPTS: u32 = 10;
 pub(super) struct QueueRuntime {
     db: Arc<StdMutex<SymbolDatabase>>,
     extractor_manager: Arc<ExtractorManager>,
-    search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
+    search_index: Option<Arc<julie_index::search::SearchIndex>>,
     embedding_provider: SharedEmbeddingProvider,
     lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
     index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -73,7 +73,7 @@ impl QueueRuntime {
     pub(super) fn new(
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
-        search_index: Option<Arc<StdMutex<julie_index::search::SearchIndex>>>,
+        search_index: Option<Arc<julie_index::search::SearchIndex>>,
         embedding_provider: SharedEmbeddingProvider,
         lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
         index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -457,9 +457,6 @@ impl QueueRuntime {
             let db_for_retry = Arc::clone(&self.db);
             let rel_clone = rel_path.clone();
             let retry_result = tokio::task::spawn_blocking(move || {
-                let idx = search_index
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
                 let db_guard = db_for_retry
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -471,7 +468,7 @@ impl QueueRuntime {
                         &symbol_ids,
                     )?;
                 julie_index::search::projection::apply_uncommitted_documents_from_symbols(
-                    &idx,
+                    &search_index,
                     &symbols,
                     &rel_clone,
                     &file_content,
@@ -481,12 +478,12 @@ impl QueueRuntime {
                 )?;
                 if !partner_symbol_ids.is_empty() {
                     julie_index::search::projection::reproject_partner_symbols(
-                        &idx,
+                        &search_index,
                         &db_guard,
                         &partner_symbol_ids,
                     )?;
                 }
-                idx.commit()?;
+                search_index.commit()?;
                 Ok::<(), anyhow::Error>(())
             })
             .await;
@@ -947,10 +944,7 @@ impl QueueRuntime {
         let search_index = Arc::clone(search_index);
         let context = context.to_string();
         let _ = tokio::task::spawn_blocking(move || {
-            let idx = search_index
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if let Err(err) = idx.commit() {
+            if let Err(err) = search_index.commit() {
                 warn!("Failed to commit Tantivy {}: {}", context, err);
             }
         })

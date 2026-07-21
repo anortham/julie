@@ -177,12 +177,10 @@ impl ManageWorkspaceTool {
         if effective_force_reindex {
             if let Some(search_index) = route.search_index_for_write().await? {
                 tokio::task::spawn_blocking(move || {
-                    if let Ok(idx) = search_index.lock() {
-                        if let Err(e) = idx.clear_all() {
-                            tracing::warn!("Failed to clear Tantivy index: {}", e);
-                        } else {
-                            info!("🗑️  Cleared Tantivy index for force re-index");
-                        }
+                    if let Err(e) = search_index.clear_all() {
+                        tracing::warn!("Failed to clear Tantivy index: {}", e);
+                    } else {
+                        info!("🗑️  Cleared Tantivy index for force re-index");
                     }
                 })
                 .await?;
@@ -202,10 +200,7 @@ impl ManageWorkspaceTool {
                 )
                 .await;
             let release_result = if let Some(search_index) = &search_index {
-                let idx = search_index
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                idx.release_writer()
+                search_index.release_writer()
             } else {
                 Ok(())
             };
@@ -320,7 +315,7 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         workspace_id: &str,
         database: Option<&Arc<std::sync::Mutex<crate::database::SymbolDatabase>>>,
-        search_index: Option<&Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
+        search_index: Option<&Arc<crate::search::SearchIndex>>,
     ) -> Result<()> {
         let search_index = match search_index {
             Some(idx) => Arc::clone(idx),
@@ -335,7 +330,7 @@ impl ManageWorkspaceTool {
         let indexing_status = Arc::clone(&handler.indexing_status);
         tokio::task::spawn_blocking(move || {
             let mut db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
-            let idx = search_index.lock().unwrap_or_else(|p| p.into_inner());
+            let idx = search_index;
             let projection = crate::search::SearchProjection::tantivy(workspace_id);
             projection.ensure_current_with_gate(&mut db_lock, &idx, &indexing_status.search_ready)
         })

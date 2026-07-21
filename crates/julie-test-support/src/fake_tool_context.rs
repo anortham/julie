@@ -55,7 +55,7 @@ pub struct FakeToolContext {
     /// Workspace-specific SQLite paths used by cross-workspace DB methods.
     pub workspace_db_paths: HashMap<String, PathBuf>,
     /// Optional search index to return from index methods.
-    pub primary_search_index: Option<Arc<Mutex<SearchIndex>>>,
+    pub primary_search_index: Option<Arc<SearchIndex>>,
 
     // ── Embeddings ──────────────────────────────────────────────────────────
     pub embedding_provider_val: Option<Arc<dyn EmbeddingProvider>>,
@@ -132,7 +132,7 @@ impl FakeToolContext {
         self
     }
 
-    pub fn with_search_index(mut self, index: Arc<Mutex<SearchIndex>>) -> Self {
+    pub fn with_search_index(mut self, index: Arc<SearchIndex>) -> Self {
         self.primary_search_index = Some(index);
         self
     }
@@ -223,7 +223,7 @@ impl ToolContext for FakeToolContext {
 
     async fn primary_pooled_database_and_search_index(
         &self,
-    ) -> Result<(SymbolDatabase, Arc<Mutex<SearchIndex>>)> {
+    ) -> Result<(SymbolDatabase, Arc<SearchIndex>)> {
         let db = self.open_db("primary_pooled_database_and_search_index")?;
         let index = self.primary_search_index.clone().ok_or_else(|| {
             anyhow!(
@@ -254,7 +254,7 @@ impl ToolContext for FakeToolContext {
     async fn get_search_index_for_workspace(
         &self,
         _workspace_id: &str,
-    ) -> Result<Option<Arc<Mutex<SearchIndex>>>> {
+    ) -> Result<Option<Arc<SearchIndex>>> {
         Ok(self.primary_search_index.clone())
     }
 

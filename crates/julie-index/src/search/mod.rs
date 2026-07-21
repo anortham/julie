@@ -23,7 +23,8 @@ pub use error::{Result, SearchError};
 #[cfg(test)]
 pub use index::{ContentSearchResult, ContentSearchResults};
 pub use index::{
-    SearchDocument, SearchFilter, SearchIndex, SymbolSearchResult, SymbolSearchResults,
+    SearchDocument, SearchFilter, SearchIndex, SearchIndexHandle, SymbolSearchResult,
+    SymbolSearchResults,
 };
 pub use language_config::LanguageConfigs;
 pub use projection::SearchProjection;

@@ -34,7 +34,7 @@ async fn test_v690_upgrade_preserves_existing_tantivy_docs_on_first_edit() -> Re
 
     let (_, search_index) = handler.primary_pooled_database_and_search_index().await?;
     let initial_doc_count = {
-        let index = search_index.lock().unwrap();
+        let index = search_index;
         let alpha_results =
             index.search_symbols("alpha", &crate::search::SearchFilter::default(), 10)?;
         assert!(
@@ -85,7 +85,7 @@ async fn test_v690_upgrade_preserves_existing_tantivy_docs_on_first_edit() -> Re
 
     {
         let (_, search_index) = upgraded.primary_pooled_database_and_search_index().await?;
-        let index = search_index.lock().unwrap();
+        let index = search_index;
         let beta_results =
             index.search_symbols("beta", &crate::search::SearchFilter::default(), 10)?;
         assert!(
@@ -132,7 +132,7 @@ async fn test_v690_upgrade_preserves_existing_tantivy_docs_on_first_edit() -> Re
     }
 
     let doc_count_after_first_edit = {
-        let index = upgraded_search_index.lock().unwrap();
+        let index = upgraded_search_index;
         let beta_results =
             index.search_symbols("beta", &crate::search::SearchFilter::default(), 10)?;
         assert!(

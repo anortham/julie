@@ -80,7 +80,7 @@ pub async fn handle_file_created_or_modified_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
-    search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
+    search_index: Option<&Arc<SearchIndex>>,
     _guard: &MutationGuard<'_>,
 ) -> Result<FileIndexOutcome> {
     debug!("Processing file: {}", path.display());
@@ -365,13 +365,7 @@ pub async fn handle_file_created_or_modified_static(
         let partner_ids_for_tantivy = partner_symbol_ids;
         let tantivy_result =
             tokio::task::spawn_blocking(move || {
-                let idx = match search_index.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Search index mutex poisoned, recovering");
-                        poisoned.into_inner()
-                    }
-                };
+                let idx = &*search_index;
                 let db_guard = match db_for_tantivy.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
@@ -489,7 +483,7 @@ pub async fn handle_file_deleted_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
-    search_index: Option<&Arc<std::sync::Mutex<julie_index::search::SearchIndex>>>,
+    search_index: Option<&Arc<julie_index::search::SearchIndex>>,
     _guard: &MutationGuard<'_>,
 ) -> Result<()> {
     info!("Processing file deletion: {}", path.display());
@@ -562,14 +556,7 @@ pub async fn handle_file_deleted_static(
         let search_index = Arc::clone(search_index);
         let rel_path = relative_path.clone();
         let tantivy_result = tokio::task::spawn_blocking(move || {
-            let idx = match search_index.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Search index mutex poisoned during deletion, recovering");
-                    poisoned.into_inner()
-                }
-            };
-            if let Err(e) = idx.remove_by_file_path(&rel_path) {
+            if let Err(e) = search_index.remove_by_file_path(&rel_path) {
                 warn!("Failed to remove Tantivy docs for {}: {}", rel_path, e);
             }
             // NOTE: commit is intentionally deferred — the caller batches
@@ -592,7 +579,7 @@ pub(crate) async fn handle_file_renamed_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
-    search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
+    search_index: Option<&Arc<SearchIndex>>,
     _guard: &MutationGuard<'_>,
 ) -> Result<FileIndexOutcome> {
     info!(

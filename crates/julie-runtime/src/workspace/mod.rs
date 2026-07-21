@@ -43,7 +43,7 @@ pub struct JulieWorkspace {
     pub db: Option<Arc<std::sync::Mutex<SqliteDB>>>,
 
     /// Tantivy search index for full-text code search
-    pub search_index: Option<Arc<std::sync::Mutex<julie_index::search::SearchIndex>>>,
+    pub search_index: Option<Arc<julie_index::search::SearchIndex>>,
 
     /// File watcher for incremental updates
     pub watcher: Option<IncrementalIndexer>,
@@ -687,7 +687,7 @@ impl JulieWorkspace {
             projection.repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
         }
 
-        self.search_index = Some(Arc::new(std::sync::Mutex::new(index)));
+        self.search_index = Some(Arc::new(index));
         info!("Tantivy search index initialized successfully");
         Ok(())
     }

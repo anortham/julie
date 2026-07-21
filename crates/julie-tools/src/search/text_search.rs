@@ -249,9 +249,7 @@ pub async fn unified_search_impl_with_kind_filter(
                     return Ok((Vec::new(), false, 0));
                 }
             };
-            let index = si_arc
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+            let index = si_arc;
 
             let (hits, relaxed) = match files_only_flag {
                 Some(flag) => index.search_unified_kind_filtered(
@@ -285,9 +283,7 @@ pub async fn unified_search_impl_with_kind_filter(
     let (db, search_index_clone) = handler.primary_pooled_database_and_search_index().await?;
 
     let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool, usize)> {
-        let index = search_index_clone
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+        let index = search_index_clone;
 
         let (hits, relaxed) = match files_only_flag {
             Some(flag) => index.search_unified_kind_filtered(
@@ -395,9 +391,7 @@ pub async fn unified_search_hits(
                     Some(si) => si,
                     None => return Ok((Vec::new(), false, 0)),
                 };
-                let index = si_arc
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+                let index = si_arc;
                 let (hits, relaxed) =
                     index.search_unified_with_meta(&query_clone, &filter_clone, limit_usize)?;
                 let count = hits.len();
@@ -412,9 +406,7 @@ pub async fn unified_search_hits(
 
     tokio::task::spawn_blocking(
         move || -> Result<(Vec<julie_index::search::index::UnifiedHit>, bool, usize)> {
-            let index = search_index_clone
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+            let index = search_index_clone;
             let (hits, relaxed) =
                 index.search_unified_with_meta(&query_clone, &filter_clone, limit_usize)?;
             let count = hits.len();

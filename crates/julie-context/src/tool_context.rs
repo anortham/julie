@@ -63,7 +63,7 @@ pub trait ToolContext: Send + Sync {
     /// `SearchIndex`, or an error if the index has not been initialized.
     async fn primary_pooled_database_and_search_index(
         &self,
-    ) -> Result<(SymbolDatabase, Arc<Mutex<SearchIndex>>)>;
+    ) -> Result<(SymbolDatabase, Arc<SearchIndex>)>;
 
     // ── Cross-workspace (async) ──────────────────────────────────────────
 
@@ -88,7 +88,7 @@ pub trait ToolContext: Send + Sync {
     async fn get_search_index_for_workspace(
         &self,
         workspace_id: &str,
-    ) -> Result<Option<Arc<Mutex<SearchIndex>>>>;
+    ) -> Result<Option<Arc<SearchIndex>>>;
 
     /// Returns the on-disk root path for the given workspace ID.
     async fn get_workspace_root_for_target(&self, workspace_id: &str) -> Result<PathBuf>;

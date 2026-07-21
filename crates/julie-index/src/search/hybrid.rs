@@ -4,11 +4,11 @@
 //! - `hybrid_search`: Orchestrator that runs both search backends and merges results.
 //!   Gracefully degrades to keyword-only when no embedding provider is available or
 //!   when semantic search fails.
-//! - `compute_query_embedding_for_hybrid`: Compute the query embedding **before** the
-//!   SearchIndex lock is acquired.  Callers that hold the lock must use this to avoid
-//!   blocking the index for the full sidecar round-trip (up to 30 s).
-//! - `hybrid_search_with_embedding`: Lock-safe variant that accepts a pre-computed
-//!   embedding vector and does no sidecar I/O inside the locked region.
+//! - `compute_query_embedding_for_hybrid`: Compute the query embedding **before**
+//!   hybrid search. Prefer this so a slow sidecar round-trip (up to 30 s) does not
+//!   sit on the search / write path.
+//! - `hybrid_search_with_embedding`: Variant that accepts a pre-computed embedding
+//!   and does no sidecar I/O during the search merge.
 //! - `rrf_merge`: Merges keyword (Tantivy) and semantic (KNN) ranked lists using
 //!   Reciprocal Rank Fusion. Formula: `RRF(d) = Σ 1/(k + rank)`.
 //! - `knn_to_search_results`: Converts sqlite-vec KNN output `(symbol_id, distance)`
@@ -328,13 +328,12 @@ fn run_semantic_search(
     knn_to_search_results(&knn_hits, db)
 }
 
-/// Compute the query embedding for hybrid search **before** the SearchIndex lock.
+/// Compute the query embedding for hybrid search **before** running hybrid search.
 ///
 /// The embedding sidecar round-trip takes up to 30 s on a cold start or a slow
-/// GPU.  Callers that hold the `SearchIndex` `Mutex` must call this function
-/// **first**, then acquire the lock, then call [`hybrid_search_with_embedding`]
-/// with the returned vector.  This prevents the locked region from blocking all
-/// other index users for the full sidecar latency.
+/// GPU. Prefer calling this first, then [`hybrid_search_with_embedding`], so the
+/// search merge path does no sidecar I/O and a slow embed cannot stall concurrent
+/// Tantivy readers/writers waiting on the interior writer mutex.
 ///
 /// Returns `None` when:
 /// - `provider` is `None` (keyword-only search — no embedding needed), or

@@ -487,7 +487,7 @@ mod relationship_text_test {
         .unwrap();
 
         let search_index = route.search_index_for_write().await.unwrap().unwrap();
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         let hits = idx
             .search_unified("full_pending_caller", &SearchFilter::default(), 10)
             .unwrap();
@@ -519,7 +519,7 @@ mod relationship_text_test {
         let db = Arc::new(Mutex::new(
             SymbolDatabase::new(&workspace_root.join("watcher.db")).unwrap(),
         ));
-        let search_index = Arc::new(Mutex::new(make_index(&dir)));
+        let search_index = Arc::new(make_index(&dir));
         let extractor_manager = Arc::new(ExtractorManager::new());
 
         {
@@ -535,7 +535,7 @@ mod relationship_text_test {
             .await
             .unwrap();
         }
-        search_index.lock().unwrap().commit().unwrap();
+        search_index.commit().unwrap();
 
         {
             let guard = acquire_gate("relationship_text_watcher_caller").await;
@@ -550,9 +550,9 @@ mod relationship_text_test {
             .await
             .unwrap();
         }
-        search_index.lock().unwrap().commit().unwrap();
+        search_index.commit().unwrap();
 
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         let hits = idx
             .search_unified("watcher_pending_caller", &SearchFilter::default(), 10)
             .unwrap();
@@ -609,7 +609,7 @@ mod relationship_text_test {
         .unwrap();
 
         let db = Arc::new(Mutex::new(db));
-        let search_index = Arc::new(Mutex::new(index));
+        let search_index = Arc::new(index);
         let indexer = IncrementalIndexer::new(
             workspace_root,
             Arc::clone(&db),
@@ -621,9 +621,9 @@ mod relationship_text_test {
         .unwrap();
         indexer.mark_tantivy_dirty_for_test("src/dirty_a.rs");
         indexer.process_pending_changes().await.unwrap();
-        search_index.lock().unwrap().commit().unwrap();
+        search_index.commit().unwrap();
 
-        let idx = search_index.lock().unwrap();
+        let idx = search_index;
         let hits = idx
             .search_unified("dirty_retry_caller", &SearchFilter::default(), 10)
             .unwrap();

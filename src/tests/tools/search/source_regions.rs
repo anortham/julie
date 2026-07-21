@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::Result;
 use julie_context::WorkspaceTarget;
@@ -122,7 +122,7 @@ fn region_search_fixture(
         .with_workspace_id("primary-workspace")
         .with_primary_root(temp.path())
         .with_primary_db_path(&primary_db_path)
-        .with_search_index(Arc::new(Mutex::new(index)));
+        .with_search_index(Arc::new(index));
     if target_content.is_some() {
         context = context.with_workspace_db_path("target-workspace", &target_db_path);
     }

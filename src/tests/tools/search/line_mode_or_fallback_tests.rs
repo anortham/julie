@@ -140,9 +140,7 @@ mod line_mode_stage_counts {
             .database
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let idx = search_index
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let idx = search_index;
         crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
             .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
             .expect("projection current");

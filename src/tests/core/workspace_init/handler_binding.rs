@@ -373,7 +373,7 @@ async fn test_non_force_root_swap_tears_down_old_search_index() {
         "non-force root swap should replace the loaded workspace"
     );
 
-    let old_search_index = old_search_index.lock().unwrap();
+    let old_search_index = old_search_index;
     assert!(
         old_search_index.is_shutdown(),
         "non-force root swap should shut down the old search index before replacement"

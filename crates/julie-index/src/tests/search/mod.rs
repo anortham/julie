@@ -9,6 +9,7 @@ pub mod projection_search_doc_test;
 pub mod reranker_ordering_tests;
 pub mod reranker_tests;
 pub mod schema_phase2_fields_test;
+pub mod search_index_concurrency_test;
 pub mod tantivy_affix_tests;
 pub mod tantivy_index_tests;
 pub mod tantivy_language_config_tests;

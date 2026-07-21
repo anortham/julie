@@ -52,7 +52,7 @@ use crate::tools::workspace::commands::ManageWorkspaceOperation;
 pub(crate) struct PrimaryWorkspaceSnapshot {
     pub binding: PrimaryWorkspaceBinding,
     pub database: Arc<std::sync::Mutex<SymbolDatabase>>,
-    pub search_index: Option<Arc<std::sync::Mutex<SearchIndex>>>,
+    pub search_index: Option<Arc<SearchIndex>>,
     pub indexing_runtime: Option<crate::tools::workspace::indexing::state::SharedIndexingRuntime>,
 }
 
@@ -759,19 +759,10 @@ impl JulieServerHandler {
             }
 
             if let Some(ref search_index) = old_workspace.search_index {
-                match search_index.lock() {
-                    Ok(idx) => {
-                        if let Err(e) = idx.shutdown() {
-                            warn!("Failed to shut down search index: {}", e);
-                        } else {
-                            info!("Old search index shut down, file lock released");
-                        }
-                    }
-                    Err(poisoned) => {
-                        let idx = poisoned.into_inner();
-                        let _ = idx.shutdown();
-                        warn!("Recovered from poisoned search index mutex during teardown");
-                    }
+                if let Err(e) = search_index.shutdown() {
+                    warn!("Failed to shut down search index: {}", e);
+                } else {
+                    info!("Old search index shut down, file lock released");
                 }
             }
         }
@@ -836,7 +827,7 @@ impl JulieServerHandler {
     /// sessions via their inner `Arc<Mutex<...>>` pointers.
     ///
     /// Clone semantics of JulieWorkspace:
-    /// - `db: Arc<Mutex<SqliteDB>>` and `search_index: Arc<Mutex<SearchIndex>>` are
+    /// - `db: Arc<Mutex<SqliteDB>>` and `search_index: Arc<SearchIndex>` are
     ///   shared (Arc clone). This is the whole point: multiple sessions hit one db.
     /// - `watcher` is `None` in the clone (leader manages the file watcher).
     /// - `embedding_provider` is set to `None` (shared via EmbeddingService).
@@ -2082,7 +2073,7 @@ impl JulieServerHandler {
                         );
                     }
 
-                    Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(index)))
+                    Ok::<_, anyhow::Error>(Arc::new(index))
                 })
                 .await??,
             )
@@ -2138,7 +2129,7 @@ impl JulieServerHandler {
 
     pub(crate) async fn primary_pooled_database_and_search_index(
         &self,
-    ) -> Result<(SymbolDatabase, Arc<std::sync::Mutex<SearchIndex>>)> {
+    ) -> Result<(SymbolDatabase, Arc<SearchIndex>)> {
         let snapshot = self.primary_workspace_snapshot().await?;
         let search_index = snapshot.search_index.ok_or_else(|| {
             anyhow::anyhow!(
@@ -2434,7 +2425,7 @@ impl JulieServerHandler {
     pub async fn get_search_index_for_workspace(
         &self,
         workspace_id: &str,
-    ) -> Result<Option<Arc<std::sync::Mutex<SearchIndex>>>> {
+    ) -> Result<Option<Arc<SearchIndex>>> {
         self.ensure_primary_pool_membership_for(workspace_id)
             .await?;
         let tantivy_path = self.workspace_tantivy_dir_for(workspace_id).await?;
@@ -2475,7 +2466,7 @@ impl JulieServerHandler {
                 );
             }
 
-            Ok(Some(Arc::new(std::sync::Mutex::new(index))))
+            Ok(Some(Arc::new(index)))
         })
         .await?
     }

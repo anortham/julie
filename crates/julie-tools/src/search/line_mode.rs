@@ -4,7 +4,7 @@
 //! Used when output format is set to "lines".
 
 use anyhow::Result;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tracing::{debug, warn};
 
 use julie_core::database::SymbolDatabase;
@@ -384,7 +384,7 @@ where
 
 fn run_line_mode_workspace_fetch(
     db: &SymbolDatabase,
-    search_index: &Arc<Mutex<SearchIndex>>,
+    search_index: &Arc<SearchIndex>,
     query: String,
     match_strategy: LineMatchStrategy,
     file_pattern: Option<String>,
@@ -409,13 +409,7 @@ fn run_line_mode_workspace_fetch(
 
     let (matches, stage_counts, file_pattern_diagnostic) = run_line_mode_fetch_loop(
         |fetch_limit| {
-            let index = match search_index.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Search index mutex poisoned, recovering: {}", poisoned);
-                    poisoned.into_inner()
-                }
-            };
+            let index = search_index;
             // Ask Tantivy for file rows only. Filtering a mixed unified result
             // after the fact lets symbol-heavy workspaces starve line mode of
             // file candidates before scoped widening can do its job.
@@ -453,7 +447,7 @@ fn run_line_mode_workspace_fetch(
 
 fn run_line_mode_with_scope_rescue(
     db: &SymbolDatabase,
-    search_index: &Arc<Mutex<SearchIndex>>,
+    search_index: &Arc<SearchIndex>,
     query: String,
     match_strategy: LineMatchStrategy,
     file_pattern: Option<String>,

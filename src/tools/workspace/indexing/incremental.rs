@@ -241,27 +241,20 @@ impl ManageWorkspaceTool {
 
         let mut tantivy_synced = false;
         if let Some(ref search_idx) = search_index {
-            match search_idx.lock() {
-                Ok(idx) => {
-                    let mut remove_failed = false;
-                    for file_path in &orphaned_files {
-                        if let Err(e) = idx.remove_by_file_path(file_path) {
-                            warn!(
-                                "Failed to remove Tantivy docs for orphaned file {}: {}",
-                                file_path, e
-                            );
-                            remove_failed = true;
-                        }
-                    }
-                    if let Err(e) = idx.commit() {
-                        warn!("Failed to commit Tantivy after orphan cleanup: {}", e);
-                    } else {
-                        tantivy_synced = !remove_failed;
-                    }
+            let mut remove_failed = false;
+            for file_path in &orphaned_files {
+                if let Err(e) = search_idx.remove_by_file_path(file_path) {
+                    warn!(
+                        "Failed to remove Tantivy docs for orphaned file {}: {}",
+                        file_path, e
+                    );
+                    remove_failed = true;
                 }
-                Err(e) => {
-                    warn!("Tantivy index mutex poisoned during orphan cleanup: {}", e);
-                }
+            }
+            if let Err(e) = search_idx.commit() {
+                warn!("Failed to commit Tantivy after orphan cleanup: {}", e);
+            } else {
+                tantivy_synced = !remove_failed;
             }
         }
 
