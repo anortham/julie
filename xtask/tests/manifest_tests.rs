@@ -31,7 +31,7 @@ fn manifest_tests_parse_bucket_metadata_with_defaults() {
     let manifest = TestManifest::from_str(
         r#"
 [tiers]
-fast = ["cli"]
+fast = ["legacy"]
 smoke = ["legacy", "rich"]
 
 [buckets.legacy]

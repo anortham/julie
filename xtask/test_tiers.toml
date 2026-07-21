@@ -220,7 +220,10 @@ expected_seconds = 40
 timeout_seconds = 90
 scope_label = "tooling"
 notes = "text search coverage"
-commands = ["cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality"]
+commands = [
+  "cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::structural_facts_text_test -- --skip search_quality",
+]
 
 [buckets.tools-search-hybrid]
 expected_seconds = 40

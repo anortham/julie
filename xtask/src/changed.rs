@@ -1267,7 +1267,13 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
         return Some(&["tools-search-context"]);
     }
 
-    if matches_exact(path, &["src/tests/tools/text_search_tantivy.rs"]) {
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/text_search_tantivy.rs",
+            "src/tests/tools/search/structural_facts_text_test.rs",
+        ],
+    ) {
         return Some(&["tools-search-text"]);
     }
 
