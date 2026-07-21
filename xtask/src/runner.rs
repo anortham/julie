@@ -63,7 +63,10 @@ pub struct RunSummary {
     pub bucket_names: Vec<String>,
     pub bucket_results: Vec<BucketResult>,
     pub passed_buckets: usize,
+    /// Warm wall: sum of bucket execution times only (excludes prebuild).
     pub total_elapsed: Duration,
+    /// Time spent in `prebuild_test_binary` before bucket execution.
+    pub prebuild_elapsed: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,7 +291,7 @@ where
         .cloned()
         .or_else(|| special_tier_bucket_names(tier_name))
         .ok_or_else(|| RunFailure {
-            summary: empty_summary(Vec::new()),
+            summary: empty_summary(Vec::new(), Duration::ZERO),
             message: format!("unknown test tier `{tier_name}`"),
         })?;
 
@@ -316,12 +319,15 @@ where
 {
     let bucket_names = bucket_names.to_vec();
 
-    if let Err(message) = prebuild_test_binary(coverage, executor) {
-        return Err(RunFailure {
-            summary: empty_summary(bucket_names),
-            message,
-        });
-    }
+    let prebuild_elapsed = match prebuild_test_binary(coverage, executor) {
+        Ok(elapsed) => elapsed,
+        Err(error) => {
+            return Err(RunFailure {
+                summary: empty_summary(bucket_names, error.elapsed),
+                message: error.message,
+            });
+        }
+    };
 
     let mut total_elapsed = Duration::ZERO;
     let mut bucket_results = Vec::with_capacity(bucket_names.len());
@@ -351,6 +357,7 @@ where
                             .count(),
                         bucket_results,
                         total_elapsed,
+                        prebuild_elapsed,
                     },
                     message: error.message,
                 });
@@ -365,6 +372,7 @@ where
             .filter(|result| result.status == BucketStatus::Passed)
             .count(),
         total_elapsed,
+        prebuild_elapsed,
         bucket_results,
     })
 }
@@ -381,12 +389,15 @@ where
     E: CommandExecutor,
     W: Write,
 {
-    if let Err(message) = prebuild_test_binary(coverage, executor) {
-        return Err(RunFailure {
-            summary: empty_summary(vec![bucket_name.to_string()]),
-            message,
-        });
-    }
+    let prebuild_elapsed = match prebuild_test_binary(coverage, executor) {
+        Ok(elapsed) => elapsed,
+        Err(error) => {
+            return Err(RunFailure {
+                summary: empty_summary(vec![bucket_name.to_string()], error.elapsed),
+                message: error.message,
+            });
+        }
+    };
 
     match execute_bucket(
         manifest,
@@ -400,6 +411,7 @@ where
             bucket_names: vec![bucket_name.to_string()],
             passed_buckets: usize::from(bucket_result.status == BucketStatus::Passed),
             total_elapsed: bucket_result.elapsed,
+            prebuild_elapsed,
             bucket_results: vec![bucket_result],
         }),
         Err(error) => Err(RunFailure {
@@ -407,6 +419,7 @@ where
                 bucket_names: vec![bucket_name.to_string()],
                 passed_buckets: 0,
                 total_elapsed: error.result.elapsed,
+                prebuild_elapsed,
                 bucket_results: vec![error.result],
             },
             message: error.message,
@@ -415,10 +428,13 @@ where
 }
 
 pub fn render_summary(summary: &RunSummary) -> String {
+    let cold_wall = summary.prebuild_elapsed + summary.total_elapsed;
     let mut output = format!(
-        "SUMMARY: {} buckets passed in {}\n",
+        "SUMMARY: {} buckets passed in {} (warm)\nPREBUILD: {}\nCOLD WALL: {}\n",
         summary.passed_buckets,
-        format_duration(summary.total_elapsed)
+        format_duration(summary.total_elapsed),
+        format_duration(summary.prebuild_elapsed),
+        format_duration(cold_wall),
     );
 
     for result in &summary.bucket_results {
@@ -447,7 +463,10 @@ pub fn render_bucket_result(result: &BucketResult) -> String {
     )
 }
 
-fn prebuild_test_binary<E: CommandExecutor>(coverage: bool, executor: &E) -> Result<(), String> {
+fn prebuild_test_binary<E: CommandExecutor>(
+    coverage: bool,
+    executor: &E,
+) -> std::result::Result<Duration, PrebuildError> {
     const COMMAND: &str = "cargo nextest run --no-run --lib";
     const TIMEOUT_SECS: u64 = 600;
 
@@ -459,18 +478,40 @@ fn prebuild_test_binary<E: CommandExecutor>(coverage: bool, executor: &E) -> Res
 
     let result = executor
         .run("prebuild", &command, Duration::from_secs(TIMEOUT_SECS))
-        .map_err(|e| format!("prebuild failed to launch: {e}"))?;
+        .map_err(|e| PrebuildError {
+            elapsed: Duration::ZERO,
+            message: format!("prebuild failed to launch: {e}"),
+        })?;
 
+    let elapsed = command_outcome_elapsed(&result.outcome);
     match result.outcome {
-        CommandOutcome::Passed { .. } => Ok(()),
-        CommandOutcome::Failed { exit_code, .. } => Err(format!(
-            "prebuild `{command}` failed (exit code: {})",
-            exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string())
-        )),
-        CommandOutcome::TimedOut { .. } => Err(format!(
-            "prebuild `{command}` timed out after {TIMEOUT_SECS}s"
-        )),
+        CommandOutcome::Passed { .. } => Ok(elapsed),
+        CommandOutcome::Failed { exit_code, .. } => Err(PrebuildError {
+            elapsed,
+            message: format!(
+                "prebuild `{command}` failed (exit code: {})",
+                exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string())
+            ),
+        }),
+        CommandOutcome::TimedOut { .. } => Err(PrebuildError {
+            elapsed,
+            message: format!("prebuild `{command}` timed out after {TIMEOUT_SECS}s"),
+        }),
     }
+}
+
+fn command_outcome_elapsed(outcome: &CommandOutcome) -> Duration {
+    match outcome {
+        CommandOutcome::Passed { elapsed }
+        | CommandOutcome::Failed { elapsed, .. }
+        | CommandOutcome::TimedOut { elapsed } => *elapsed,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PrebuildError {
+    elapsed: Duration,
+    message: String,
 }
 
 fn execute_bucket<E, W>(
@@ -725,12 +766,13 @@ fn write_bucket_end<W: Write>(
         })
 }
 
-fn empty_summary(bucket_names: Vec<String>) -> RunSummary {
+fn empty_summary(bucket_names: Vec<String>, prebuild_elapsed: Duration) -> RunSummary {
     RunSummary {
         bucket_names,
         bucket_results: Vec::new(),
         passed_buckets: 0,
         total_elapsed: Duration::ZERO,
+        prebuild_elapsed,
     }
 }
 
@@ -1034,6 +1076,53 @@ commands = ["cargo nextest run --lib tests::integration::system_health"]
             String::from_utf8(output)
                 .unwrap()
                 .contains("END system-health PASS")
+        );
+    }
+
+    #[test]
+    fn runner_tests_summary_includes_prebuild_elapsed() {
+        let manifest = manifest_with_program_buckets();
+        let executor = FakeExecutor::with_outcomes(&[
+            (
+                "cargo nextest run --no-run --lib",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_millis(47_000),
+                },
+            ),
+            (
+                "registry cmd",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_secs(1),
+                },
+            ),
+        ]);
+        let mut output = Vec::new();
+
+        let summary = run_tier(&manifest, "daemon", 1, false, &executor, &mut output).unwrap();
+
+        assert_eq!(
+            summary.prebuild_elapsed,
+            Duration::from_millis(47_000),
+            "prebuild_elapsed should record the prebuild command duration"
+        );
+        assert_eq!(
+            summary.total_elapsed,
+            Duration::from_secs(1),
+            "total_elapsed must remain warm bucket wall, not include prebuild"
+        );
+
+        let rendered = render_summary(&summary);
+        assert!(
+            rendered.contains("PREBUILD: 47.0s"),
+            "rendered summary should show prebuild duration, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("warm"),
+            "rendered summary should label warm bucket wall, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("COLD WALL: 48.0s"),
+            "cold wall should be prebuild + warm buckets, got:\n{rendered}"
         );
     }
 }

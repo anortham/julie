@@ -99,6 +99,7 @@ fn runner_tests_summary_reports_expected_actual_scope_and_slow_buckets() {
         ],
         passed_buckets: 2,
         total_elapsed: Duration::from_millis(68_200),
+        prebuild_elapsed: Duration::ZERO,
     };
 
     let output = render_summary(&summary);
