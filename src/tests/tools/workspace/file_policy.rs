@@ -1,8 +1,8 @@
+use crate::watcher::filtering::build_supported_extensions;
 use julie_core::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
     should_watch_path,
 };
-use crate::watcher::filtering::build_supported_extensions;
 use std::fs;
 
 #[test]
@@ -108,6 +108,22 @@ fn test_should_watch_path_rejects_blacklisted_filename() {
     assert!(
         !should_watch_path(&file_path, &supported),
         "blacklisted lockfiles must remain excluded"
+    );
+}
+
+#[test]
+fn test_should_watch_path_rejects_project_local_julie_state() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join(".julie/indexes/workspace/metadata.json");
+    fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+    fs::write(&file_path, "{}\n").unwrap();
+    let supported = build_supported_extensions();
+
+    assert!(
+        !should_watch_path(&file_path, &supported),
+        "project-local .julie state must not become source input"
     );
 }
 

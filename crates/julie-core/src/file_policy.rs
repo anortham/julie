@@ -1,5 +1,6 @@
 use crate::shared::{BLACKLISTED_EXTENSIONS, BLACKLISTED_FILENAMES};
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -85,10 +86,11 @@ pub fn determine_extraction_mode(language: &str, content: &str) -> ExtractionMod
     }
 }
 
-pub fn should_index_path_candidate(
-    path: &Path,
-    supported_extensions: &HashSet<String>,
-) -> bool {
+pub fn should_index_path_candidate(path: &Path, supported_extensions: &HashSet<String>) -> bool {
+    if is_project_local_julie_state(path) {
+        return false;
+    }
+
     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
         if BLACKLISTED_FILENAMES.contains(&file_name) {
             return false;
@@ -113,14 +115,16 @@ pub fn should_index_path_candidate(
     crate::file_utils::is_likely_text_file(path)
 }
 
+fn is_project_local_julie_state(path: &Path) -> bool {
+    path.components()
+        .any(|component| component.as_os_str() == OsStr::new(".julie"))
+}
+
 pub fn should_watch_path(path: &Path, supported_extensions: &HashSet<String>) -> bool {
     should_index_path_candidate(path, supported_extensions)
 }
 
-pub fn should_process_deleted_path(
-    path: &Path,
-    _supported_extensions: &HashSet<String>,
-) -> bool {
+pub fn should_process_deleted_path(path: &Path, _supported_extensions: &HashSet<String>) -> bool {
     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
         return !BLACKLISTED_FILENAMES.contains(&file_name);
     }
