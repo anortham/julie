@@ -408,8 +408,10 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
         "detailed health should use rebound current-primary stats, not the stale loaded workspace: {report}"
     );
     assert!(
-        report.contains("Projection Workspace: rebound-primary-detailed_")
-            && report.contains("Projection Freshness: REBUILD REQUIRED"),
+        report.contains("Projection tantivy")
+            && report.contains("Projection web_edges")
+            && report.contains("Workspace: rebound-primary-detailed_")
+            && report.contains("Freshness: REBUILD REQUIRED"),
         "detailed health should use rebound current-primary projection state instead of stale loaded workspace state: {report}"
     );
     assert!(
