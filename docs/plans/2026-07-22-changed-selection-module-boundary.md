@@ -220,14 +220,14 @@ Expected: PASS 1/1 with every production file at or below 500 lines and `changed
 - `serial-worker-commit`: after the exact green test and lead inline review, checkpoint and commit the owned implementation files. Record the implementation SHA before running exact-commit lead gates.
 
 **Acceptance criteria:**
-- [ ] The exact boundary test fails at the 1842-line baseline and passes after the split.
-- [ ] `changed.rs`, `diff.rs`, `policy.rs`, `rendering.rs`, `mapping.rs`, and all mapping rule-group files are each at or below 500 lines; `tests.rs` is at or below 1000.
-- [ ] All six caller-facing `xtask::changed` names retain their exact signatures and shapes.
-- [ ] First-match route precedence, path normalization, ignored/fallback handling, mapped-plus-dev union, 60-second budget behavior, canonical bucket order, and rationale/CLI text remain unchanged.
-- [ ] `xtask/src/main.rs`, `xtask/src/lib.rs`, and `xtask/tests/changed_tests.rs` require no edits.
-- [ ] `cargo nextest run -p xtask --test changed_tests` passes unchanged.
-- [ ] `cargo nextest run -p xtask` passes as the lead focused gate.
-- [ ] The dirty implementation diff makes `cargo xtask test changed` select and pass `xtask-runner` before the implementation commit.
-- [ ] `cargo xtask test dev` passes at the final current HEAD.
-- [ ] The verification ledger records all hard gates at the exact implementation commit and the final branch gate at current HEAD.
-- [ ] Worker-scope verification passes and the change is committed under serial-worker-commit mode.
+- [x] The exact boundary test fails at the 1842-line baseline and passes after the split.
+- [x] `changed.rs`, `diff.rs`, `policy.rs`, `rendering.rs`, `mapping.rs`, and all mapping rule-group files are each at or below 500 lines; `tests.rs` is at or below 1000.
+- [x] All six caller-facing `xtask::changed` names retain their exact signatures and shapes.
+- [x] First-match route precedence, path normalization, ignored/fallback handling, mapped-plus-dev union, 60-second budget behavior, canonical bucket order, and rationale/CLI text remain unchanged.
+- [x] `xtask/src/main.rs`, `xtask/src/lib.rs`, and `xtask/tests/changed_tests.rs` require no edits.
+- [x] `cargo nextest run -p xtask --test changed_tests` passes unchanged.
+- [x] `cargo nextest run -p xtask` passes as the lead focused gate.
+- [x] The dirty implementation diff makes `cargo xtask test changed` select and pass `xtask-runner` before the implementation commit.
+- [x] `cargo xtask test dev` passes at the final current HEAD.
+- [x] The verification ledger records all hard gates at the exact implementation commit and the final branch gate at current HEAD.
+- [x] Worker-scope verification passes and the change is committed under serial-worker-commit mode.
