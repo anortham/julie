@@ -1,0 +1,208 @@
+version = 1
+families = ["vue-fetch-to-php-route", "python-sql-to-sql-table"]
+features = [
+  "ordinary-web-ordinary",
+  "http-internal",
+  "sql-internal",
+  "external-terminal",
+  "cycle",
+  "self-call",
+  "duplicate-edge",
+  "combined-depth",
+  "deterministic-order",
+]
+
+[[symbols]]
+id = "save_user"
+name = "saveUser"
+file_path = "backend/save_user.php"
+language = "php"
+line = 40
+
+[[symbols]]
+id = "show_user"
+name = "showUser"
+file_path = "backend/show_user.php"
+language = "php"
+line = 30
+
+[[symbols]]
+id = "fetch_user"
+name = "fetchUser"
+file_path = "web/fetch_user.ts"
+language = "typescript"
+line = 20
+
+[[symbols]]
+id = "page_loader"
+name = "pageLoader"
+file_path = "web/page_loader.vue"
+language = "vue"
+line = 10
+
+[[symbols]]
+id = "cycle_a"
+name = "cycleA"
+file_path = "cycles/cycle_a.rs"
+language = "rust"
+line = 50
+
+[[symbols]]
+id = "cycle_b"
+name = "cycleB"
+file_path = "cycles/cycle_b.rs"
+language = "rust"
+line = 60
+
+[[symbols]]
+id = "fetch_unknown"
+name = "fetchUnknown"
+file_path = "web/fetch_unknown.ts"
+language = "typescript"
+line = 70
+
+[[symbols]]
+id = "unknown_page"
+name = "unknownPage"
+file_path = "web/unknown_page.vue"
+language = "vue"
+line = 80
+
+[[symbols]]
+id = "users_table"
+name = "users"
+file_path = "schema/users.sql"
+language = "sql"
+line = 2
+
+[[symbols]]
+id = "load_report"
+name = "loadReport"
+file_path = "reports/load_report.py"
+language = "python"
+line = 15
+
+[[symbols]]
+id = "report_page"
+name = "reportPage"
+file_path = "reports/report_page.py"
+language = "python"
+line = 5
+
+[[symbols]]
+id = "load_unknown"
+name = "loadUnknown"
+file_path = "reports/load_unknown.py"
+language = "python"
+line = 25
+
+[[symbols]]
+id = "unknown_report_page"
+name = "unknownReportPage"
+file_path = "reports/unknown_report_page.py"
+language = "python"
+line = 35
+
+[[relationships]]
+id = "show-user-saves"
+from = "show_user"
+to = "save_user"
+
+[[relationships]]
+id = "page-loads-user"
+from = "page_loader"
+to = "fetch_user"
+
+[[relationships]]
+id = "cycle-a-reaches-save"
+from = "cycle_a"
+to = "save_user"
+
+[[relationships]]
+id = "cycle-b-calls-a"
+from = "cycle_b"
+to = "cycle_a"
+
+[[relationships]]
+id = "cycle-a-calls-b"
+from = "cycle_a"
+to = "cycle_b"
+
+[[relationships]]
+id = "cycle-a-self-call"
+from = "cycle_a"
+to = "cycle_a"
+
+[[relationships]]
+id = "report-page-loads-report"
+from = "report_page"
+to = "load_report"
+
+[[relationships]]
+id = "unknown-page-loads-unknown"
+from = "unknown_page"
+to = "fetch_unknown"
+
+[[relationships]]
+id = "unknown-report-page-loads-unknown"
+from = "unknown_report_page"
+to = "load_unknown"
+
+[[web_edges]]
+from = "fetch_user"
+to = "show_user"
+kind = "http"
+method = "GET"
+path = "/api/users/42"
+file_path = "web/fetch_user.ts"
+line = 21
+
+[[web_edges]]
+from = "fetch_user"
+to = "show_user"
+kind = "http"
+method = "GET"
+path = "/api/users/{id}"
+file_path = "web/fetch_user.ts"
+line = 22
+
+[[web_edges]]
+from = "fetch_unknown"
+external = "GET /api/ambiguous"
+kind = "http"
+method = "GET"
+path = "/api/ambiguous"
+file_path = "web/fetch_unknown.ts"
+line = 71
+
+[[web_edges]]
+from = "load_report"
+to = "users_table"
+kind = "sql"
+table = "users"
+file_path = "reports/load_report.py"
+line = 16
+
+[[web_edges]]
+from = "load_unknown"
+external = "table:missing_users"
+kind = "sql"
+table = "missing_users"
+file_path = "reports/load_unknown.py"
+line = 26
+
+[[cases]]
+id = "http_mixed"
+seed = "save_user"
+max_depth = 3
+expected_default = ["show_user", "cycle_a", "cycle_b"]
+expected_web = ["show_user", "cycle_a", "cycle_b", "fetch_user", "page_loader"]
+terminal_external = ["GET /api/ambiguous"]
+
+[[cases]]
+id = "sql_mixed"
+seed = "users_table"
+max_depth = 2
+expected_default = []
+expected_web = ["load_report", "report_page"]
+terminal_external = ["table:missing_users"]

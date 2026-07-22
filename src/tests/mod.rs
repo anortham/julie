@@ -52,6 +52,7 @@ pub mod core {
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
 pub mod tools {
+    pub mod blast_radius_mixed_traversal;
     pub mod deep_dive_complexity;
     pub mod get_symbols; // GetSymbolsTool tests
     pub mod get_symbols_relative_paths; // GetSymbolsTool Phase 2 relative path tests (TDD)
