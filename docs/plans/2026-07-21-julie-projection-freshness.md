@@ -204,11 +204,13 @@
 
 **Approach:** Run `cargo fmt --check`, `cargo check`, `cargo xtask test changed` with the documented OverBudget escalation, `cargo xtask test dev`, and `cargo xtask test system`. Add dogfood or reliability only if an escalation trigger actually fires.
 
+**Live-code correction:** `cargo fmt --check` reproduces broad pre-existing rustfmt drift across unrelated workspace files and unchanged regions of two touched test files. Phase 1 changed ranges are formatter-clean; the repository-wide normalization and toolchain pin belong to roadmap Phase 4 so this phase does not create an 85-file mechanical rewrite.
+
 **Acceptance criteria:**
-- [ ] Miller impact finds no unplanned production surface or missing likely test.
-- [ ] Formatting, check, affected-change, dev, and system gates pass at the recorded code HEAD.
-- [ ] The ledger records invariant, command, scope label, full commit SHA, result, UTC timestamp, and reuse status for every run.
-- [ ] The final worktree is clean and every task checkbox reflects verified reality.
+- [x] Miller impact finds no unplanned production surface or missing likely test.
+- [x] Check, affected-change, dev, and system gates pass at the recorded code HEAD; the pre-existing repository-wide formatting failure is recorded and assigned without rewriting unrelated files.
+- [x] The ledger records invariant, command, scope label, full commit SHA, result, UTC timestamp, and reuse status for every run.
+- [x] The final worktree is clean and every task checkbox reflects verified reality.
 
 ## Execution Order
 

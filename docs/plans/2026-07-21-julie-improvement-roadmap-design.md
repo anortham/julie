@@ -111,7 +111,7 @@ Promotion requires every expected internal path in the curated corpus, zero unex
 
 Reproduce the warning under the current Homebrew Rust toolchain and a current rustup-managed toolchain using the same narrow test binary. Inspect project Cargo linker configuration, environment deployment-target inputs, and CI toolchain setup before changing configuration.
 
-Prefer a repository-pinned rustup toolchain and documented linker setup if it removes the warning while preserving the current deployment target. Do not mask linker messages globally. Acceptance requires a warning-free narrow test on the supported macOS builder plus unchanged Linux and Windows CI configuration semantics.
+Prefer a repository-pinned rustup toolchain and documented linker setup if it removes the warning while preserving the current deployment target. Establish that pinned formatter as the canonical baseline and normalize the existing repository-wide rustfmt drift once, rather than letting local toolchains generate recurring mechanical diffs. Do not mask linker messages globally. Acceptance requires a warning-free narrow test, a clean `cargo fmt --check`, and unchanged Linux and Windows CI configuration semantics.
 
 ## Doubt Pass Resolution
 
