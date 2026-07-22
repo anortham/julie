@@ -8,6 +8,7 @@ pub mod watcher_handlers; // Incremental-indexing handler tests (create/modify/d
 pub mod watcher_mutation_gate; // Per-workspace mutation gate concurrency contract
 pub mod watcher_observability; // INFO-level observability (rate limiter, gate timing)
 pub mod watcher_queue;    // Queue coalescing, overflow, repair-retry policy
+pub mod watcher_runtime_boundary;
 
 // ── Workspace tests (handler-free) ────────────────────────────────────────
 pub mod workspace_init;   // env_paths.rs — workspace env-var and path init tests
