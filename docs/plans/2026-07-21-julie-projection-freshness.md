@@ -106,10 +106,10 @@
 **Approach:** Keep the outer gate for already-bound workspaces. When `run_primary_workspace_repair_body` began without a guard, resolve `require_primary_workspace_identity()` after indexing, acquire that gate, then reconcile. Preserve follower no-op behavior and avoid gate re-entry.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run --lib test_startup_missing_embeddings_only_repair_reconciles_web_edges 2>&1 | tail -10` fails before implementation and passes after it.
-- [ ] Both `tantivy` and `web_edges` equal the canonical revision after a MissingEmbeddings-only repair.
-- [ ] Reconciliation cannot compile without a `MutationGuard<'_>` proof token once a workspace identity exists.
-- [ ] Worker-scope verification passes and the worker creates a `serial-worker-commit` commit.
+- [x] `cargo nextest run --lib test_startup_missing_embeddings_only_repair_reconciles_web_edges 2>&1 | tail -10` fails before implementation and passes after it.
+- [x] Both `tantivy` and `web_edges` equal the canonical revision after a MissingEmbeddings-only repair.
+- [x] Reconciliation cannot compile without a `MutationGuard<'_>` proof token once a workspace identity exists.
+- [x] Worker-scope verification passes and the worker creates a `serial-worker-commit` commit.
 
 ### Task 2: Live Generic Projection Health
 
