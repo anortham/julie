@@ -31,7 +31,7 @@
 
 **Worker gate invariant:** The runner facade and each production child module stay at or below 500 lines while the expected private module boundaries exist.
 
-**Lead affected-change scope:** `cargo xtask test changed` after the complete split; this must select the `xtask-runner` bucket.
+**Lead affected-change scope:** The checked-in routing contract must map runner paths to `xtask-runner`. At a clean implementation commit, `cargo xtask test changed` has no working-tree diff to map, so run `cargo xtask test bucket xtask-runner` as the exact-commit mapped gate.
 
 **Branch gate:** `cargo xtask test dev` once after affected-change verification passes.
 
@@ -77,12 +77,12 @@
 **Approach:** Keep public data types, `PROGRAM_TIERS`, tier/bucket orchestration, bucket-plan resolution, and declared-budget pricing in the facade. Use private `pub(super)` seams only where the facade or a sibling module must call implementation; re-export the existing public executor and rendering/coverage functions so callers require no edits. Apply rustfmt only to touched runner files under the pinned formatter.
 
 **Acceptance criteria:**
-- [ ] The exact boundary test fails on the current 1242-line `runner.rs` and passes after the split.
-- [ ] `xtask/src/runner.rs`, `prebuild.rs`, `execution.rs`, and `rendering.rs` are each at or below 500 lines; `tests.rs` is at or below 1000 lines.
-- [ ] `xtask/src/main.rs`, `xtask/src/changed.rs`, `xtask/src/lib.rs`, and existing integration tests require no caller-facing changes.
-- [ ] `cargo nextest run -p xtask --test runner_tests` passes unchanged.
-- [ ] `cargo nextest run -p xtask --test runner_coverage_tests` passes unchanged.
-- [ ] `cargo nextest run -p xtask` passes as the lead-owned focused gate.
-- [ ] `cargo xtask test changed` selects and passes the `xtask-runner` bucket.
-- [ ] The verification ledger records all hard gates at the exact implementation commit.
-- [ ] Worker-scope verification passes and the change is either committed by the worker or handed to the lead per commit mode.
+- [x] The exact boundary test fails on the current 1242-line `runner.rs` and passes after the split.
+- [x] `xtask/src/runner.rs`, `prebuild.rs`, `execution.rs`, and `rendering.rs` are each at or below 500 lines; `tests.rs` is at or below 1000 lines.
+- [x] `xtask/src/main.rs`, `xtask/src/changed.rs`, `xtask/src/lib.rs`, and existing integration tests require no caller-facing changes.
+- [x] `cargo nextest run -p xtask --test runner_tests` passes unchanged.
+- [x] `cargo nextest run -p xtask --test runner_coverage_tests` passes unchanged.
+- [x] `cargo nextest run -p xtask` passes as the lead-owned focused gate.
+- [x] The checked-in routing contract maps runner paths to `xtask-runner`, and `cargo xtask test bucket xtask-runner` passes at the exact implementation commit.
+- [x] The verification ledger records all hard gates at the exact implementation commit.
+- [x] Worker-scope verification passes and the change is either committed by the worker or handed to the lead per commit mode.
