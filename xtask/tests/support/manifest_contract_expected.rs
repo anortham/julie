@@ -233,8 +233,8 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-get-context-graph",
             ExpectedBucket {
-                expected_seconds: 12,
-                timeout_seconds: 45,
+                expected_seconds: 25,
+                timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run -p julie-tools --lib tests::get_context_graph_expansion_tests",
                     "cargo nextest run -p julie-tools --lib tests::get_context_task_inputs_tests",

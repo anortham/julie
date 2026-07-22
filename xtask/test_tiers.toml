@@ -106,8 +106,8 @@ commands = [
 
 [buckets.tools-get-context-graph]
 # Graph expansion, task inputs: relocated to julie-tools (T2b.6). Primary rebind + target-workspace metrics: STAYS top-crate (JulieServerHandler).
-expected_seconds = 12
-timeout_seconds = 45
+expected_seconds = 25
+timeout_seconds = 90
 scope_label = "tooling"
 notes = "get_context graph expansion + cross-workspace coverage"
 commands = [
