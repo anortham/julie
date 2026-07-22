@@ -116,11 +116,11 @@ Expected: PASS for harness integrity while reporting the current web-mode mixed-
 - `serial-worker-commit`: checkpoint, commit the corpus/baseline slice as `test(impact): add mixed traversal evaluation corpus`, and record the SHA.
 
 **Acceptance criteria:**
-- [ ] The corpus covers every approved category and at least two language/framework families.
-- [ ] The pre-change default compact output is locked byte-for-byte.
-- [ ] The pre-change scorecard records hard-gate counts and report-only latency/recall without claiming promotion.
-- [ ] No production behavior changes in this task.
-- [ ] Exact corpus, snapshot, and scorecard tests pass and the slice is committed.
+- [x] The corpus covers every approved category and at least two language/framework families.
+- [x] The pre-change default compact output is locked byte-for-byte.
+- [x] The pre-change scorecard records hard-gate counts and report-only latency/recall without claiming promotion.
+- [x] No production behavior changes in this task.
+- [x] Exact corpus, snapshot, and scorecard tests pass and the slice is committed.
 
 ### Task 2: Policy-driven combined reverse walk
 
