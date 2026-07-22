@@ -1,16 +1,16 @@
 //! Rename symbol refactoring operations
 
-use julie_core::mcp_compat::CallToolResult;
 use anyhow::Result;
+use julie_core::mcp_compat::CallToolResult;
 use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
 use super::{RenameChange, RenameSymbolTool, SmartRefactorTool, compute_line_changes};
-use julie_extractors::{Relationship, Symbol};
 use crate::navigation::FastRefsTool;
 use crate::navigation::resolution::parse_qualified_name;
 use julie_context::ToolContext;
+use julie_extractors::{Relationship, Symbol};
 
 impl RenameSymbolTool {
     pub fn request_input_bytes(&self) -> u64 {
@@ -104,10 +104,7 @@ impl RenameSymbolTool {
 
 impl SmartRefactorTool {
     /// Handle rename symbol operation
-    pub async fn handle_rename_symbol(
-        &self,
-        handler: &dyn ToolContext,
-    ) -> Result<CallToolResult> {
+    pub async fn handle_rename_symbol(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         debug!("🔄 Processing rename symbol operation");
 
         // Parse JSON parameters - return errors for invalid JSON or missing parameters

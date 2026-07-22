@@ -6,9 +6,9 @@
 
 use std::collections::HashMap;
 
-use julie_core::database::SymbolDatabase;
 use crate::search::index::SymbolSearchResult;
 use crate::search::language_config::LanguageConfigs;
+use julie_core::database::SymbolDatabase;
 
 /// Score multiplier for results matching an important pattern.
 const IMPORTANT_PATTERN_BOOST: f32 = 1.5;

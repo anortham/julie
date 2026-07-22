@@ -1,9 +1,9 @@
-use julie_extractors::{RelationshipKind, Symbol, SymbolKind};
 use crate::impact::LikelyTests;
 use crate::impact::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows};
 use crate::impact::ranking::RankedImpact;
 use crate::impact::seed::SeedContext;
 use crate::spillover::SpilloverFormat;
+use julie_extractors::{RelationshipKind, Symbol, SymbolKind};
 
 fn make_symbol(name: &str, file_path: &str, line: u32) -> Symbol {
     Symbol {

@@ -4,8 +4,8 @@
 mod tests {
     use std::collections::HashMap;
 
-    use julie_index::search::index::SymbolSearchResult;
     use crate::get_context::scoring::select_pivots_with_code_fallback;
+    use julie_index::search::index::SymbolSearchResult;
 
     fn make_result(
         id: &str,

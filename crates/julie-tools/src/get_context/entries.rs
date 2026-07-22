@@ -5,9 +5,9 @@ use anyhow::Result;
 use super::graph::GraphExpansion;
 use super::scoring::Pivot;
 use julie_core::database::SymbolDatabase;
+use julie_core::shared::NOISE_CALLEE_NAMES;
 use julie_extractors::base::Symbol;
 use julie_index::search::scoring::is_test_path;
-use julie_core::shared::NOISE_CALLEE_NAMES;
 
 /// Pre-fetched data for building pivot entries without N+1 DB queries.
 struct PivotBatchData {

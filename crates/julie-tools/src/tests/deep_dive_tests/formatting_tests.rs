@@ -1,6 +1,6 @@
-use julie_extractors::base::{RelationshipKind, Symbol, SymbolKind, Visibility};
 use crate::deep_dive::data::{RefEntry, SimilarEntry, SymbolContext};
 use crate::deep_dive::formatting::format_symbol_context;
+use julie_extractors::base::{RelationshipKind, Symbol, SymbolKind, Visibility};
 
 fn make_symbol(
     name: &str,

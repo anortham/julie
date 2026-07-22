@@ -91,9 +91,7 @@ fn parse_relationship_kind(kind: &str) -> rusqlite::Result<RelationshipKind> {
         .ok_or_else(|| row_conversion_error(3, format!("unknown relationship kind: {kind}")))
 }
 
-fn row_to_body_span(
-    row: &Row,
-) -> rusqlite::Result<Option<julie_extractors::base::NormalizedSpan>> {
+fn row_to_body_span(row: &Row) -> rusqlite::Result<Option<julie_extractors::base::NormalizedSpan>> {
     let start_line: Option<u32> = row.get("body_start_line")?;
     let start_column: Option<u32> = row.get("body_start_col")?;
     let end_line: Option<u32> = row.get("body_end_line")?;

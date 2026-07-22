@@ -1,9 +1,9 @@
+mod bulk_store_types_tdd;
+mod bulk_store_types_tests;
 mod database;
 mod database_init_race;
 mod database_lightweight_query;
 mod database_row_mapping;
-mod vector_storage;
 mod memory_vectors;
 mod paths;
-mod bulk_store_types_tests;
-mod bulk_store_types_tdd;
+mod vector_storage;

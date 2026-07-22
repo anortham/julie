@@ -32,9 +32,7 @@ pub fn atomic_cleanup_julie_dir(workspace_path: &Path) -> Result<()> {
     let workspace_canonical = workspace_path
         .canonicalize()
         .unwrap_or_else(|_| workspace_path.to_path_buf());
-    let manifest_canonical = manifest_dir
-        .canonicalize()
-        .unwrap_or(manifest_dir.clone());
+    let manifest_canonical = manifest_dir.canonicalize().unwrap_or(manifest_dir.clone());
 
     if workspace_canonical == manifest_canonical {
         panic!(

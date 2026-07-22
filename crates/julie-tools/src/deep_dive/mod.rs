@@ -11,9 +11,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+use crate::navigation::resolution::WorkspaceTarget;
 use julie_context::ToolContext;
 use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::navigation::resolution::WorkspaceTarget;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -82,7 +82,9 @@ impl DeepDiveTool {
         debug!("Deep dive: {} (depth: {})", self.symbol, depth);
 
         // Resolve workspace parameter
-        let workspace_target = handler.resolve_workspace_target(self.workspace.as_deref()).await?;
+        let workspace_target = handler
+            .resolve_workspace_target(self.workspace.as_deref())
+            .await?;
 
         let symbol_name = self.symbol.clone();
         let context_file = self.context_file.clone();

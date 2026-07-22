@@ -14,9 +14,9 @@
 
 #[cfg(test)]
 mod tests {
-    use julie_extractors::SymbolKind;
     use crate::search::query_parse::parse_query;
     use crate::search::reranker::{Candidate, EXACT_TITLE_BOOST, VENDOR_PENALTY, rerank_unified};
+    use julie_extractors::SymbolKind;
 
     /// Build a symbol-row candidate.
     fn sym_cand(title: &str, path: &str, kind: SymbolKind, tantivy_score: f32) -> Candidate {

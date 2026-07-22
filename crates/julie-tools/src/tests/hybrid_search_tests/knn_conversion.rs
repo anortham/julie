@@ -10,9 +10,7 @@ mod conversion_tests {
     use julie_core::database::SymbolDatabase;
     use julie_extractors::SymbolKind;
     use julie_index::search::hybrid::knn_to_search_results;
-    use julie_test_support::db::{
-        file_info_builder, store_file_info_if_missing, symbol_builder,
-    };
+    use julie_test_support::db::{file_info_builder, store_file_info_if_missing, symbol_builder};
     use tempfile::TempDir;
 
     /// Helper: create a fresh SymbolDatabase in a temp directory.

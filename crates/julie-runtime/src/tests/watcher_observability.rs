@@ -9,11 +9,11 @@
 //! dropped. This avoids the `block_on`-inside-a-runtime panic that occurs when
 //! using `with_default(subscriber, || { runtime.block_on(...) })`.
 
-use julie_core::database::SymbolDatabase;
-use julie_extractors::ExtractorManager;
 use crate::watcher::handlers::handle_file_created_or_modified_static;
 use crate::watcher::observability::LogCapture;
 use crate::workspace::mutation_gate::acquire_gate;
+use julie_core::database::SymbolDatabase;
+use julie_extractors::ExtractorManager;
 use std::fs;
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::layer::SubscriberExt;

@@ -1,6 +1,8 @@
 use tempfile::TempDir;
 
-use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex, SearchIndexOpenDisposition};
+use julie_index::search::index::{
+    SearchDocument, SearchFilter, SearchIndex, SearchIndexOpenDisposition,
+};
 use julie_index::search::language_config::LanguageConfigs;
 
 /// Regression test: opening a Tantivy index created with an older schema
@@ -43,8 +45,10 @@ fn test_schema_migration_recreates_stale_index() {
         // Register the old tokenizer name so we can write a doc
         old_index.tokenizers().register(
             "code_aware",
-            TextAnalyzer::builder(julie_index::search::tokenizer::CodeTokenizer::with_default_patterns())
-                .build(),
+            TextAnalyzer::builder(
+                julie_index::search::tokenizer::CodeTokenizer::with_default_patterns(),
+            )
+            .build(),
         );
         let mut writer: tantivy::IndexWriter<tantivy::TantivyDocument> =
             old_index.writer(15_000_000).unwrap();
@@ -114,8 +118,10 @@ fn test_schema_migration_via_open_path() {
         let old_index = tantivy::Index::create_in_dir(&index_path, old_schema).unwrap();
         old_index.tokenizers().register(
             "code_aware",
-            TextAnalyzer::builder(julie_index::search::tokenizer::CodeTokenizer::with_default_patterns())
-                .build(),
+            TextAnalyzer::builder(
+                julie_index::search::tokenizer::CodeTokenizer::with_default_patterns(),
+            )
+            .build(),
         );
         let mut writer: tantivy::IndexWriter<tantivy::TantivyDocument> =
             old_index.writer(15_000_000).unwrap();

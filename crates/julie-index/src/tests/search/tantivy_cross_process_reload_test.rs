@@ -103,7 +103,9 @@ fn test_cross_instance_tantivy_poll_reload() {
     // Writer adds 3 symbols and commits.
     // commit() reloads the WRITER's own reader; reader_idx relies on the poll.
     for i in 0..3u32 {
-        writer_idx.add_search_doc(&make_symbol(i, "XCrossInst")).unwrap();
+        writer_idx
+            .add_search_doc(&make_symbol(i, "XCrossInst"))
+            .unwrap();
     }
     writer_idx.commit().unwrap();
 
@@ -182,8 +184,7 @@ fn tantivy_cross_process_writer_subprocess() {
     };
 
     let path = std::path::Path::new(&dir);
-    let index = SearchIndex::open_or_create(path)
-        .expect("subprocess: open_or_create failed");
+    let index = SearchIndex::open_or_create(path).expect("subprocess: open_or_create failed");
 
     for i in 0..5u32 {
         index.add_search_doc(&make_symbol(i, "XOsProc")).unwrap();
@@ -223,7 +224,11 @@ fn test_cross_process_separate_os_process_tantivy_reload() {
 
     // Open the reader BEFORE spawning the subprocess — tests the live-update path.
     let reader_idx = SearchIndex::open(temp.path()).unwrap();
-    assert_eq!(reader_idx.num_docs(), 1, "reader should see the sentinel doc");
+    assert_eq!(
+        reader_idx.num_docs(),
+        1,
+        "reader should see the sentinel doc"
+    );
 
     // SPAWN the writer subprocess: re-invokes this test binary in libtest mode
     // with the `_TANTIVY_WRITER_DIR` env var set so the subprocess helper writes
@@ -231,8 +236,7 @@ fn test_cross_process_separate_os_process_tantivy_reload() {
     //
     // We strip NEXTEST* env vars so the binary falls back to standard libtest mode
     // (nextest protocol requires specific CLI flags that we don't pass).
-    let exe = std::env::current_exe()
-        .expect("could not determine test binary path");
+    let exe = std::env::current_exe().expect("could not determine test binary path");
 
     let mut cmd = Command::new(&exe);
     cmd.arg("tantivy_cross_process_writer_subprocess")

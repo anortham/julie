@@ -10,4 +10,3 @@ pub use julie_core::indexing_state::{
 // the `…::indexing::state::IndexingRuntimeState` test paths still resolve.
 #[cfg(test)]
 pub use julie_core::indexing_state::IndexingRuntimeState;
-

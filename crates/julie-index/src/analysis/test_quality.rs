@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use tracing::{debug, info, warn};
 
-use julie_core::database::SymbolDatabase;
 use crate::search::LanguageConfigs;
+use julie_core::database::SymbolDatabase;
 
 // =============================================================================
 // Public types

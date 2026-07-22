@@ -2,11 +2,11 @@
 
 use std::collections::HashMap;
 
+use crate::navigation::formatting::{format_lean_refs_results, format_semantic_fallback};
+use crate::navigation::resolution::parse_qualified_name;
 use julie_extractors::base::{RelationshipKind, SymbolKind, Visibility};
 use julie_extractors::{Relationship, Symbol};
 use julie_index::search::similarity::SimilarEntry;
-use crate::navigation::formatting::{format_lean_refs_results, format_semantic_fallback};
-use crate::navigation::resolution::parse_qualified_name;
 
 fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
     Symbol {

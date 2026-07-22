@@ -174,8 +174,14 @@ mod tests {
 
     #[test]
     fn test_doublestar_recursive_match() {
-        assert!(matches_glob_pattern("src/tools/search/query.rs", "**/query.rs"));
-        assert!(!matches_glob_pattern("src/tools/search/query.rs", "**/mod.rs"));
+        assert!(matches_glob_pattern(
+            "src/tools/search/query.rs",
+            "**/query.rs"
+        ));
+        assert!(!matches_glob_pattern(
+            "src/tools/search/query.rs",
+            "**/mod.rs"
+        ));
     }
 
     #[test]

@@ -2,7 +2,6 @@
 //
 // Common utilities and helper functions used throughout the Julie codebase.
 
-
 /// File utilities — relocated to `julie_core::file_utils`.
 ///
 /// Re-exported so existing `crate::utils::file_utils::*` import sites

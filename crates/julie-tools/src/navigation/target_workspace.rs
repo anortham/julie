@@ -8,9 +8,9 @@ use std::collections::HashSet;
 use tracing::debug;
 
 use super::resolution::parse_qualified_name;
-use julie_extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
-use julie_core::cross_language_intelligence::generate_naming_variants;
 use julie_context::ToolContext;
+use julie_core::cross_language_intelligence::generate_naming_variants;
+use julie_extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
 /// Find references in a target workspace using handler helpers for DB access.
 ///

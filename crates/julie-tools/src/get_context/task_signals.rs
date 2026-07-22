@@ -424,10 +424,7 @@ fn symbol_to_search_result(symbol: Symbol, score: f32) -> SymbolSearchResult {
 ///
 /// Called from the pipeline before scoring so that scoring can boost symbols
 /// whose linked tests match the failing test signal.
-pub fn hydrate_failing_test_links(
-    db: &SymbolDatabase,
-    signals: &mut TaskSignals,
-) -> Result<()> {
+pub fn hydrate_failing_test_links(db: &SymbolDatabase, signals: &mut TaskSignals) -> Result<()> {
     let Some(failing_test) = signals.failing_test.clone() else {
         return Ok(());
     };

@@ -3,10 +3,10 @@ use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-use julie_core::database::SymbolDatabase;
-use julie_extractors::{AnnotationMarker, Symbol};
 use crate::search::language_config::{LanguageConfig, LanguageConfigs};
+use julie_core::database::SymbolDatabase;
 use julie_core::glob::matches_glob_pattern;
+use julie_extractors::{AnnotationMarker, Symbol};
 
 const TANTIVY_PROJECTION: &str = "tantivy";
 const DEFAULT_CONFIG_SCHEMA_VERSION: u32 = 2;

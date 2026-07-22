@@ -15,8 +15,8 @@ pub mod formatting;
 mod primary;
 mod target_workspace;
 
-use julie_core::mcp_compat::CallToolResult;
 use anyhow::{Result, bail};
+use julie_core::mcp_compat::CallToolResult;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -107,7 +107,9 @@ impl GetSymbolsTool {
         let mode = validated_mode(self.mode.as_deref())?;
 
         // Resolve workspace parameter (primary vs explicit workspace)
-        let workspace_target = handler.resolve_workspace_target(self.workspace.as_deref()).await?;
+        let workspace_target = handler
+            .resolve_workspace_target(self.workspace.as_deref())
+            .await?;
 
         match workspace_target {
             WorkspaceTarget::Target(target_workspace_id) => {

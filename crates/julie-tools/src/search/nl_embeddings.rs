@@ -23,5 +23,7 @@ pub async fn maybe_initialize_embeddings_for_nl_definitions(
         return;
     }
 
-    let _ = handler.ensure_embedding_provider(Duration::from_secs(3)).await;
+    let _ = handler
+        .ensure_embedding_provider(Duration::from_secs(3))
+        .await;
 }

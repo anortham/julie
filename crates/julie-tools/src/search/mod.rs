@@ -34,15 +34,15 @@ pub mod text_search;
 pub mod trace;
 mod types;
 
-use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
+use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use schemars::JsonSchema;
 use serde::de::{Deserializer, Error as DeError, IntoDeserializer};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use julie_core::health_types::SystemStatus;
 use crate::navigation::resolution::WorkspaceTarget;
+use julie_core::health_types::SystemStatus;
 use julie_core::shared::OptimizedResponse;
 
 use julie_context::ToolContext;
@@ -322,8 +322,7 @@ impl FastSearchParams {
         execution.trace.scope_relaxed = line_result.scope_relaxed;
         execution.trace.original_file_pattern = line_result.original_file_pattern.clone();
         if line_result.scope_relaxed {
-            execution.trace.original_zero_hit_reason =
-                Some(ZeroHitReason::FilePatternFiltered);
+            execution.trace.original_zero_hit_reason = Some(ZeroHitReason::FilePatternFiltered);
             execution.trace.scope_rescue_count = 1;
         }
 
@@ -334,8 +333,7 @@ impl FastSearchParams {
             ))])
         } else {
             let output = if self.search.return_format == "locations" {
-                let response =
-                    OptimizedResponse::with_total(execution.hits.clone(), total_results);
+                let response = OptimizedResponse::with_total(execution.hits.clone(), total_results);
                 formatting::format_content_locations_only(&self.search.query, &response)
             } else {
                 format_region_search_results(&self.search.query, &execution.hits)
@@ -450,8 +448,9 @@ impl FastSearchTool {
         let effective_limit = self.effective_limit();
 
         if let WorkspaceTarget::Target(target_workspace_id) = &workspace_target {
-            if let Some(index_error) =
-                handler.ensure_target_workspace_indexed_if_pending(target_workspace_id).await?
+            if let Some(index_error) = handler
+                .ensure_target_workspace_indexed_if_pending(target_workspace_id)
+                .await?
             {
                 return Ok(FastSearchExecution {
                     result: index_error,
@@ -467,7 +466,9 @@ impl FastSearchTool {
         };
 
         // Check system readiness
-        let readiness = handler.system_readiness(target_workspace_id.as_deref()).await?;
+        let readiness = handler
+            .system_readiness(target_workspace_id.as_deref())
+            .await?;
 
         match readiness {
             SystemStatus::NotReady => {
@@ -815,11 +816,10 @@ impl FastSearchTool {
     ///
     /// Delegates through the ToolContext trait method which encapsulates workspace
     /// resolution including the daemon-mode activate_workspace_with_root mutation.
-    async fn resolve_workspace_filter(
-        &self,
-        handler: &dyn ToolContext,
-    ) -> Result<WorkspaceTarget> {
-        handler.resolve_workspace_target(self.workspace.as_deref()).await
+    async fn resolve_workspace_filter(&self, handler: &dyn ToolContext) -> Result<WorkspaceTarget> {
+        handler
+            .resolve_workspace_target(self.workspace.as_deref())
+            .await
     }
 
     /// Try to produce content-style locations output (file:line per match) by

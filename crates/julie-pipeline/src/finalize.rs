@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use tracing::{info, warn};
 
 use crate::resolver;
-use julie_extractors::base::StructuredPendingRelationship;
 use julie_extractors::PendingRelationship;
+use julie_extractors::base::StructuredPendingRelationship;
 
 pub fn resolve_pending_relationships(
     db: &std::sync::Arc<std::sync::Mutex<julie_core::database::SymbolDatabase>>,

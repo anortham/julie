@@ -51,8 +51,7 @@ async fn test_debug_foreign_key_constraint() {
     db.store_file_info(&file_info).unwrap();
 
     // Create a symbol with the same file path (relative to match file_info)
-    let file_path =
-        crate::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap();
+    let file_path = crate::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap();
     println!("File path in symbol: {}", file_path);
 
     let symbol = Symbol {
@@ -216,8 +215,8 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
 
     // Use a real Go fixture to mirror the production failure scenario.
     // CARGO_MANIFEST_DIR is crates/julie-core/; fixtures live two levels up at workspace root.
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/real-world/go/main.go");
+    let fixture_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/real-world/go/main.go");
     let fixture_content = std::fs::read_to_string(&fixture_path).unwrap();
 
     let workspace_root = fixture_path
@@ -271,8 +270,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
         name: "getUserAsync".to_string(),
         kind: SymbolKind::Function,
         language: "typescript".to_string(),
-        file_path: crate::paths::to_relative_unix_style(&test_file, temp_dir.path())
-            .unwrap(),
+        file_path: crate::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap(),
         start_line: 20,
         start_column: 4,
         end_line: 30,

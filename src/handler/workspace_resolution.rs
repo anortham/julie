@@ -14,9 +14,7 @@ use anyhow::Result;
 
 use crate::handler::JulieServerHandler;
 use julie_context::WorkspaceTarget;
-use julie_core::workspace_errors::{
-    WorkspaceResolutionFailure, WorkspaceResolutionFailureKind,
-};
+use julie_core::workspace_errors::{WorkspaceResolutionFailure, WorkspaceResolutionFailureKind};
 
 fn workspace_resolution_failure(
     kind: WorkspaceResolutionFailureKind,

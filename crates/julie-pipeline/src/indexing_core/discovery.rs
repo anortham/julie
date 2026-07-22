@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use julie_core::external_extract_paths::normalize_existing_external_file;
-use julie_core::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS};
 use julie_core::file_policy::{should_index_path_candidate, supported_extensions_for_indexing};
+use julie_core::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS};
 use julie_core::walk::{WalkConfig, build_walker, try_build_single_path_walker};
 
 const EXTERNAL_DISCOVERY_MAX_FILE_SIZE: u64 = 1024 * 1024;

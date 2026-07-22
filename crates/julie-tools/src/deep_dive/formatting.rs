@@ -8,8 +8,8 @@
 
 use std::fmt::Write;
 
-use julie_extractors::base::{RelationshipKind, SymbolKind};
 use julie_core::token_estimation::TokenEstimator;
+use julie_extractors::base::{RelationshipKind, SymbolKind};
 
 use super::data::{RefEntry, SimilarEntry, SymbolContext};
 

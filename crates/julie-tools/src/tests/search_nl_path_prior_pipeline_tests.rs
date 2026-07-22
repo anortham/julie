@@ -26,9 +26,9 @@
 
 use tempfile::TempDir;
 
+use crate::search::text_search::definition_search_with_index_for_test;
 use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use julie_index::search::scoring::{NL_PATH_BOOST_SRC, NL_PATH_PENALTY_TESTS};
-use crate::search::text_search::definition_search_with_index_for_test;
 
 /// Two identical-content candidates differing only by path. BM25 base scores
 /// match exactly; any divergence in returned scores comes from a score-shaping

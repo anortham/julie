@@ -32,7 +32,11 @@ pub struct ParserFileProcessResult {
     pub file_info: julie_core::database::FileInfo,
 }
 
-type TextFileProcessResult = (Vec<Symbol>, Vec<Relationship>, julie_core::database::FileInfo);
+type TextFileProcessResult = (
+    Vec<Symbol>,
+    Vec<Relationship>,
+    julie_core::database::FileInfo,
+);
 
 enum ExtractOutcome {
     WithParser(Result<Box<ParserFileProcessResult>>),
@@ -61,7 +65,8 @@ pub async fn extract_files_for_indexing_with_records(
         .into_iter()
         .filter(|(_, paths)| !paths.is_empty())
         .flat_map(|(language, file_paths)| {
-            let has_parser = julie_extractors::language::get_tree_sitter_language(&language).is_ok();
+            let has_parser =
+                julie_extractors::language::get_tree_sitter_language(&language).is_ok();
             per_language_counts
                 .entry(language.clone())
                 .or_insert((file_paths.len(), has_parser));

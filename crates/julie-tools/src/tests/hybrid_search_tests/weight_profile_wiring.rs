@@ -8,14 +8,12 @@ mod weight_profile_wiring_tests {
     use anyhow::Result;
 
     use julie_core::database::SymbolDatabase;
-    use julie_pipeline::embeddings::{DeviceInfo, EmbeddingProvider};
     use julie_extractors::SymbolKind;
     use julie_index::search::hybrid::hybrid_search;
     use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex};
     use julie_index::search::weights::SearchWeightProfile;
-    use julie_test_support::db::{
-        file_info_builder, store_file_info_if_missing, symbol_builder,
-    };
+    use julie_pipeline::embeddings::{DeviceInfo, EmbeddingProvider};
+    use julie_test_support::db::{file_info_builder, store_file_info_if_missing, symbol_builder};
     use tempfile::TempDir;
 
     /// Mock embedding provider that returns a deterministic vector.

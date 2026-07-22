@@ -7,10 +7,10 @@ use rmcp::{
 use tracing::debug;
 
 use crate::handler::tools::error::classify_tool_failure;
-use crate::handler::{JulieServerHandler, search_telemetry};
-use crate::tools::search::FastSearchParams;
-use crate::tools::metrics::session::ToolCallReport;
 use crate::handler::workspace_resolution::resolve_workspace_filter;
+use crate::handler::{JulieServerHandler, search_telemetry};
+use crate::tools::metrics::session::ToolCallReport;
+use crate::tools::search::FastSearchParams;
 
 #[tool_router(router = tool_router_fast_search, vis = "pub(crate)")]
 impl JulieServerHandler {

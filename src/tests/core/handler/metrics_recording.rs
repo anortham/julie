@@ -1,7 +1,6 @@
 use super::*;
 use crate::tests::helpers::workspace::mark_workspace_root;
 
-
 #[tokio::test(flavor = "multi_thread")]
 async fn test_tool_failure_metrics_records_failed_handler_call() -> Result<()> {
     use crate::tools::workspace::ManageWorkspaceTool;

@@ -11,8 +11,8 @@
 mod rename;
 mod utils;
 
-use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
+use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;

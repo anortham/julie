@@ -12,10 +12,10 @@ use std::collections::HashSet;
 
 use tantivy::tokenizer::{TokenStream, Tokenizer};
 
-use julie_index::search::tokenizer::CodeTokenizer;
 use crate::search::query::{line_match_strategy, looks_like_whitespace_separated_globs};
 use crate::search::trace::{FilePatternDiagnostic, HintKind, ZeroHitReason};
 use crate::search::types::LineMatchStrategy;
+use julie_index::search::tokenizer::CodeTokenizer;
 
 /// Whether `query` has two or more whitespace-separated tokens. This is the
 /// gate for the multi-token zero-hit hint: single-token content zero-hits

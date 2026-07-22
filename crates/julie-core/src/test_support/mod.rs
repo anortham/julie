@@ -13,9 +13,9 @@ pub mod tempdir;
 // Flat re-exports so callers can `use crate::test_support::open_test_connection` etc.
 pub use cleanup::atomic_cleanup_julie_dir;
 pub use db::rows::{
-    file_info_builder, identifier_builder, relationship_builder, set_symbol_reference_scores,
-    store_file_info_if_missing, symbol_builder, FileInfoBuilder, IdentifierBuilder,
-    RelationshipBuilder, SymbolBuilder,
+    FileInfoBuilder, IdentifierBuilder, RelationshipBuilder, SymbolBuilder, file_info_builder,
+    identifier_builder, relationship_builder, set_symbol_reference_scores,
+    store_file_info_if_missing, symbol_builder,
 };
 pub use open_test_connection::open_test_connection;
 pub use tempdir::unique_temp_dir;

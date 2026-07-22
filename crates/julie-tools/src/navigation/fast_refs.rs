@@ -6,8 +6,8 @@
 //! 3. Relationships table for caller→callee connections
 //! 4. Identifiers table for usage sites (calls, type usages, member access, imports)
 
-use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
+use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -15,9 +15,9 @@ use tracing::debug;
 use super::formatting::format_lean_refs_results;
 use super::resolution::{WorkspaceTarget, parse_qualified_name};
 use super::target_workspace;
-use julie_extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
-use julie_core::cross_language_intelligence::generate_naming_variants;
 use julie_context::ToolContext;
+use julie_core::cross_language_intelligence::generate_naming_variants;
+use julie_extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use std::collections::{HashMap, HashSet};
 
 fn default_true() -> bool {
@@ -142,7 +142,9 @@ impl FastRefsTool {
         // Resolve workspace target (primary or explicit workspace). The helpers
         // below each acquire their own pooled DB internally — there's no longer
         // a shared Arc<Mutex<>> passed around (see A2.2c follow-up).
-        let workspace_target = handler.resolve_workspace_target(self.workspace.as_deref()).await?;
+        let workspace_target = handler
+            .resolve_workspace_target(self.workspace.as_deref())
+            .await?;
         self.call_tool_with_target(handler, &workspace_target).await
     }
 

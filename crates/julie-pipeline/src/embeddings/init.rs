@@ -7,13 +7,13 @@ use std::sync::Arc;
 
 use tracing::{info, warn};
 
+use crate::embeddings::log_fields::build_embedding_runtime_log_fields;
 use crate::embeddings::{
     BackendResolverCapabilities, EmbeddingBackend, EmbeddingConfig, EmbeddingProvider,
     EmbeddingProviderFactory, EmbeddingRuntimeStatus, parse_provider_preference,
     resolve_backend_preference, should_disable_for_strict_acceleration,
     strict_acceleration_enabled_from_env_value,
 };
-use crate::embeddings::log_fields::build_embedding_runtime_log_fields;
 
 /// Create an embedding provider by reading environment variables and resolving
 /// the backend preference. Returns the provider (if successful) and runtime

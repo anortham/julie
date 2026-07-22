@@ -17,6 +17,7 @@
 use anyhow::Result;
 use tempfile::TempDir;
 
+use crate::search::text_search::definition_search_with_index_for_test;
 use julie_core::database::{FileInfo, SymbolDatabase};
 use julie_extractors::{Symbol, SymbolKind};
 use julie_index::search::index::{
@@ -24,7 +25,6 @@ use julie_index::search::index::{
     SearchIndex, apply_reranker_to_content_results, apply_symbol_title_boost_to_file_results,
 };
 use julie_index::search::language_config::LanguageConfigs;
-use crate::search::text_search::definition_search_with_index_for_test;
 
 // ---------------------------------------------------------------------------
 // Helpers

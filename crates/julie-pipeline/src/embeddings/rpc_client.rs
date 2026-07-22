@@ -11,7 +11,7 @@ use std::io;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -97,7 +97,10 @@ impl RpcEmbeddingProvider {
             return Ok(());
         }
         let new_conn = HostClientConn::connect(addr)?;
-        let mut inner = ConnInner { conn: new_conn, request_seq: 0 };
+        let mut inner = ConnInner {
+            conn: new_conn,
+            request_seq: 0,
+        };
         let health = Self::do_health_handshake(&mut inner)?;
         // Only set the cache on the first successful connect; later reconnects
         // are expected to return the same model/dims, so we keep the first value.
@@ -188,7 +191,11 @@ impl RpcEmbeddingProvider {
     ///
     /// On a broken-pipe / EOF I/O error the cached connection is dropped and
     /// the call is retried exactly once (reconnect + re-handshake + retry).
-    fn send_request<P: Serialize, R: DeserializeOwned>(&self, method: &str, params: P) -> Result<R> {
+    fn send_request<P: Serialize, R: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: P,
+    ) -> Result<R> {
         let params_val = serde_json::to_value(params)
             .map_err(|e| anyhow!("failed to serialize {method} params: {e}"))?;
         let mut guard = self
@@ -285,16 +292,24 @@ fn is_connection_dropped(e: &io::Error) -> bool {
 
 impl EmbeddingProvider for RpcEmbeddingProvider {
     fn embed_query(&self, text: &str) -> Result<Vec<f32>> {
-        let result: EmbedQueryResult =
-            self.send_request("embed_query", EmbedQueryRequest { text: text.to_string() })?;
+        let result: EmbedQueryResult = self.send_request(
+            "embed_query",
+            EmbedQueryRequest {
+                text: text.to_string(),
+            },
+        )?;
         validate_query_response(&result, self.dimensions())?;
         Ok(result.vector)
     }
 
     fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         let count = texts.len();
-        let result: EmbedBatchResult =
-            self.send_request("embed_batch", EmbedBatchRequest { texts: texts.to_vec() })?;
+        let result: EmbedBatchResult = self.send_request(
+            "embed_batch",
+            EmbedBatchRequest {
+                texts: texts.to_vec(),
+            },
+        )?;
         validate_batch_response(&result, count, self.dimensions())?;
         Ok(result.vectors)
     }

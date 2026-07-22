@@ -1,7 +1,7 @@
 use crate::analysis::early_warnings::{EarlyWarningReportOptions, generate_early_warning_report};
+use crate::search::language_config::LanguageConfigs;
 use julie_core::database::{FileInfo, SymbolDatabase};
 use julie_extractors::{AnnotationMarker, Symbol, SymbolKind};
-use crate::search::language_config::LanguageConfigs;
 use julie_test_support::{file_info_builder, symbol_builder};
 use std::collections::HashMap;
 use tempfile::TempDir;

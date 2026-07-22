@@ -37,12 +37,12 @@ use std::time::Instant;
 use anyhow::Result;
 use tempfile::TempDir;
 
+use crate::search::text_search::definition_search_with_index_for_test;
 use julie_core::database::{FileInfo, SymbolDatabase};
 use julie_extractors::{Symbol, SymbolKind};
 use julie_index::search::expansion::{MAX_ADDED_TERMS, expand_query_terms};
 use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use julie_index::search::scoring::is_nl_like_query;
-use crate::search::text_search::definition_search_with_index_for_test;
 
 // ---------------------------------------------------------------------------
 // Helpers

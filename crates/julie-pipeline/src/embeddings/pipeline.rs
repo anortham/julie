@@ -10,12 +10,12 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use tracing::{info, warn};
 
-use julie_core::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
 use crate::embeddings::metadata::{
     GLOBAL_VARIABLE_EMBEDDING_CAP, NON_EMBEDDABLE_LANGUAGES, VariableEmbeddingPolicy,
     prepare_batch_for_embedding, select_budgeted_variables,
 };
+use julie_core::database::SymbolDatabase;
 use julie_extractors::{RelationshipKind, Symbol, SymbolKind};
 use julie_index::search::language_config::LanguageConfigs;
 
@@ -621,8 +621,8 @@ mod tests {
     use anyhow::Result;
 
     use super::run_embedding_pipeline;
-    use julie_core::database::SymbolDatabase;
     use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+    use julie_core::database::SymbolDatabase;
 
     /// Mock embedding provider that returns one fewer vector than requested,
     /// simulating a partial response from a real provider (e.g., GPU OOM).

@@ -13,9 +13,9 @@
 
 #[cfg(test)]
 mod tests {
-    use julie_extractors::SymbolKind;
     use crate::search::query_parse::parse_query;
     use crate::search::reranker::{Candidate, Ranked, rerank_unified};
+    use julie_extractors::SymbolKind;
 
     fn ranks(query: &str, candidates: Vec<Candidate>) -> Vec<Ranked> {
         let parsed = parse_query(query);

@@ -72,7 +72,11 @@ mod tests {
         };
 
         // Search MUST complete within 5 seconds or it's the lock contention bug
-        let search_result = timeout(Duration::from_secs(5), search_tool.call_tool(handler.as_ref())).await;
+        let search_result = timeout(
+            Duration::from_secs(5),
+            search_tool.call_tool(handler.as_ref()),
+        )
+        .await;
 
         match search_result {
             Ok(Ok(_)) => {
@@ -188,7 +192,11 @@ mod tests {
             ..Default::default()
         };
 
-        let result = timeout(Duration::from_secs(5), search_tool.call_tool(handler.as_ref())).await??;
+        let result = timeout(
+            Duration::from_secs(5),
+            search_tool.call_tool(handler.as_ref()),
+        )
+        .await??;
 
         println!("✅ Search after indexing: {:?}", result);
         Ok(())
@@ -292,18 +300,23 @@ pub fn helper_function() {}
             let handler_c = handler.clone();
             let handler_d = handler.clone();
 
-            let task = async move {
-                let fast_a =
-                    tokio::spawn(async move { fast_search_query_a.call_tool(handler_a.as_ref()).await });
-                let fast_b =
-                    tokio::spawn(async move { fast_search_query_b.call_tool(handler_b.as_ref()).await });
-                let symbols_a =
-                    tokio::spawn(async move { get_symbols_main.call_tool(handler_c.as_ref()).await });
-                let symbols_b =
-                    tokio::spawn(async move { get_symbols_extra.call_tool(handler_d.as_ref()).await });
+            let task =
+                async move {
+                    let fast_a = tokio::spawn(async move {
+                        fast_search_query_a.call_tool(handler_a.as_ref()).await
+                    });
+                    let fast_b = tokio::spawn(async move {
+                        fast_search_query_b.call_tool(handler_b.as_ref()).await
+                    });
+                    let symbols_a = tokio::spawn(async move {
+                        get_symbols_main.call_tool(handler_c.as_ref()).await
+                    });
+                    let symbols_b = tokio::spawn(async move {
+                        get_symbols_extra.call_tool(handler_d.as_ref()).await
+                    });
 
-                tokio::join!(fast_a, fast_b, symbols_a, symbols_b)
-            };
+                    tokio::join!(fast_a, fast_b, symbols_a, symbols_b)
+                };
 
             match timeout(Duration::from_secs(5), task).await {
                 Ok((Ok(Ok(_)), Ok(Ok(_)), Ok(Ok(_)), Ok(Ok(_)))) => {}

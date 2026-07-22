@@ -30,8 +30,7 @@ fn seed_extractor_repair(db: &julie_core::database::SymbolDatabase, path: &str) 
              VALUES (?1, ?2, ?3, 0)",
             rusqlite::params![
                 path,
-                julie_core::indexing_state::IndexingRepairReason::ExtractorFailure
-                    .as_str(),
+                julie_core::indexing_state::IndexingRepairReason::ExtractorFailure.as_str(),
                 "seeded repair"
             ],
         )
@@ -458,11 +457,11 @@ async fn test_runtime_drops_recent_duplicates_and_processes_delete_and_rename() 
 
 #[tokio::test]
 async fn test_overflow_repair_skips_unchanged_indexed_files() {
-    use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
-    use julie_core::indexing_state::IndexingRepairReason;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
+    use julie_core::database::SymbolDatabase;
+    use julie_core::indexing_state::IndexingRepairReason;
+    use julie_extractors::ExtractorManager;
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_repair_skip_unchanged");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
@@ -524,9 +523,9 @@ async fn test_overflow_repair_skips_unchanged_indexed_files() {
 
 #[tokio::test]
 async fn test_stop_with_pending_queue_does_not_wait_forever_when_gate_is_held() {
+    use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
     use julie_core::database::SymbolDatabase;
     use julie_extractors::ExtractorManager;
-    use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
     use std::time::Duration;
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_stop_gate_held");
@@ -576,10 +575,10 @@ async fn test_stop_with_pending_queue_does_not_wait_forever_when_gate_is_held() 
 
 #[tokio::test]
 async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_only() {
-    use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_repair_targeted_dispatch");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
@@ -749,10 +748,10 @@ async fn test_repair_retry_clears_unsupported_extensionless_and_unsupported_name
 
 #[tokio::test]
 async fn test_repair_retry_keeps_supported_extractor_failures_due_for_retry() {
-    use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_retry_supported_failure");
     let workspace_root = temp_dir.path().canonicalize().unwrap();

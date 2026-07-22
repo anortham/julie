@@ -584,8 +584,7 @@ pub fn create_file_info<P: AsRef<Path>>(
     let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
 
     // Convert to relative Unix-style path for token efficiency and cross-platform compatibility
-    let relative_path =
-        crate::paths::to_relative_unix_style(&canonical_path, workspace_root)?;
+    let relative_path = crate::paths::to_relative_unix_style(&canonical_path, workspace_root)?;
 
     let line_count = content
         .as_ref()

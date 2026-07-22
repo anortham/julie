@@ -5,8 +5,7 @@ use super::type_arguments::TypeArgumentRow;
 
 #[derive(Clone, Copy, Default)]
 pub struct AtomicPersistenceMetadata<'a> {
-    pub parse_diagnostics_by_file:
-        &'a [(String, Vec<julie_extractors::base::ParseDiagnostic>)],
+    pub parse_diagnostics_by_file: &'a [(String, Vec<julie_extractors::base::ParseDiagnostic>)],
     pub repair_entries: &'a [(String, String)],
     pub mark_external_analysis_stale: bool,
 }

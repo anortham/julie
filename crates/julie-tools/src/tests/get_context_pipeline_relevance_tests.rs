@@ -4,10 +4,10 @@
 mod tests {
     use tempfile::TempDir;
 
+    use crate::get_context::pipeline::run_pipeline;
     use julie_core::database::{FileInfo, SymbolDatabase};
     use julie_extractors::base::{Symbol, SymbolKind, Visibility};
     use julie_index::search::index::{SearchDocument, SearchIndex};
-    use crate::get_context::pipeline::run_pipeline;
 
     fn setup_env() -> (TempDir, TempDir, SymbolDatabase, SearchIndex) {
         let db_dir = TempDir::new().unwrap();

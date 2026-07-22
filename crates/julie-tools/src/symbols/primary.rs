@@ -2,8 +2,8 @@
 //!
 //! Handles getting symbols from the primary (active) workspace.
 
-use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::{Result, bail};
+use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use tracing::{debug, info};
 
 use super::body_extraction::extract_code_bodies;

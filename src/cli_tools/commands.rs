@@ -495,11 +495,7 @@ impl CliToolCommand for GenericToolArgs {
         }
 
         let params = self.to_tool_args()?;
-        if params
-            .get("operation")
-            .and_then(serde_json::Value::as_str)
-            == Some("dashboard")
-        {
+        if params.get("operation").and_then(serde_json::Value::as_str) == Some("dashboard") {
             anyhow::bail!(
                 "Tool `manage_workspace` operation `dashboard` is not available from the one-shot standalone CLI. Use `julie-server dashboard` from a shell, or `manage_workspace(operation=\"dashboard\")` from your MCP client."
             );

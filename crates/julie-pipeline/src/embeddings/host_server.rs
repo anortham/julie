@@ -53,15 +53,13 @@ pub async fn run_embedding_host_with_factory(
         .write(true)
         .open(lock_path)
         .context("failed to open/create embedding-host lock file")?;
-    lock_file
-        .try_lock_exclusive()
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "embedding-host singleton lock already held — \
+    lock_file.try_lock_exclusive().map_err(|_| {
+        anyhow::anyhow!(
+            "embedding-host singleton lock already held — \
                  another host instance is running ({})",
-                lock_path.display()
-            )
-        })?;
+            lock_path.display()
+        )
+    })?;
 
     // 2. Build provider — only the lock winner reaches this point.
     //    If make_provider fails, lock_file goes out of scope here → lock released.
@@ -98,8 +96,7 @@ pub async fn run_embedding_host_with_factory(
     // 5. Graceful shutdown: ask the provider to stop its child process.
     provider.shutdown();
     let p = Arc::clone(&provider);
-    let _ =
-        tokio::task::spawn_blocking(move || p.wait_for_exit(Duration::from_secs(3))).await;
+    let _ = tokio::task::spawn_blocking(move || p.wait_for_exit(Duration::from_secs(3))).await;
 
     // Drop listener FIRST (removes socket file) then lock_file (releases lock).
     // Order matters: once the lock is free a new host process may win it and
@@ -210,17 +207,17 @@ async fn serve_connection(mut conn: HostServerConn, provider: Arc<dyn EmbeddingP
             "embed_query" => match serde_json::from_value::<EmbedQueryRequest>(envelope.params) {
                 Ok(req) => {
                     let p = Arc::clone(&provider);
-                    match tokio::task::spawn_blocking(move || -> anyhow::Result<EmbedQueryResult> {
-                        let vector = p.embed_query(&req.text)?;
-                        let dims = p.dimensions();
-                        Ok(EmbedQueryResult { dims, vector })
-                    })
+                    match tokio::task::spawn_blocking(
+                        move || -> anyhow::Result<EmbedQueryResult> {
+                            let vector = p.embed_query(&req.text)?;
+                            let dims = p.dimensions();
+                            Ok(EmbedQueryResult { dims, vector })
+                        },
+                    )
                     .await
                     {
                         Ok(Ok(result)) => ok_line(&request_id, result),
-                        Ok(Err(e)) => {
-                            error_line(&request_id, "embed_error", &e.to_string())
-                        }
+                        Ok(Err(e)) => error_line(&request_id, "embed_error", &e.to_string()),
                         Err(e) => error_line(
                             &request_id,
                             "internal_error",
@@ -238,17 +235,17 @@ async fn serve_connection(mut conn: HostServerConn, provider: Arc<dyn EmbeddingP
             "embed_batch" => match serde_json::from_value::<EmbedBatchRequest>(envelope.params) {
                 Ok(req) => {
                     let p = Arc::clone(&provider);
-                    match tokio::task::spawn_blocking(move || -> anyhow::Result<EmbedBatchResult> {
-                        let vectors = p.embed_batch(&req.texts)?;
-                        let dims = p.dimensions();
-                        Ok(EmbedBatchResult { dims, vectors })
-                    })
+                    match tokio::task::spawn_blocking(
+                        move || -> anyhow::Result<EmbedBatchResult> {
+                            let vectors = p.embed_batch(&req.texts)?;
+                            let dims = p.dimensions();
+                            Ok(EmbedBatchResult { dims, vectors })
+                        },
+                    )
                     .await
                     {
                         Ok(Ok(result)) => ok_line(&request_id, result),
-                        Ok(Err(e)) => {
-                            error_line(&request_id, "embed_error", &e.to_string())
-                        }
+                        Ok(Err(e)) => error_line(&request_id, "embed_error", &e.to_string()),
                         Err(e) => error_line(
                             &request_id,
                             "internal_error",

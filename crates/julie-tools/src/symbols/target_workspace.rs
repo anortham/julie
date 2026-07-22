@@ -2,8 +2,8 @@
 //!
 //! Handles getting symbols from explicit non-primary workspaces.
 
-use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::{Result, bail};
+use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use tracing::{debug, info};
 
 use super::body_extraction::extract_code_bodies;
@@ -49,10 +49,8 @@ pub async fn get_symbols_from_target_workspace(
                 target_workspace_root.display()
             );
 
-            let resolution = julie_core::paths::resolve_workspace_file_input(
-                file_path,
-                &target_workspace_root,
-            )?;
+            let resolution =
+                julie_core::paths::resolve_workspace_file_input(file_path, &target_workspace_root)?;
 
             (
                 resolution.relative_query_path,

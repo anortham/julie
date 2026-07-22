@@ -1,8 +1,8 @@
 //! Tests for the file watcher module extracted from the implementation file to keep it lean.
 
-use julie_extractors::language; // Language detection (julie_extractors::language::*)
 use crate::watcher::IncrementalIndexer;
 use crate::watcher::filtering;
+use julie_extractors::language; // Language detection (julie_extractors::language::*)
 use std::fs;
 
 mod event_queue;
@@ -149,8 +149,8 @@ fn test_watcher_filtering_keeps_text_only_and_extensionless_paths_in_sync() {
 #[ignore] // Flaky in test environment - file watcher events unreliable in parallel test runs
 async fn test_real_time_file_watcher_indexing() {
     use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use julie_core::test_support::atomic_cleanup_julie_dir;
+    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::time::sleep;
@@ -251,10 +251,10 @@ async fn test_real_time_file_watcher_indexing() {
 
 #[tokio::test]
 async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files() {
-    use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex, atomic::Ordering};
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_rescan_repair");
@@ -400,8 +400,8 @@ async fn test_process_pending_changes_retries_persisted_extractor_failure() {
 #[tokio::test]
 async fn test_process_pending_changes_does_not_leave_watcher_repair_active_without_search_index() {
     use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use julie_core::indexing_state::{IndexingOperation, IndexingRuntimeState};
+    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_dirty_without_search_index");
@@ -440,9 +440,9 @@ async fn test_process_pending_changes_does_not_leave_watcher_repair_active_witho
         "dirty projection count should remain until Tantivy is available again"
     );
     assert!(
-        snapshot.repair_reasons.contains(
-            &julie_core::indexing_state::IndexingRepairReason::TantivyDirty
-        ),
+        snapshot
+            .repair_reasons
+            .contains(&julie_core::indexing_state::IndexingRepairReason::TantivyDirty),
         "dirty projection reason should stay visible for later repair"
     );
     assert_ne!(
@@ -482,10 +482,10 @@ async fn test_run_guarded_task_step_returns_true_after_success() {
 /// content does change.
 #[tokio::test]
 async fn test_blake3_change_detection() {
-    use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
+    use julie_core::database::SymbolDatabase;
+    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::tempdir().unwrap();

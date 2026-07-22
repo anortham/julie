@@ -21,11 +21,11 @@ pub mod rpc_client;
 // Pure-serde envelope contracts — always compiled (no torch/Python deps) so the
 // thin RPC client works in binaries built WITHOUT the `embeddings-sidecar`
 // feature (a session process that only talks to the resident host, Phase 3b).
-pub mod sidecar_protocol;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_bootstrap;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_embedded;
+pub mod sidecar_protocol;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_provider;
 #[cfg(feature = "embeddings-sidecar")]

@@ -2,9 +2,9 @@
 //!
 //! Measure token reduction from data structure optimizations (skip_serializing_if).
 
+use anyhow::Result;
 use julie_extractors::base::Visibility;
 use julie_extractors::{Symbol, SymbolKind};
-use anyhow::Result;
 use serde_json;
 
 #[cfg(test)]

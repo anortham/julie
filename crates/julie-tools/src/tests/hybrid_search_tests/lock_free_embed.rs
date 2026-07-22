@@ -16,15 +16,13 @@ mod lock_free_embed_tests {
 
     use anyhow::Result;
     use julie_core::database::SymbolDatabase;
-    use julie_pipeline::embeddings::{DeviceInfo, EmbeddingProvider};
     use julie_extractors::SymbolKind;
     use julie_index::search::hybrid::{
         compute_query_embedding_for_hybrid, hybrid_search_with_embedding,
     };
     use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex};
-    use julie_test_support::db::{
-        file_info_builder, store_file_info_if_missing, symbol_builder,
-    };
+    use julie_pipeline::embeddings::{DeviceInfo, EmbeddingProvider};
+    use julie_test_support::db::{file_info_builder, store_file_info_if_missing, symbol_builder};
     use tempfile::TempDir;
 
     // ── Mock providers ────────────────────────────────────────────────────────
@@ -134,7 +132,7 @@ mod lock_free_embed_tests {
             .doc_comment("Processes input data.")
             .confidence(1.0)
             .build()])
-        .unwrap();
+            .unwrap();
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
@@ -189,9 +187,16 @@ mod lock_free_embed_tests {
     fn test_hybrid_search_with_embedding_none_returns_keyword_results() {
         let (index, db, _idx_dir, _db_dir) = setup_index_and_db();
 
-        let results =
-            hybrid_search_with_embedding("process_data", &SearchFilter::default(), 10, &index, &db, None, None)
-                .unwrap();
+        let results = hybrid_search_with_embedding(
+            "process_data",
+            &SearchFilter::default(),
+            10,
+            &index,
+            &db,
+            None,
+            None,
+        )
+        .unwrap();
 
         assert!(!results.results.is_empty(), "should return keyword results");
         assert_eq!(results.results[0].name, "process_data");
@@ -206,8 +211,7 @@ mod lock_free_embed_tests {
         let (index, db, _idx_dir, _db_dir) = setup_index_and_db();
 
         // Pre-compute embedding outside the (conceptual) lock
-        let embedding =
-            compute_query_embedding_for_hybrid("process_data", Some(&StaticProvider));
+        let embedding = compute_query_embedding_for_hybrid("process_data", Some(&StaticProvider));
         assert!(embedding.is_some());
 
         // Pass a FailingProvider to detect any hidden embed_query call inside hybrid_search_with_embedding.

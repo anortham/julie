@@ -11,13 +11,13 @@ use serde_json::{Value, json};
 use std::path::Path;
 use tracing::debug;
 
-use julie_core::database::SymbolDatabase;
-use julie_extractors::{ExtractorManager, Symbol};
-use julie_core::mcp_compat::CallToolResultExt;
 use crate::navigation::resolution::{WorkspaceTarget, file_path_matches_suffix};
 use julie_context::ToolContext;
+use julie_core::database::SymbolDatabase;
 use julie_core::file_utils::secure_path_resolution;
+use julie_core::mcp_compat::CallToolResultExt;
 use julie_core::mcp_compat::{CallToolResult, Content};
+use julie_extractors::{ExtractorManager, Symbol};
 use tree_sitter::{Node, Parser, Tree};
 
 use super::EditingTransaction;
@@ -573,7 +573,10 @@ impl RewriteSymbolTool {
         &self,
         handler: &dyn ToolContext,
     ) -> Result<WorkspaceEditTarget> {
-        match handler.resolve_workspace_target(self.workspace.as_deref()).await? {
+        match handler
+            .resolve_workspace_target(self.workspace.as_deref())
+            .await?
+        {
             WorkspaceTarget::Primary => {
                 let workspace_id = handler.require_primary_workspace_identity()?;
                 let workspace_root = handler.require_primary_workspace_root()?;
@@ -592,10 +595,7 @@ impl RewriteSymbolTool {
         }
     }
 
-    pub async fn prepare_rewrite(
-        &self,
-        handler: &dyn ToolContext,
-    ) -> Result<PreparedRewrite> {
+    pub async fn prepare_rewrite(&self, handler: &dyn ToolContext) -> Result<PreparedRewrite> {
         let requested_symbol = self.symbol.clone();
         let (parsed_symbol_name, line_hint) = parse_symbol_line_hint(&requested_symbol);
 
@@ -626,11 +626,8 @@ impl RewriteSymbolTool {
         let file_path_for_error = self.file_path.clone();
         let lookup_db = target.pooled_db(handler).await?;
         let matches = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
-            let symbols = crate::deep_dive::data::find_symbol(
-                &lookup_db,
-                &symbol_name_for_lookup,
-                None,
-            )?;
+            let symbols =
+                crate::deep_dive::data::find_symbol(&lookup_db, &symbol_name_for_lookup, None)?;
             let filtered = if let Some(ref filter) = file_path_filter {
                 symbols
                     .into_iter()
@@ -836,10 +833,7 @@ impl RewriteSymbolTool {
         })
     }
 
-    pub fn success_metrics_metadata_from_prepared(
-        &self,
-        application: &PreparedRewrite,
-    ) -> Value {
+    pub fn success_metrics_metadata_from_prepared(&self, application: &PreparedRewrite) -> Value {
         let mut metadata = self.base_metrics_metadata();
         if let Some(object) = metadata.as_object_mut() {
             object.insert(

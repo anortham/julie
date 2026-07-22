@@ -4,6 +4,7 @@
 mod graph_expansion_tests {
     use tempfile::TempDir;
 
+    use crate::get_context::pipeline::{NeighborDirection, Pivot, expand_graph};
     use julie_core::database::{FileInfo, SymbolDatabase};
     use julie_extractors::{
         IdentifierKind,
@@ -11,7 +12,6 @@ mod graph_expansion_tests {
     };
     use julie_index::search::index::SymbolSearchResult;
     use julie_test_support::db::identifier_builder;
-    use crate::get_context::pipeline::{NeighborDirection, Pivot, expand_graph};
 
     fn setup_db() -> (TempDir, SymbolDatabase) {
         let temp_dir = TempDir::new().unwrap();

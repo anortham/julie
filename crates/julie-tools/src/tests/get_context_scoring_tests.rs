@@ -7,9 +7,9 @@
 mod tests {
     use std::collections::HashMap;
 
-    use julie_index::search::index::SymbolSearchResult;
     use crate::get_context::pipeline::select_pivots;
     use crate::get_context::scoring::select_pivots_for_query;
+    use julie_index::search::index::SymbolSearchResult;
 
     /// Helper to create a SymbolSearchResult with a specific kind.
     fn make_result_with_kind(id: &str, name: &str, kind: &str, score: f32) -> SymbolSearchResult {

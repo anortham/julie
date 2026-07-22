@@ -1,12 +1,12 @@
 //! Tests for search-result reranking boost rules and deterministic ordering.
 
-use julie_extractors::SymbolKind;
 use crate::search::query_parse::parse_query;
 use crate::search::reranker::{
     BODY_TERM_BOOST, Candidate, EXACT_TITLE_BOOST, INTENT_ROLE_MATCH_BOOST,
     INTENT_TITLE_MATCH_BOOST, PARTIAL_TITLE_BOOST, PATH_BOOST, PHRASE_BOOST, PHRASE_FILE_DOC_BOOST,
     PHRASE_SOURCE_LANG_BOOST, kind_boost, rerank_unified,
 };
+use julie_extractors::SymbolKind;
 
 /// Helper: a single-candidate rerank that returns the final score.
 fn score_query(raw: &str, c: Candidate) -> f32 {

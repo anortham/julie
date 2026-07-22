@@ -4,15 +4,15 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use julie_core::database::{FileInfo, SymbolDatabase};
-    use julie_index::search::index::{SearchDocument, SearchIndex, SymbolSearchResult};
-    use julie_test_support::db::identifier_builder;
     use crate::get_context::pipeline::run_pipeline_with_options;
     use crate::get_context::scoring::select_pivots_with_task_signals_for_query;
     use crate::get_context::task_signals::{TaskSignals, hydrate_failing_test_links};
-    use crate::spillover::store::SpilloverStore;
-    use julie_extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
     use crate::spillover::SpilloverFormat;
+    use crate::spillover::store::SpilloverStore;
+    use julie_core::database::{FileInfo, SymbolDatabase};
+    use julie_extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+    use julie_index::search::index::{SearchDocument, SearchIndex, SymbolSearchResult};
+    use julie_test_support::db::identifier_builder;
 
     fn make_result(id: &str, name: &str, file_path: &str, score: f32) -> SymbolSearchResult {
         SymbolSearchResult {

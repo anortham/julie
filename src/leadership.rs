@@ -34,7 +34,10 @@ impl LeadershipState {
     /// The guard is held for the lifetime of this value (and all `Arc` clones
     /// of it). Released automatically on drop.
     pub fn leader(guard: DaemonLockGuard) -> Self {
-        Self { lock: Some(guard), in_process: true }
+        Self {
+            lock: Some(guard),
+            in_process: true,
+        }
     }
 
     /// Construct an in-process follower: participated in the leader election
@@ -42,7 +45,10 @@ impl LeadershipState {
     /// operations (index, register, remove, refresh, editing tools) must be
     /// refused to prevent cross-process SQLite/Tantivy data races (T7/Risk #2).
     pub fn follower() -> Self {
-        Self { lock: None, in_process: true }
+        Self {
+            lock: None,
+            in_process: true,
+        }
     }
 
     /// Construct a non-participating state (not in the in-process model).
@@ -51,7 +57,10 @@ impl LeadershipState {
     /// `new_deferred_daemon_startup_hint_*`). These handlers are NOT subject to
     /// the follower write-refusal gate.
     pub fn none() -> Self {
-        Self { lock: None, in_process: false }
+        Self {
+            lock: None,
+            in_process: false,
+        }
     }
 
     /// Returns `true` when this process holds the workspace leader lock.

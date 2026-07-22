@@ -2,10 +2,10 @@ use std::collections::BTreeSet;
 
 use tempfile::TempDir;
 
+use crate::search::text_search::definition_search_with_index_for_test;
 use julie_core::database::{FileInfo, SymbolDatabase};
 use julie_extractors::{AnnotationMarker, Symbol, SymbolKind};
 use julie_index::search::{SearchFilter, SearchIndex, SearchProjection};
-use crate::search::text_search::definition_search_with_index_for_test;
 
 fn marker(annotation: &str, annotation_key: &str, raw_text: &str) -> AnnotationMarker {
     AnnotationMarker {

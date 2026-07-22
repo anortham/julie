@@ -8,11 +8,11 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
+use crate::navigation::resolution::{file_path_matches_suffix, parse_qualified_name};
 use julie_core::database::{IdentifierRef, SymbolDatabase};
+use julie_core::shared::NOISE_CALLEE_NAMES;
 use julie_extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use julie_index::search::scoring::is_test_path;
-use crate::navigation::resolution::{file_path_matches_suffix, parse_qualified_name};
-use julie_core::shared::NOISE_CALLEE_NAMES;
 
 /// Aggregated context for a single symbol, ready for formatting
 #[derive(Debug)]

@@ -4,8 +4,8 @@
 mod tests {
     use std::collections::HashMap;
 
-    use julie_index::search::index::SymbolSearchResult;
     use crate::get_context::pipeline::select_pivots;
+    use julie_index::search::index::SymbolSearchResult;
 
     /// Helper to create a test SymbolSearchResult with minimal boilerplate.
     fn make_result(id: &str, name: &str, score: f32) -> SymbolSearchResult {

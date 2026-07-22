@@ -1,12 +1,12 @@
+use crate::deep_dive::data::{RefEntry, SymbolContext, build_symbol_context, find_symbol};
+use crate::deep_dive::formatting::format_symbol_context;
+use crate::deep_dive::{DeepDiveTool, deep_dive_query};
 use julie_core::database::{FileInfo, SymbolDatabase};
 use julie_extractors::{
     IdentifierKind,
     base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility},
 };
 use julie_test_support::db::identifier_builder;
-use crate::deep_dive::data::{RefEntry, SymbolContext, build_symbol_context, find_symbol};
-use crate::deep_dive::formatting::format_symbol_context;
-use crate::deep_dive::{DeepDiveTool, deep_dive_query};
 use tempfile::TempDir;
 
 fn setup_db() -> (TempDir, SymbolDatabase) {
