@@ -250,16 +250,16 @@ Expected: PASS 1/1 with every enumerated production file at or below 500 lines.
 - `serial-worker-commit`: after the exact GREEN test and lead inline review, checkpoint and commit the owned implementation files. Record the implementation SHA before exact-commit lead gates.
 
 **Acceptance criteria:**
-- [ ] The structural test fails on the 1,099-line facade before implementation and passes after every Phase 2C production file is at or below 500 lines.
-- [ ] `QueueRuntime` retains all fields and constants in `runtime.rs` without widening field visibility.
-- [ ] All watcher-facing methods retain their exact signatures, effective visibility, and caller paths.
-- [ ] Cycle order remains dirty retry, queue batch, persisted repair retry, then overflow repair scan.
-- [ ] Queue, repair, retry, and shutdown mutation guards retain their original acquisition/drop scopes.
-- [ ] Shutdown releases its queue-drain guard before dirty-Tantivy retry.
-- [ ] Retry limits, failure counters, repair reasons, durable projection writes, logs, and error behavior remain unchanged.
-- [ ] `crates/julie-runtime/src/watcher/mod.rs` and all existing behavior tests remain unchanged.
-- [ ] `cargo nextest run -p julie-runtime` passes at the exact implementation commit.
-- [ ] `cargo xtask test changed` selects and passes the mapped runtime buckets before the implementation commit.
-- [ ] `cargo xtask test reliability` and the final-current-HEAD `cargo xtask test dev` pass.
-- [ ] The verification ledger records all hard gates at their exact SHAs.
-- [ ] Worker-scope verification passes and the change is committed under serial-worker-commit mode.
+- [x] The structural test fails on the 1,099-line facade before implementation and passes after every Phase 2C production file is at or below 500 lines.
+- [x] `QueueRuntime` retains all fields and constants in `runtime.rs` without widening field visibility.
+- [x] All watcher-facing methods retain their exact signatures, effective visibility, and caller paths.
+- [x] Cycle order remains dirty retry, queue batch, persisted repair retry, then overflow repair scan.
+- [x] Queue, repair, retry, and shutdown mutation guards retain their original acquisition/drop scopes.
+- [x] Shutdown releases its queue-drain guard before dirty-Tantivy retry.
+- [x] Retry limits, failure counters, repair reasons, durable projection writes, logs, and error behavior remain unchanged.
+- [x] `crates/julie-runtime/src/watcher/mod.rs` and all existing behavior tests remain unchanged.
+- [x] `cargo nextest run -p julie-runtime` passes at the exact implementation commit.
+- [x] `cargo xtask test changed` selects and passes the mapped runtime buckets before the implementation commit.
+- [x] `cargo xtask test reliability` and the final-current-HEAD `cargo xtask test dev` pass.
+- [x] The verification ledger records all hard gates at their exact SHAs.
+- [x] Worker-scope verification passes and the change is committed under serial-worker-commit mode.
