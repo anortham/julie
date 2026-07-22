@@ -27,6 +27,7 @@
 mod c4_test_helper_discoverability;
 mod comparison;
 mod dogfood_tests;
+mod fixture_cleanup_test;
 mod helpers;
 mod labhandbook_dogfood;
 mod stemming_dogfood_tests;

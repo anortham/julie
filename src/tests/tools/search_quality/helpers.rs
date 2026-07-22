@@ -6,7 +6,7 @@
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use anyhow::{Result, bail};
-use std::sync::Arc;
+use std::ops::Deref;
 
 #[derive(Debug)]
 pub struct SearchExecution {
@@ -199,22 +199,32 @@ fn format_results(results: &[Symbol]) -> String {
 /// 3. Initialize handler directly with temp workspace
 /// 4. Mark indexing as complete to enable searches
 ///
-/// This eliminates live indexing entirely - all 16 tests run in <1s total!
-/// Returns a shared handler backed by the Julie fixture, initialized once per test binary.
-///
-/// The Tantivy backfill (reading ~100k symbols from the 100MB SQLite and building the
-/// search index) runs exactly once regardless of how many tests call this function.
-/// Subsequent calls clone the Arc and return in microseconds.
-pub async fn setup_handler_with_fixture() -> Arc<JulieServerHandler> {
-    static HANDLER: tokio::sync::OnceCell<Arc<JulieServerHandler>> =
-        tokio::sync::OnceCell::const_new();
-    HANDLER
-        .get_or_init(|| async { Arc::new(setup_handler_inner().await) })
-        .await
-        .clone()
+/// The returned guard owns the temporary workspace and removes it on drop.
+pub struct FixtureHandlerGuard {
+    // Drop open database and index handles before TempDir removes the workspace.
+    handler: JulieServerHandler,
+    _temp_dir: tempfile::TempDir,
 }
 
-async fn setup_handler_inner() -> JulieServerHandler {
+impl Deref for FixtureHandlerGuard {
+    type Target = JulieServerHandler;
+
+    fn deref(&self) -> &Self::Target {
+        &self.handler
+    }
+}
+
+impl AsRef<JulieServerHandler> for FixtureHandlerGuard {
+    fn as_ref(&self) -> &JulieServerHandler {
+        &self.handler
+    }
+}
+
+pub async fn setup_handler_with_fixture() -> FixtureHandlerGuard {
+    setup_handler_inner().await
+}
+
+async fn setup_handler_inner() -> FixtureHandlerGuard {
     use crate::handler::JulieServerHandler;
     use crate::tests::fixtures::julie_db::JulieTestFixture;
     use std::fs;
@@ -472,10 +482,8 @@ incremental_updates = true
         }
     }
 
-    // Keep temp directory alive for the handler's lifetime
-    // SAFETY: We leak the TempDir to keep it alive - it will be cleaned up by the OS on process exit
-    // This is acceptable for tests since they're short-lived
-    let _ = Box::leak(Box::new(temp_dir));
-
-    handler
+    FixtureHandlerGuard {
+        handler,
+        _temp_dir: temp_dir,
+    }
 }

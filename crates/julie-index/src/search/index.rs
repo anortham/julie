@@ -16,6 +16,7 @@ mod types;
 pub use compatibility::SEARCH_COMPAT_MARKER_FILE;
 pub use lifecycle::{SearchIndexOpenDisposition, SearchIndexOpenOutcome};
 #[cfg(any(test, feature = "test-support"))]
+#[allow(unused_imports)]
 pub(crate) use query::classify_file_match;
 pub use query::compact_alnum_lc;
 #[cfg(any(test, feature = "test-support"))]
