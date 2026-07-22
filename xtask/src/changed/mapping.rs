@@ -192,18 +192,10 @@ mod front;
 mod product;
 
 pub(super) fn buckets_for_path(path: &str) -> &'static [&'static str] {
-    for select in [
-        front::buckets_for_path,
-        crates::buckets_for_path,
-        product::buckets_for_path,
-    ] {
-        let buckets = select(path);
-        if !buckets.is_empty() {
-            return buckets;
-        }
-    }
-
-    &[]
+    front::buckets_for_path(path)
+        .or_else(|| crates::buckets_for_path(path))
+        .or_else(|| product::buckets_for_path(path))
+        .unwrap_or(&[])
 }
 
 pub(super) fn get_context_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {

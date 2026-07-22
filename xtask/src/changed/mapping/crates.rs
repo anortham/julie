@@ -1,6 +1,11 @@
 use super::*;
 
-pub(super) fn buckets_for_path(path: &str) -> &'static [&'static str] {
+pub(super) fn buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
+    let buckets = mapped_buckets_for_path(path);
+    (!buckets.is_empty()).then_some(buckets)
+}
+
+fn mapped_buckets_for_path(path: &str) -> &'static [&'static str] {
     if path == "crates/julie-core/src/connection_pool.rs" {
         return &["core-database", "registry"];
     }
