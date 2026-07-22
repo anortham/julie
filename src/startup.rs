@@ -135,7 +135,7 @@ async fn run_primary_workspace_repair_body(
         .ok()
         .and_then(|snapshot| snapshot.indexing_runtime);
 
-    let repair_result = async {
+    let repair_result: Result<Option<PrimaryWorkspaceRepairPlan>> = async {
         match plan_primary_workspace_repair(handler).await? {
             Some(plan) => {
                 let reasons = plan
@@ -227,16 +227,7 @@ async fn run_primary_workspace_repair_body(
                 }
                 Ok(Some(plan))
             }
-            None => {
-                // No file-level repair needed. Still check for Tantivy
-                // projection lag: a crash between SQLite commit and Tantivy
-                // apply leaves canonical_revision > projected_revision. This
-                // case is invisible to the file-staleness scan above, so we
-                // reconcile it here with a targeted Tantivy rebuild from the
-                // already-correct SQLite state.
-                reconcile_projection_lag_if_needed(handler).await?;
-                Ok(None)
-            }
+            None => Ok(None),
         }
     }
     .await;
@@ -248,7 +239,25 @@ async fn run_primary_workspace_repair_body(
         runtime.set_catchup_active(false);
         runtime.set_watcher_paused(false);
     }
-    repair_result
+
+    let repair_plan = repair_result?;
+    reconcile_projections_after_successful_repair(existing_guard, handler).await?;
+    Ok(repair_plan)
+}
+
+async fn reconcile_projections_after_successful_repair(
+    existing_guard: Option<&MutationGuard<'_>>,
+    handler: &JulieServerHandler,
+) -> Result<()> {
+    if let Some(guard) = existing_guard {
+        return reconcile_projection_lag_if_needed(guard, handler).await;
+    }
+
+    let workspace_id = handler
+        .require_primary_workspace_identity()
+        .context("Startup repair completed without binding a primary workspace")?;
+    let guard = handler.acquire_mutation_gate(&workspace_id).await;
+    reconcile_projection_lag_if_needed(&guard, handler).await
 }
 
 async fn cancel_primary_embedding_task(handler: &JulieServerHandler) {
@@ -293,10 +302,12 @@ async fn cancel_primary_embedding_task(handler: &JulieServerHandler) {
 /// rebuild Tantivy from the already-correct canonical SQLite state, then stamps
 /// `projected_revision = canonical_revision`.
 ///
-/// Called from `run_primary_workspace_repair_body` when no file-level repair
-/// was needed. Idempotent: if `projected_revision == canonical_revision` the
-/// check returns immediately without touching the index.
-async fn reconcile_projection_lag_if_needed(handler: &JulieServerHandler) -> Result<()> {
+/// Called after every successful startup repair outcome. Idempotent: if each
+/// projection is current, the checks return without touching derived state.
+async fn reconcile_projection_lag_if_needed(
+    _guard: &MutationGuard<'_>,
+    handler: &JulieServerHandler,
+) -> Result<()> {
     let snapshot = match handler.primary_workspace_snapshot().await {
         Ok(s) => s,
         Err(_) => return Ok(()), // No workspace bound yet — nothing to reconcile

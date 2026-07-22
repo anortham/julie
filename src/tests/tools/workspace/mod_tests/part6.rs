@@ -275,6 +275,109 @@ async fn test_startup_repair_schedules_embeddings_when_workspace_has_symbols_but
     );
 }
 
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn test_startup_missing_embeddings_only_repair_reconciles_web_edges() {
+    use crate::database::ProjectionStatus;
+    use crate::search::projection::TANTIVY_PROJECTION_NAME;
+    use julie_pipeline::indexing_core::web_edges::WEB_EDGES_PROJECTION_NAME;
+
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() {}\nfn beta() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+    }
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await.unwrap();
+    wait_for_embedding_tasks_to_finish(&handler).await;
+
+    let workspace_id = handler.require_primary_workspace_identity().unwrap();
+    {
+        let workspace = handler
+            .get_workspace()
+            .await
+            .unwrap()
+            .expect("workspace should be initialized");
+        let db = workspace.db.as_ref().expect("workspace db should exist");
+        let mut db_lock = db.lock().unwrap();
+        let canonical_revision = db_lock
+            .get_current_canonical_revision(&workspace_id)
+            .unwrap()
+            .expect("initial index should publish a canonical revision");
+
+        for projection in [TANTIVY_PROJECTION_NAME, WEB_EDGES_PROJECTION_NAME] {
+            let state = db_lock
+                .get_projection_state(projection, &workspace_id)
+                .unwrap()
+                .unwrap_or_else(|| panic!("{projection} projection state should exist"));
+            assert_eq!(state.canonical_revision, Some(canonical_revision));
+            assert_eq!(state.projected_revision, Some(canonical_revision));
+        }
+
+        db_lock
+            .upsert_projection_state(
+                WEB_EDGES_PROJECTION_NAME,
+                &workspace_id,
+                ProjectionStatus::Ready,
+                Some(canonical_revision),
+                Some(canonical_revision - 1),
+                None,
+            )
+            .unwrap();
+        db_lock.clear_all_embeddings().unwrap();
+        assert_eq!(db_lock.embedding_count().unwrap(), 0);
+    }
+
+    let plan = run_primary_workspace_repair(&handler)
+        .await
+        .unwrap()
+        .expect("missing embeddings should require startup repair");
+    assert_eq!(
+        plan.reasons,
+        vec![crate::tools::workspace::indexing::state::IndexingRepairReason::MissingEmbeddings]
+    );
+
+    wait_for_embedding_tasks_to_finish(&handler).await;
+    let workspace = handler
+        .get_workspace()
+        .await
+        .unwrap()
+        .expect("workspace should remain initialized");
+    let db = workspace.db.as_ref().expect("workspace db should exist");
+    let db_lock = db.lock().unwrap();
+    let canonical_revision = db_lock
+        .get_current_canonical_revision(&workspace_id)
+        .unwrap()
+        .expect("canonical revision should remain available");
+
+    for projection in [TANTIVY_PROJECTION_NAME, WEB_EDGES_PROJECTION_NAME] {
+        let state = db_lock
+            .get_projection_state(projection, &workspace_id)
+            .unwrap()
+            .unwrap_or_else(|| panic!("{projection} projection state should exist"));
+        assert_eq!(state.canonical_revision, Some(canonical_revision));
+        assert_eq!(state.projected_revision, Some(canonical_revision));
+    }
+}
+
 /// Codex finding #2 (high, 2026-05-12 review of cascade-fix branch).
 ///
 /// `run_primary_workspace_repair_body` calls `cancel_primary_embedding_task`
