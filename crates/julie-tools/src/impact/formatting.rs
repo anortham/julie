@@ -23,7 +23,13 @@ pub struct BlastRadiusHeader {
     pub related_test_symbols_overflow_handle: Option<String>,
     /// Pre-formatted `web`-mode caller rows (e.g. `"fetchUser  src/client.ts:3  via http_call GET /api/users/123"`).
     /// Empty in `default` mode, so the legacy blast-radius output is byte-identical.
+    /// Truncated to the visible cap; the remainder is reachable via
+    /// `web_callers_overflow_handle`.
     pub web_callers: Vec<String>,
+    /// Spillover handle for web callers beyond the visible cap.
+    pub web_callers_overflow_handle: Option<String>,
+    /// Pre-truncate total count of web callers, driving the overflow marker.
+    pub web_callers_total: usize,
 }
 
 pub fn format_blast_radius(
@@ -95,6 +101,18 @@ pub fn format_blast_radius(
     if !header.web_callers.is_empty() {
         let mut web_block = String::from("Web callers\n");
         web_block.push_str(&header.web_callers.join("\n"));
+        let shown = header.web_callers.len();
+        let effective_total = header.web_callers_total.max(shown);
+        if effective_total > shown {
+            let remaining = effective_total - shown;
+            match header.web_callers_overflow_handle.as_deref() {
+                Some(handle) => web_block.push_str(&format!(
+                    "\n- …and {remaining} more web callers available\n{}",
+                    more_available_marker(handle)
+                )),
+                None => web_block.push_str(&format!("\n- …and {remaining} more")),
+            }
+        }
         sections.push(web_block);
     }
 

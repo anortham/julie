@@ -227,6 +227,47 @@ fn test_related_test_symbols_overflow_marker_independent_of_paths() {
 }
 
 #[test]
+fn test_web_callers_overflow_marker_appears_when_truncated() {
+    let seed_context = SeedContext {
+        seed_symbols: vec![make_symbol("get_users", "src/api.rs", 5)],
+        changed_files: vec![],
+        deleted_files: vec![],
+    };
+    let mut web_callers = Vec::new();
+    for i in 0..10 {
+        web_callers.push(format!(
+            "- caller_{i}  src/client_{i}.ts:3  via http_call GET /api/users"
+        ));
+    }
+    let text = format_blast_radius(
+        &seed_context,
+        &[],
+        &LikelyTests::default(),
+        &[],
+        SpilloverFormat::Compact,
+        BlastRadiusHeader {
+            web_callers,
+            web_callers_total: 15,
+            web_callers_overflow_handle: Some("brwc_1".to_string()),
+            ..BlastRadiusHeader::default()
+        },
+    );
+
+    assert!(
+        text.contains("Web callers"),
+        "web callers heading must be present: {text}"
+    );
+    assert!(
+        text.contains("…and 5 more web callers available"),
+        "expected overflow marker for web callers: {text}"
+    );
+    assert!(
+        text.contains("spillover_handle=brwc_1"),
+        "expected web-callers spillover handle: {text}"
+    );
+}
+
+#[test]
 fn test_spillover_format_parse_strict_rejects_unknown_value() {
     use crate::spillover::SpilloverFormat;
 

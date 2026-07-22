@@ -901,8 +901,10 @@ fn changed_tests_deleted_migration_paths_fall_back_to_dev() {
 }
 
 #[test]
-fn changed_tests_startup_routes_to_lifecycle_workspace_runtime_and_workspace() {
-    let manifest = sample_manifest();
+fn changed_tests_startup_routes_to_registry_workspace_runtime_and_workspace() {
+    // Load the real manifest so the mapping cannot route to a bucket that does
+    // not exist: any dropped bucket would shorten the vector and fail here.
+    let manifest = load_checked_in_manifest();
 
     let selection = select_changed_buckets(&manifest, &["src/startup.rs".to_string()]);
     assert_eq!(
@@ -915,8 +917,8 @@ fn changed_tests_startup_routes_to_lifecycle_workspace_runtime_and_workspace() {
             "tools-workspace-discovery",
             "tools-workspace-indexing",
             "tools-workspace-management",
-            "lifecycle",
-            "workspace-runtime"
+            "workspace-runtime",
+            "registry"
         ]
     );
     assert!(selection.fallback_paths.is_empty());

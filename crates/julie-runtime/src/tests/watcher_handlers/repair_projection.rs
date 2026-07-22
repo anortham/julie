@@ -598,6 +598,98 @@ async fn test_watcher_does_not_publish_uncommitted_projection_revision() {
     );
 }
 
+/// Regression: a handler error AFTER the SQLite commit must not stamp the
+/// projection Ready.
+///
+/// When `handle_file_created_or_modified_static` returns `Err` after the atomic
+/// write advanced canonical_revision and the file hash was updated, the Tantivy
+/// apply never runs. If the batch then stamps the projection Ready, search
+/// silently misses the file while health reports Ready/Current, and the
+/// hash-based staleness scan cannot recover it (the hash already matches). The
+/// batch must instead queue the file for Tantivy retry and stamp Stale.
+///
+/// Reproduced by injecting a post-commit failure after the file hash is written
+/// but before the Tantivy apply (`FAIL_AFTER_COMMIT_FOR_TEST`).
+#[tokio::test]
+async fn test_watcher_handler_error_after_commit_marks_projection_stale() {
+    use crate::watcher::IncrementalIndexer;
+    use crate::watcher::types::{FileChangeEvent, FileChangeType};
+    use julie_core::database::ProjectionStatus;
+    use julie_core::indexing_state::IndexingRuntimeState;
+    use julie_index::search::SearchIndex;
+    use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
+    use std::sync::atomic::Ordering;
+    use std::time::SystemTime;
+
+    let temp_dir = julie_test_support::unique_temp_dir("watcher_handler_err_after_commit");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let test_file = workspace_root.join("post_commit_failure.rs");
+    fs::write(&test_file, "fn post_commit_failure() {}\n").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    let tantivy_dir = workspace_root.join("tantivy");
+    fs::create_dir_all(&tantivy_dir).unwrap();
+    let search_index = Arc::new(SearchIndex::create(&tantivy_dir).unwrap());
+
+    crate::watcher::handlers::FAIL_AFTER_COMMIT_FOR_TEST.store(true, Ordering::Release);
+
+    let workspace_key = workspace_root.to_string_lossy();
+    let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
+        .unwrap_or_else(|_| workspace_key.into_owned());
+
+    let indexing_runtime = IndexingRuntimeState::shared();
+    let indexer = IncrementalIndexer::new(
+        workspace_root.clone(),
+        Arc::clone(&db),
+        Arc::clone(&extractor_manager),
+        Some(Arc::clone(&search_index)),
+        Arc::new(std::sync::RwLock::new(None)),
+        Arc::clone(&indexing_runtime),
+    )
+    .unwrap();
+    indexer.index_queue.lock().await.push_back(FileChangeEvent {
+        path: absolute_path,
+        change_type: FileChangeType::Created,
+        timestamp: SystemTime::now(),
+    });
+
+    indexer
+        .process_pending_changes()
+        .await
+        .expect("a handler error must not surface as a watcher-cycle failure");
+
+    let db_lock = db.lock().unwrap();
+    let state = db_lock
+        .get_projection_state(TANTIVY_PROJECTION_NAME, &workspace_id)
+        .unwrap()
+        .expect("a committed canonical revision must persist projection state");
+    assert_eq!(
+        state.status,
+        ProjectionStatus::Stale,
+        "handler error after the SQLite commit must leave the projection Stale, not falsely Ready"
+    );
+    assert_ne!(
+        state.projected_revision, state.canonical_revision,
+        "projected_revision must not equal canonical when the file never reached Tantivy"
+    );
+    drop(db_lock);
+
+    assert!(
+        indexing_runtime
+            .read()
+            .unwrap()
+            .snapshot()
+            .dirty_projection_count
+            >= 1,
+        "the un-applied file must be queued for Tantivy retry"
+    );
+}
+
 /// Reproduce the mid-pipeline crash scenario:
 ///   SQLite commit advances canonical_revision → process crashes → Tantivy apply never runs.
 ///

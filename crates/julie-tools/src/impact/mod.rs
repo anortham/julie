@@ -259,7 +259,7 @@ fn run_with_db(
     );
     let visible_likely_tests = likely_tests.visible(LIKELY_TESTS_LIMIT);
 
-    let web_caller_rows: Vec<String> = web_callers
+    let mut web_caller_rows: Vec<String> = web_callers
         .iter()
         .map(|caller| {
             format!(
@@ -272,6 +272,17 @@ fn run_with_db(
             )
         })
         .collect();
+    let web_callers_total = web_caller_rows.len();
+    let web_callers_overflow_handle = store_list_overflow(
+        spillover_store,
+        session_id,
+        "brwc",
+        "Blast radius web callers overflow",
+        &web_caller_rows,
+        page_limit,
+        format,
+    );
+    web_caller_rows.truncate(page_limit);
 
     let header = BlastRadiusHeader {
         revision_range: match (tool.from_revision, tool.to_revision) {
@@ -283,6 +294,8 @@ fn run_with_db(
         likely_test_paths_overflow_handle,
         related_test_symbols_overflow_handle,
         web_callers: web_caller_rows,
+        web_callers_overflow_handle,
+        web_callers_total,
     };
 
     Ok(format_blast_radius(

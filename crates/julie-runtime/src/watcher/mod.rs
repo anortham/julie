@@ -154,6 +154,15 @@ pub(super) async fn dispatch_file_event(
             {
                 Err(e) => {
                     warn!("Failed to handle file change: {}", e);
+                    // The handler can error after the SQLite commit advanced
+                    // canonical_revision but before the Tantivy apply; mark dirty
+                    // so the batch stamps Stale, not a false Ready.
+                    if let Some(ref rel) = rel_path {
+                        tantivy_dirty
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .insert(rel.clone());
+                    }
                 }
                 Ok(outcome) => {
                     // Fix B-b: track Tantivy failures for retry on next tick
@@ -255,6 +264,16 @@ pub(super) async fn dispatch_file_event(
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
                         .record_repair_reason(IndexingRepairReason::DeletedFiles);
                     warn!("Failed to handle file rename: {}", e);
+                    // Same post-commit hazard as Created/Modified: queue the rename
+                    // target for Tantivy retry so a mid-handler error cannot leave
+                    // the projection falsely Ready.
+                    if let Ok(rel_to) = julie_core::paths::to_relative_unix_style(&to, workspace_root)
+                    {
+                        tantivy_dirty
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .insert(rel_to);
+                    }
                 }
                 Ok(outcome) => {
                     let source_retired =

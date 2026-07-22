@@ -51,14 +51,14 @@ fn mapped_buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["registry"];
     }
 
-    // Startup routing touches DaemonDatabase, workspace registry, and indexing;
-    // it no longer needs to force the full dev tier.
+    // Startup routing touches the workspace registry, projection reconcile, and
+    // indexing; it no longer needs to force the full dev tier.
     if path == "src/startup.rs" {
         return &[
             "tools-workspace-discovery",
             "tools-workspace-indexing",
             "tools-workspace-management",
-            "lifecycle",
+            "registry",
             "workspace-runtime",
         ];
     }

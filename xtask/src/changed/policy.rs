@@ -215,8 +215,6 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "tools-format-filter",
         "core-fast",
         "core-handler-telemetry",
-        "transport",
-        "lifecycle",
         "workspace-runtime",
         "registry",
         "dashboard",

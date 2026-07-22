@@ -18,6 +18,13 @@ use julie_pipeline::indexing_core::normalized::normalize_extraction_results;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+/// Test-only injection: when set, `handle_file_created_or_modified_static` returns
+/// `Err` after the SQLite commit and file-hash update but before the Tantivy apply,
+/// reproducing a transient post-commit failure. Reset on read so it fires once.
+#[cfg(test)]
+pub(crate) static FAIL_AFTER_COMMIT_FOR_TEST: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -306,6 +313,11 @@ pub async fn handle_file_created_or_modified_static(
         db_lock.update_file_hash(&relative_path, &new_hash_str)?;
         db_lock.store_file_parse_diagnostics(&relative_path, &parse_diagnostics)?;
         db_lock.clear_indexing_repair(&relative_path)?;
+    }
+
+    #[cfg(test)]
+    if FAIL_AFTER_COMMIT_FOR_TEST.swap(false, std::sync::atomic::Ordering::AcqRel) {
+        anyhow::bail!("injected post-commit failure for test");
     }
 
     resolve_pending_relationships(

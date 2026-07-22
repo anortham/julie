@@ -136,7 +136,10 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 // app_test, and shutdown_drain_test were deleted in Phase 3d.2b.
                 expected_seconds: 60,
                 timeout_seconds: 180,
-                commands: &["cargo nextest run --lib tests::registry -- --skip search_quality"],
+                commands: &[
+                    "cargo nextest run --lib tests::registry -- --skip search_quality",
+                    "cargo nextest run --lib tests::external_extract -- --skip search_quality",
+                ],
             },
         ),
         (

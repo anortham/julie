@@ -226,24 +226,19 @@ fn extract_analysis_current_marker_rolls_back_on_partial_failure() {
 
 #[test]
 fn extract_contract_version_and_schema_are_at_phase3b_coordinated_values() {
-    // Lockstep tripwire for the Miller bridge contract dials.
-    //
-    // The Miller resolver (~/source/codesearch) gates julie's `extract` output with an
-    // EXACT-equality check on `extract_contract_version`. Phase 3b added carrier-gated
-    // string-literal records, which ship in the `literals` table (migration 028 →
-    // schema 28) under contract v2. These two constants move in lockstep: changing
-    // either is a Miller-facing breaking change that requires updating Miller's expected
-    // version in the same coordinated release. This test exists so that any such change
-    // trips a red test and forces that deliberation rather than silently desyncing the
-    // bridge. If you bump one of these, update the other (when applicable), update
-    // Miller's gate, and record the new version triple in the Phase 3b plan docs.
+    // Deliberate tripwire on the two `extract` contract dials so neither drifts
+    // unnoticed. `EXTRACT_CONTRACT_VERSION` describes the reader-facing shape of
+    // `extract` output; `LATEST_SCHEMA_VERSION` is the internal DB schema. Bumping
+    // either must be a reviewed edit: change the constant in product code AND the
+    // pinned value here in the same commit so the diff records the decision. The
+    // schema advanced 28 -> 30 via internal-only migrations (029 extractor
+    // enrichments, 030 web_edges) that leave the reader-facing contract at v3.
     assert_eq!(
         EXTRACT_CONTRACT_VERSION, 3,
-        "extract contract is v3 since workspace registry freshness (BLAKE3 hash metadata); \
-         update the Miller gate in ~/source/codesearch if you change this"
+        "extract contract is v3 (workspace registry freshness / BLAKE3 hash metadata)"
     );
     assert_eq!(
-        LATEST_SCHEMA_VERSION, 28,
-        "the literals table landed in migration 028; contract v3 still ships with schema 28"
+        LATEST_SCHEMA_VERSION, 30,
+        "schema is at 30: migration 030 added the web_edges table (internal, contract unchanged)"
     );
 }

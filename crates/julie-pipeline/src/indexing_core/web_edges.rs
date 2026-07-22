@@ -112,19 +112,6 @@ pub fn classify_http_facts(facts: &[StructuralFact]) -> (Vec<StructuralFact>, Ve
     (client_calls, route_handlers)
 }
 
-/// True if `facts` contains any web-relevant structural fact (an HTTP client
-/// call, a route handler, or a SQL query/table fact). Used to gate the
-/// post-index web-edge rebuild on the watcher hot path so non-web file saves
-/// skip the rebuild cost.
-pub fn facts_contain_web_patterns(facts: &[StructuralFact]) -> bool {
-    facts.iter().any(|fact| {
-        HTTP_CLIENT_CALL_PATTERN_IDS.contains(&fact.pattern_id.as_str())
-            || ROUTE_HANDLER_PATTERN_IDS.contains(&fact.pattern_id.as_str())
-            || SQL_QUERY_PATTERN_IDS.contains(&fact.pattern_id.as_str())
-            || SQL_TABLE_PATTERN_IDS.contains(&fact.pattern_id.as_str())
-    })
-}
-
 /// Derive `http_call` edges by joining client-call facts with route-handler
 /// facts on normalized path + method. Each client call emits exactly one
 /// edge: a matched edge when a handler's normalized route template matches
