@@ -14,6 +14,8 @@ async fn phase3_mixed_traversal_scorecard() -> Result<()> {
     let mut case_reports = Vec::new();
     let mut default_micros = Vec::new();
     let mut web_micros = Vec::new();
+    let mut expected_total = 0;
+    let mut found_total = 0;
 
     for case in &fixture.corpus.cases {
         let default_output = call_case(&fixture, case, None, None).await?;
@@ -40,6 +42,13 @@ async fn phase3_mixed_traversal_scorecard() -> Result<()> {
             "unexpected web links for {}: {web_output}",
             case.id
         );
+        ensure!(
+            web_found == expected_web,
+            "missing expected web links for {}: {web_output}",
+            case.id
+        );
+        expected_total += expected_web.len();
+        found_total += web_found.len();
 
         case_reports.push(json!({
             "id": case.id,
@@ -57,6 +66,8 @@ async fn phase3_mixed_traversal_scorecard() -> Result<()> {
         "corpus_version": fixture.corpus.version,
         "hard_gates": {
             "default_unchanged": true,
+            "expected_found": found_total,
+            "expected_total": expected_total,
             "unexpected_internal": 0,
         },
         "report_only": {

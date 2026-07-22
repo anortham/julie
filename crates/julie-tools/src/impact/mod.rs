@@ -4,8 +4,6 @@ pub mod ranking;
 pub mod seed;
 pub mod walk;
 
-use std::collections::HashSet;
-
 use anyhow::{Result, anyhow};
 use julie_core::mcp_compat::{CallToolResult, Content};
 use schemars::JsonSchema;
@@ -21,7 +19,7 @@ use self::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows, stor
 pub use self::likely_tests::LikelyTests;
 use self::likely_tests::collect_likely_tests;
 use self::ranking::RankedImpact;
-use self::walk::WalkBudget;
+use self::walk::{ImpactTraversalPolicy, WalkBudget};
 
 fn default_max_depth() -> u32 {
     2
@@ -190,11 +188,17 @@ fn run_with_db(
         max_frontier_per_depth: (page_limit * 10).clamp(100, 500),
         max_identifier_fanout_per_name: default_budget.max_identifier_fanout_per_name,
     };
-    let (mut candidates, _walk_stats) = walk::walk_impacts_with_budget(
+    let traversal_policy = if tool.mode.as_deref() == Some("web") {
+        ImpactTraversalPolicy::Web
+    } else {
+        ImpactTraversalPolicy::Default
+    };
+    let (candidates, _walk_stats) = walk::walk_impacts_with_policy(
         db,
         &seed_context.seed_symbols,
         tool.max_depth,
         walk_budget,
+        traversal_policy,
     )?;
     let web_callers = if tool.mode.as_deref() == Some("web") {
         let seed_ids: Vec<String> = seed_context
@@ -206,23 +210,6 @@ fn run_with_db(
     } else {
         Vec::new()
     };
-    if tool.max_depth > 0 {
-        let mut candidate_ids: HashSet<String> = seed_context
-            .seed_symbols
-            .iter()
-            .map(|symbol| symbol.id.clone())
-            .chain(
-                candidates
-                    .iter()
-                    .map(|candidate| candidate.symbol.id.clone()),
-            )
-            .collect();
-        candidates.extend(web_callers.iter().filter_map(|caller| {
-            candidate_ids
-                .insert(caller.impact.symbol.id.clone())
-                .then(|| caller.impact.clone())
-        }));
-    }
     let ranked_impacts = ranking::rank_impacts(candidates, tool.include_tests);
     let likely_tests = if tool.include_tests {
         collect_likely_tests(db, &seed_context, &ranked_impacts)?

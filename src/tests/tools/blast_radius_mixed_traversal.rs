@@ -1,3 +1,4 @@
+mod behavior;
 mod corpus;
 mod scorecard;
 

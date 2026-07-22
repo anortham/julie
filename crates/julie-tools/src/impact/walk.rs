@@ -116,6 +116,12 @@ pub struct WalkBudget {
     pub max_identifier_fanout_per_name: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ImpactTraversalPolicy {
+    Default,
+    Web,
+}
+
 impl Default for WalkBudget {
     fn default() -> Self {
         Self {
@@ -149,6 +155,22 @@ pub fn walk_impacts_with_budget(
     seed_symbols: &[Symbol],
     max_depth: u32,
     budget: WalkBudget,
+) -> Result<(Vec<ImpactCandidate>, WalkStats)> {
+    walk_impacts_with_policy(
+        db,
+        seed_symbols,
+        max_depth,
+        budget,
+        ImpactTraversalPolicy::Default,
+    )
+}
+
+pub(super) fn walk_impacts_with_policy(
+    db: &SymbolDatabase,
+    seed_symbols: &[Symbol],
+    max_depth: u32,
+    budget: WalkBudget,
+    policy: ImpactTraversalPolicy,
 ) -> Result<(Vec<ImpactCandidate>, WalkStats)> {
     if seed_symbols.is_empty() || max_depth == 0 {
         return Ok((Vec::new(), WalkStats::default()));
@@ -259,6 +281,34 @@ pub fn walk_impacts_with_budget(
             }
             *fanout_count += 1;
             best_by_source.insert(source_id, candidate);
+        }
+
+        if policy == ImpactTraversalPolicy::Web {
+            let mut best_web_by_source: HashMap<String, CandidateEdge> = HashMap::new();
+            for edge in db.web_edges_to_symbols(&frontier_ids)? {
+                if visited.contains(&edge.from_symbol_id)
+                    || best_by_source.contains_key(&edge.from_symbol_id)
+                {
+                    continue;
+                }
+                let Some(target_id) = edge.to_symbol_id else {
+                    continue;
+                };
+                let candidate = CandidateEdge {
+                    relationship_kind: web_edge_relationship_kind(edge.kind),
+                    target_id: Some(target_id),
+                    resolved_target: true,
+                };
+                let should_replace = best_web_by_source
+                    .get(&edge.from_symbol_id)
+                    .is_none_or(|current| relation_order(&candidate) < relation_order(current));
+                if should_replace {
+                    best_web_by_source.insert(edge.from_symbol_id, candidate);
+                }
+            }
+            for (source_id, candidate) in best_web_by_source {
+                best_by_source.entry(source_id).or_insert(candidate);
+            }
         }
 
         if best_by_source.is_empty() {
