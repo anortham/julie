@@ -50,9 +50,21 @@ async fn phase3_web_mode_deduplicates_cycles_at_shortest_distance() -> Result<()
     let output = call_case(&fixture, case, Some("web"), None).await?;
     let high_impact = output.split("Web callers").next().unwrap_or(&output);
 
-    assert_eq!(high_impact.matches("cycleA  cycles/cycle_a.rs:").count(), 1, "{output}");
-    assert_eq!(high_impact.matches("cycleB  cycles/cycle_b.rs:").count(), 1, "{output}");
-    assert_eq!(high_impact.matches("fetchUser  web/fetch_user.ts:").count(), 1, "{output}");
+    assert_eq!(
+        high_impact.matches("cycleA  cycles/cycle_a.rs:").count(),
+        1,
+        "{output}"
+    );
+    assert_eq!(
+        high_impact.matches("cycleB  cycles/cycle_b.rs:").count(),
+        1,
+        "{output}"
+    );
+    assert_eq!(
+        high_impact.matches("fetchUser  web/fetch_user.ts:").count(),
+        1,
+        "{output}"
+    );
     Ok(())
 }
 
