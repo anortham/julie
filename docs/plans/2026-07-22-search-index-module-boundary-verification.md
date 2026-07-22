@@ -28,5 +28,6 @@
 | Recalibrated get-symbols timeout contract is accepted | `cargo nextest run -p xtask manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs` | get-symbols-timeout-green | working tree on `30a0a47e619ec0e3a705ac1b3fb6b2a331b9f6d2` | pass: 1 passed, 178 skipped | 2026-07-22T17:05:33Z | no |
 | Get-symbols bucket completes all five commands under its measured loaded-machine runtime | `cargo xtask test bucket tools-get-symbols` | get-symbols-timeout-exact | working tree on `30a0a47e619ec0e3a705ac1b3fb6b2a331b9f6d2` | pass: 5 commands, 140.0s warm under the new 300s ceiling | 2026-07-22T17:05:33Z | no |
 | Xtask package remains green after both timeout corrections | `cargo nextest run -p xtask` | runner-timeout-package | working tree on `30a0a47e619ec0e3a705ac1b3fb6b2a331b9f6d2` | pass: 179 passed | 2026-07-22T17:05:33Z | no |
+| Final development tier passes with both measured timeout corrections | `cargo xtask test dev` | branch-gate | `d0c2e2cc0eb9027fe7b0311dd98fb6c87f2e1603` | pass: 27 buckets, 546.5s warm, 3.7s prebuild, 550.2s cold wall | 2026-07-22T17:15:50Z | no |
 
-The final branch gate remains pending until the timeout corrections and this evidence are committed.
+All Phase 2D required scopes pass. The ledger closeout is metadata-only; rerun the branch gate on its commit before handoff.
