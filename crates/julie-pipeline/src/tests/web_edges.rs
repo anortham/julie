@@ -71,6 +71,86 @@ fn derives_matched_http_call_edge() {
 }
 
 #[test]
+fn equal_confidence_http_handlers_remain_external() {
+    let client = fact(
+        "c1",
+        "http.client_request.v1",
+        "src/client.ts",
+        "typescript",
+        3,
+        Some("fetch_user"),
+        0.95,
+        json!({"verb": "GET", "target_path": "/api/users/123", "client": "fetch"}),
+    );
+    let handlers = [
+        fact(
+            "h1",
+            "symfony.route.v1",
+            "src/FirstController.php",
+            "php",
+            8,
+            Some("show_user_first"),
+            0.9,
+            json!({"verb": "GET", "normalized_route_template": "/api/users/{id}"}),
+        ),
+        fact(
+            "h2",
+            "symfony.route.v1",
+            "src/SecondController.php",
+            "php",
+            9,
+            Some("show_user_second"),
+            0.9,
+            json!({"verb": "GET", "normalized_route_template": "/api/users/{id}"}),
+        ),
+    ];
+
+    let edges = derive_http_call_edges(&[client], &handlers);
+
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].to_symbol_id, None);
+    assert_eq!(edges[0].to_external.as_deref(), Some("GET /api/users/123"));
+
+    let client = fact(
+        "c2",
+        "http.client_request.v1",
+        "src/client.ts",
+        "typescript",
+        4,
+        Some("fetch_user"),
+        0.95,
+        json!({"verb": "GET", "target_path": "/api/users/123"}),
+    );
+    let duplicate_handler_facts = [
+        fact(
+            "h3",
+            "symfony.route.v1",
+            "src/Controller.php",
+            "php",
+            10,
+            Some("show_user"),
+            0.9,
+            json!({"verb": "GET", "normalized_route_template": "/api/users/{id}"}),
+        ),
+        fact(
+            "h4",
+            "symfony.route.v1",
+            "src/Controller.php",
+            "php",
+            11,
+            Some("show_user"),
+            0.9,
+            json!({"verb": "GET", "normalized_route_template": "/api/users/{id}"}),
+        ),
+    ];
+
+    let edges = derive_http_call_edges(&[client], &duplicate_handler_facts);
+
+    assert_eq!(edges[0].to_symbol_id.as_deref(), Some("show_user"));
+    assert_eq!(edges[0].to_external, None);
+}
+
+#[test]
 fn derives_external_edge_when_no_handler_matches() {
     let client = fact(
         "c1",
@@ -227,6 +307,48 @@ fn derives_sql_query_edge_from_view_to_table() {
     assert_eq!(e.to_external, None);
     assert_eq!(e.table.as_deref(), Some("users"));
     assert!((e.confidence - 1.0_f32).abs() < 1e-3);
+}
+
+#[test]
+fn duplicate_sql_table_definitions_remain_external() {
+    let query = fact(
+        "q1",
+        "sql.update_statement.v1",
+        "schema/routines.sql",
+        "sql",
+        4,
+        Some("touch_users"),
+        1.0,
+        json!({"table_name": "users"}),
+    );
+    let tables = [
+        fact(
+            "t1",
+            "sql.table_definition.v1",
+            "schema/first.sql",
+            "sql",
+            2,
+            Some("users_table_first"),
+            1.0,
+            json!({"table_name": "users"}),
+        ),
+        fact(
+            "t2",
+            "sql.table_definition.v1",
+            "schema/second.sql",
+            "sql",
+            2,
+            Some("users_table_second"),
+            1.0,
+            json!({"table_name": "users"}),
+        ),
+    ];
+
+    let edges = derive_sql_query_edges(&[query], &tables);
+
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].to_symbol_id, None);
+    assert_eq!(edges[0].to_external.as_deref(), Some("table:users"));
 }
 
 #[test]

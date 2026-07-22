@@ -69,10 +69,8 @@ pub trait ToolContext: Send + Sync {
 
     /// Returns an owned `SymbolDatabase` wrapping a pooled connection for
     /// the given workspace ID.
-    async fn get_pooled_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<SymbolDatabase>;
+    async fn get_pooled_database_for_workspace(&self, workspace_id: &str)
+    -> Result<SymbolDatabase>;
 
     /// Returns a shared `Arc<Mutex<SymbolDatabase>>` for the given workspace ID.
     ///
@@ -140,8 +138,5 @@ pub trait ToolContext: Send + Sync {
     /// Top-crate purpose-method: the implementation reads
     /// `embedding_service.is_some()` (daemon-only field, above julie-context),
     /// so this cannot be a default method (Blocker B5, CORRECTED).
-    async fn system_readiness(
-        &self,
-        target_workspace_id: Option<&str>,
-    ) -> Result<SystemStatus>;
+    async fn system_readiness(&self, target_workspace_id: Option<&str>) -> Result<SystemStatus>;
 }

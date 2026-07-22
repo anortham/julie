@@ -6,8 +6,7 @@ use xtask::manifest::TestManifest;
 use xtask::runner::declared_expected_seconds;
 
 fn expected_mapped_mode(manifest: &TestManifest, bucket_names: &[String]) -> ChangedSelectionMode {
-    let declared =
-        declared_expected_seconds(manifest, bucket_names.iter().map(String::as_str));
+    let declared = declared_expected_seconds(manifest, bucket_names.iter().map(String::as_str));
     if declared > 60 {
         ChangedSelectionMode::OverBudget
     } else {
@@ -52,7 +51,10 @@ fn changed_tests_select_localized_tool_buckets() {
         ],
     );
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -76,7 +78,12 @@ fn changed_tests_workspace_targeting_files_route_to_targeting_bucket() {
         "src/tests/tools/workspace/refresh_routing.rs",
     ] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{}", path);
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names),
+            "{}",
+            path
+        );
         assert_eq!(
             selection.bucket_names,
             vec!["tools-workspace-targeting"],
@@ -96,7 +103,10 @@ fn changed_tests_workspace_test_changes_do_not_pull_workspace_init() {
         &["src/tests/tools/workspace/mod_tests.rs".to_string()],
     );
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["tools-workspace-indexing"]);
 }
 
@@ -225,7 +235,11 @@ fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_b
     ] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names),
+            "{path}"
+        );
         assert_eq!(selection.bucket_names, expected_buckets, "{path}");
         assert!(selection.fallback_paths.is_empty(), "{path}");
     }
@@ -251,7 +265,11 @@ fn changed_tests_julie_runtime_crate_split_routing() {
         ("crates/julie-runtime/src/lib.rs", vec!["core-runtime"]),
     ] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names),
+            "{path}"
+        );
         assert_eq!(selection.bucket_names, expected_buckets, "{path}");
         assert!(selection.fallback_paths.is_empty(), "{path}");
     }
@@ -312,7 +330,11 @@ fn changed_tests_julie_tools_crate_split_routing() {
     ] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names),
+            "{path}"
+        );
         assert_eq!(selection.bucket_names, expected_buckets, "{path}");
         assert!(selection.fallback_paths.is_empty(), "{path}");
     }
@@ -330,10 +352,7 @@ fn changed_tests_dogfood_repo_index_file_routes_to_new_bucket() {
     assert_eq!(selection.mode, ChangedSelectionMode::OverBudget);
     assert_eq!(selection.bucket_names, vec!["tools-dogfood-repo-index"]);
     assert_eq!(
-        declared_expected_seconds(
-            &manifest,
-            selection.bucket_names.iter().map(String::as_str),
-        ),
+        declared_expected_seconds(&manifest, selection.bucket_names.iter().map(String::as_str),),
         200
     );
 }
@@ -350,10 +369,8 @@ fn changed_tests_under_budget_mapped_selection_stays_buckets() {
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(selection.bucket_names, vec!["tools-workspace-targeting"]);
     assert!(
-        declared_expected_seconds(
-            &manifest,
-            selection.bucket_names.iter().map(String::as_str),
-        ) <= 60
+        declared_expected_seconds(&manifest, selection.bucket_names.iter().map(String::as_str),)
+            <= 60
     );
 }
 
@@ -393,8 +410,13 @@ fn changed_tests_scale_unions_over_budget_mapped_with_dev() {
     assert_eq!(selection.mode, ChangedSelectionMode::OverBudget);
 
     let scaled = apply_changed_scale(selection, &manifest);
+    let output = render_changed_selection(&scaled);
 
     assert_eq!(scaled.mode, ChangedSelectionMode::Buckets);
+    assert!(
+        !output.contains("cargo xtask test changed --scale"),
+        "scaled output must not advise rerunning --scale; got:\n{output}"
+    );
     assert!(
         scaled
             .bucket_names
@@ -463,7 +485,10 @@ fn changed_tests_reports_path_to_bucket_rationale() {
     let selection = select_changed_buckets(&manifest, &["src/tools/search/mod.rs".to_string()]);
     let output = render_changed_selection(&selection);
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -507,7 +532,10 @@ fn changed_tests_search_paths_select_split_search_buckets() {
         ],
     );
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -533,7 +561,10 @@ fn changed_tests_xtask_paths_select_xtask_runner_bucket() {
 
     let selection = select_changed_buckets(&manifest, &["xtask/src/runner.rs".to_string()]);
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["xtask-runner"]);
 }
 
@@ -544,7 +575,10 @@ fn changed_tests_xtask_eval_paths_select_xtask_eval_bucket() {
     let selection =
         select_changed_buckets(&manifest, &["xtask-eval/src/search_matrix.rs".to_string()]);
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["xtask-eval"]);
 }
 
@@ -563,7 +597,10 @@ fn changed_tests_harness_docs_select_xtask_runner_bucket() {
         ],
     );
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["xtask-runner"]);
     assert!(selection.ignored_paths.is_empty());
 }
@@ -585,7 +622,10 @@ fn changed_tests_misc_tool_paths_select_split_tool_buckets() {
         ],
     );
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -606,7 +646,10 @@ fn changed_tests_handler_tool_fast_search_selects_search_buckets() {
     let selection =
         select_changed_buckets(&manifest, &["src/handler/tools/fast_search.rs".to_string()]);
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -648,7 +691,12 @@ fn changed_tests_handler_tool_navigation_files_route_per_tool() {
 
     for (path, expected) in cases {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{}", path);
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names),
+            "{}",
+            path
+        );
         let expected_owned: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
         assert_eq!(selection.bucket_names, expected_owned, "{}", path);
         assert!(selection.fallback_paths.is_empty(), "{}", path);
@@ -657,7 +705,10 @@ fn changed_tests_handler_tool_navigation_files_route_per_tool() {
     // All five together should yield the union (sorted).
     let all_paths: Vec<String> = cases.iter().map(|(p, _)| p.to_string()).collect();
     let selection = select_changed_buckets(&manifest, &all_paths);
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -679,7 +730,11 @@ fn changed_tests_deep_dive_split_modules_route_to_deep_dive_bucket() {
         "src/tests/tools/deep_dive_tests/data_tests/identifiers_query_similarity.rs",
     ] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names),
+            "{path}"
+        );
         assert_eq!(selection.bucket_names, vec!["tools-deep-dive"], "{path}");
         assert!(selection.fallback_paths.is_empty(), "{path}");
     }
@@ -701,7 +756,10 @@ fn changed_tests_handler_tool_files_select_specific_buckets() {
         ],
     );
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -731,7 +789,11 @@ fn changed_tests_route_handler_split_modules_to_core_fast_bucket() {
         "src/tests/core/handler/workspace_binding_metrics.rs",
     ] {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names),
+            "{path}"
+        );
         assert_eq!(selection.bucket_names, vec!["core-fast"], "{path}");
         assert!(selection.fallback_paths.is_empty(), "{path}");
     }
@@ -744,7 +806,10 @@ fn changed_tests_handler_search_telemetry_selects_search_buckets() {
     let selection =
         select_changed_buckets(&manifest, &["src/handler/search_telemetry.rs".to_string()]);
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -840,7 +905,10 @@ fn changed_tests_startup_routes_to_lifecycle_workspace_runtime_and_workspace() {
     let manifest = sample_manifest();
 
     let selection = select_changed_buckets(&manifest, &["src/startup.rs".to_string()]);
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(
         selection.bucket_names,
         vec![
@@ -859,7 +927,10 @@ fn changed_tests_src_extractors_reexport_routes_to_extractor_dep_integration_buc
     let manifest = sample_manifest();
 
     let selection = select_changed_buckets(&manifest, &["src/extractors/mod.rs".to_string()]);
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["extractor-dep-integration"]);
     assert!(selection.fallback_paths.is_empty());
 }
@@ -870,7 +941,10 @@ fn changed_tests_routes_projection_paths_to_projection_bucket() {
 
     let selection = select_changed_buckets(&manifest, &["src/search/projection.rs".to_string()]);
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["projection"]);
 }
 
@@ -883,7 +957,10 @@ fn changed_tests_routes_projection_pipeline_paths_to_projection_bucket() {
         &["src/tools/workspace/indexing/pipeline.rs".to_string()],
     );
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["projection"]);
 }
 
@@ -893,7 +970,10 @@ fn changed_tests_routes_lifecycle_paths_to_daemon_bucket() {
 
     let selection = select_changed_buckets(&manifest, &["src/registry/lifecycle.rs".to_string()]);
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["registry"]);
 }
 
@@ -903,7 +983,10 @@ fn changed_tests_routes_daemon_mod_to_daemon_bucket() {
 
     let selection = select_changed_buckets(&manifest, &["src/registry/mod.rs".to_string()]);
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["registry"]);
 }
 
@@ -968,7 +1051,10 @@ fn changed_tests_routes_workspace_registry_commands_to_workspace_runtime_bucket(
         &["src/tools/workspace/commands/registry/open.rs".to_string()],
     );
 
-    assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+    assert_eq!(
+        selection.mode,
+        expected_mapped_mode(&manifest, &selection.bucket_names)
+    );
     assert_eq!(selection.bucket_names, vec!["workspace-runtime"]);
 }
 

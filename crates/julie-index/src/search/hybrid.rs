@@ -406,7 +406,9 @@ pub fn hybrid_search_with_embedding(
             }
         },
         Err(e) => {
-            warn!("hybrid_search_with_embedding: KNN search failed, degrading to keyword-only: {e}");
+            warn!(
+                "hybrid_search_with_embedding: KNN search failed, degrading to keyword-only: {e}"
+            );
             Vec::new()
         }
     };

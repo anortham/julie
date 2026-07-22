@@ -1,11 +1,12 @@
 use super::{FileChangeEvent, FileChangeType, IncrementalIndexer, SharedEmbeddingProvider};
-use julie_core::database::SymbolDatabase;
-use julie_core::indexing_state::{IndexingOperation, IndexingRepairReason, SharedIndexingRuntime};
-use julie_extractors::ExtractorManager;
 use crate::watcher::observability::timed_acquire_gate_with_registry_or_cancelled;
 use crate::workspace::mutation_gate::{MutationGuard, Registry as MutationGateRegistry};
 use anyhow::Result;
 use ignore::gitignore::Gitignore;
+use julie_core::database::{ProjectionStatus, SymbolDatabase};
+use julie_core::indexing_state::{IndexingOperation, IndexingRepairReason, SharedIndexingRuntime};
+use julie_extractors::ExtractorManager;
+use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,6 +47,8 @@ pub(super) struct QueueRuntime {
     tantivy_failure_attempts: Arc<StdMutex<HashMap<String, u32>>>,
     indexing_runtime: SharedIndexingRuntime,
     mutation_gate_registry: Arc<MutationGateRegistry>,
+    #[cfg(test)]
+    fail_commit_for_test: bool,
 }
 
 impl QueueRuntime {
@@ -67,6 +70,8 @@ impl QueueRuntime {
             tantivy_failure_attempts: Arc::new(StdMutex::new(HashMap::new())),
             indexing_runtime: Arc::clone(&indexer.indexing_runtime),
             mutation_gate_registry: Arc::clone(&indexer.mutation_gate_registry),
+            #[cfg(test)]
+            fail_commit_for_test: false,
         }
     }
 
@@ -104,6 +109,8 @@ impl QueueRuntime {
             tantivy_failure_attempts: Arc::new(StdMutex::new(HashMap::new())),
             indexing_runtime,
             mutation_gate_registry,
+            #[cfg(test)]
+            fail_commit_for_test: false,
         }
     }
 
@@ -173,7 +180,9 @@ impl QueueRuntime {
                     return;
                 };
                 let mut drained_any = false;
+                let mut affected_paths = HashSet::new();
                 while let Some(event) = self.index_queue.lock().await.pop_front() {
+                    affected_paths.extend(self.projection_paths_for_event(&event));
                     let provider_snapshot = self
                         .embedding_provider
                         .read()
@@ -195,7 +204,8 @@ impl QueueRuntime {
                     drained_any = true;
                 }
                 if drained_any {
-                    self.commit_search_index("shutdown drain").await;
+                    self.commit_search_index("shutdown drain", &affected_paths)
+                        .await;
                 }
             } // guard dropped here, gate released
         }
@@ -268,6 +278,7 @@ impl QueueRuntime {
             .clone();
 
         let mut replayed = 0usize;
+        let mut affected_paths = HashSet::new();
         for repair in due_repairs {
             let repair_path = repair.path.clone();
             let absolute_path = self.workspace_root.join(&repair_path);
@@ -320,6 +331,7 @@ impl QueueRuntime {
                 &guard,
             )
             .await;
+            affected_paths.insert(repair_path);
             replayed += 1;
         }
 
@@ -350,7 +362,8 @@ impl QueueRuntime {
         }
 
         if replayed > 0 {
-            self.commit_search_index("repair replay").await;
+            self.commit_search_index("repair replay", &affected_paths)
+                .await;
         }
 
         replayed
@@ -511,6 +524,14 @@ impl QueueRuntime {
                         runtime.clear_abandoned_projection(&rel_path);
                     }
                     info!("Tantivy retry succeeded for {}", rel_path);
+                    if remaining_dirty == 0 {
+                        self.persist_projection_state(ProjectionStatus::Ready, None);
+                    } else {
+                        self.persist_projection_state(
+                            ProjectionStatus::Stale,
+                            Some("Tantivy projection repair remains pending"),
+                        );
+                    }
                 }
                 Ok(Err(err)) => {
                     self.handle_tantivy_retry_failure(&rel_path, &err.to_string());
@@ -608,6 +629,7 @@ impl QueueRuntime {
         let mut dropped_duplicates = 0usize;
         let mut deletes = 0usize;
         let mut renames = 0usize;
+        let mut affected_paths = HashSet::new();
         let max_this_tick = queue_size;
         let mut iterations = 0usize;
 
@@ -668,6 +690,7 @@ impl QueueRuntime {
             }
 
             debug!("Background task processing: {:?}", event.path);
+            affected_paths.extend(self.projection_paths_for_event(&event));
 
             let provider_snapshot = self
                 .embedding_provider
@@ -720,7 +743,7 @@ impl QueueRuntime {
         }
 
         if processed_count > 0 {
-            self.commit_search_index("batch").await;
+            self.commit_search_index("batch", &affected_paths).await;
         }
 
         processed_count
@@ -767,26 +790,27 @@ impl QueueRuntime {
         };
         let indexed_set: HashSet<String> = indexed_hashes.keys().cloned().collect();
 
-        let workspace_files = match julie_core::workspace_scan::scan_workspace_files(&self.workspace_root) {
-            Ok(files) => files,
-            Err(err) => {
-                warn!(
-                    "Repair scan failed to enumerate workspace files for {}: {}",
-                    self.workspace_root.display(),
-                    err
-                );
-                self.needs_rescan.store(true, Ordering::Release);
-                self.indexing_runtime
-                    .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .set_watcher_rescan_pending(true);
-                self.indexing_runtime
-                    .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .finish_operation();
-                return;
-            }
-        };
+        let workspace_files =
+            match julie_core::workspace_scan::scan_workspace_files(&self.workspace_root) {
+                Ok(files) => files,
+                Err(err) => {
+                    warn!(
+                        "Repair scan failed to enumerate workspace files for {}: {}",
+                        self.workspace_root.display(),
+                        err
+                    );
+                    self.needs_rescan.store(true, Ordering::Release);
+                    self.indexing_runtime
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .set_watcher_rescan_pending(true);
+                    self.indexing_runtime
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .finish_operation();
+                    return;
+                }
+            };
         let gitignore = match super::filtering::build_gitignore_matcher(&self.workspace_root) {
             Ok(gitignore) => gitignore,
             Err(err) => {
@@ -821,6 +845,7 @@ impl QueueRuntime {
         let mut new_files = 0usize;
         let mut failed_hash_reads = 0usize;
         let mut dispatched_events = 0usize;
+        let mut affected_paths = HashSet::new();
 
         for (rel_path, stored_hash) in &indexed_hashes {
             checked_indexed_files += 1;
@@ -843,6 +868,7 @@ impl QueueRuntime {
                     &guard,
                 )
                 .await;
+                affected_paths.insert(rel_path.clone());
                 deleted_files += 1;
                 dispatched_events += 1;
                 continue;
@@ -867,6 +893,7 @@ impl QueueRuntime {
                         &guard,
                     )
                     .await;
+                    affected_paths.insert(rel_path.clone());
                     modified_files += 1;
                     dispatched_events += 1;
                 }
@@ -912,6 +939,7 @@ impl QueueRuntime {
                 &guard,
             )
             .await;
+            affected_paths.insert(rel_path.clone());
             new_files += 1;
             dispatched_events += 1;
         }
@@ -928,7 +956,8 @@ impl QueueRuntime {
         );
 
         if dispatched_events > 0 {
-            self.commit_search_index("repair scan").await;
+            self.commit_search_index("repair scan", &affected_paths)
+                .await;
         }
         self.indexing_runtime
             .write()
@@ -936,18 +965,135 @@ impl QueueRuntime {
             .finish_operation();
     }
 
-    async fn commit_search_index(&self, context: &str) {
+    fn projection_paths_for_event(&self, event: &FileChangeEvent) -> Vec<String> {
+        let paths: Vec<&Path> = match &event.change_type {
+            FileChangeType::Renamed { from, to } => vec![from.as_path(), to.as_path()],
+            FileChangeType::Created | FileChangeType::Modified | FileChangeType::Deleted => {
+                vec![event.path.as_path()]
+            }
+        };
+
+        paths
+            .into_iter()
+            .filter_map(|path| {
+                julie_core::paths::to_relative_unix_style(path, &self.workspace_root).ok()
+            })
+            .collect()
+    }
+
+    fn persist_projection_state(&self, status: ProjectionStatus, detail: Option<&str>) {
+        let db_guard = self
+            .db
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let canonical = match db_guard.get_latest_canonical_revision(&self.workspace_id) {
+            Ok(Some(canonical)) => canonical,
+            Ok(None) => return,
+            Err(err) => {
+                warn!("Failed to read canonical revision for watcher projection state: {err}");
+                return;
+            }
+        };
+        let projected_revision = if status == ProjectionStatus::Ready {
+            Some(canonical.revision)
+        } else {
+            match db_guard.get_projection_state(TANTIVY_PROJECTION_NAME, &self.workspace_id) {
+                Ok(state) => state.and_then(|state| state.projected_revision),
+                Err(err) => {
+                    warn!("Failed to read existing watcher projection state: {err}");
+                    None
+                }
+            }
+        };
+
+        if let Err(err) = db_guard.upsert_projection_state(
+            TANTIVY_PROJECTION_NAME,
+            &self.workspace_id,
+            status,
+            Some(canonical.revision),
+            projected_revision,
+            detail,
+        ) {
+            warn!("Failed to persist watcher projection state: {err}");
+        }
+    }
+
+    fn record_commit_failure(
+        &self,
+        context: &str,
+        affected_paths: &HashSet<String>,
+        error_text: &str,
+    ) {
+        let dirty_count = {
+            let mut dirty = self
+                .tantivy_dirty
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            dirty.extend(affected_paths.iter().cloned());
+            dirty.len()
+        };
+        self.indexing_runtime
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .set_dirty_projection_count(dirty_count);
+        let detail = format!("Tantivy {context} commit failed: {error_text}");
+        self.persist_projection_state(ProjectionStatus::Stale, Some(&detail));
+        warn!("{detail}");
+    }
+
+    async fn commit_search_index(&self, context: &str, affected_paths: &HashSet<String>) {
         let Some(search_index) = self.search_index.as_ref() else {
             return;
         };
 
+        #[cfg(test)]
+        if self.fail_commit_for_test {
+            self.record_commit_failure(context, affected_paths, "injected watcher commit failure");
+            return;
+        }
+
         let search_index = Arc::clone(search_index);
-        let context = context.to_string();
-        let _ = tokio::task::spawn_blocking(move || {
-            if let Err(err) = search_index.commit() {
-                warn!("Failed to commit Tantivy {}: {}", context, err);
+        let commit_result = tokio::task::spawn_blocking(move || search_index.commit()).await;
+
+        match commit_result {
+            Ok(Ok(())) => {
+                let dirty_count = self
+                    .tantivy_dirty
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .len();
+                self.indexing_runtime
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .set_dirty_projection_count(dirty_count);
+                if dirty_count == 0 {
+                    self.persist_projection_state(ProjectionStatus::Ready, None);
+                } else {
+                    self.persist_projection_state(
+                        ProjectionStatus::Stale,
+                        Some("Tantivy projection repair remains pending"),
+                    );
+                }
             }
-        })
-        .await;
+            Ok(Err(err)) => {
+                self.record_commit_failure(context, affected_paths, &err.to_string());
+            }
+            Err(err) => {
+                self.record_commit_failure(
+                    context,
+                    affected_paths,
+                    &format!("commit task panicked: {err}"),
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl IncrementalIndexer {
+    pub(crate) async fn process_pending_changes_with_commit_failure_for_test(&self) -> Result<()> {
+        let mut runtime = QueueRuntime::from_indexer(self);
+        runtime.fail_commit_for_test = true;
+        runtime.process_pending_changes().await
     }
 }

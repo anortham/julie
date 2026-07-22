@@ -128,25 +128,37 @@ impl SymbolDatabase {
         if to_symbol_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let placeholders = (1..=to_symbol_ids.len())
-            .map(|i| format!("?{i}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT from_symbol_id, to_symbol_id, to_external, kind, method, path,
-                    table_name, file_path, line_number, confidence, metadata
-             FROM web_edges
-             WHERE to_symbol_id IN ({placeholders})"
-        );
-        let params: Vec<&dyn rusqlite::ToSql> = to_symbol_ids
-            .iter()
-            .map(|s| s as &dyn rusqlite::ToSql)
-            .collect();
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt
-            .query_map(params_from_iter(params), row_to_web_edge)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+
+        const CHUNK_SIZE: usize = 500;
+        let mut unique_ids = to_symbol_ids.to_vec();
+        unique_ids.sort();
+        unique_ids.dedup();
+        let mut edges = Vec::new();
+
+        for chunk in unique_ids.chunks(CHUNK_SIZE) {
+            let placeholders = (1..=chunk.len())
+                .map(|index| format!("?{index}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT from_symbol_id, to_symbol_id, to_external, kind, method, path,
+                        table_name, file_path, line_number, confidence, metadata
+                 FROM web_edges
+                 WHERE to_symbol_id IN ({placeholders})
+                 ORDER BY to_symbol_id, kind, file_path, line_number"
+            );
+            let params: Vec<&dyn rusqlite::ToSql> = chunk
+                .iter()
+                .map(|symbol_id| symbol_id as &dyn rusqlite::ToSql)
+                .collect();
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params_from_iter(params), row_to_web_edge)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            edges.extend(rows);
+        }
+
+        Ok(edges)
     }
 
     /// All edges of a given kind (used by diagnostics / search boosting).

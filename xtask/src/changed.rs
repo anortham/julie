@@ -325,10 +325,7 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
     }
 
     let bucket_names = sort_bucket_names(bucket_names);
-    let declared = declared_expected_seconds(
-        manifest,
-        bucket_names.iter().map(String::as_str),
-    );
+    let declared = declared_expected_seconds(manifest, bucket_names.iter().map(String::as_str));
     if declared > FAST_BUDGET_SECS {
         let mut rationale = rationale;
         rationale.push(format!(
@@ -408,6 +405,9 @@ pub fn apply_changed_scale(
 
     selection.bucket_names = sort_bucket_names(bucket_names);
     selection.mode = ChangedSelectionMode::Buckets;
+    selection
+        .rationale
+        .retain(|line| line != "CHANGED: next: cargo xtask test changed --scale");
     selection.rationale.push(format!(
         "CHANGED: scale union: mapped ∪ dev (preserving {})",
         mapped.join(", ")
@@ -1392,8 +1392,10 @@ mod tests {
         TestManifest::load(repo_root().join("xtask/test_tiers.toml")).expect("load test manifest")
     }
 
-
-    fn expected_mapped_mode(manifest: &TestManifest, bucket_names: &[String]) -> ChangedSelectionMode {
+    fn expected_mapped_mode(
+        manifest: &TestManifest,
+        bucket_names: &[String],
+    ) -> ChangedSelectionMode {
         let declared = crate::runner::declared_expected_seconds(
             manifest,
             bucket_names.iter().map(String::as_str),
@@ -1481,7 +1483,10 @@ mod tests {
             ],
         );
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         assert_eq!(selection.bucket_names, vec!["tools-search-hybrid"]);
         assert!(
             selection.fallback_paths.is_empty(),
@@ -1498,7 +1503,10 @@ mod tests {
             &["src/tests/tools/workspace/global_targeting/target_activation.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         assert_eq!(selection.bucket_names, vec!["tools-workspace-targeting"]);
         assert!(
             selection.fallback_paths.is_empty(),
@@ -1526,7 +1534,11 @@ mod tests {
             ),
         ] {
             let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-            assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
+            assert_eq!(
+                selection.mode,
+                expected_mapped_mode(&manifest, &selection.bucket_names),
+                "{path}"
+            );
             assert_eq!(selection.bucket_names, vec![expected_bucket], "{path}");
             assert!(
                 selection.fallback_paths.is_empty(),
@@ -1567,7 +1579,11 @@ mod tests {
             ),
         ] {
             let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-            assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "{path}");
+            assert_eq!(
+                selection.mode,
+                expected_mapped_mode(&manifest, &selection.bucket_names),
+                "{path}"
+            );
             assert_eq!(selection.bucket_names, vec![expected_bucket], "{path}");
             assert!(
                 selection.fallback_paths.is_empty(),
@@ -1585,7 +1601,10 @@ mod tests {
             &["src/tests/tools/target_workspace_fast_refs_tests/tests/limits.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         assert_eq!(selection.bucket_names, vec!["tools-fast-refs"]);
         assert!(
             selection.fallback_paths.is_empty(),
@@ -1605,7 +1624,10 @@ mod tests {
             &["crates/julie-runtime/src/watcher/filtering.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         assert_eq!(
             selection.bucket_names,
             vec!["core-runtime", "workspace-runtime"]
@@ -1625,7 +1647,10 @@ mod tests {
             &["crates/julie-pipeline/src/embeddings/sidecar_supervisor.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         // Embedding behavioral tests stayed in the top crate (core-embeddings) and
         // exercise the moved code via shim re-exports, so both buckets must run.
         assert_eq!(
@@ -1644,7 +1669,10 @@ mod tests {
             &["crates/julie-pipeline/src/indexing_core/extraction.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         // indexing engine: crate unit tests (core-pipeline) + the retained
         // end-to-end indexing guards (R6 co-targeting).
         assert_eq!(
@@ -1671,7 +1699,11 @@ mod tests {
             "crates/julie-pipeline/src/finalize.rs",
         ] {
             let selection = select_changed_buckets(&manifest, &[path.to_string()]);
-            assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names), "path={path}");
+            assert_eq!(
+                selection.mode,
+                expected_mapped_mode(&manifest, &selection.bucket_names),
+                "path={path}"
+            );
             assert_eq!(
                 selection.bucket_names,
                 vec![
@@ -1694,7 +1726,10 @@ mod tests {
         let selection =
             select_changed_buckets(&manifest, &["crates/julie-pipeline/src/lib.rs".to_string()]);
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         assert_eq!(
             selection.bucket_names,
             vec!["core-pipeline"],
@@ -1711,7 +1746,10 @@ mod tests {
             &["src/tests/cli/cli_search_no_target_test.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         assert_eq!(selection.bucket_names, vec!["cli"]);
     }
 
@@ -1736,19 +1774,22 @@ mod tests {
             &["src/tests/core/handler_telemetry.rs".to_string()],
         );
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         assert_eq!(selection.bucket_names, vec!["core-handler-telemetry"]);
     }
 
     #[test]
     fn changed_tests_system_health_selection_prices_at_declared_seconds() {
         let manifest = manifest();
-        let selection = select_changed_buckets(
-            &manifest,
-            &["src/health/report.rs".to_string()],
-        );
+        let selection = select_changed_buckets(&manifest, &["src/health/report.rs".to_string()]);
 
-        assert_eq!(selection.mode, expected_mapped_mode(&manifest, &selection.bucket_names));
+        assert_eq!(
+            selection.mode,
+            expected_mapped_mode(&manifest, &selection.bucket_names)
+        );
         assert_eq!(selection.bucket_names, vec!["system-health".to_string()]);
         assert_eq!(
             crate::runner::declared_expected_seconds(

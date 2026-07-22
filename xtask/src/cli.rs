@@ -77,9 +77,9 @@ where
 
     match command.as_str() {
         "test" => Ok(CliCommand::Test(parse_test_command(args)?)),
-        "search-matrix" => bail!(
-            "`search-matrix` moved to `xtask-eval`; use `cargo xtask-eval search-matrix ...`"
-        ),
+        "search-matrix" => {
+            bail!("`search-matrix` moved to `xtask-eval`; use `cargo xtask-eval search-matrix ...`")
+        }
         "sync-plugin" => Ok(CliCommand::SyncPlugin(parse_sync_plugin_command(args)?)),
         "dev-link" => Ok(CliCommand::DevLink(parse_dev_link_command(args)?)),
         "dev-restart" => parse_dev_restart_command(args),

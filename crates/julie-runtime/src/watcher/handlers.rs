@@ -8,7 +8,7 @@ use crate::workspace::mutation_gate::MutationGuard;
 use anyhow::{Context, Result};
 use julie_core::database::SymbolDatabase;
 use julie_core::file_policy::{
-    detect_language_for_indexing_with_content, determine_extraction_mode, ExtractionMode,
+    ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
 };
 use julie_core::indexing_state::IndexingRepairReason;
 use julie_extractors::ExtractorManager;
@@ -69,8 +69,9 @@ fn persist_repair_state(
 
 /// Handle file creation or modification with Blake3 change detection.
 ///
-/// Extracts ALL data (symbols, identifiers, types, relationships) and updates
-/// both SQLite and Tantivy atomically. Pass `None` for `search_index` if
+/// Extracts ALL data (symbols, identifiers, types, relationships), commits SQLite,
+/// and stages Tantivy writes for the watcher runtime's batch commit. Pass `None`
+/// for `search_index` if
 /// Tantivy updates are not needed (e.g., in tests).
 ///
 /// Returns a repair-aware outcome so callers can track projection failures and
@@ -218,17 +219,9 @@ pub async fn handle_file_created_or_modified_static(
     let new_symbol_ids: Vec<String>;
     let old_partner_set: HashSet<String>;
 
-    // Hoist workspace_id before the db-lock block so it's available for the
-    // post-Tantivy projected_revision stamp (canonical_revision is captured
-    // from the SQLite commit below and must outlive the lock block).
     let workspace_key = workspace_root.to_string_lossy();
     let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
         .unwrap_or_else(|_| workspace_key.into_owned());
-    // Populated inside the db-lock block; read after the Tantivy apply.
-    // Declared uninitialized: every non-early-return path through the block
-    // below assigns it before the function reads it past the block.
-    #[allow(unused_assignments)]
-    let mut canonical_revision: Option<i64> = None;
 
     {
         let mut db_lock = match db.lock() {
@@ -282,11 +275,7 @@ pub async fn handle_file_created_or_modified_static(
 
         let files_to_clean = [relative_path.clone()];
         let write_set = watcher_write.canonical_write_set();
-        // Capture canonical_revision so we can stamp projected_revision after a
-        // successful Tantivy apply.  Previously this return value was discarded,
-        // which meant canonical > projected was always true and could never serve
-        // as a crash/handoff lag signal.
-        canonical_revision = db_lock.incremental_update_atomic_with_metadata(
+        db_lock.incremental_update_atomic_with_metadata(
             &files_to_clean,
             &write_set,
             &workspace_id,
@@ -302,7 +291,10 @@ pub async fn handle_file_created_or_modified_static(
         // those cross-file edges. Always rebuilding is correct; the segcount
         // bucketing in `derive_http_call_edges` keeps the cost bounded. An
         // incremental rebuild is a tracked follow-up.
-        julie_pipeline::indexing_core::web_edges::rebuild_web_edges(&mut *db_lock)?;
+        julie_pipeline::indexing_core::web_edges::rebuild_web_edges_for_workspace(
+            &mut *db_lock,
+            &workspace_id,
+        )?;
 
         new_symbol_ids = watcher_write
             .normalized
@@ -432,35 +424,6 @@ pub async fn handle_file_created_or_modified_static(
         true // No search index configured — nothing to fail
     };
 
-    // Stamp projected_revision only after a successful Tantivy apply.
-    // This makes canonical_revision > projected_revision a true crash/handoff
-    // lag signal instead of firing on every healthy save.  The stamp is
-    // best-effort: a failure here is logged but does not abort the index.
-    if tantivy_ok {
-        if let Some(rev) = canonical_revision {
-            let db_lock = match db.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Database mutex poisoned during projected_revision stamp, recovering");
-                    poisoned.into_inner()
-                }
-            };
-            if let Err(e) = db_lock.upsert_projection_state(
-                julie_index::search::projection::TANTIVY_PROJECTION_NAME,
-                &workspace_id,
-                julie_core::database::ProjectionStatus::Ready,
-                Some(rev),
-                Some(rev),
-                None,
-            ) {
-                warn!(
-                    "Failed to stamp projected_revision={} for watcher Tantivy apply: {}",
-                    rev, e
-                );
-            }
-        }
-    }
-
     debug!("Watcher: indexed {}", relative_path);
     if tantivy_ok {
         Ok(FileIndexOutcome::clean())
@@ -491,6 +454,9 @@ pub async fn handle_file_deleted_static(
     // CRITICAL FIX: Convert absolute path to relative for database operations
     let relative_path = julie_core::paths::to_relative_unix_style(&path, workspace_root)
         .context("Failed to convert path to relative")?;
+    let workspace_key = workspace_root.to_string_lossy();
+    let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
+        .unwrap_or_else(|_| workspace_key.into_owned());
 
     {
         let mut db_lock = match db.lock() {
@@ -504,49 +470,17 @@ pub async fn handle_file_deleted_static(
             }
         };
 
-        // Handle transient DELETE events gracefully (e.g., editor save operations)
-        // Editors often delete-then-recreate files, causing DELETE events before the file
-        // was ever indexed. "no such table" errors are harmless in this case.
-        match db_lock.delete_symbols_for_file(&relative_path) {
-            Ok(_) => {}
-            Err(e) => {
-                let err_msg = e.to_string();
-                if err_msg.contains("no such table") {
-                    // Transient state - file was never indexed, nothing to delete
-                    info!("Skipping deletion for {} (not yet indexed)", path.display());
-                    return Ok(());
-                } else {
-                    // Real error - propagate it
-                    return Err(e);
-                }
-            }
-        }
-
-        match db_lock.delete_file_record(&relative_path) {
-            Ok(_) => {}
-            Err(e) => {
-                let err_msg = e.to_string();
-                if err_msg.contains("no such table") {
-                    // Transient state - file record never existed
-                    info!(
-                        "Skipping file record deletion for {} (not yet indexed)",
-                        path.display()
-                    );
-                    return Ok(());
-                } else {
-                    // Real error - propagate it
-                    return Err(e);
-                }
-            }
-        }
+        db_lock.delete_single_file_atomic(
+            &workspace_id,
+            &relative_path,
+            julie_core::database::bulk::atomic::AtomicPersistenceMetadata::default(),
+        )?;
         db_lock.clear_indexing_repair(&relative_path)?;
 
-        // Recompute derived web edges after delete. Cross-file client calls that
-        // targeted this file's handlers lose their `to_symbol_id` via FK
-        // `ON DELETE SET NULL`; without a rebuild they stay dangling
-        // (neither target nor `to_external`). Persistence delete already
-        // rebuilds; the live watcher path must too.
-        julie_pipeline::indexing_core::web_edges::rebuild_web_edges(&mut *db_lock)?;
+        julie_pipeline::indexing_core::web_edges::rebuild_web_edges_for_workspace(
+            &mut *db_lock,
+            &workspace_id,
+        )?;
     } // db_lock is dropped here
 
     info!("Successfully removed indexes for {}", path.display());

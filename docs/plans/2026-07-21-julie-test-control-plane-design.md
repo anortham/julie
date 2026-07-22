@@ -1,7 +1,7 @@
 # Julie Test Control Plane — Design
 
-**Date:** 2026-07-21  
-**Status:** Draft (revised after Codex review)  
+**Date:** 2026-07-21
+**Status:** Draft (revised after Codex review)
 **Slice:** Fast test control plane (Jul 20 improvement audit item #1)
 
 ## Purpose

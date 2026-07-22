@@ -1,5 +1,7 @@
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
+use std::time::Duration;
 use tempfile::TempDir;
 
 use crate::database::types::FileInfo;
@@ -548,6 +550,197 @@ fn test_ensure_current_with_gate_keeps_search_ready_false_on_missing() -> Result
     assert!(
         !search_ready.load(Ordering::Acquire),
         "search_ready must be FALSE when projection ends up Missing"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_ensure_current_rebuilds_ready_empty_workspace_with_stale_index() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("symbols.db");
+    let index_path = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path)?;
+
+    let mut db = SymbolDatabase::new(&db_path)?;
+    let index = SearchIndex::open_or_create(&index_path)?;
+    let projection = SearchProjection::tantivy("ws_empty_ready");
+    let stale_file = make_file("src/stale.rs", "fn stale_symbol() {}\n");
+    let stale_symbol = make_symbol("sym_stale_empty", "stale_symbol", "src/stale.rs");
+
+    db.bulk_store_fresh_atomic(
+        std::slice::from_ref(&stale_file),
+        std::slice::from_ref(&stale_symbol),
+        &[],
+        &[],
+        &[],
+        "ws_empty_ready",
+    )?;
+    projection.ensure_current_from_database(&mut db, &index)?;
+    assert_eq!(index.num_docs(), 2);
+
+    let empty_revision = db
+        .delete_single_file_atomic("ws_empty_ready", &stale_file.path, Default::default())?
+        .expect("deleting the final canonical file should advance the revision");
+    db.upsert_projection_state(
+        "tantivy",
+        "ws_empty_ready",
+        ProjectionStatus::Ready,
+        Some(empty_revision),
+        Some(empty_revision),
+        None,
+    )?;
+
+    let state = projection.ensure_current_from_database(&mut db, &index)?;
+
+    assert_eq!(state.status, ProjectionStatus::Ready);
+    assert_eq!(state.canonical_revision, Some(empty_revision));
+    assert_eq!(index.num_docs(), 0);
+    assert!(
+        index
+            .search_symbols("stale_symbol", &Default::default(), 10)?
+            .results
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_repair_rebuild_hides_empty_generation_from_concurrent_reader() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("symbols.db");
+    let index_path = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path)?;
+
+    let mut db = SymbolDatabase::new(&db_path)?;
+    db.bulk_store_fresh_atomic(
+        &[make_file("src/current.rs", "fn current_symbol() {}\n")],
+        &[make_symbol(
+            "sym_current",
+            "current_symbol",
+            "src/current.rs",
+        )],
+        &[],
+        &[],
+        &[],
+        "ws_rebuild_visibility",
+    )?;
+
+    let index = Arc::new(SearchIndex::open_or_create(&index_path)?);
+    let stale_symbol = make_symbol("sym_stale", "stale_symbol", "src/stale.rs");
+    let stale_file = make_file("src/stale.rs", "fn stale_symbol() {}\n");
+    apply_documents(
+        &index,
+        std::slice::from_ref(&stale_symbol),
+        std::slice::from_ref(&stale_file),
+        &[],
+    )?;
+
+    let (cleared_tx, cleared_rx) = mpsc::sync_channel(0);
+    let (resume_tx, resume_rx) = mpsc::sync_channel(0);
+    index.set_rebuild_pause_for_test(cleared_tx, resume_rx);
+
+    let repair_index = Arc::clone(&index);
+    let repair_db_path = db_path.clone();
+    let repair = std::thread::spawn(move || -> Result<()> {
+        let mut db = SymbolDatabase::new(&repair_db_path)?;
+        SearchProjection::tantivy("ws_rebuild_visibility")
+            .ensure_current_from_database(&mut db, &repair_index)?;
+        Ok(())
+    });
+
+    cleared_rx.recv_timeout(Duration::from_secs(5))?;
+    let reader_index = Arc::new(SearchIndex::open(&index_path)?);
+    let paused_reader_index = Arc::clone(&reader_index);
+    let (reader_tx, reader_rx) = mpsc::sync_channel(0);
+    let reader = std::thread::spawn(move || {
+        let docs = paused_reader_index.num_docs();
+        let stale = paused_reader_index
+            .search_symbols("stale_symbol", &Default::default(), 10)
+            .unwrap()
+            .results
+            .len();
+        let current = paused_reader_index
+            .search_symbols("current_symbol", &Default::default(), 10)
+            .unwrap()
+            .results
+            .len();
+        reader_tx.send((docs, stale, current)).unwrap();
+    });
+
+    let during_rebuild = reader_rx.recv_timeout(Duration::from_secs(2));
+    resume_tx.send(())?;
+    repair.join().unwrap()?;
+    let (visible_docs, stale_hits, current_hits) = during_rebuild?;
+    reader.join().unwrap();
+    assert_eq!(visible_docs, 2);
+    assert_eq!(stale_hits, 1);
+    assert_eq!(current_hits, 0);
+
+    assert_eq!(reader_index.num_docs(), 2);
+    assert_eq!(
+        reader_index
+            .search_symbols("current_symbol", &Default::default(), 10)?
+            .results
+            .len(),
+        1
+    );
+    assert!(
+        reader_index
+            .search_symbols("stale_symbol", &Default::default(), 10)?
+            .results
+            .is_empty()
+    );
+
+    db.bulk_store_fresh_atomic(
+        &[make_file(
+            "src/replacement.rs",
+            "fn replacement_symbol() {}\n",
+        )],
+        &[make_symbol(
+            "sym_replacement",
+            "replacement_symbol",
+            "src/replacement.rs",
+        )],
+        &[],
+        &[],
+        &[],
+        "ws_rebuild_visibility",
+    )?;
+    index.set_rebuild_failure_for_test();
+    SearchProjection::tantivy("ws_rebuild_visibility")
+        .ensure_current_from_database(&mut db, &index)
+        .unwrap_err();
+    assert_eq!(reader_index.num_docs(), 2);
+
+    let unrelated_symbol = make_symbol("sym_unrelated", "unrelated_symbol", "src/unrelated.rs");
+    let unrelated_file = make_file("src/unrelated.rs", "fn unrelated_symbol() {}\n");
+    apply_documents(
+        &index,
+        std::slice::from_ref(&unrelated_symbol),
+        std::slice::from_ref(&unrelated_file),
+        &[],
+    )?;
+
+    assert_eq!(reader_index.num_docs(), 4);
+    assert_eq!(
+        reader_index
+            .search_symbols("current_symbol", &Default::default(), 10)?
+            .results
+            .len(),
+        1
+    );
+    assert!(
+        reader_index
+            .search_symbols("replacement_symbol", &Default::default(), 10)?
+            .results
+            .is_empty()
+    );
+    assert_eq!(
+        reader_index
+            .search_symbols("unrelated_symbol", &Default::default(), 10)?
+            .results
+            .len(),
+        1
     );
     Ok(())
 }

@@ -50,9 +50,9 @@ fn main() -> anyhow::Result<()> {
             let manifest = TestManifest::load(workspace_root().join("xtask/test_tiers.toml"))?;
             let command = match validate_cli_command(&manifest, CliCommand::Test(command))? {
                 CliCommand::Test(command) => command,
-                CliCommand::SyncPlugin(_)
-                | CliCommand::DevLink(_)
-                | CliCommand::DevRestart(_) => unreachable!("validated test command changed shape"),
+                CliCommand::SyncPlugin(_) | CliCommand::DevLink(_) | CliCommand::DevRestart(_) => {
+                    unreachable!("validated test command changed shape")
+                }
             };
 
             match command {

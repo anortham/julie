@@ -171,29 +171,65 @@ fn runner_tests_transform_leaves_nextest_run_prefix_collisions_unchanged() {
 
 #[test]
 fn runner_tests_prebuild_runs_before_bucket_commands() {
-    let manifest = sample_manifest();
-    let executor = FakeExecutor::successful();
+    let manifest = target_aware_manifest();
+    let executor = FakeExecutor::with_outcomes([
+        (
+            "cargo nextest run --no-run -p julie-core --lib",
+            CommandOutcome::Passed {
+                elapsed: Duration::from_secs(2),
+            },
+        ),
+        (
+            "cargo nextest run --no-run -p xtask",
+            CommandOutcome::Passed {
+                elapsed: Duration::from_secs(3),
+            },
+        ),
+        (
+            "cargo test --no-run -p julie-runtime --lib",
+            CommandOutcome::Passed {
+                elapsed: Duration::from_secs(5),
+            },
+        ),
+    ]);
     let mut output = Vec::new();
 
-    run_tier(&manifest, "smoke", 1, false, &executor, &mut output).unwrap();
+    let summary = run_tier(&manifest, "smoke", 1, false, &executor, &mut output).unwrap();
 
     let calls = executor.command_calls();
     assert_eq!(
-        calls[0], "cargo nextest run --no-run --lib",
-        "first command should be prebuild, got: {calls:?}"
+        &calls[..3],
+        [
+            "cargo nextest run --no-run -p julie-core --lib",
+            "cargo nextest run --no-run -p xtask",
+            "cargo test --no-run -p julie-runtime --lib",
+        ],
+        "selected test targets must be prebuilt once in first-seen order; got: {calls:?}"
     );
     assert_eq!(
         calls.iter().filter(|c| c.contains("--no-run")).count(),
-        1,
-        "prebuild should run exactly once, got: {calls:?}"
+        3,
+        "each unique test target should be prebuilt exactly once, got: {calls:?}"
     );
+    assert_eq!(
+        &calls[3..],
+        [
+            "cargo nextest run -p julie-core --lib tests::database",
+            "cargo nextest run -p julie-core --lib tests::paths",
+            "cargo nextest run -p xtask changed_tests",
+            "cargo build -p julie-core",
+            "cargo test -p julie-runtime --lib tests::watcher",
+        ],
+        "bucket work must start only after every selected test target is built"
+    );
+    assert_eq!(summary.prebuild_elapsed, Duration::from_secs(10));
 }
 
 #[test]
 fn runner_tests_prebuild_failure_aborts_before_any_bucket() {
     let manifest = sample_manifest();
     let executor = FakeExecutor::with_outcomes([(
-        "cargo nextest run --no-run --lib",
+        "cargo test --no-run --lib",
         CommandOutcome::Failed {
             elapsed: Duration::from_secs(5),
             exit_code: Some(1),
@@ -219,7 +255,7 @@ fn runner_tests_prebuild_failure_aborts_before_any_bucket() {
         1,
         "only prebuild should have run, got: {calls:?}"
     );
-    assert_eq!(calls[0], "cargo nextest run --no-run --lib");
+    assert_eq!(calls[0], "cargo test --no-run --lib");
 }
 
 #[test]
@@ -232,7 +268,7 @@ fn runner_tests_prebuild_coverage_mode_transforms_command() {
 
     let calls = executor.command_calls();
     assert_eq!(
-        calls[0], "cargo llvm-cov --no-report nextest --no-run --lib",
+        calls[0], "cargo llvm-cov --no-report test --no-run --lib",
         "coverage mode should transform the prebuild command, got: {calls:?}"
     );
 }
@@ -249,6 +285,36 @@ expected_seconds = 5
 timeout_seconds = 30
 scope_label = "smoke"
 commands = ["cargo test --lib tests::cli_tests"]
+"#,
+    )
+    .unwrap()
+}
+
+fn target_aware_manifest() -> TestManifest {
+    TestManifest::from_str(
+        r#"
+[tiers]
+fast = ["core"]
+smoke = ["core", "harness"]
+
+[buckets.core]
+expected_seconds = 5
+timeout_seconds = 30
+scope_label = "core"
+commands = [
+    "cargo nextest run -p julie-core --lib tests::database",
+    "cargo nextest run -p julie-core --lib tests::paths",
+]
+
+[buckets.harness]
+expected_seconds = 5
+timeout_seconds = 30
+scope_label = "harness"
+commands = [
+    "cargo nextest run -p xtask changed_tests",
+    "cargo build -p julie-core",
+    "cargo test -p julie-runtime --lib tests::watcher",
+]
 "#,
     )
     .unwrap()

@@ -14,10 +14,10 @@ use super::second_hop::{merge_expansions, select_second_hop_seeds, should_expand
 use super::task_signals::{
     TaskSignals, hydrate_failing_test_links, merge_task_signal_seed_results,
 };
-use julie_core::database::SymbolDatabase;
-use julie_context::ToolContext;
 use crate::navigation::resolution::WorkspaceTarget;
 use crate::spillover::{SpilloverFormat, SpilloverStore};
+use julie_context::ToolContext;
+use julie_core::database::SymbolDatabase;
 
 /// Run the full get_context pipeline: search → rank → expand → allocate → format.
 pub fn run_pipeline(
@@ -204,7 +204,9 @@ pub fn run_pipeline_with_options(
 
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
 pub async fn run(tool: &GetContextTool, handler: &dyn ToolContext) -> Result<String> {
-    let workspace_target = handler.resolve_workspace_target(tool.workspace.as_deref()).await?;
+    let workspace_target = handler
+        .resolve_workspace_target(tool.workspace.as_deref())
+        .await?;
     run_with_target(tool, handler, workspace_target).await
 }
 
@@ -282,10 +284,11 @@ pub async fn run_with_target(
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let db = db.into_read_snapshot()?;
                 // Compute embedding before searching (sidecar RPC can take tens of seconds).
-                let precomputed_embedding = julie_index::search::hybrid::compute_query_embedding_for_hybrid(
-                    &query,
-                    embedding_provider.as_deref(),
-                );
+                let precomputed_embedding =
+                    julie_index::search::hybrid::compute_query_embedding_for_hybrid(
+                        &query,
+                        embedding_provider.as_deref(),
+                    );
                 let index = search_index;
                 run_pipeline_with_options(
                     &query,

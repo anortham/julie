@@ -17,15 +17,15 @@
 mod structural_facts_text_test {
     use tempfile::TempDir;
 
+    use crate::database::SymbolDatabase;
     use crate::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
     use crate::database::types::FileInfo;
-    use crate::database::SymbolDatabase;
     use crate::extractors::base::StructuralFact;
     use crate::extractors::{Symbol, SymbolKind};
     use crate::search::index::UnifiedHit;
     use crate::search::projection::apply_documents_with_db;
     use crate::search::projection::collect_structural_facts_text_bounded;
-    use crate::search::{SearchFilter, SearchIndex};
+    use crate::search::{SearchFilter, SearchIndex, SearchProjection};
 
     fn make_db(dir: &TempDir) -> SymbolDatabase {
         let db_path = dir.path().join("symbols.db");
@@ -147,6 +147,33 @@ mod structural_facts_text_test {
                 ("table_name".to_string(), serde_json::json!(table_name)),
                 ("has_where".to_string(), serde_json::json!(true)),
             ])),
+        }
+    }
+
+    fn metadata_fact(
+        id: &str,
+        pattern_id: &str,
+        file_path: &str,
+        line: u32,
+        symbol_id: &str,
+        metadata: std::collections::HashMap<String, serde_json::Value>,
+    ) -> StructuralFact {
+        StructuralFact {
+            id: id.to_string(),
+            file_path: file_path.to_string(),
+            language: "typescript".to_string(),
+            pattern_id: pattern_id.to_string(),
+            capture_name: "node".to_string(),
+            node_kind: "call_expression".to_string(),
+            containing_symbol_id: Some(symbol_id.to_string()),
+            start_line: line,
+            start_column: 0,
+            end_line: line,
+            end_column: 20,
+            start_byte: line * 10,
+            end_byte: line * 10 + 20,
+            confidence: 1.0,
+            metadata: Some(metadata),
         }
     }
 
@@ -385,5 +412,152 @@ mod structural_facts_text_test {
             blob.contains("GET"),
             "facts-text blob must carry the verb; got: {blob:?}"
         );
+    }
+
+    #[test]
+    fn endpoint_and_table_metadata_variants_are_searchable() {
+        let dir = TempDir::new().unwrap();
+        let mut db = make_db(&dir);
+        let index = make_index(&dir);
+        let file = make_file_info("src/web.ts", "typescript", 3);
+        let symbols = vec![
+            make_symbol(
+                "sym-target-path",
+                "clientRequest",
+                SymbolKind::Function,
+                "src/web.ts",
+                "typescript",
+            ),
+            make_symbol(
+                "sym-target-table",
+                "targetMutation",
+                SymbolKind::Function,
+                "src/web.ts",
+                "typescript",
+            ),
+            make_symbol(
+                "sym-source-tables",
+                "sourceView",
+                SymbolKind::Function,
+                "src/web.ts",
+                "typescript",
+            ),
+        ];
+        let facts = vec![
+            metadata_fact(
+                "fact-target-path",
+                "http.client_request.v1",
+                "src/web.ts",
+                2,
+                "sym-target-path",
+                std::collections::HashMap::from([(
+                    "target_path".to_string(),
+                    serde_json::json!("/canary/zqxclientpath"),
+                )]),
+            ),
+            metadata_fact(
+                "fact-target-table",
+                "sql.update_statement.v1",
+                "src/web.ts",
+                4,
+                "sym-target-table",
+                std::collections::HashMap::from([(
+                    "target_table".to_string(),
+                    serde_json::json!("zqxtargettable"),
+                )]),
+            ),
+            metadata_fact(
+                "fact-source-tables",
+                "sql.view_definition.v1",
+                "src/web.ts",
+                6,
+                "sym-source-tables",
+                std::collections::HashMap::from([(
+                    "source_tables".to_string(),
+                    serde_json::json!(["zqxsourceone", "zqxsourcetwo"]),
+                )]),
+            ),
+        ];
+
+        seed_and_project(&mut db, &index, file, symbols, facts);
+
+        assert_eq!(search(&index, "zqxclientpath"), vec!["clientRequest"]);
+        assert_eq!(search(&index, "zqxtargettable"), vec!["targetMutation"]);
+        assert_eq!(search(&index, "zqxsourcetwo"), vec!["sourceView"]);
+    }
+
+    #[test]
+    fn full_and_repair_projection_preserve_structural_fact_searchability() {
+        let dir = TempDir::new().unwrap();
+        let mut db = make_db(&dir);
+        let route_symbol = make_symbol(
+            "sym-route-rebuild",
+            "routeEntry",
+            SymbolKind::Function,
+            "src/routes.php",
+            "php",
+        );
+        let table_symbol = make_symbol(
+            "sym-table-rebuild",
+            "tableEntry",
+            SymbolKind::Method,
+            "schema/update.sql",
+            "sql",
+        );
+        let files = vec![
+            make_file_info("src/routes.php", "php", 1),
+            make_file_info("schema/update.sql", "sql", 1),
+        ];
+        let symbols = vec![route_symbol, table_symbol];
+        let facts = vec![
+            route_fact(
+                "fact-route-rebuild",
+                "src/routes.php",
+                4,
+                "sym-route-rebuild",
+                "GET",
+                "/tenant/route-canary/{id}",
+            ),
+            update_fact(
+                "fact-table-rebuild",
+                "schema/update.sql",
+                6,
+                "sym-table-rebuild",
+                "ledger_canary",
+            ),
+        ];
+        let file_paths: Vec<String> = files.iter().map(|file| file.path.clone()).collect();
+        let write_set = CanonicalWriteSet {
+            files: &files,
+            symbols: &symbols,
+            structural_facts: &facts,
+            ..Default::default()
+        };
+        db.incremental_update_atomic_with_metadata(
+            &file_paths,
+            &write_set,
+            "structural-facts-rebuild",
+            AtomicPersistenceMetadata::default(),
+        )
+        .unwrap();
+
+        let full_path = dir.path().join("full-index");
+        std::fs::create_dir_all(&full_path).unwrap();
+        let full_index = SearchIndex::create(&full_path).unwrap();
+        let projection = SearchProjection::tantivy("structural-facts-rebuild");
+        projection
+            .ensure_current_from_database(&mut db, &full_index)
+            .unwrap();
+        assert_eq!(search(&full_index, "route-canary"), vec!["routeEntry"]);
+        assert_eq!(search(&full_index, "ledger_canary"), vec!["tableEntry"]);
+
+        let repair_path = dir.path().join("repair-index");
+        std::fs::create_dir_all(&repair_path).unwrap();
+        let repair_index = SearchIndex::create(&repair_path).unwrap();
+        projection
+            .ensure_current_from_database(&mut db, &repair_index)
+            .unwrap();
+        assert_eq!(search(&repair_index, "route-canary"), vec!["routeEntry"]);
+        assert_eq!(search(&repair_index, "ledger_canary"), vec!["tableEntry"]);
     }
 }

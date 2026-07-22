@@ -4,9 +4,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use julie_pipeline::embeddings::EmbeddingProvider;
 use julie_extractors::{Symbol, SymbolKind};
 use julie_index::search::{SearchFilter, SymbolSearchResult};
+use julie_pipeline::embeddings::EmbeddingProvider;
 
 use julie_context::ToolContext;
 
@@ -117,8 +117,9 @@ pub async fn execute_search_unified(
         params.exclude_tests,
     );
     let backend_fallback = if params.backend.value != SearchBackend::Lexical {
-        if let Some(provider) =
-            handler.ensure_embedding_provider(Duration::from_secs(3)).await
+        if let Some(provider) = handler
+            .ensure_embedding_provider(Duration::from_secs(3))
+            .await
         {
             if workspaces_have_embeddings(workspaces, handler).await? {
                 let mut execution = run_symbol_backend_pass(

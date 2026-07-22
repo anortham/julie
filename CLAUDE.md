@@ -116,11 +116,11 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 
 Runner summaries report three clocks:
 
-- **Warm** — bucket execution after binaries exist (`SUMMARY: … (warm)`)
-- **PREBUILD** — time spent compiling/linking test binaries before warm work
+- **Warm** — selected bucket commands after every selected Rust test target has been prebuilt; non-test commands remain bucket work (`SUMMARY: … (warm)`)
+- **PREBUILD** — summed compile/link time for deterministic, de-duplicated `--no-run` commands derived from selected `cargo nextest run` and `cargo test` package/target selectors
 - **COLD WALL** — `PREBUILD + warm` (cold `fast` may exceed the 60s **declared** budget without falsifying it)
 
-Lean `cargo xtask …` commands do not compile/link the root `julie` package. Product-linked harnesses live under `cargo xtask-eval …`.
+The `cargo xtask …` frontend stays lean. Runner prebuild compiles only the Rust test targets implied by selected bucket commands; buckets with no Rust test command report zero prebuild time. Product-linked harnesses live under `cargo xtask-eval …`.
 
 ### Default Workflow
 

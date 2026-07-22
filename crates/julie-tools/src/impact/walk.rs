@@ -3,9 +3,9 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 
 use crate::impact::ranking::relationship_priority;
-use julie_core::database::impact_graph::identifier_incoming_edges;
 use julie_core::database::SymbolDatabase;
 use julie_core::database::WebEdgeKind;
+use julie_core::database::impact_graph::identifier_incoming_edges;
 use julie_extractors::{Relationship, RelationshipKind, Symbol};
 
 #[derive(Debug, Clone)]
@@ -24,7 +24,7 @@ pub struct ImpactCandidate {
 /// so the default blast-radius output stays byte-identical.
 #[derive(Debug, Clone)]
 pub struct WebCaller {
-    pub caller: Symbol,
+    pub impact: ImpactCandidate,
     /// Human-readable endpoint/table label, e.g. `"GET /api/users/123"` for
     /// matched HTTP edges, `"table:users"` for matched SQL edges, or the
     /// external-endpoint label for unmatched calls.
@@ -41,6 +41,13 @@ fn web_edge_via_label(kind: WebEdgeKind) -> &'static str {
     }
 }
 
+fn web_edge_relationship_kind(kind: WebEdgeKind) -> RelationshipKind {
+    match kind {
+        WebEdgeKind::HttpCall => RelationshipKind::Calls,
+        WebEdgeKind::SqlQuery => RelationshipKind::References,
+    }
+}
+
 /// Reverse web-edge lookup: given seed symbol ids (route handlers or table
 /// symbols), return the symbols that call them via derived `http_call` /
 /// `sql_query` edges. Used by the blast-radius tool in `web` mode to surface
@@ -53,6 +60,8 @@ pub fn walk_web_callers(db: &SymbolDatabase, seed_symbol_ids: &[String]) -> Resu
     let caller_ids: Vec<String> = edges.iter().map(|e| e.from_symbol_id.clone()).collect();
     let symbols = db.get_symbols_by_ids(&caller_ids)?;
     let map: HashMap<String, Symbol> = symbols.into_iter().map(|s| (s.id.clone(), s)).collect();
+    let caller_id_refs: Vec<&str> = caller_ids.iter().map(String::as_str).collect();
+    let reference_scores = db.get_reference_scores(&caller_id_refs)?;
     let mut callers = Vec::new();
     for edge in edges {
         let Some(caller) = map.get(&edge.from_symbol_id).cloned() else {
@@ -76,16 +85,25 @@ pub fn walk_web_callers(db: &SymbolDatabase, seed_symbol_ids: &[String]) -> Resu
                     })
             }
         };
+        let relationship_kind = web_edge_relationship_kind(edge.kind);
+        let reference_score = reference_scores.get(&caller.id).copied().unwrap_or(0.0);
         callers.push(WebCaller {
-            caller,
+            impact: ImpactCandidate {
+                symbol: caller,
+                distance: 1,
+                relationship_kind,
+                reference_score,
+                via_symbol_name: endpoint.clone(),
+            },
             endpoint,
             via,
         });
     }
     callers.sort_by(|a, b| {
-        a.caller
+        a.impact
+            .symbol
             .id
-            .cmp(&b.caller.id)
+            .cmp(&b.impact.symbol.id)
             .then(a.via.cmp(b.via))
             .then(a.endpoint.cmp(&b.endpoint))
     });

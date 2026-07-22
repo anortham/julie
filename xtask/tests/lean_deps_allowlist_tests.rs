@@ -12,13 +12,7 @@ use std::process::Command;
 const ALLOWED_DIRECT_NORMALS: &[&str] = &["anyhow", "serde", "toml"];
 
 /// Packages that must never appear as normal deps (direct or depth-1 tree).
-const FORBIDDEN_NORMALS: &[&str] = &[
-    "julie",
-    "rusqlite",
-    "serde_json",
-    "tempfile",
-    "tokio",
-];
+const FORBIDDEN_NORMALS: &[&str] = &["julie", "rusqlite", "serde_json", "tempfile", "tokio"];
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use crate::database::ProjectionStatus;
+use crate::database::{ProjectionStatus, WebEdge, WebEdgeKind};
 use anyhow::Result;
 use rusqlite::OptionalExtension;
 use tempfile::TempDir;
@@ -129,6 +129,19 @@ async fn symbol_count(handler: &JulieServerHandler, route: &IndexRoute) -> Resul
     db.conn
         .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
         .map_err(anyhow::Error::from)
+}
+
+async fn web_edges_of_kind(
+    handler: &JulieServerHandler,
+    route: &IndexRoute,
+    kind: WebEdgeKind,
+) -> Result<Vec<WebEdge>> {
+    let db = route
+        .database_for_read(handler)
+        .await?
+        .expect("database should exist for indexing pipeline tests");
+    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    db.web_edges_of_kind(kind)
 }
 
 async fn symbol_count_for_file(
@@ -705,6 +718,122 @@ async fn test_projection_waiting_on_tantivy_lock_releases_database_mutex() -> Re
         released_database_mutex,
         "projection blocked on Tantivy must release the SQLite mutex after marking projection building"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_indexing_pipeline_reconciles_web_edges_across_canonical_mutations() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let client_path = temp_dir.path().join("client.js");
+    let server_path = temp_dir.path().join("server.js");
+    let schema_path = temp_dir.path().join("schema.sql");
+
+    fs::write(
+        &client_path,
+        r#"export async function loadUsers() {
+  return fetch("/api/users");
+}
+"#,
+    )?;
+    fs::write(
+        &server_path,
+        r#"import express from "express";
+
+export function registerRoutes() {
+  const app = express();
+  app.get("/api/users", listUsers);
+}
+"#,
+    )?;
+    fs::write(
+        &schema_path,
+        "CREATE TABLE workers (\n    id INTEGER PRIMARY KEY,\n    name TEXT NOT NULL\n);\n\nCREATE VIEW active_workers AS\nSELECT id, name\nFROM workers\nWHERE id > 0;\n",
+    )?;
+
+    let (handler, _, route) = test_handler_and_route(&temp_dir).await?;
+    run_indexing_pipeline(
+        &workspace_tool(),
+        &handler,
+        vec![
+            client_path.clone(),
+            server_path.clone(),
+            schema_path.clone(),
+        ],
+        &route,
+        IndexingOperation::Full,
+    )
+    .await?;
+
+    let http_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::HttpCall).await?;
+    assert_eq!(http_edges.len(), 1, "{http_edges:#?}");
+    assert!(http_edges[0].to_symbol_id.is_some(), "{http_edges:#?}");
+    assert_eq!(http_edges[0].to_external, None);
+
+    let sql_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::SqlQuery).await?;
+    assert_eq!(sql_edges.len(), 1, "{sql_edges:#?}");
+    assert!(sql_edges[0].to_symbol_id.is_some(), "{sql_edges:#?}");
+    assert_eq!(sql_edges[0].to_external, None);
+
+    fs::write(
+        &client_path,
+        r#"export async function loadUsers() {
+  return fetch("/api/missing");
+}
+"#,
+    )?;
+    run_indexing_pipeline(
+        &workspace_tool(),
+        &handler,
+        vec![client_path.clone()],
+        &route,
+        IndexingOperation::Incremental,
+    )
+    .await?;
+
+    let http_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::HttpCall).await?;
+    assert_eq!(http_edges.len(), 1, "{http_edges:#?}");
+    assert_eq!(http_edges[0].to_symbol_id, None);
+    assert_eq!(
+        http_edges[0].to_external.as_deref(),
+        Some("GET /api/missing")
+    );
+
+    fs::write(
+        &client_path,
+        r#"export async function loadUsers() {
+  return fetch("/api/users");
+}
+"#,
+    )?;
+    run_indexing_pipeline(
+        &workspace_tool(),
+        &handler,
+        vec![client_path.clone()],
+        &route,
+        IndexingOperation::Incremental,
+    )
+    .await?;
+
+    let http_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::HttpCall).await?;
+    assert_eq!(http_edges.len(), 1, "{http_edges:#?}");
+    assert!(http_edges[0].to_symbol_id.is_some(), "{http_edges:#?}");
+
+    fs::remove_file(&server_path)?;
+    let (files_to_process, orphans_cleaned) = workspace_tool()
+        .filter_changed_files(&handler, vec![client_path, schema_path], &route)
+        .await?;
+    assert!(files_to_process.is_empty(), "{files_to_process:#?}");
+    assert_eq!(orphans_cleaned, 1);
+
+    let http_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::HttpCall).await?;
+    assert_eq!(http_edges.len(), 1, "{http_edges:#?}");
+    assert_eq!(http_edges[0].to_symbol_id, None);
+    assert_eq!(http_edges[0].to_external.as_deref(), Some("GET /api/users"));
+
+    let sql_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::SqlQuery).await?;
+    assert_eq!(sql_edges.len(), 1, "{sql_edges:#?}");
+    assert!(sql_edges[0].to_symbol_id.is_some(), "{sql_edges:#?}");
 
     Ok(())
 }

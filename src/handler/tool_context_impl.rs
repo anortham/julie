@@ -112,8 +112,7 @@ impl ToolContext for JulieServerHandler {
         &self,
         timeout: Duration,
     ) -> Option<Arc<dyn EmbeddingProvider>> {
-        crate::handler::embedding_init::wait_for_embedding_provider_settled(self, timeout)
-            .await
+        crate::handler::embedding_init::wait_for_embedding_provider_settled(self, timeout).await
     }
 
     // ── Purpose-methods (top-crate impls) ────────────────────────────────
@@ -169,10 +168,7 @@ impl ToolContext for JulieServerHandler {
 
     /// Top-crate purpose-method: delegates to `HealthChecker::check_system_readiness`
     /// which reads `embedding_service.is_some()` (daemon-only field, Blocker B5).
-    async fn system_readiness(
-        &self,
-        target_workspace_id: Option<&str>,
-    ) -> Result<SystemStatus> {
+    async fn system_readiness(&self, target_workspace_id: Option<&str>) -> Result<SystemStatus> {
         crate::health::HealthChecker::check_system_readiness(self, target_workspace_id).await
     }
 }

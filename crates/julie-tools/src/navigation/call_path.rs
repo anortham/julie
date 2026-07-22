@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use julie_core::mcp_compat::{CallToolResult, Content};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use julie_core::database::SymbolDatabase;
 use julie_core::mcp_compat::CallToolResultExt;
 use julie_extractors::{Relationship, RelationshipKind, Symbol};
 
-use super::resolution::{file_path_matches_suffix, WorkspaceTarget};
+use super::resolution::{WorkspaceTarget, file_path_matches_suffix};
 
 const DEFAULT_MAX_HOPS: u32 = 6;
 const MAX_HOPS: u32 = 32;

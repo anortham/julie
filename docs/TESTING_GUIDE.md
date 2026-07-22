@@ -87,11 +87,11 @@ cargo nextest run --lib test_stemming
 
 Runner summaries print:
 
-- `SUMMARY: … (warm)` — bucket execution after binaries exist
-- `PREBUILD:` — compile/link time before warm work
-- `COLD WALL:` — `PREBUILD + warm` (may exceed the 60s **declared** fast budget on a cold machine)
+- `SUMMARY: … (warm)` — selected bucket commands after every selected Rust test target has been prebuilt; non-test commands remain bucket work
+- `PREBUILD:` — summed compile/link time for the deterministic, de-duplicated `--no-run` commands derived from selected `cargo nextest run` and `cargo test` package/target selectors
+- `COLD WALL:` — `PREBUILD + warm`; it may exceed the 60s **declared** fast budget on a cold machine
 
-Lean `cargo xtask …` does not compile/link the root `julie` package. Use `cargo xtask-eval …` for product-linked harnesses.
+The `cargo xtask …` frontend stays lean. Runner prebuild compiles only the Rust test targets implied by the selected bucket commands; buckets with no Rust test command report zero prebuild time. Use `cargo xtask-eval …` for product-linked harnesses.
 
 ## Test Tiers
 

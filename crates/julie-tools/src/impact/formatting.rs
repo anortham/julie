@@ -1,7 +1,7 @@
+use crate::impact::LikelyTests;
 use crate::impact::ranking::RankedImpact;
 use crate::impact::seed::SeedContext;
-use crate::impact::LikelyTests;
-use crate::spillover::{more_available_marker, SpilloverFormat, SpilloverStore};
+use crate::spillover::{SpilloverFormat, SpilloverStore, more_available_marker};
 
 /// Extra context that shapes the blast-radius header line.
 ///

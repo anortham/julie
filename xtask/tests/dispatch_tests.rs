@@ -51,7 +51,7 @@ fn dispatch_tests_changed_coverage_cleans_runs_buckets_and_reports() {
     assert!(
         calls
             .iter()
-            .any(|call| call == "cargo llvm-cov --no-report nextest --no-run --lib"),
+            .any(|call| call == "cargo llvm-cov --no-report nextest --no-run -p xtask"),
         "coverage run must prebuild through llvm-cov; calls: {calls:?}"
     );
     assert!(

@@ -65,7 +65,7 @@ pub struct RunSummary {
     pub passed_buckets: usize,
     /// Warm wall: sum of bucket execution times only (excludes prebuild).
     pub total_elapsed: Duration,
-    /// Time spent in `prebuild_test_binary` before bucket execution.
+    /// Time spent prebuilding selected Rust test targets before bucket execution.
     pub prebuild_elapsed: Duration,
 }
 
@@ -319,7 +319,7 @@ where
 {
     let bucket_names = bucket_names.to_vec();
 
-    let prebuild_elapsed = match prebuild_test_binary(coverage, executor) {
+    let prebuild_elapsed = match prebuild_test_binary(manifest, &bucket_names, coverage, executor) {
         Ok(elapsed) => elapsed,
         Err(error) => {
             return Err(RunFailure {
@@ -389,11 +389,12 @@ where
     E: CommandExecutor,
     W: Write,
 {
-    let prebuild_elapsed = match prebuild_test_binary(coverage, executor) {
+    let bucket_names = vec![bucket_name.to_string()];
+    let prebuild_elapsed = match prebuild_test_binary(manifest, &bucket_names, coverage, executor) {
         Ok(elapsed) => elapsed,
         Err(error) => {
             return Err(RunFailure {
-                summary: empty_summary(vec![bucket_name.to_string()], error.elapsed),
+                summary: empty_summary(bucket_names, error.elapsed),
                 message: error.message,
             });
         }
@@ -408,7 +409,7 @@ where
         writer,
     ) {
         Ok(bucket_result) => Ok(RunSummary {
-            bucket_names: vec![bucket_name.to_string()],
+            bucket_names,
             passed_buckets: usize::from(bucket_result.status == BucketStatus::Passed),
             total_elapsed: bucket_result.elapsed,
             prebuild_elapsed,
@@ -416,7 +417,7 @@ where
         }),
         Err(error) => Err(RunFailure {
             summary: RunSummary {
-                bucket_names: vec![bucket_name.to_string()],
+                bucket_names,
                 passed_buckets: 0,
                 total_elapsed: error.result.elapsed,
                 prebuild_elapsed,
@@ -464,40 +465,160 @@ pub fn render_bucket_result(result: &BucketResult) -> String {
 }
 
 fn prebuild_test_binary<E: CommandExecutor>(
+    manifest: &TestManifest,
+    bucket_names: &[String],
     coverage: bool,
     executor: &E,
 ) -> std::result::Result<Duration, PrebuildError> {
-    const COMMAND: &str = "cargo nextest run --no-run --lib";
     const TIMEOUT_SECS: u64 = 600;
+    let mut total_elapsed = Duration::ZERO;
 
-    let command = if coverage {
-        transform_command_for_coverage(COMMAND)
+    for raw_command in selected_prebuild_commands(manifest, bucket_names) {
+        let command = if coverage {
+            transform_command_for_coverage(&raw_command)
+        } else {
+            raw_command
+        };
+
+        let result = executor
+            .run("prebuild", &command, Duration::from_secs(TIMEOUT_SECS))
+            .map_err(|e| PrebuildError {
+                elapsed: total_elapsed,
+                message: format!("prebuild `{command}` failed to launch: {e}"),
+            })?;
+
+        total_elapsed += command_outcome_elapsed(&result.outcome);
+        match result.outcome {
+            CommandOutcome::Passed { .. } => {}
+            CommandOutcome::Failed { exit_code, .. } => {
+                return Err(PrebuildError {
+                    elapsed: total_elapsed,
+                    message: format!(
+                        "prebuild `{command}` failed (exit code: {})",
+                        exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string())
+                    ),
+                });
+            }
+            CommandOutcome::TimedOut { .. } => {
+                return Err(PrebuildError {
+                    elapsed: total_elapsed,
+                    message: format!("prebuild `{command}` timed out after {TIMEOUT_SECS}s"),
+                });
+            }
+        }
+    }
+
+    Ok(total_elapsed)
+}
+
+fn selected_prebuild_commands(manifest: &TestManifest, bucket_names: &[String]) -> Vec<String> {
+    let mut commands = Vec::new();
+    for bucket_name in bucket_names {
+        let Some(bucket) = manifest.buckets.get(bucket_name) else {
+            continue;
+        };
+        for command in &bucket.commands {
+            let Some(prebuild) = derive_prebuild_command(command) else {
+                continue;
+            };
+            if !commands.contains(&prebuild) {
+                commands.push(prebuild);
+            }
+        }
+    }
+    commands
+}
+
+fn derive_prebuild_command(command: &str) -> Option<String> {
+    let (prefix, rest) = if let Some(rest) = strip_exact_command_prefix(command, "cargo test") {
+        ("cargo test", rest)
+    } else if let Some(rest) = strip_exact_command_prefix(command, "cargo nextest run") {
+        ("cargo nextest run", rest)
     } else {
-        COMMAND.to_string()
+        return None;
     };
 
-    let result = executor
-        .run("prebuild", &command, Duration::from_secs(TIMEOUT_SECS))
-        .map_err(|e| PrebuildError {
-            elapsed: Duration::ZERO,
-            message: format!("prebuild failed to launch: {e}"),
-        })?;
-
-    let elapsed = command_outcome_elapsed(&result.outcome);
-    match result.outcome {
-        CommandOutcome::Passed { .. } => Ok(elapsed),
-        CommandOutcome::Failed { exit_code, .. } => Err(PrebuildError {
-            elapsed,
-            message: format!(
-                "prebuild `{command}` failed (exit code: {})",
-                exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string())
-            ),
-        }),
-        CommandOutcome::TimedOut { .. } => Err(PrebuildError {
-            elapsed,
-            message: format!("prebuild `{command}` timed out after {TIMEOUT_SECS}s"),
-        }),
+    let mut selected_arguments = Vec::new();
+    let mut arguments = rest.split_whitespace();
+    while let Some(argument) = arguments.next() {
+        if argument == "--" {
+            break;
+        }
+        if is_prebuild_flag(argument) || is_inline_prebuild_option(argument) {
+            selected_arguments.push(argument);
+        } else if is_prebuild_option(argument) {
+            selected_arguments.push(argument);
+            if let Some(value) = arguments.next() {
+                selected_arguments.push(value);
+            }
+        }
     }
+
+    let mut prebuild = format!("{prefix} --no-run");
+    if !selected_arguments.is_empty() {
+        prebuild.push(' ');
+        prebuild.push_str(&selected_arguments.join(" "));
+    }
+    Some(prebuild)
+}
+
+fn is_prebuild_flag(argument: &str) -> bool {
+    matches!(
+        argument,
+        "--workspace"
+            | "--all"
+            | "--lib"
+            | "--bins"
+            | "--examples"
+            | "--tests"
+            | "--benches"
+            | "--all-targets"
+            | "--doc"
+            | "--all-features"
+            | "--no-default-features"
+            | "--release"
+            | "--locked"
+            | "--frozen"
+            | "--offline"
+    )
+}
+
+fn is_prebuild_option(argument: &str) -> bool {
+    matches!(
+        argument,
+        "-p" | "--package"
+            | "--exclude"
+            | "--bin"
+            | "--example"
+            | "--test"
+            | "--bench"
+            | "-F"
+            | "--features"
+            | "--target"
+            | "--target-dir"
+            | "--manifest-path"
+            | "--profile"
+    )
+}
+
+fn is_inline_prebuild_option(argument: &str) -> bool {
+    [
+        "--package=",
+        "--exclude=",
+        "--bin=",
+        "--example=",
+        "--test=",
+        "--bench=",
+        "--features=",
+        "--target=",
+        "--target-dir=",
+        "--manifest-path=",
+        "--profile=",
+    ]
+    .iter()
+    .any(|prefix| argument.starts_with(prefix))
+        || (argument.starts_with("-p") && argument.len() > 2)
+        || (argument.starts_with("-F") && argument.len() > 2)
 }
 
 fn command_outcome_elapsed(outcome: &CommandOutcome) -> Duration {
@@ -995,12 +1116,6 @@ commands = ["cargo nextest run --lib tests::integration::system_health"]
         let manifest = manifest_with_program_buckets();
         let executor = FakeExecutor::with_outcomes(&[
             (
-                "cargo nextest run --no-run --lib",
-                CommandOutcome::Passed {
-                    elapsed: Duration::from_millis(5),
-                },
-            ),
-            (
                 "registry cmd",
                 CommandOutcome::Passed {
                     elapsed: Duration::from_millis(10),
@@ -1034,7 +1149,6 @@ commands = ["cargo nextest run --lib tests::integration::system_health"]
         assert_eq!(
             executor.calls(),
             vec![
-                "cargo nextest run --no-run --lib".to_string(),
                 "registry cmd".to_string(),
                 "workspace init cmd".to_string(),
                 "integration cmd".to_string(),
@@ -1090,7 +1204,7 @@ commands = ["cargo nextest run --lib tests::integration::system_health"]
                 },
             ),
             (
-                "registry cmd",
+                "cargo nextest run --lib tests::integration::system_health",
                 CommandOutcome::Passed {
                     elapsed: Duration::from_secs(1),
                 },
@@ -1098,7 +1212,7 @@ commands = ["cargo nextest run --lib tests::integration::system_health"]
         ]);
         let mut output = Vec::new();
 
-        let summary = run_tier(&manifest, "daemon", 1, false, &executor, &mut output).unwrap();
+        let summary = run_tier(&manifest, "benchmark", 1, false, &executor, &mut output).unwrap();
 
         assert_eq!(
             summary.prebuild_elapsed,

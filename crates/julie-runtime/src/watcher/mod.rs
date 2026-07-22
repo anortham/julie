@@ -32,11 +32,11 @@ use std::time::SystemTime;
 use tokio::sync::{Mutex as TokioMutex, mpsc};
 use tracing::{debug, error, info, warn};
 
+use crate::workspace::mutation_gate::MutationGuard;
+use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 use julie_core::database::SymbolDatabase;
 use julie_core::indexing_state::{IndexingRepairReason, SharedIndexingRuntime};
 use julie_extractors::ExtractorManager;
-use crate::workspace::mutation_gate::MutationGuard;
-use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 
 pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 

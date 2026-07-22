@@ -278,61 +278,54 @@ impl SymbolDatabase {
         if symbol_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let placeholders = vec!["?"; symbol_ids.len()].join(", ");
-        let sql = format!(
-            "SELECT id, file_path, language, pattern_id, capture_name, node_kind,
-                    containing_symbol_id, start_line, start_col, end_line, end_col,
-                    start_byte, end_byte, confidence, metadata
-             FROM structural_facts
-             WHERE containing_symbol_id IN ({placeholders})
-             ORDER BY containing_symbol_id, start_byte, id"
-        );
-        let params: Vec<Value> = symbol_ids.iter().map(|p| Value::Text(p.clone())).collect();
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt
-            .query_map(params_from_iter(params), |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, Option<String>>(6)?,
-                    row.get::<_, u32>(7)?,
-                    row.get::<_, u32>(8)?,
-                    row.get::<_, u32>(9)?,
-                    row.get::<_, u32>(10)?,
-                    row.get::<_, u32>(11)?,
-                    row.get::<_, u32>(12)?,
-                    row.get::<_, f32>(13)?,
-                    row.get::<_, Option<String>>(14)?,
-                ))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        rows.into_iter()
-            .map(
-                |(
-                    id,
-                    file_path,
-                    language,
-                    pattern_id,
-                    capture_name,
-                    node_kind,
-                    containing_symbol_id,
-                    start_line,
-                    start_column,
-                    end_line,
-                    end_column,
-                    start_byte,
-                    end_byte,
-                    confidence,
-                    metadata,
-                )| {
-                    let metadata = metadata
-                        .map(|value| serde_json::from_str(&value))
-                        .transpose()?;
-                    Ok(StructuralFact {
+
+        const CHUNK_SIZE: usize = 500;
+        let mut unique_ids = symbol_ids.to_vec();
+        unique_ids.sort();
+        unique_ids.dedup();
+        let mut facts = Vec::new();
+
+        for chunk in unique_ids.chunks(CHUNK_SIZE) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let sql = format!(
+                "SELECT id, file_path, language, pattern_id, capture_name, node_kind,
+                        containing_symbol_id, start_line, start_col, end_line, end_col,
+                        start_byte, end_byte, confidence, metadata
+                 FROM structural_facts
+                 WHERE containing_symbol_id IN ({placeholders})
+                 ORDER BY containing_symbol_id, start_byte, id"
+            );
+            let params: Vec<Value> = chunk
+                .iter()
+                .map(|symbol_id| Value::Text(symbol_id.clone()))
+                .collect();
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params_from_iter(params), |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, u32>(7)?,
+                        row.get::<_, u32>(8)?,
+                        row.get::<_, u32>(9)?,
+                        row.get::<_, u32>(10)?,
+                        row.get::<_, u32>(11)?,
+                        row.get::<_, u32>(12)?,
+                        row.get::<_, f32>(13)?,
+                        row.get::<_, Option<String>>(14)?,
+                    ))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let chunk_facts = rows
+                .into_iter()
+                .map(
+                    |(
                         id,
                         file_path,
                         language,
@@ -348,9 +341,39 @@ impl SymbolDatabase {
                         end_byte,
                         confidence,
                         metadata,
-                    })
-                },
-            )
-            .collect()
+                    )| {
+                        let metadata = metadata
+                            .map(|value| serde_json::from_str(&value))
+                            .transpose()?;
+                        Ok(StructuralFact {
+                            id,
+                            file_path,
+                            language,
+                            pattern_id,
+                            capture_name,
+                            node_kind,
+                            containing_symbol_id,
+                            start_line,
+                            start_column,
+                            end_line,
+                            end_column,
+                            start_byte,
+                            end_byte,
+                            confidence,
+                            metadata,
+                        })
+                    },
+                )
+                .collect::<Result<Vec<_>>>()?;
+            facts.extend(chunk_facts);
+        }
+
+        facts.sort_by(|left, right| {
+            left.containing_symbol_id
+                .cmp(&right.containing_symbol_id)
+                .then_with(|| left.start_byte.cmp(&right.start_byte))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        Ok(facts)
     }
 }

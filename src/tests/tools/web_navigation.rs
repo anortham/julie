@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use julie_core::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
 use julie_core::database::SymbolDatabase;
+use julie_core::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
 use julie_extractors::base::StructuralFact;
-use julie_extractors::SymbolKind;
-use julie_test_support::db::{file_info_builder, symbol_builder};
+use julie_extractors::{RelationshipKind, SymbolKind};
 use julie_test_support::FakeToolContext;
+use julie_test_support::db::{file_info_builder, relationship_builder, symbol_builder};
 use tempfile::TempDir;
 
 use crate::tests::helpers::mcp::call_tool_result_text;
@@ -95,11 +95,26 @@ fn seeded_context() -> Result<(TempDir, FakeToolContext)> {
         file_info_builder("src/Controller.php")
             .language("php")
             .build(),
+        file_info_builder("tests/client.test.ts")
+            .language("typescript")
+            .build(),
     ];
     let symbols = vec![
         symbol_builder("fetch_user", "fetchUser", "src/client.ts").build(),
         symbol_builder("fetch_unknown", "fetchUnknown", "src/client.ts").build(),
         symbol_builder("show_user", "showUser", "src/Controller.php").build(),
+        symbol_builder(
+            "fetch_user_test",
+            "fetchUserReturnsProfile",
+            "tests/client.test.ts",
+        )
+        .build(),
+    ];
+    let relationships = vec![
+        relationship_builder("test_fetch_user", "fetch_user_test", "fetch_user")
+            .kind(RelationshipKind::Calls)
+            .file_path("tests/client.test.ts")
+            .build(),
     ];
     let facts = vec![
         client_fact(
@@ -120,6 +135,15 @@ fn seeded_context() -> Result<(TempDir, FakeToolContext)> {
             "POST",
             "/api/unknown",
         ),
+        client_fact(
+            "c3",
+            "src/Controller.php",
+            "php",
+            9,
+            "show_user",
+            "GET",
+            "/api/users/123",
+        ),
         route_fact(
             "h1",
             "src/Controller.php",
@@ -134,6 +158,7 @@ fn seeded_context() -> Result<(TempDir, FakeToolContext)> {
     let write_set = CanonicalWriteSet {
         files: &files,
         symbols: &symbols,
+        relationships: &relationships,
         structural_facts: &facts,
         ..Default::default()
     };
@@ -141,6 +166,7 @@ fn seeded_context() -> Result<(TempDir, FakeToolContext)> {
         &[
             "src/client.ts".to_string(),
             "src/Controller.php".to_string(),
+            "tests/client.test.ts".to_string(),
         ],
         &write_set,
         "webnav-test",
@@ -265,6 +291,38 @@ async fn impact_web_mode_lists_calling_frontend_symbols() -> Result<()> {
     assert!(
         text.contains("http_call"),
         "expected http_call label: {text}"
+    );
+    let ranked = text.split("Web callers").next().unwrap();
+    assert!(
+        ranked.contains("fetchUser"),
+        "expected fetchUser in ranked impacts: {text}"
+    );
+    assert!(
+        !ranked.contains("showUser"),
+        "seed showUser must not be ranked as its own web impact: {text}"
+    );
+    assert!(
+        text.contains("tests/client.test.ts"),
+        "expected caller-linked likely test: {text}"
+    );
+
+    let depth_zero_result = BlastRadiusTool {
+        symbol_ids: vec!["show_user".into()],
+        mode: Some("web".into()),
+        max_depth: 0,
+        ..Default::default()
+    }
+    .call_tool(&context)
+    .await?;
+    let depth_zero_text = call_tool_result_text(&depth_zero_result);
+    assert!(depth_zero_text.contains("Web callers"));
+    assert!(
+        !depth_zero_text
+            .split("Web callers")
+            .next()
+            .unwrap()
+            .contains("fetchUser"),
+        "max_depth=0 must not rank web callers: {depth_zero_text}"
     );
     Ok(())
 }

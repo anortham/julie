@@ -16,6 +16,7 @@ use crate::indexing_core::extraction::{
     ExtractedFileDisposition, ExtractedFileRecord, extract_files_for_indexing_with_records,
 };
 use crate::tools::workspace::commands::ManageWorkspaceTool;
+use julie_pipeline::indexing_core::web_edges::rebuild_web_edges_for_workspace;
 
 pub(crate) struct IndexingPipelineResult {
     pub state: IndexingBatchState,
@@ -324,6 +325,8 @@ fn persist_batch(
         );
         canonical_revision
     };
+
+    rebuild_web_edges_for_workspace(&mut db_lock, &route.workspace_id)?;
 
     info!(
         "✅ Bulk storage complete in {:.2}s - data now persisted in SQLite!",

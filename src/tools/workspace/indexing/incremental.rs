@@ -8,6 +8,7 @@ use crate::handler::JulieServerHandler;
 use crate::search::projection::TANTIVY_PROJECTION_NAME;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
+use julie_pipeline::indexing_core::web_edges::rebuild_web_edges_for_workspace;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tracing::{debug, info, trace, warn};
@@ -220,6 +221,7 @@ impl ManageWorkspaceTool {
 
             let canonical_revision =
                 db_lock.delete_orphaned_files_atomic(&route.workspace_id, &orphaned_files)?;
+            rebuild_web_edges_for_workspace(&mut db_lock, &route.workspace_id)?;
             let cleaned_count = orphaned_files.len();
 
             if let Some(revision) = canonical_revision {

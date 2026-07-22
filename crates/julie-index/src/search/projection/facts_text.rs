@@ -63,16 +63,13 @@ fn fact_text_blob(fact: &StructuralFact) -> String {
 
     let verb = {
         let v = get("verb");
-        if !v.is_empty() {
-            v
-        } else {
-            get("method")
-        }
+        if !v.is_empty() { v } else { get("method") }
     };
 
     let template = [
         "normalized_route_template",
         "route_template",
+        "target_path",
         "path",
         "url_template",
         "uri_template",
@@ -82,7 +79,21 @@ fn fact_text_blob(fact: &StructuralFact) -> String {
     .find(|s| !s.is_empty())
     .unwrap_or("");
 
-    let table = get("table_name");
+    let mut tables: Vec<&str> = ["table_name", "target_table"]
+        .iter()
+        .map(|key| get(key))
+        .filter(|value| !value.is_empty())
+        .collect();
+    if let Some(source_tables) = meta
+        .and_then(|metadata| metadata.get("source_tables"))
+        .and_then(|value| value.as_array())
+    {
+        for table in source_tables.iter().filter_map(|value| value.as_str()) {
+            if !table.is_empty() && !tables.contains(&table) {
+                tables.push(table);
+            }
+        }
+    }
 
     let mut parts: Vec<String> = Vec::new();
     if !kind_tag.is_empty() {
@@ -94,7 +105,7 @@ fn fact_text_blob(fact: &StructuralFact) -> String {
     if !template.is_empty() {
         parts.push(template.to_string());
     }
-    if !table.is_empty() {
+    for table in tables {
         parts.push(format!("table:{table}"));
     }
     parts.join(" ")
@@ -119,16 +130,7 @@ pub fn collect_structural_facts_text_bounded(
         return Ok(HashMap::new());
     }
 
-    let facts = match db.load_structural_facts_for_symbols(symbol_ids) {
-        Ok(f) => f,
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("no such table") {
-                return Ok(HashMap::new());
-            }
-            return Err(e);
-        }
-    };
+    let facts = db.load_structural_facts_for_symbols(symbol_ids)?;
 
     let mut result: HashMap<String, String> = HashMap::new();
     for fact in facts {
@@ -167,7 +169,10 @@ pub(super) fn merge_structural_facts_text(
     if facts_text.is_empty() {
         return rel_text;
     }
-    let remaining = max_bytes.saturating_sub(rel_text.len());
+    let separator_bytes = usize::from(!rel_text.is_empty());
+    let remaining = max_bytes
+        .saturating_sub(rel_text.len())
+        .saturating_sub(separator_bytes);
     if remaining == 0 {
         return rel_text;
     }

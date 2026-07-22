@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::database::{WebEdge, WebEdgeKind};
+use crate::database::{ProjectionStatus, WebEdge, WebEdgeKind};
 use julie_extractors::base::StructuralFact;
 use julie_pipeline::indexing_core::batch::ExtractedBatch;
 
@@ -504,4 +504,119 @@ fn test_edge_id_distinguishes_distinct_paths() {
     let mut paths: Vec<_> = stored.iter().filter_map(|e| e.path.as_deref()).collect();
     paths.sort_unstable();
     assert_eq!(paths, vec!["/api/a", "/api/b"]);
+}
+
+#[test]
+fn test_ensure_web_edges_current_recovers_revision_lag() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("web_edges_revision_lag.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let workspace_id = "workspace-web-edges";
+
+    let client_file = make_file("src/client.ts");
+    let handler_file = make_file("src/Controller.php");
+    let client_sym = make_symbol("fetch_user", "fetchUser", "src/client.ts");
+    let handler_sym = make_symbol("show_user", "showUser", "src/Controller.php");
+    let client = client_fact(
+        "c1",
+        "src/client.ts",
+        "typescript",
+        3,
+        "fetch_user",
+        "GET",
+        "/api/users/123",
+    );
+    let handler = route_fact(
+        "h1",
+        "src/Controller.php",
+        "php",
+        8,
+        "show_user",
+        "GET",
+        "/api/users/{id}",
+    );
+    let initial_write_set = CanonicalWriteSet {
+        files: &[client_file, handler_file],
+        symbols: &[client_sym, handler_sym],
+        structural_facts: &[client, handler],
+        ..Default::default()
+    };
+    db.incremental_update_atomic_with_metadata(
+        &["src/client.ts".into(), "src/Controller.php".into()],
+        &initial_write_set,
+        workspace_id,
+        AtomicPersistenceMetadata::default(),
+    )
+    .unwrap();
+
+    let initial_revision = db
+        .get_current_canonical_revision(workspace_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        julie_pipeline::indexing_core::web_edges::rebuild_web_edges(&mut db).unwrap(),
+        1
+    );
+    db.upsert_projection_state(
+        "web_edges",
+        workspace_id,
+        ProjectionStatus::Ready,
+        Some(initial_revision),
+        Some(initial_revision),
+        None,
+    )
+    .unwrap();
+
+    db.incremental_update_atomic_with_metadata(
+        &["src/Controller.php".into()],
+        &CanonicalWriteSet::default(),
+        workspace_id,
+        AtomicPersistenceMetadata::default(),
+    )
+    .unwrap();
+
+    let current_revision = db
+        .get_current_canonical_revision(workspace_id)
+        .unwrap()
+        .unwrap();
+    assert!(current_revision > initial_revision);
+    let lagged_state = db
+        .get_projection_state("web_edges", workspace_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(lagged_state.projected_revision, Some(initial_revision));
+    assert!(db.web_edges_from_symbol("fetch_user").unwrap().is_empty());
+
+    assert!(
+        julie_pipeline::indexing_core::web_edges::ensure_web_edges_current(&mut db, workspace_id,)
+            .unwrap()
+    );
+
+    let edges: Vec<WebEdge> = db.web_edges_from_symbol("fetch_user").unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].to_symbol_id, None);
+    assert_eq!(edges[0].to_external.as_deref(), Some("GET /api/users/123"));
+
+    let current_state = db
+        .get_projection_state("web_edges", workspace_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(current_state.status, ProjectionStatus::Ready);
+    assert_eq!(current_state.canonical_revision, Some(current_revision));
+    assert_eq!(current_state.projected_revision, Some(current_revision));
+}
+
+#[test]
+fn large_symbol_batches_use_bounded_sqlite_bind_counts() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("large_symbol_batches.db");
+    let db = SymbolDatabase::new(&db_path).unwrap();
+    let symbol_ids: Vec<String> = (0..40_000).map(|index| format!("sym-{index}")).collect();
+
+    assert!(
+        db.load_structural_facts_for_symbols(&symbol_ids)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(db.web_edges_to_symbols(&symbol_ids).unwrap().is_empty());
 }

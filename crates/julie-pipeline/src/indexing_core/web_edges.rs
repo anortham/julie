@@ -6,6 +6,12 @@
 //! degrade to an external-endpoint edge so `trace` can still surface the call
 //! target even when no in-workspace handler exists.
 
+mod projection;
+
+pub use projection::{
+    WEB_EDGES_PROJECTION_NAME, ensure_web_edges_current, rebuild_web_edges_for_workspace,
+};
+
 use std::collections::HashMap;
 
 use anyhow::Result;
@@ -221,6 +227,7 @@ fn best_handler_match<'a>(
     handlers: &[&'a StructuralFact],
 ) -> Option<(&'a StructuralFact, f32)> {
     let mut best: Option<(&StructuralFact, f32)> = None;
+    let mut ambiguous = false;
     for handler in handlers {
         let h_verb = get_str(handler.metadata.as_ref(), "verb");
         if !verbs_match(verb, h_verb.as_deref()) {
@@ -236,11 +243,23 @@ fn best_handler_match<'a>(
         }
         let combined = client.confidence.min(handler.confidence);
         match &best {
-            Some((_, bc)) if combined <= *bc => {}
-            _ => best = Some((handler, combined)),
+            None => {
+                best = Some((handler, combined));
+                ambiguous = false;
+            }
+            Some((_, best_confidence)) if combined > *best_confidence => {
+                best = Some((handler, combined));
+                ambiguous = false;
+            }
+            Some((best_handler, best_confidence)) if combined == *best_confidence => {
+                if best_handler.containing_symbol_id != handler.containing_symbol_id {
+                    ambiguous = true;
+                }
+            }
+            _ => {}
         }
     }
-    best
+    if ambiguous { None } else { best }
 }
 
 /// Compare a client-call verb with a handler's verb. A handler with no recorded
@@ -374,9 +393,7 @@ pub fn derive_sql_query_edges(
     query_facts: &[StructuralFact],
     table_facts: &[StructuralFact],
 ) -> Vec<WebEdge> {
-    // table_name -> table symbol id (first definition wins; duplicate
-    // definitions of the same table name are a schema error, not a join key).
-    let mut table_symbols: HashMap<String, String> = HashMap::new();
+    let mut table_symbols: HashMap<String, Option<String>> = HashMap::new();
     for fact in table_facts {
         if fact.pattern_id != SQL_TABLE_DEFINITION_PATTERN_ID {
             continue;
@@ -384,9 +401,17 @@ pub fn derive_sql_query_edges(
         let Some(table_name) = get_str(fact.metadata.as_ref(), "table_name") else {
             continue;
         };
-        if let Some(sym_id) = non_empty(&fact.containing_symbol_id) {
-            table_symbols.entry(table_name).or_insert(sym_id);
-        }
+        let Some(symbol_id) = non_empty(&fact.containing_symbol_id) else {
+            continue;
+        };
+        table_symbols
+            .entry(table_name)
+            .and_modify(|existing| {
+                if existing.as_ref() != Some(&symbol_id) {
+                    *existing = None;
+                }
+            })
+            .or_insert(Some(symbol_id));
     }
 
     let mut edges = Vec::new();
@@ -398,7 +423,7 @@ pub fn derive_sql_query_edges(
             if table_name.is_empty() {
                 continue;
             }
-            let to_symbol_id = table_symbols.get(&table_name).cloned();
+            let to_symbol_id = table_symbols.get(&table_name).cloned().flatten();
             let to_external = if to_symbol_id.is_none() {
                 Some(format!("table:{table_name}"))
             } else {

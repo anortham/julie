@@ -8,12 +8,12 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use julie_core::database::SymbolDatabase;
 use julie_core::database::WebEdgeKind;
 use julie_extractors::{RelationshipKind, Symbol};
 
-use super::{edge_label, resolve_endpoints, CallPathHop, CallPathResponse, ResolvedEndpoints};
+use super::{CallPathHop, CallPathResponse, ResolvedEndpoints, edge_label, resolve_endpoints};
 
 /// A uniform link in a web-mode path: either a stored relationship or a
 /// derived web edge. Carries just what `build_web_hops` needs to render a hop.

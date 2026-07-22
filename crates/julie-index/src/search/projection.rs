@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::search::SearchIndex;
 use julie_core::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDatabase};
@@ -19,8 +19,8 @@ pub use apply::collect_relationship_names_bounded;
 pub use apply::collect_relationship_partner_symbol_ids;
 pub use apply::reproject_partner_symbols;
 use apply::{
-    apply_documents_with_context, load_symbol_contexts_from_database, symbol_contexts_from_symbols,
-    SymbolIndexContext, RELATIONSHIP_TEXT_MAX_BYTES,
+    SymbolIndexContext, apply_documents_with_context, load_enriched_relationship_text,
+    load_symbol_contexts_from_database, symbol_contexts_from_symbols,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use facts_text::collect_structural_facts_text_bounded;
@@ -115,7 +115,7 @@ impl SearchProjection {
         };
 
         let expected_docs = db.count_projection_source_docs()?;
-        let docs_match = expected_docs == 0 || index.num_docs() == expected_docs as u64;
+        let docs_match = index.num_docs() == expected_docs as u64;
         let current_projected_revision =
             current_state.as_ref().and_then(projection_served_revision);
 
@@ -186,29 +186,20 @@ impl SearchProjection {
 
         let phase_start = std::time::Instant::now();
         let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-        let relationship_map = match collect_relationship_names_bounded(
-            db,
-            &symbol_ids,
-            RELATIONSHIP_TEXT_MAX_BYTES,
-        ) {
+        let relationship_map = match load_enriched_relationship_text(db, &symbol_ids) {
             Ok(map) => map,
             Err(e) => {
                 let msg = e.to_string();
-                if msg.contains("no such table") {
-                    warn!("relationship_text skipped: DB not yet migrated ({})", msg);
-                    HashMap::new()
-                } else {
-                    let detail = format!("collect_relationship_names_bounded: {}", msg);
-                    let _ = db.upsert_projection_state(
-                        self.projection,
-                        &self.workspace_id,
-                        ProjectionStatus::Stale,
-                        Some(canonical.revision),
-                        current_projected_revision,
-                        Some(&detail),
-                    );
-                    return Err(e);
-                }
+                let detail = format!("load_enriched_relationship_text: {}", msg);
+                let _ = db.upsert_projection_state(
+                    self.projection,
+                    &self.workspace_id,
+                    ProjectionStatus::Stale,
+                    Some(canonical.revision),
+                    current_projected_revision,
+                    Some(&detail),
+                );
+                return Err(e);
             }
         };
         info!(
@@ -242,13 +233,6 @@ impl SearchProjection {
             phase_start.elapsed().as_secs_f64(),
             symbols.len(),
             file_infos.len()
-        );
-
-        let phase_start = std::time::Instant::now();
-        index.release_writer()?;
-        info!(
-            "projection.ensure_current.commit: {:.2}s",
-            phase_start.elapsed().as_secs_f64()
         );
 
         let ready_state = db.upsert_projection_state(
@@ -304,29 +288,20 @@ impl SearchProjection {
         let load_start = std::time::Instant::now();
         let symbol_contexts = load_symbol_contexts_from_database(db, symbols)?;
         let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-        let relationship_map = match collect_relationship_names_bounded(
-            db,
-            &symbol_ids,
-            RELATIONSHIP_TEXT_MAX_BYTES,
-        ) {
+        let relationship_map = match load_enriched_relationship_text(db, &symbol_ids) {
             Ok(map) => map,
             Err(e) => {
                 let msg = e.to_string();
-                if msg.contains("no such table") {
-                    warn!("relationship_text skipped: DB not yet migrated ({})", msg);
-                    HashMap::new()
-                } else {
-                    let detail = format!("collect_relationship_names_bounded: {}", msg);
-                    let _ = db.upsert_projection_state(
-                        self.projection,
-                        &self.workspace_id,
-                        ProjectionStatus::Stale,
-                        Some(target_revision),
-                        current_projected_revision,
-                        Some(&detail),
-                    );
-                    return Err(e);
-                }
+                let detail = format!("load_enriched_relationship_text: {}", msg);
+                let _ = db.upsert_projection_state(
+                    self.projection,
+                    &self.workspace_id,
+                    ProjectionStatus::Stale,
+                    Some(target_revision),
+                    current_projected_revision,
+                    Some(&detail),
+                );
+                return Err(e);
             }
         };
         info!(
@@ -416,29 +391,20 @@ impl SearchProjection {
             let load_start = std::time::Instant::now();
             let symbol_contexts = load_symbol_contexts_from_database(&db, symbols)?;
             let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-            let relationship_map = match collect_relationship_names_bounded(
-                &db,
-                &symbol_ids,
-                RELATIONSHIP_TEXT_MAX_BYTES,
-            ) {
+            let relationship_map = match load_enriched_relationship_text(&db, &symbol_ids) {
                 Ok(map) => map,
                 Err(e) => {
                     let msg = e.to_string();
-                    if msg.contains("no such table") {
-                        warn!("relationship_text skipped: DB not yet migrated ({})", msg);
-                        HashMap::new()
-                    } else {
-                        let detail = format!("collect_relationship_names_bounded: {}", msg);
-                        let _ = db.upsert_projection_state(
-                            self.projection,
-                            &self.workspace_id,
-                            ProjectionStatus::Stale,
-                            Some(target_revision),
-                            current_projected_revision,
-                            Some(&detail),
-                        );
-                        return Err(e);
-                    }
+                    let detail = format!("load_enriched_relationship_text: {}", msg);
+                    let _ = db.upsert_projection_state(
+                        self.projection,
+                        &self.workspace_id,
+                        ProjectionStatus::Stale,
+                        Some(target_revision),
+                        current_projected_revision,
+                        Some(&detail),
+                    );
+                    return Err(e);
                 }
             };
             info!(
@@ -505,16 +471,38 @@ impl SearchProjection {
         symbol_contexts: &HashMap<String, SymbolIndexContext>,
         relationship_map: &HashMap<String, String>,
     ) -> Result<()> {
-        index.clear_all()?;
-        apply_documents_with_context(
-            index,
-            symbols,
-            file_infos,
-            &[],
-            symbol_contexts,
-            relationship_map,
-            false,
-        )
+        let apply_result = (|| -> Result<()> {
+            index.clear_all_uncommitted()?;
+            #[cfg(any(test, feature = "test-support"))]
+            index.wait_after_rebuild_delete_for_test();
+            apply_documents_with_context(
+                index,
+                symbols,
+                file_infos,
+                &[],
+                symbol_contexts,
+                relationship_map,
+                false,
+            )?;
+            #[cfg(any(test, feature = "test-support"))]
+            if index.take_rebuild_failure_for_test() {
+                anyhow::bail!("injected rebuild failure");
+            }
+            Ok(())
+        })();
+
+        match apply_result {
+            Ok(()) => {
+                index.release_writer()?;
+                Ok(())
+            }
+            Err(apply_error) => match index.rollback_and_release_writer() {
+                Ok(()) => Err(apply_error),
+                Err(rollback_error) => Err(anyhow::anyhow!(
+                    "{apply_error:#}; rebuild rollback failed: {rollback_error}"
+                )),
+            },
+        }
     }
 }
 
@@ -526,4 +514,9 @@ pub(crate) fn projection_served_revision(state: &ProjectionState) -> Option<i64>
             None
         }
     })
+}
+
+#[cfg(test)]
+mod merge_tests {
+    include!("../tests/search/structural_facts_merge_tests.rs");
 }

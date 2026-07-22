@@ -309,9 +309,7 @@ impl IndexRoute {
         Ok(Some(database))
     }
 
-    pub(crate) async fn search_index_for_write(
-        &self,
-    ) -> Result<Option<Arc<SearchIndex>>> {
+    pub(crate) async fn search_index_for_write(&self) -> Result<Option<Arc<SearchIndex>>> {
         if let Some(search_index) = &self.search_index {
             return Ok(Some(Arc::clone(search_index)));
         }

@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use julie_context::{SpilloverStore, ToolContext, WorkspaceTarget};
 use julie_core::database::SymbolDatabase;
@@ -193,9 +193,7 @@ impl ToolContext for FakeToolContext {
 
     fn require_primary_workspace_root(&self) -> Result<PathBuf> {
         self.primary_workspace_root.clone().ok_or_else(|| {
-            anyhow!(
-                "no primary workspace root (FakeToolContext) — inject via with_primary_root"
-            )
+            anyhow!("no primary workspace root (FakeToolContext) — inject via with_primary_root")
         })
     }
 
@@ -273,7 +271,10 @@ impl ToolContext for FakeToolContext {
         self.embedding_provider_val.clone()
     }
 
-    async fn ensure_embedding_provider(&self, _timeout: Duration) -> Option<Arc<dyn EmbeddingProvider>> {
+    async fn ensure_embedding_provider(
+        &self,
+        _timeout: Duration,
+    ) -> Option<Arc<dyn EmbeddingProvider>> {
         self.embedding_provider_val.clone()
     }
 
@@ -293,10 +294,7 @@ impl ToolContext for FakeToolContext {
         Ok(None)
     }
 
-    async fn system_readiness(
-        &self,
-        _target_workspace_id: Option<&str>,
-    ) -> Result<SystemStatus> {
+    async fn system_readiness(&self, _target_workspace_id: Option<&str>) -> Result<SystemStatus> {
         Ok(self.system_status.clone())
     }
 }
@@ -326,10 +324,7 @@ mod tests {
         assert_eq!(ctx.current_workspace_id(), Some("ws-abc".to_string()));
         assert_eq!(ctx.loaded_workspace_id(), Some("ws-secondary".to_string()));
         assert!(ctx.is_primary_workspace_swap_in_progress());
-        assert_eq!(
-            ctx.require_primary_workspace_identity().unwrap(),
-            "ws-abc"
-        );
+        assert_eq!(ctx.require_primary_workspace_identity().unwrap(), "ws-abc");
     }
 
     #[tokio::test]
@@ -351,7 +346,10 @@ mod tests {
     async fn unconfigured_db_returns_descriptive_err() {
         let ctx = FakeToolContext::new();
         let result = ctx.primary_pooled_database().await;
-        assert!(result.is_err(), "expected Err from unconfigured primary_pooled_database");
+        assert!(
+            result.is_err(),
+            "expected Err from unconfigured primary_pooled_database"
+        );
         if let Err(e) = result {
             let msg = e.to_string();
             assert!(
@@ -365,10 +363,7 @@ mod tests {
     async fn unconfigured_workspace_root_returns_err() {
         let ctx = FakeToolContext::new();
         assert!(ctx.require_primary_workspace_root().is_err());
-        assert!(ctx
-            .get_workspace_root_for_target("ws-1")
-            .await
-            .is_err());
+        assert!(ctx.get_workspace_root_for_target("ws-1").await.is_err());
     }
 
     #[tokio::test]
@@ -416,10 +411,11 @@ mod tests {
     async fn embedding_provider_unconfigured_is_none() {
         let ctx = FakeToolContext::new();
         assert!(ctx.embedding_provider().await.is_none());
-        assert!(ctx
-            .ensure_embedding_provider(Duration::from_millis(100))
-            .await
-            .is_none());
+        assert!(
+            ctx.ensure_embedding_provider(Duration::from_millis(100))
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]

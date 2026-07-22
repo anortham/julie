@@ -4,7 +4,9 @@ pub mod ranking;
 pub mod seed;
 pub mod walk;
 
-use anyhow::{anyhow, Result};
+use std::collections::HashSet;
+
+use anyhow::{Result, anyhow};
 use julie_core::mcp_compat::{CallToolResult, Content};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -15,9 +17,9 @@ use crate::spillover::{SpilloverFormat, SpilloverStore};
 use julie_context::ToolContext;
 use julie_core::database::SymbolDatabase;
 
-use self::formatting::{format_blast_radius, impact_rows, store_list_overflow, BlastRadiusHeader};
-use self::likely_tests::collect_likely_tests;
+use self::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows, store_list_overflow};
 pub use self::likely_tests::LikelyTests;
+use self::likely_tests::collect_likely_tests;
 use self::ranking::RankedImpact;
 use self::walk::WalkBudget;
 
@@ -188,12 +190,39 @@ fn run_with_db(
         max_frontier_per_depth: (page_limit * 10).clamp(100, 500),
         max_identifier_fanout_per_name: default_budget.max_identifier_fanout_per_name,
     };
-    let (candidates, _walk_stats) = walk::walk_impacts_with_budget(
+    let (mut candidates, _walk_stats) = walk::walk_impacts_with_budget(
         db,
         &seed_context.seed_symbols,
         tool.max_depth,
         walk_budget,
     )?;
+    let web_callers = if tool.mode.as_deref() == Some("web") {
+        let seed_ids: Vec<String> = seed_context
+            .seed_symbols
+            .iter()
+            .map(|symbol| symbol.id.clone())
+            .collect();
+        walk::walk_web_callers(db, &seed_ids)?
+    } else {
+        Vec::new()
+    };
+    if tool.max_depth > 0 {
+        let mut candidate_ids: HashSet<String> = seed_context
+            .seed_symbols
+            .iter()
+            .map(|symbol| symbol.id.clone())
+            .chain(
+                candidates
+                    .iter()
+                    .map(|candidate| candidate.symbol.id.clone()),
+            )
+            .collect();
+        candidates.extend(web_callers.iter().filter_map(|caller| {
+            candidate_ids
+                .insert(caller.impact.symbol.id.clone())
+                .then(|| caller.impact.clone())
+        }));
+    }
     let ranked_impacts = ranking::rank_impacts(candidates, tool.include_tests);
     let likely_tests = if tool.include_tests {
         collect_likely_tests(db, &seed_context, &ranked_impacts)?
@@ -243,31 +272,19 @@ fn run_with_db(
     );
     let visible_likely_tests = likely_tests.visible(LIKELY_TESTS_LIMIT);
 
-    // Web mode: surface reverse http_call callers of the seed (route)
-    // symbols. Default mode leaves this empty so output is byte-identical.
-    let web_callers: Vec<String> = if tool.mode.as_deref() == Some("web") {
-        let seed_ids: Vec<String> = seed_context
-            .seed_symbols
-            .iter()
-            .map(|symbol| symbol.id.clone())
-            .collect();
-        let callers = walk::walk_web_callers(db, &seed_ids)?;
-        callers
-            .into_iter()
-            .map(|caller| {
-                format!(
-                    "- {}  {}:{}  via {} {}",
-                    caller.caller.name,
-                    caller.caller.file_path,
-                    caller.caller.start_line,
-                    caller.via,
-                    caller.endpoint
-                )
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let web_caller_rows: Vec<String> = web_callers
+        .iter()
+        .map(|caller| {
+            format!(
+                "- {}  {}:{}  via {} {}",
+                caller.impact.symbol.name,
+                caller.impact.symbol.file_path,
+                caller.impact.symbol.start_line,
+                caller.via,
+                caller.endpoint
+            )
+        })
+        .collect();
 
     let header = BlastRadiusHeader {
         revision_range: match (tool.from_revision, tool.to_revision) {
@@ -278,7 +295,7 @@ fn run_with_db(
         impact_overflow_handle,
         likely_test_paths_overflow_handle,
         related_test_symbols_overflow_handle,
-        web_callers,
+        web_callers: web_caller_rows,
     };
 
     Ok(format_blast_radius(

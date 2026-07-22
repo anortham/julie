@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use super::BlastRadiusTool;
 use julie_core::database::RevisionChangeKind;

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use rusqlite::{params, Transaction};
+use rusqlite::{Transaction, params};
 use tracing::debug;
 
 use crate::database::web_edges::WebEdge;

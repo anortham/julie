@@ -283,7 +283,7 @@ async fn cancel_primary_embedding_task(handler: &JulieServerHandler) {
     }
 }
 
-/// Reconcile Tantivy projection lag at startup / handoff.
+/// Reconcile derived projection lag at startup / handoff.
 ///
 /// A crash between the SQLite commit (which advances `canonical_revision`) and
 /// the Tantivy apply leaves `canonical_revision > projected_revision`. The
@@ -302,12 +302,21 @@ async fn reconcile_projection_lag_if_needed(handler: &JulieServerHandler) -> Res
         Err(_) => return Ok(()), // No workspace bound yet — nothing to reconcile
     };
 
-    let Some(search_index) = snapshot.search_index else {
-        return Ok(()); // No search index open — reconciliation not applicable
-    };
-
+    let search_index = snapshot.search_index;
     let workspace_id = snapshot.binding.workspace_id.clone();
     let db_arc = snapshot.database;
+
+    let web_edges_rebuilt = {
+        let mut db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+        julie_pipeline::indexing_core::web_edges::ensure_web_edges_current(&mut db, &workspace_id)?
+    };
+    if web_edges_rebuilt {
+        info!(%workspace_id, "Web-edge projection reconciled from canonical SQLite state");
+    }
+
+    let Some(search_index) = search_index else {
+        return Ok(());
+    };
 
     // Read projection and canonical revision under a short-lived lock so we
     // don't hold it across the potentially-expensive rebuild.
@@ -474,7 +483,8 @@ pub(crate) async fn plan_primary_workspace_repair(
             // No normalization needed - indexed_files are already relative
             let indexed_files: HashSet<String> = indexed_files_raw.into_iter().collect();
 
-            let workspace_files = julie_core::workspace_scan::scan_workspace_files(&current_primary_root)?;
+            let workspace_files =
+                julie_core::workspace_scan::scan_workspace_files(&current_primary_root)?;
             let new_files: Vec<_> = workspace_files.difference(&indexed_files).collect();
 
             debug!(
@@ -635,4 +645,3 @@ fn get_max_file_mtime_in_workspace(workspace_root: &Path) -> Result<SystemTime> 
 
     Ok(max_mtime)
 }
-

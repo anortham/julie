@@ -11,6 +11,9 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+#[cfg(any(test, feature = "test-support"))]
+use std::sync::mpsc::{Receiver, SyncSender};
+
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, BoostQuery, Occur, TermQuery};
@@ -510,6 +513,12 @@ struct SearchCompatMarker {
     tokenizer_signature: TokenizerCompatibilitySignature,
 }
 
+#[cfg(any(test, feature = "test-support"))]
+struct RebuildPauseForTest {
+    cleared: SyncSender<()>,
+    resume: Receiver<()>,
+}
+
 /// Tantivy-backed search index for code intelligence.
 ///
 /// Supports indexing code symbols and file content, with code-aware
@@ -526,6 +535,10 @@ pub struct SearchIndex {
     /// When true, `get_or_create_writer()` returns `Err(Shutdown)` and no new
     /// writes are accepted. Set by `shutdown()` after committing + dropping the writer.
     shutdown: AtomicBool,
+    #[cfg(any(test, feature = "test-support"))]
+    rebuild_pause_for_test: Mutex<Option<RebuildPauseForTest>>,
+    #[cfg(any(test, feature = "test-support"))]
+    rebuild_failure_for_test: AtomicBool,
 }
 
 /// Shared handle for a workspace search index.
@@ -684,12 +697,28 @@ impl SearchIndex {
         Ok(())
     }
 
-    /// Remove all documents from the index (for force re-index).
-    pub fn clear_all(&self) -> Result<()> {
+    pub(crate) fn rollback_and_release_writer(&self) -> Result<()> {
+        let mut guard = self.writer.lock().unwrap_or_else(|e| {
+            tracing::warn!("writer mutex was poisoned during writer rollback; recovering");
+            e.into_inner()
+        });
+        if let Some(mut writer) = guard.take() {
+            writer.rollback()?;
+        }
+        self.reader.reload()?;
+        Ok(())
+    }
+
+    pub(crate) fn clear_all_uncommitted(&self) -> Result<()> {
         let guard = self.get_or_create_writer()?;
         let writer = guard.as_ref().unwrap();
         writer.delete_all_documents()?;
-        drop(guard);
+        Ok(())
+    }
+
+    /// Remove all documents from the index (for force re-index).
+    pub fn clear_all(&self) -> Result<()> {
+        self.clear_all_uncommitted()?;
         self.commit()?;
         Ok(())
     }
@@ -1011,10 +1040,10 @@ impl SearchIndex {
         limit: usize,
         files_only: Option<bool>,
     ) -> Result<(Vec<UnifiedHit>, bool, usize, usize)> {
-        use julie_extractors::SymbolKind;
         use crate::search::query_parse::parse_query;
         use crate::search::reranker::{Candidate, rerank_unified};
         use crate::search::scoring::{classify_role, is_source_language, test_subrole};
+        use julie_extractors::SymbolKind;
 
         let f = &self.schema_fields;
 
@@ -1242,7 +1271,6 @@ impl SearchIndex {
                 tantivy_score: score,
             });
         }
-
         // Post-fetch filters (language / kind / file_pattern / exclude_tests).
         if let Some(ref lang) = filter.language {
             hits.retain(|h| &h.language == lang);
@@ -1520,6 +1548,10 @@ impl SearchIndex {
             schema_fields,
             language_configs,
             shutdown: AtomicBool::new(false),
+            #[cfg(any(test, feature = "test-support"))]
+            rebuild_pause_for_test: Mutex::new(None),
+            #[cfg(any(test, feature = "test-support"))]
+            rebuild_failure_for_test: AtomicBool::new(false),
         })
     }
 
@@ -1747,11 +1779,37 @@ impl SearchIndex {
         Ok(guard)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_rebuild_pause_for_test(&self, cleared: SyncSender<()>, resume: Receiver<()>) {
+        *self.rebuild_pause_for_test.lock().unwrap() =
+            Some(RebuildPauseForTest { cleared, resume });
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn wait_after_rebuild_delete_for_test(&self) {
+        let pause = self.rebuild_pause_for_test.lock().unwrap().take();
+        if let Some(pause) = pause {
+            pause.cleared.send(()).unwrap();
+            pause.resume.recv().unwrap();
+        }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_rebuild_failure_for_test(&self) {
+        self.rebuild_failure_for_test.store(true, Ordering::Release);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn take_rebuild_failure_for_test(&self) -> bool {
+        self.rebuild_failure_for_test.swap(false, Ordering::AcqRel)
+    }
+
     /// Hold the interior writer mutex for contention tests.
     ///
     /// Production code should not call this — projection and write paths
     /// already take the writer briefly via `get_or_create_writer`. Tests use
     /// this to simulate a long-held write without an outer `Mutex<SearchIndex>`.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn acquire_writer_for_test(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, Option<IndexWriter>>> {

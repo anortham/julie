@@ -5,15 +5,15 @@
 
 use anyhow::Result;
 use std::sync::Arc;
-use tracing::{debug, warn};
+use tracing::debug;
 
+use crate::navigation::resolution::WorkspaceTarget;
 use julie_core::database::SymbolDatabase;
 use julie_extractors::base::SourceRegion;
 use julie_index::search::SearchFilter;
 use julie_index::search::index::SearchIndex;
 use julie_index::search::query_parse::{QueryIntent, parse_query};
 use julie_index::search::scoring::{is_nl_like_query, is_test_path};
-use crate::navigation::resolution::WorkspaceTarget;
 
 use julie_context::ToolContext;
 
@@ -270,7 +270,8 @@ fn collect_matches_from_file_results(
             continue;
         }
 
-        if exclude_test_files && julie_index::search::scoring::is_test_path(&file_result.file_path) {
+        if exclude_test_files && julie_index::search::scoring::is_test_path(&file_result.file_path)
+        {
             counts.test_dropped += 1;
             continue;
         }
@@ -279,9 +280,7 @@ fn collect_matches_from_file_results(
             Some(content) => {
                 let before = matches.len();
                 let allowed_regions = region_filter
-                    .map(|filter| {
-                        db.get_source_regions_for_file(&file_result.file_path, &filter.0)
-                    })
+                    .map(|filter| db.get_source_regions_for_file(&file_result.file_path, &filter.0))
                     .transpose()?;
                 let region_filtered = collect_line_matches_filtered(
                     &mut matches,
@@ -771,14 +770,7 @@ pub fn collect_line_matches(
     strategy: &LineMatchStrategy,
     max_results: usize,
 ) {
-    collect_line_matches_filtered(
-        destination,
-        content,
-        file_path,
-        strategy,
-        max_results,
-        None,
-    );
+    collect_line_matches_filtered(destination, content, file_path, strategy, max_results, None);
 }
 
 fn line_is_in_allowed_region(line_number: usize, regions: &[SourceRegion]) -> bool {
@@ -826,9 +818,9 @@ fn collect_line_matches_filtered(
                     .filter(|t| term_matches_line(t, line, &line_tokens))
                     .count();
                 if density > 0 {
-                    if allowed_regions.is_some_and(|regions| {
-                        !line_is_in_allowed_region(line_idx + 1, regions)
-                    }) {
+                    if allowed_regions
+                        .is_some_and(|regions| !line_is_in_allowed_region(line_idx + 1, regions))
+                    {
                         matched_outside_regions = true;
                         continue;
                     }
@@ -854,9 +846,9 @@ fn collect_line_matches_filtered(
             // Substring and Tokens: preserve source order with early break
             for (line_idx, line) in content.lines().enumerate() {
                 if line_matches(strategy, line) {
-                    if allowed_regions.is_some_and(|regions| {
-                        !line_is_in_allowed_region(line_idx + 1, regions)
-                    }) {
+                    if allowed_regions
+                        .is_some_and(|regions| !line_is_in_allowed_region(line_idx + 1, regions))
+                    {
                         matched_outside_regions = true;
                         continue;
                     }

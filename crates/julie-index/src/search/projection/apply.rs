@@ -6,10 +6,10 @@ use super::facts_text::{
     collect_structural_facts_text_bounded, merge_structural_facts_text,
     truncate_to_whitespace_boundary,
 };
-use crate::search::index::{truncate_utf8_bytes, SearchDocument};
+use crate::search::SearchIndex;
+use crate::search::index::{SearchDocument, truncate_utf8_bytes};
 use crate::search::scoring::{classify_role, test_subrole};
 use crate::search::tokenizer::pretokenize_code;
-use crate::search::SearchIndex;
 use julie_core::database::{FileInfo, SymbolDatabase};
 use julie_extractors::{AnnotationMarker, Symbol};
 
@@ -159,35 +159,7 @@ pub fn apply_uncommitted_documents_from_symbols(
 ) -> Result<()> {
     let symbol_contexts = symbol_contexts_from_symbols(symbols);
     let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-    let relationship_map =
-        match collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
-            Ok(map) => map,
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("no such table") {
-                    warn!("relationship_text skipped: DB not yet migrated ({})", msg);
-                    HashMap::new()
-                } else {
-                    return Err(e);
-                }
-            }
-        };
-    let facts_map =
-        match collect_structural_facts_text_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
-            Ok(map) => map,
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("no such table") {
-                    warn!(
-                        "structural_facts_text skipped: DB not yet migrated ({})",
-                        msg
-                    );
-                    HashMap::new()
-                } else {
-                    return Err(e);
-                }
-            }
-        };
+    let relationship_map = load_enriched_relationship_text(db, &symbol_ids)?;
 
     for file_path_to_clean in files_to_clean {
         index.remove_by_file_path(file_path_to_clean)?;
@@ -195,18 +167,14 @@ pub fn apply_uncommitted_documents_from_symbols(
 
     for symbol in symbols {
         let context = symbol_contexts.get(&symbol.id).cloned().unwrap_or_default();
-        let rel_text = relationship_map
+        let relationship_text = relationship_map
             .get(&symbol.id)
             .cloned()
             .unwrap_or_default();
-        let facts_text = facts_map.get(&symbol.id).cloned().unwrap_or_default();
-        let merged =
-            merge_structural_facts_text(rel_text, &facts_text, RELATIONSHIP_TEXT_MAX_BYTES);
-        let search_doc = symbol_to_search_document(symbol, &context, merged);
+        let search_doc = symbol_to_search_document(symbol, &context, relationship_text);
         index.add_search_doc(&search_doc)?;
     }
 
-    // Index the file row so line-mode search can find content matches.
     let file_search_doc = raw_file_to_search_document(file_path, file_content, file_language);
     index.add_search_doc(&file_search_doc)?;
 
@@ -247,7 +215,7 @@ pub(crate) fn apply_documents_with_context(
     Ok(())
 }
 
-/// Apply documents with full DB-backed relationship enrichment.
+/// Apply documents with full DB-backed relationship and structural-fact enrichment.
 /// Used by the watcher paths that don't go through `project_documents`.
 ///
 /// This is the canonical production entry point for relationship_text: it
@@ -262,8 +230,25 @@ pub fn apply_documents_with_db(
     commit: bool,
 ) -> Result<()> {
     let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
+    let relationship_map = load_enriched_relationship_text(db, &symbol_ids)?;
+    let symbol_contexts = symbol_contexts_from_symbols(symbols);
+    apply_documents_with_context(
+        index,
+        symbols,
+        file_infos,
+        files_to_clean,
+        &symbol_contexts,
+        &relationship_map,
+        commit,
+    )
+}
+
+pub(crate) fn load_enriched_relationship_text(
+    db: &SymbolDatabase,
+    symbol_ids: &[String],
+) -> Result<HashMap<String, String>> {
     let mut relationship_map =
-        match collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
+        match collect_relationship_names_bounded(db, symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
             Ok(map) => map,
             Err(e) => {
                 let msg = e.to_string();
@@ -276,7 +261,7 @@ pub fn apply_documents_with_db(
             }
         };
     let facts_map =
-        match collect_structural_facts_text_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
+        match collect_structural_facts_text_bounded(db, symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
             Ok(map) => map,
             Err(e) => {
                 let msg = e.to_string();
@@ -291,15 +276,6 @@ pub fn apply_documents_with_db(
                 }
             }
         };
-    // Fold structural-facts text into the relationship_text blobs so a single
-    // `relationship_text` field carries both partner names and web-fact tokens.
-    // Symbols without facts are untouched (byte-identical parity).
-    //
-    // Tradeoff (v1): facts share the 512-byte `relationship_text` budget with
-    // partner names, so a symbol with many relationships gets little room for
-    // fact tokens. This reuses the existing not-stored, code-tokenized field
-    // and avoids a schema change; giving facts their own field/budget is a
-    // tracked follow-up (see plan open question #3 / doubt-pass M2).
     for (id, facts_text) in &facts_map {
         let existing = relationship_map.remove(id.as_str()).unwrap_or_default();
         let merged = merge_structural_facts_text(existing, facts_text, RELATIONSHIP_TEXT_MAX_BYTES);
@@ -307,16 +283,7 @@ pub fn apply_documents_with_db(
             relationship_map.insert(id.clone(), merged);
         }
     }
-    let symbol_contexts = symbol_contexts_from_symbols(symbols);
-    apply_documents_with_context(
-        index,
-        symbols,
-        file_infos,
-        files_to_clean,
-        &symbol_contexts,
-        &relationship_map,
-        commit,
-    )
+    Ok(relationship_map)
 }
 
 /// Build a `SearchDocument` (union shape) for a file row from a `FileInfo`.

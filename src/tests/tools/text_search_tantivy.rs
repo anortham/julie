@@ -424,9 +424,8 @@ pub fn lookup_user_profile(id: u32) -> String {
         workspace.embedding_runtime_status = None;
     }
 
-    let _ = crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(
-        &workspace_path,
-    );
+    let _ =
+        crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(&workspace_path);
 
     let query = "how should user profile lookups work".to_string();
     let start_barrier = Arc::new(tokio::sync::Barrier::new(3));
@@ -497,9 +496,8 @@ pub fn lookup_user_profile(id: u32) -> String {
         "NL definitions query should trigger deferred embedding init attempt"
     );
 
-    let init_count = crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(
-        &workspace_path,
-    );
+    let init_count =
+        crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(&workspace_path);
     assert_eq!(
         init_count, 1,
         "concurrent NL definition queries should share one lazy init attempt"

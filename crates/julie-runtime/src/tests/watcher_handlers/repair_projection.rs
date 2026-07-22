@@ -189,9 +189,8 @@ fn render_rich_text_field() {
     // Create Tantivy search index
     let tantivy_dir = workspace_root.join("tantivy");
     fs::create_dir_all(&tantivy_dir).unwrap();
-    let search_index = Arc::new(
-        SearchIndex::create(&tantivy_dir).expect("Failed to create search index"),
-    );
+    let search_index =
+        Arc::new(SearchIndex::create(&tantivy_dir).expect("Failed to create search index"));
 
     // Seed Tantivy with initial file content (simulating what initial indexing does)
     {
@@ -318,9 +317,8 @@ fn watched_annotation_marker() {
 
     let tantivy_dir = workspace_root.join("tantivy");
     fs::create_dir_all(&tantivy_dir).unwrap();
-    let search_index = Arc::new(
-        SearchIndex::create(&tantivy_dir).expect("Failed to create search index"),
-    );
+    let search_index =
+        Arc::new(SearchIndex::create(&tantivy_dir).expect("Failed to create search index"));
     let guard = acquire_gate("test_annotation_fields").await;
 
     handle_file_created_or_modified_static(
@@ -371,9 +369,8 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
 
     let tantivy_dir = workspace_root.join("tantivy");
     fs::create_dir_all(&tantivy_dir).unwrap();
-    let search_index = Arc::new(
-        SearchIndex::create(&tantivy_dir).expect("Failed to create search index"),
-    );
+    let search_index =
+        Arc::new(SearchIndex::create(&tantivy_dir).expect("Failed to create search index"));
     {
         let idx = search_index.as_ref();
         idx.shutdown()
@@ -479,14 +476,15 @@ async fn test_hash_match_clears_stale_repair_entry() {
     );
 }
 
-/// After a successful watcher-driven file index, projected_revision must equal
-/// canonical_revision so that `canonical > projected` is a true crash/handoff
-/// lag signal rather than firing on every healthy save.
 #[tokio::test]
-async fn test_watcher_advances_projected_revision() {
+async fn test_watcher_does_not_publish_uncommitted_projection_revision() {
+    use crate::watcher::IncrementalIndexer;
+    use crate::watcher::types::{FileChangeEvent, FileChangeType};
     use julie_core::database::ProjectionStatus;
+    use julie_core::indexing_state::{IndexingRepairReason, IndexingRuntimeState};
     use julie_index::search::SearchIndex;
     use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
+    use std::time::SystemTime;
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_proj_rev_advances");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
@@ -503,10 +501,10 @@ async fn test_watcher_advances_projected_revision() {
     fs::create_dir_all(&tantivy_dir).unwrap();
     let search_index = Arc::new(SearchIndex::create(&tantivy_dir).unwrap());
 
-    let guard = acquire_gate("test_watcher_advances_projected_revision").await;
+    let guard = acquire_gate("test_watcher_does_not_publish_uncommitted_projection_revision").await;
 
     handle_file_created_or_modified_static(
-        absolute_path,
+        absolute_path.clone(),
         &db,
         &extractor_manager,
         &workspace_root,
@@ -516,37 +514,87 @@ async fn test_watcher_advances_projected_revision() {
     .await
     .expect("watcher indexing should succeed");
 
-    // Derive the same workspace_id the handler used so we can query projection_states.
     let workspace_key = workspace_root.to_string_lossy();
-    let workspace_id =
-        crate::workspace::registry::generate_workspace_id(&workspace_key)
-            .unwrap_or_else(|_| workspace_key.into_owned());
+    let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
+        .unwrap_or_else(|_| workspace_key.into_owned());
 
     let db_lock = db.lock().unwrap();
     let canonical = db_lock
         .get_latest_canonical_revision(&workspace_id)
         .expect("should be able to read canonical revision")
         .expect("SQLite commit should have recorded a canonical_revision");
-
     let state = db_lock
         .get_projection_state(TANTIVY_PROJECTION_NAME, &workspace_id)
-        .expect("should be able to read projection state")
-        .expect("projection_states row should exist after successful watcher index");
+        .expect("should be able to read projection state");
 
-    assert_eq!(
-        state.status,
-        ProjectionStatus::Ready,
-        "projection status should be Ready"
+    assert!(
+        state.is_none(),
+        "uncommitted Tantivy writes must not publish durable projection readiness"
     );
+    drop(db_lock);
+    drop(guard);
+
+    let indexing_runtime = IndexingRuntimeState::shared();
+    let indexer = IncrementalIndexer::new(
+        workspace_root.clone(),
+        Arc::clone(&db),
+        Arc::clone(&extractor_manager),
+        Some(Arc::clone(&search_index)),
+        Arc::new(std::sync::RwLock::new(None)),
+        Arc::clone(&indexing_runtime),
+    )
+    .unwrap();
+    indexer.index_queue.lock().await.push_back(FileChangeEvent {
+        path: absolute_path,
+        change_type: FileChangeType::Modified,
+        timestamp: SystemTime::now(),
+    });
+
+    indexer
+        .process_pending_changes_with_commit_failure_for_test()
+        .await
+        .expect("watcher cycle should retain failed commit state");
+
+    {
+        let db_lock = db.lock().unwrap();
+        let state = db_lock
+            .get_projection_state(TANTIVY_PROJECTION_NAME, &workspace_id)
+            .unwrap()
+            .expect("failed commit should persist projection state");
+        assert_eq!(state.status, ProjectionStatus::Stale);
+        assert_eq!(state.canonical_revision, Some(canonical.revision));
+        assert_eq!(state.projected_revision, None);
+    }
+    {
+        let snapshot = indexing_runtime.read().unwrap().snapshot();
+        assert_eq!(snapshot.dirty_projection_count, 1);
+        assert!(
+            snapshot
+                .repair_reasons
+                .contains(&IndexingRepairReason::TantivyDirty)
+        );
+    }
+
+    indexer
+        .process_pending_changes()
+        .await
+        .expect("dirty projection retry should succeed");
+
+    let db_lock = db.lock().unwrap();
+    let state = db_lock
+        .get_projection_state(TANTIVY_PROJECTION_NAME, &workspace_id)
+        .unwrap()
+        .expect("successful retry should persist projection readiness");
+    assert_eq!(state.status, ProjectionStatus::Ready);
+    assert_eq!(state.canonical_revision, Some(canonical.revision));
+    assert_eq!(state.projected_revision, Some(canonical.revision));
     assert_eq!(
-        state.projected_revision,
-        Some(canonical.revision),
-        "projected_revision must equal canonical_revision after successful Tantivy apply"
-    );
-    assert_eq!(
-        state.canonical_revision,
-        Some(canonical.revision),
-        "canonical_revision in projection_states must match latest canonical revision"
+        indexing_runtime
+            .read()
+            .unwrap()
+            .snapshot()
+            .dirty_projection_count,
+        0
     );
 }
 
@@ -559,9 +607,9 @@ async fn test_watcher_advances_projected_revision() {
 #[tokio::test]
 async fn test_mid_crash_projection_lag_reconciliation() {
     use julie_core::database::ProjectionStatus;
-    use julie_index::search::{SearchIndex, SearchProjection};
     use julie_index::search::index::SearchFilter;
     use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
+    use julie_index::search::{SearchIndex, SearchProjection};
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_mid_crash_reconcile");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
@@ -591,9 +639,8 @@ async fn test_mid_crash_projection_lag_reconciliation() {
     .expect("SQLite-only watcher index should succeed");
 
     let workspace_key = workspace_root.to_string_lossy();
-    let workspace_id =
-        crate::workspace::registry::generate_workspace_id(&workspace_key)
-            .unwrap_or_else(|_| workspace_key.into_owned());
+    let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
+        .unwrap_or_else(|_| workspace_key.into_owned());
 
     // Phase 2: Simulate the crash gap — remove the projection_states row to
     // reproduce the durable lag condition (canonical_revision exists, projected absent).
