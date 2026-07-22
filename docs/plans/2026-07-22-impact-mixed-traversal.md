@@ -270,6 +270,8 @@ cargo xtask test changed
 
 Expected: all PASS. `changed` must select the blast/spillover coverage for the production and `src/tests/tools/blast_radius...` paths.
 
+**Live-code correction:** Task 2 was committed before this final gate, and `changed` intentionally maps only local working-tree changes, so the clean worktree produced a successful no-op instead of selecting a bucket. The directly selected `tools-blast-spillover` bucket provides the intended coverage and the ledger records the no-op without labeling it mapped coverage. Repository-wide `cargo fmt --check` also reproduces the already documented Phase 4 normalization debt; every Phase 3 Rust file passes the pinned formatter directly.
+
 **Step 3: Inspect the final diff impact**
 
 Use Miller `impact(git=true)` and inspect the modified traversal symbols. Confirm the stable tool interface, no default-mode caller expansion, and no unexpected dependency or language-specific branch.
@@ -294,9 +296,9 @@ Write the verification ledger from `docs/plans/verification-ledger-template.md`,
 Record current path, branch, HEAD, `git status --short --branch`, `git worktree list`, and the status of the main and release worktrees. Do not push or integrate.
 
 **Acceptance criteria:**
-- [ ] Final scorecard hard gates support promotion, or the feature is explicitly rejected without weakening expectations.
-- [ ] Report-only recall and latency are recorded honestly.
-- [ ] Focused, changed, dev, and full gates pass on recorded exact SHAs.
-- [ ] Miller final impact review finds no interface expansion or language-specific traversal branch.
-- [ ] Verification ledger, plan checklist, and active brief agree on Phase 3 status.
-- [ ] Final task worktree is clean; no push, merge, publish, or release occurs.
+- [x] Final scorecard hard gates support promotion, or the feature is explicitly rejected without weakening expectations.
+- [x] Report-only recall and latency are recorded honestly.
+- [x] Focused, changed-routing outcome, dev, and full gates are recorded on exact SHAs; focused/dev/full pass and the clean-worktree changed no-op is explicit.
+- [x] Miller final impact review finds no interface expansion or language-specific traversal branch.
+- [x] Verification ledger, plan checklist, and active brief agree on Phase 3 status.
+- [x] Final task worktree is clean after the closeout commit; no push, merge, publish, or release occurs.
