@@ -151,13 +151,13 @@ Run the final worktree-state audit for the task, main, and release worktrees. Do
 - `serial-worker-commit`: the lead owns the baseline metadata commit, the formatter-only mechanical commit, and the final roadmap closeout commit. Record every SHA in the verification ledger.
 
 **Acceptance criteria:**
-- [ ] RED reproduces exactly the 85-file Appendix A baseline.
-- [ ] One `cargo fmt` command creates the complete source diff and `cargo fmt --check` passes afterward.
-- [ ] The mechanical commit contains only reproducible rustfmt output in the Appendix A Rust files.
-- [ ] No public interface, dependency, feature, platform, fixture, generated artifact, or runtime behavior changes are introduced.
-- [ ] `cargo check`, the toolchain contract, affected-change escalation, `dev`, warning-free release build, and `full` pass on recorded exact SHAs.
-- [ ] The verification ledger, this checklist, and completed Goldfish brief agree on Phase 4 and roadmap status.
-- [ ] The final task worktree is clean; no push, merge, publish, deploy, tag, or release occurs.
+- [x] RED reproduces exactly the 85-file Appendix A baseline.
+- [x] One `cargo fmt` command creates the complete source diff and `cargo fmt --check` passes afterward.
+- [x] The mechanical commit contains only reproducible rustfmt output in the Appendix A Rust files.
+- [x] No public interface, dependency, feature, platform, fixture, generated artifact, or runtime behavior changes are introduced.
+- [x] `cargo check`, the toolchain contract, affected-change escalation, `dev`, warning-free release build, and `full` pass on recorded exact SHAs.
+- [x] The verification ledger, this checklist, and completed Goldfish brief agree on Phase 4 and roadmap status.
+- [x] The final task worktree is clean; no push, merge, publish, deploy, tag, or release occurs.
 
 ## Appendix A: Exact Rustfmt Path Manifest
 
