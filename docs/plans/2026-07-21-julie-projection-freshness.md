@@ -142,12 +142,12 @@
 **Approach:** Add `test_system_health_web_edge_lag_degrades_overall_without_closing_search`. Keep existing Tantivy loss/lag tests but change them to select by name. Add assertions for stable list order, current Tantivy, lagging web edges, degraded overall level, fully ready search, and canonical-store wording when revision metadata is absent.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run --lib test_system_health_web_edge_lag_degrades_overall_without_closing_search 2>&1 | tail -10` fails before implementation and passes after it.
-- [ ] JSON and report output contain exactly one `tantivy` and one `web_edges` record in stable order.
-- [ ] Tantivy loss/lag still produces SQLite-only readiness; web-edge loss/lag leaves search fully ready but degrades overall health and names `web_edges`.
-- [ ] Empty workspaces request no repair; missing canonical metadata points to canonical-store repair.
-- [ ] No `SearchProjectionHealth` type or `search_projection` compatibility field remains.
-- [ ] Worker-scope verification passes and the worker creates a `serial-worker-commit` commit.
+- [x] `cargo nextest run --lib test_system_health_web_edge_lag_degrades_overall_without_closing_search 2>&1 | tail -10` fails before implementation and passes after it.
+- [x] JSON and report output contain exactly one `tantivy` and one `web_edges` record in stable order.
+- [x] Tantivy loss/lag still produces SQLite-only readiness; web-edge loss/lag leaves search fully ready but degrades overall health and names `web_edges`.
+- [x] Empty workspaces request no repair; missing canonical metadata points to canonical-store repair.
+- [x] No `SearchProjectionHealth` type or `search_projection` compatibility field remains.
+- [x] Worker-scope verification passes and the worker creates a `serial-worker-commit` commit.
 
 ### Task 3: Detached Dashboard Migration
 
@@ -175,12 +175,12 @@
 **Approach:** Rename the integration test to `test_status_live_exposes_projection_list_contract` and use it for RED/GREEN. Render stable DOM identifiers from the projection name and update rows by name rather than array position.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run --lib test_status_live_exposes_projection_list_contract 2>&1 | tail -10` fails before implementation and passes after it.
-- [ ] `/status/live` exposes two named unavailable records and no `search_projection` field.
-- [ ] The status page renders and updates distinct Tantivy and web-edge rows without duplicate DOM IDs.
-- [ ] No live workspace database or Tantivy handle is added to `DashboardState`.
-- [ ] `src/dashboard/state.rs` is at most 500 lines without an unrelated module move.
-- [ ] Worker-scope verification passes and the worker creates a `serial-worker-commit` commit.
+- [x] `cargo nextest run --lib test_status_live_exposes_projection_list_contract 2>&1 | tail -10` fails before implementation and passes after it.
+- [x] `/status/live` exposes two named unavailable records and no `search_projection` field.
+- [x] The status page renders and updates distinct Tantivy and web-edge rows without duplicate DOM IDs.
+- [x] No live workspace database or Tantivy handle is added to `DashboardState`.
+- [x] `src/dashboard/state.rs` is at most 500 lines without an unrelated module move.
+- [x] Worker-scope verification passes and the worker creates a `serial-worker-commit` commit.
 
 ### Task 4: Lead Verification and Evidence
 
