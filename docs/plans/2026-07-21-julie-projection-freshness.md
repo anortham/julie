@@ -76,11 +76,12 @@
 
 ## Parallel Execution Contract
 
+**Live-code correction:** Tasks 2 and 3 execute as one atomic worker commit. `src/lib.rs` always compiles the detached dashboard, and `src/dashboard/state.rs` directly constructs the health projection type being replaced. Splitting the commits would require the forbidden compatibility type/field or leave the branch uncompilable.
+
 | Task | Parallel batch | File ownership | Serialization required | Dependency reason |
 |---|---|---|---|---|
 | Task 1: Gate-proved startup convergence | None - serial | `src/startup.rs`; `src/tests/tools/workspace/mod_tests/part6.rs` | Yes | Repository rules allow only one Cargo test command at a time; finish the risk-first repair slice before the contract migration. |
-| Task 2: Live generic projection health | None - serial | `src/health/types.rs`; `src/health/projection.rs`; `src/health/data_plane.rs`; `src/health/evaluation.rs`; `src/health/checker.rs`; `src/health/report.rs`; `src/health/mod.rs`; `src/tests/integration/system_health.rs`; `src/tests/tools/workspace/mod_tests/part2.rs` | Yes | The serialized type replacement must land atomically with every live consumer so each task ends compilable. |
-| Task 3: Detached dashboard migration | None - serial | `src/dashboard/state.rs`; `dashboard/templates/partials/services_panel.html`; `dashboard/templates/status.html`; `src/tests/dashboard/state.rs`; `src/tests/dashboard/integration/status.rs` | Yes | Depends on Task 2's exact `ProjectionHealth` and `projections` contracts. |
+| Tasks 2 and 3: Generic health plus detached dashboard | None - one atomic worker commit | Task 2 health/test files plus Task 3 dashboard/template/test files | Yes | The dashboard is an always-compiled consumer of the removed health type, so the no-compatibility migration must land as one compilable commit. |
 | Task 4: Lead verification and evidence | None - serial | `docs/plans/2026-07-21-julie-projection-freshness.md`; `docs/plans/2026-07-21-julie-projection-freshness-verification.md` | Yes | Runs only after all production/test slices are committed and owns the final SHA-bound evidence. |
 
 ### Task 1: Gate-Proved Startup Convergence
@@ -212,7 +213,7 @@
 ## Execution Order
 
 1. Commit this approved plan and its baseline ledger on `codex/julie-improvement-roadmap`.
-2. Execute Tasks 1-3 serially with `razorback:subagent-driven-development`; each worker uses TDD, exact tests, and `serial-worker-commit`.
+2. Execute Task 1, then the atomic Tasks 2+3 migration with `razorback:subagent-driven-development`; each behavior slice uses exact-test TDD and each worker creates one `serial-worker-commit`.
 3. Lead reviews each commit before dispatching the next task.
 4. Lead runs Task 4 once against the final code commit and commits the evidence update.
 5. Use `razorback:verification-before-completion`, then `razorback:finishing-a-development-branch`. Do not push without explicit approval.
