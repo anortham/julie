@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
+use julie_pipeline::indexing_core::web_edges::WEB_EDGES_PROJECTION_NAME;
 use serde::Serialize;
 use tokio::sync::broadcast;
 
@@ -11,17 +12,14 @@ use crate::dashboard::error_buffer::{ErrorBuffer, LogEntry};
 use crate::embeddings::EmbeddingBackend;
 use crate::embeddings::EmbeddingRuntimeStatus;
 use crate::health::{
-    EmbeddingRuntimeHealth, HealthLevel, ProjectionFreshness, ProjectionState,
-    SearchProjectionHealth, SystemStatus, overall_from_planes, project_embedding_runtime,
+    EmbeddingRuntimeHealth, HealthLevel, ProjectionFreshness, ProjectionHealth, ProjectionState,
+    SystemStatus, overall_from_planes, project_embedding_runtime,
 };
 use crate::registry::database::DaemonDatabase;
 use crate::registry::embedding_service::EmbeddingService;
 use crate::registry::lifecycle::{LifecyclePhase, LifecyclePhaseKind, ShutdownCause};
 use crate::registry::session::{SessionPhaseCounts, SessionTracker};
-
-// ---------------------------------------------------------------------------
-// DashboardEvent
-// ---------------------------------------------------------------------------
+use crate::search::projection::TANTIVY_PROJECTION_NAME;
 
 /// Events broadcast over the SSE channel to connected dashboard clients.
 #[derive(Debug, Clone)]
@@ -35,10 +33,6 @@ pub enum DashboardEvent {
         active_count: usize,
     },
 }
-
-// ---------------------------------------------------------------------------
-// DashboardHealth
-// ---------------------------------------------------------------------------
 
 pub use crate::registry::lifecycle::LifecyclePhaseKind as DashboardDaemonPhase;
 
@@ -74,7 +68,7 @@ pub struct DashboardDataPlaneHealth {
     pub other_workspace_count: usize,
     pub symbol_count: i64,
     pub file_count: i64,
-    pub search_projection: SearchProjectionHealth,
+    pub projections: Vec<ProjectionHealth>,
     pub indexing: DashboardIndexingHealth,
     pub detail: String,
 }
@@ -112,10 +106,6 @@ pub struct DashboardEmbeddingRuntimeStatus {
     pub accelerated: bool,
     pub degraded_reason: Option<String>,
 }
-
-// ---------------------------------------------------------------------------
-// DashboardState
-// ---------------------------------------------------------------------------
 
 /// Shared state injected into every dashboard route handler.
 ///
@@ -324,7 +314,7 @@ impl DashboardState {
         } else {
             HealthLevel::Ready
         };
-        let search_projection = self.search_projection_health().await;
+        let projections = Self::projection_health();
         let indexing = self.indexing_health().await;
 
         let data_plane = DashboardDataPlaneHealth {
@@ -338,7 +328,7 @@ impl DashboardState {
             other_workspace_count,
             symbol_count,
             file_count,
-            search_projection,
+            projections,
             indexing,
             detail: if !daemon_db_connected {
                 "workspace registry unavailable".to_string()
@@ -460,7 +450,6 @@ impl DashboardState {
 
 impl DashboardState {
     async fn indexing_health(&self) -> DashboardIndexingHealth {
-        // Pool detached (Phase 3d.2b-ii). Dashboard is dead-but-compiling until 3d.3.
         DashboardIndexingHealth {
             level: HealthLevel::Ready,
             active_operation: None,
@@ -476,20 +465,24 @@ impl DashboardState {
         }
     }
 
-    async fn search_projection_health(&self) -> SearchProjectionHealth {
-        // Pool detached (Phase 3d.2b-ii). Dashboard is dead-but-compiling until 3d.3.
-        SearchProjectionHealth {
-            level: HealthLevel::Unavailable,
-            state: ProjectionState::Missing,
-            freshness: ProjectionFreshness::Unavailable,
-            workspace_id: None,
-            canonical_revision: None,
-            projected_revision: None,
-            revision_lag: None,
-            repair_needed: false,
-            detail: "projection visibility unavailable because workspace pool is detached"
-                .to_string(),
-        }
+    fn projection_health() -> Vec<ProjectionHealth> {
+        [TANTIVY_PROJECTION_NAME, WEB_EDGES_PROJECTION_NAME]
+            .into_iter()
+            .map(|name| ProjectionHealth {
+                name: name.to_string(),
+                level: HealthLevel::Unavailable,
+                state: ProjectionState::Missing,
+                freshness: ProjectionFreshness::Unavailable,
+                workspace_id: None,
+                canonical_revision: None,
+                projected_revision: None,
+                revision_lag: None,
+                repair_needed: false,
+                detail: format!(
+                    "{name} projection visibility unavailable because workspace pool is detached"
+                ),
+            })
+            .collect()
     }
 }
 

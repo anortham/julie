@@ -1,11 +1,12 @@
 use anyhow::Result;
+use julie_pipeline::indexing_core::web_edges::WEB_EDGES_PROJECTION_NAME;
 
-use crate::handler::JulieServerHandler;
+use crate::{handler::JulieServerHandler, search::projection::TANTIVY_PROJECTION_NAME};
 
 use super::{
     CanonicalStoreHealth, DataPlaneHealth, HealthLevel, PrimaryWorkspaceHealth,
-    ProjectionFreshness, ProjectionState, indexing_health, overall_from_levels,
-    search_projection_health_for_workspace,
+    ProjectionFreshness, ProjectionHealth, ProjectionPolicy, ProjectionState, indexing_health,
+    overall_from_levels, projection_health_for_workspace,
 };
 
 pub(crate) async fn build_data_plane(
@@ -24,18 +25,18 @@ pub(crate) async fn build_data_plane(
                 languages: Vec::new(),
                 detail: "No primary workspace is indexed".to_string(),
             };
-            let search_projection = crate::health::SearchProjectionHealth {
-                level: HealthLevel::Unavailable,
-                state: ProjectionState::Missing,
-                freshness: ProjectionFreshness::Unavailable,
-                workspace_id: None,
-                canonical_revision: None,
-                projected_revision: None,
-                revision_lag: None,
-                repair_needed: false,
-                detail: "No Tantivy projection exists because no primary workspace is bound"
-                    .to_string(),
-            };
+            let projections = vec![
+                unavailable_projection(
+                    TANTIVY_PROJECTION_NAME,
+                    None,
+                    "No Tantivy projection exists because no primary workspace is bound",
+                ),
+                unavailable_projection(
+                    WEB_EDGES_PROJECTION_NAME,
+                    None,
+                    "No web_edges projection exists because no primary workspace is bound",
+                ),
+            ];
             let indexing = crate::health::IndexingHealth {
                 level: HealthLevel::Unavailable,
                 active_operation: None,
@@ -53,7 +54,7 @@ pub(crate) async fn build_data_plane(
             Ok(DataPlaneHealth {
                 level: HealthLevel::Unavailable,
                 canonical_store,
-                search_projection,
+                projections,
                 indexing,
             })
         }
@@ -129,49 +130,75 @@ pub(crate) async fn build_data_plane(
                 },
             };
 
-            let search_projection = match pooled_db.as_ref() {
-                Some(db) => search_projection_health_for_workspace(
-                    workspace_id,
-                    db,
-                    canonical_store.symbol_count,
-                    state.search_index_ready,
-                )
-                .unwrap_or_else(|err| crate::health::SearchProjectionHealth {
-                    level: HealthLevel::Unavailable,
-                    state: ProjectionState::Missing,
-                    freshness: ProjectionFreshness::Unavailable,
-                    workspace_id: Some(workspace_id.to_string()),
-                    canonical_revision: None,
-                    projected_revision: None,
-                    revision_lag: None,
-                    repair_needed: false,
-                    detail: format!("Failed to read projection state: {}", err),
-                }),
-                None => crate::health::SearchProjectionHealth {
-                    level: HealthLevel::Unavailable,
-                    state: ProjectionState::Missing,
-                    freshness: ProjectionFreshness::Unavailable,
-                    workspace_id: Some(workspace_id.to_string()),
-                    canonical_revision: None,
-                    projected_revision: None,
-                    revision_lag: None,
-                    repair_needed: false,
-                    detail: "No SQLite database is connected for the primary workspace".to_string(),
-                },
+            let projections: Vec<ProjectionHealth> = match pooled_db.as_ref() {
+                Some(db) => [
+                    ProjectionPolicy::Tantivy {
+                        physical_ready: state.search_index_ready,
+                    },
+                    ProjectionPolicy::WebEdges,
+                ]
+                .into_iter()
+                .map(|policy| {
+                    let name = match policy {
+                        ProjectionPolicy::Tantivy { .. } => TANTIVY_PROJECTION_NAME,
+                        ProjectionPolicy::WebEdges => WEB_EDGES_PROJECTION_NAME,
+                    };
+                    projection_health_for_workspace(
+                        workspace_id,
+                        db,
+                        canonical_store.symbol_count,
+                        policy,
+                    )
+                    .unwrap_or_else(|err| {
+                        unavailable_projection(
+                            name,
+                            Some(workspace_id),
+                            &format!("Failed to read {name} projection state: {err}"),
+                        )
+                    })
+                })
+                .collect(),
+                None => [TANTIVY_PROJECTION_NAME, WEB_EDGES_PROJECTION_NAME]
+                    .into_iter()
+                    .map(|name| {
+                        unavailable_projection(
+                            name,
+                            Some(workspace_id),
+                            "No SQLite database is connected for the primary workspace",
+                        )
+                    })
+                    .collect(),
             };
 
             let indexing = indexing_health(state.indexing_runtime.as_ref());
+            let mut levels = vec![canonical_store.level, indexing.level];
+            levels.extend(projections.iter().map(|projection| projection.level));
 
             Ok(DataPlaneHealth {
-                level: overall_from_levels(&[
-                    canonical_store.level,
-                    search_projection.level,
-                    indexing.level,
-                ]),
+                level: overall_from_levels(&levels),
                 canonical_store,
-                search_projection,
+                projections,
                 indexing,
             })
         }
+    }
+}
+
+fn unavailable_projection(
+    name: &str,
+    workspace_id: Option<&str>,
+    detail: &str,
+) -> ProjectionHealth {
+    ProjectionHealth {
+        name: name.to_string(),
+        level: HealthLevel::Unavailable,
+        state: ProjectionState::Missing,
+        freshness: ProjectionFreshness::Unavailable,
+        workspace_id: workspace_id.map(str::to_string),
+        canonical_revision: None,
+        projected_revision: None,
+        revision_lag: None,
+        repair_needed: false,
+        detail: detail.to_string(),
     }
 }

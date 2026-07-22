@@ -159,6 +159,10 @@ mod tests {
         }
 
         let snapshot = HealthChecker::system_snapshot(&handler).await?;
+        let tantivy = snapshot
+            .data_plane
+            .projection("tantivy")
+            .expect("tantivy projection");
         match snapshot.readiness {
             SystemStatus::SqliteOnly { symbol_count } => {
                 assert!(
@@ -168,14 +172,8 @@ mod tests {
             }
             other => panic!("expected sqlite-only readiness, got {other:?}"),
         }
-        assert_eq!(
-            snapshot.data_plane.search_projection.state,
-            ProjectionState::Missing
-        );
-        assert_eq!(
-            snapshot.data_plane.search_projection.level,
-            HealthLevel::Degraded
-        );
+        assert_eq!(tantivy.state, ProjectionState::Missing);
+        assert_eq!(tantivy.level, HealthLevel::Degraded);
 
         let status = HealthChecker::get_status_message(&handler).await?;
         assert!(status.contains("Partially ready"), "{status}");
@@ -209,7 +207,11 @@ mod tests {
 
         let degraded = HealthChecker::system_snapshot(&handler).await?;
         assert_eq!(
-            degraded.data_plane.search_projection.state,
+            degraded
+                .data_plane
+                .projection("tantivy")
+                .expect("tantivy projection")
+                .state,
             ProjectionState::Missing
         );
 
@@ -220,14 +222,12 @@ mod tests {
         }
 
         let repaired = HealthChecker::system_snapshot(&handler).await?;
-        assert_eq!(
-            repaired.data_plane.search_projection.level,
-            HealthLevel::Ready
-        );
-        assert_eq!(
-            repaired.data_plane.search_projection.state,
-            ProjectionState::Ready
-        );
+        let tantivy = repaired
+            .data_plane
+            .projection("tantivy")
+            .expect("tantivy projection");
+        assert_eq!(tantivy.level, HealthLevel::Ready);
+        assert_eq!(tantivy.state, ProjectionState::Ready);
         match repaired.readiness {
             SystemStatus::FullyReady { symbol_count } => {
                 assert!(symbol_count >= 1, "symbol count should survive repair");
@@ -296,24 +296,16 @@ mod tests {
         }
 
         let snapshot = HealthChecker::system_snapshot(&handler).await?;
-        assert_eq!(
-            snapshot.data_plane.search_projection.state,
-            ProjectionState::Ready
-        );
-        assert_eq!(
-            snapshot.data_plane.search_projection.freshness,
-            ProjectionFreshness::Lagging
-        );
-        assert_eq!(
-            snapshot.data_plane.search_projection.canonical_revision,
-            Some(2)
-        );
-        assert_eq!(
-            snapshot.data_plane.search_projection.projected_revision,
-            Some(1)
-        );
-        assert_eq!(snapshot.data_plane.search_projection.revision_lag, Some(1));
-        assert!(snapshot.data_plane.search_projection.repair_needed);
+        let tantivy = snapshot
+            .data_plane
+            .projection("tantivy")
+            .expect("tantivy projection");
+        assert_eq!(tantivy.state, ProjectionState::Ready);
+        assert_eq!(tantivy.freshness, ProjectionFreshness::Lagging);
+        assert_eq!(tantivy.canonical_revision, Some(2));
+        assert_eq!(tantivy.projected_revision, Some(1));
+        assert_eq!(tantivy.revision_lag, Some(1));
+        assert!(tantivy.repair_needed);
         match snapshot.readiness {
             SystemStatus::SqliteOnly { symbol_count } => {
                 assert!(
@@ -328,6 +320,104 @@ mod tests {
         assert!(status.contains("Partially ready"), "{status}");
         assert!(status.contains("lagging"), "{status}");
         assert!(status.contains("revision 1/2"), "{status}");
+
+        Ok(())
+    }
+
+    #[serial(embedding_env)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_system_health_web_edge_lag_degrades_overall_without_closing_search() -> Result<()>
+    {
+        let (_guard, _temp_dir, handler, _workspace_path, workspace_id) =
+            prepare_indexed_workspace().await?;
+
+        let (db, search_index) = {
+            let workspace = handler.workspace.read().await;
+            let workspace = workspace
+                .as_ref()
+                .expect("primary workspace should be loaded");
+            (
+                workspace.db.as_ref().expect("workspace db").clone(),
+                workspace
+                    .search_index
+                    .as_ref()
+                    .expect("search index")
+                    .clone(),
+            )
+        };
+
+        {
+            let mut db = db.lock().unwrap();
+            db.incremental_update_atomic(
+                &["src/lib.rs".to_string()],
+                &[make_file("src/lib.rs", "pub fn web_edge_lag_target() {}\n")],
+                &[make_symbol(
+                    "sym_web_edge_lag",
+                    "web_edge_lag_target",
+                    "src/lib.rs",
+                )],
+                &[],
+                &[],
+                &[],
+                &workspace_id,
+            )?;
+            crate::search::SearchProjection::tantivy(&workspace_id)
+                .ensure_current_from_database(&mut db, &search_index)?;
+        }
+
+        let snapshot = HealthChecker::system_snapshot(&handler).await?;
+        assert_eq!(snapshot.overall, HealthLevel::Degraded);
+        assert!(matches!(
+            snapshot.readiness,
+            SystemStatus::FullyReady { .. }
+        ));
+
+        let json = serde_json::to_value(&snapshot)?;
+        let projections = json["data_plane"]["projections"]
+            .as_array()
+            .expect("projection list");
+        assert_eq!(projections.len(), 2);
+        assert_eq!(projections[0]["name"], "tantivy");
+        assert_eq!(projections[0]["freshness"], "current");
+        assert_eq!(projections[1]["name"], "web_edges");
+        assert_eq!(projections[1]["freshness"], "lagging");
+        assert_eq!(projections[1]["canonical_revision"], 2);
+        assert_eq!(projections[1]["projected_revision"], 1);
+        assert_eq!(projections[1]["revision_lag"], 1);
+        assert_eq!(projections[1]["repair_needed"], true);
+
+        let status = HealthChecker::get_status_message(&handler).await?;
+        assert!(status.contains("web_edges"), "{status}");
+        assert!(!status.contains("degraded runtime"), "{status}");
+
+        let metadata_dir = tempfile::tempdir()?;
+        let metadata_db = crate::database::SymbolDatabase::new(
+            metadata_dir.path().join("projection-metadata.db"),
+        )?;
+        let missing_metadata = crate::health::projection_health_for_workspace(
+            "missing-metadata",
+            &metadata_db,
+            1,
+            crate::health::ProjectionPolicy::WebEdges,
+        )?;
+        assert!(missing_metadata.repair_needed);
+        assert!(
+            missing_metadata
+                .detail
+                .contains("canonical-store repair is required"),
+            "{}",
+            missing_metadata.detail
+        );
+        let empty = crate::health::projection_health_for_workspace(
+            "empty",
+            &metadata_db,
+            0,
+            crate::health::ProjectionPolicy::Tantivy {
+                physical_ready: false,
+            },
+        )?;
+        assert!(!empty.repair_needed);
+        assert_eq!(empty.freshness, ProjectionFreshness::Unavailable);
 
         Ok(())
     }

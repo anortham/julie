@@ -47,7 +47,8 @@ impl CanonicalStoreHealth {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct SearchProjectionHealth {
+pub struct ProjectionHealth {
+    pub name: String,
     pub level: HealthLevel,
     pub state: ProjectionState,
     pub freshness: ProjectionFreshness,
@@ -78,8 +79,16 @@ pub struct IndexingHealth {
 pub struct DataPlaneHealth {
     pub level: HealthLevel,
     pub canonical_store: CanonicalStoreHealth,
-    pub search_projection: SearchProjectionHealth,
+    pub projections: Vec<ProjectionHealth>,
     pub indexing: IndexingHealth,
+}
+
+impl DataPlaneHealth {
+    pub fn projection(&self, name: &str) -> Option<&ProjectionHealth> {
+        self.projections
+            .iter()
+            .find(|projection| projection.name == name)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

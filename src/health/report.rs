@@ -104,54 +104,38 @@ impl SystemHealthSnapshot {
             }
         }
 
-        report.push_str(&format!(
-            "Projection Status: {}\n",
-            self.data_plane.search_projection.state.label()
-        ));
-        report.push_str(&format!(
-            "Projection Freshness: {}\n",
-            self.data_plane.search_projection.freshness.label()
-        ));
-        report.push_str(&format!(
-            "Projection Workspace: {}\n",
-            self.data_plane
-                .search_projection
-                .workspace_id
-                .as_deref()
-                .unwrap_or("primary")
-        ));
-        report.push_str(&format!(
-            "Canonical Revision: {}\n",
-            self.data_plane
-                .search_projection
-                .canonical_revision
-                .map(|revision| revision.to_string())
-                .unwrap_or_else(|| "none".to_string())
-        ));
-        report.push_str(&format!(
-            "Projected Revision: {}\n",
-            self.data_plane
-                .search_projection
-                .projected_revision
-                .map(|revision| revision.to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        ));
-        report.push_str(&format!(
-            "Projection Revision Lag: {}\n",
-            self.data_plane
-                .search_projection
-                .revision_lag
-                .map(|lag| lag.to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        ));
-        report.push_str(&format!(
-            "Projection Repair Needed: {}\n",
-            self.data_plane.search_projection.repair_needed
-        ));
-        report.push_str(&format!(
-            "Projection Detail: {}\n",
-            self.data_plane.search_projection.detail
-        ));
+        for projection in &self.data_plane.projections {
+            report.push_str(&format!("Projection {}\n", projection.name));
+            report.push_str(&format!("Status: {}\n", projection.state.label()));
+            report.push_str(&format!("Freshness: {}\n", projection.freshness.label()));
+            report.push_str(&format!(
+                "Workspace: {}\n",
+                projection.workspace_id.as_deref().unwrap_or("primary")
+            ));
+            report.push_str(&format!(
+                "Canonical Revision: {}\n",
+                projection
+                    .canonical_revision
+                    .map(|revision| revision.to_string())
+                    .unwrap_or_else(|| "none".to_string())
+            ));
+            report.push_str(&format!(
+                "Projected Revision: {}\n",
+                projection
+                    .projected_revision
+                    .map(|revision| revision.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            ));
+            report.push_str(&format!(
+                "Revision Lag: {}\n",
+                projection
+                    .revision_lag
+                    .map(|lag| lag.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            ));
+            report.push_str(&format!("Repair Needed: {}\n", projection.repair_needed));
+            report.push_str(&format!("Detail: {}\n", projection.detail));
+        }
         report.push_str(&format!(
             "Indexing Status: {}\n",
             self.data_plane.indexing.level.label()
@@ -214,20 +198,23 @@ impl SystemHealthSnapshot {
                 self.data_plane.canonical_store.file_count,
                 self.data_plane.canonical_store.relationship_count
             ));
-            report.push_str(&format!(
-                "{} Tantivy search {}\n",
-                if self.data_plane.search_projection.state == ProjectionState::Ready {
-                    "✅"
-                } else {
-                    "❌"
-                },
-                match self.data_plane.search_projection.freshness {
-                    ProjectionFreshness::Current => "ready",
-                    ProjectionFreshness::Lagging => "lagging behind canonical revision",
-                    ProjectionFreshness::RebuildRequired => "repair required",
-                    ProjectionFreshness::Unavailable => "index not initialized",
-                }
-            ));
+            for projection in &self.data_plane.projections {
+                report.push_str(&format!(
+                    "{} {} projection {}\n",
+                    if projection.state == ProjectionState::Ready {
+                        "✅"
+                    } else {
+                        "❌"
+                    },
+                    projection.name,
+                    match projection.freshness {
+                        ProjectionFreshness::Current => "ready",
+                        ProjectionFreshness::Lagging => "lagging behind canonical revision",
+                        ProjectionFreshness::RebuildRequired => "repair required",
+                        ProjectionFreshness::Unavailable => "not initialized",
+                    }
+                ));
+            }
         }
 
         report.push('\n');

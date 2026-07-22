@@ -1,5 +1,6 @@
 use crate::handler::JulieServerHandler;
 use crate::handler::session_workspace::PrimaryWorkspaceBinding;
+use crate::search::projection::TANTIVY_PROJECTION_NAME;
 use anyhow::Result;
 
 use super::evaluation::{overall_from_planes, readiness_from_data_plane};
@@ -157,56 +158,48 @@ impl HealthChecker {
     /// Get a user-facing status message.
     pub async fn get_status_message(handler: &JulieServerHandler) -> Result<String> {
         let snapshot = Self::system_snapshot(handler).await?;
-        let projection = &snapshot.data_plane.search_projection;
+        let tantivy = snapshot.data_plane.projection(TANTIVY_PROJECTION_NAME);
+        let degraded_projection = snapshot.data_plane.projections.iter().find(|projection| {
+            projection.name != TANTIVY_PROJECTION_NAME && projection.level != HealthLevel::Ready
+        });
 
         match snapshot.readiness {
             SystemStatus::NotReady => {
                 Ok("❌ System not ready. Run 'manage_workspace index' to initialize.".to_string())
             }
-            SystemStatus::SqliteOnly { symbol_count } => match projection.freshness {
-                ProjectionFreshness::Lagging => Ok(format!(
-                    "🟡 Partially ready: {} symbols in SQLite, Tantivy projection lagging at revision {}/{}",
-                    symbol_count,
-                    projection
-                        .projected_revision
-                        .map(|revision| revision.to_string())
-                        .unwrap_or_else(|| "unknown".to_string()),
-                    projection
-                        .canonical_revision
-                        .map(|revision| revision.to_string())
-                        .unwrap_or_else(|| "unknown".to_string()),
-                )),
-                ProjectionFreshness::RebuildRequired => Ok(format!(
-                    "🟡 Partially ready: {} symbols in SQLite, Tantivy projection repair required: {}",
-                    symbol_count, projection.detail
-                )),
+            SystemStatus::SqliteOnly { symbol_count } => match tantivy {
+                Some(projection) if projection.freshness == ProjectionFreshness::Lagging => {
+                    Ok(format!(
+                        "🟡 Partially ready: {} symbols in SQLite, Tantivy projection lagging at revision {}/{}",
+                        symbol_count,
+                        projection
+                            .projected_revision
+                            .map(|revision| revision.to_string())
+                            .unwrap_or_else(|| "unknown".to_string()),
+                        projection
+                            .canonical_revision
+                            .map(|revision| revision.to_string())
+                            .unwrap_or_else(|| "unknown".to_string()),
+                    ))
+                }
+                Some(projection)
+                    if projection.freshness == ProjectionFreshness::RebuildRequired =>
+                {
+                    Ok(format!(
+                        "🟡 Partially ready: {} symbols in SQLite, Tantivy projection repair required: {}",
+                        symbol_count, projection.detail
+                    ))
+                }
                 _ => Ok(format!(
                     "🟡 Partially ready: {} symbols in SQLite, Tantivy projection missing",
                     symbol_count
                 )),
             },
-            SystemStatus::FullyReady { symbol_count }
-                if projection.freshness == ProjectionFreshness::Lagging =>
-            {
+            SystemStatus::FullyReady { symbol_count } if degraded_projection.is_some() => {
+                let projection = degraded_projection.expect("guarded projection");
                 Ok(format!(
-                    "🟡 Search-ready but lagging: {} symbols, Tantivy at revision {}/{}",
-                    symbol_count,
-                    projection
-                        .projected_revision
-                        .map(|revision| revision.to_string())
-                        .unwrap_or_else(|| "unknown".to_string()),
-                    projection
-                        .canonical_revision
-                        .map(|revision| revision.to_string())
-                        .unwrap_or_else(|| "unknown".to_string()),
-                ))
-            }
-            SystemStatus::FullyReady { symbol_count }
-                if projection.freshness == ProjectionFreshness::RebuildRequired =>
-            {
-                Ok(format!(
-                    "🟡 Search-ready but projection repair needed: {} symbols, {}",
-                    symbol_count, projection.detail
+                    "🟡 Search-ready with degraded projection {}: {} symbols with Tantivy search; {}",
+                    projection.name, symbol_count, projection.detail
                 ))
             }
             SystemStatus::FullyReady { symbol_count } => {

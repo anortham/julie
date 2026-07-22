@@ -128,10 +128,9 @@ async fn test_status_live_exposes_indexing_health_snapshot() {
     );
 }
 
-#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
-async fn test_status_live_exposes_projection_freshness_snapshot() {
-    let (state, _temp_dir, workspace_id) = state_with_projection_lag().await;
+async fn test_status_live_exposes_projection_list_contract() {
+    let (state, _temp_dir) = test_state_with_db();
     let config = DashboardConfig::default();
     let app = create_router(state, config).unwrap();
 
@@ -151,34 +150,32 @@ async fn test_status_live_exposes_projection_freshness_snapshot() {
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(
-        json["health"]["data_plane"]["search_projection"]["workspace_id"],
-        workspace_id
+    assert!(
+        json["health"]["data_plane"]
+            .as_object()
+            .is_some_and(|data_plane| !data_plane.contains_key("search_projection"))
     );
-    assert_eq!(
-        json["health"]["data_plane"]["search_projection"]["state"],
-        "ready"
-    );
-    assert_eq!(
-        json["health"]["data_plane"]["search_projection"]["freshness"],
-        "lagging"
-    );
-    assert_eq!(
-        json["health"]["data_plane"]["search_projection"]["canonical_revision"],
-        2
-    );
-    assert_eq!(
-        json["health"]["data_plane"]["search_projection"]["projected_revision"],
-        1
-    );
-    assert_eq!(
-        json["health"]["data_plane"]["search_projection"]["revision_lag"],
-        1
-    );
-    assert_eq!(
-        json["health"]["data_plane"]["search_projection"]["repair_needed"],
-        true
-    );
+    let projections = json["health"]["data_plane"]["projections"]
+        .as_array()
+        .expect("projection list");
+    assert_eq!(projections.len(), 2);
+    assert_eq!(projections[0]["name"], "tantivy");
+    assert_eq!(projections[1]["name"], "web_edges");
+    for projection in projections {
+        assert_eq!(projection["level"], "unavailable");
+        assert_eq!(projection["state"], "missing");
+        assert_eq!(projection["freshness"], "unavailable");
+        assert_eq!(projection["workspace_id"], serde_json::Value::Null);
+        assert_eq!(projection["canonical_revision"], serde_json::Value::Null);
+        assert_eq!(projection["projected_revision"], serde_json::Value::Null);
+        assert_eq!(projection["revision_lag"], serde_json::Value::Null);
+        assert_eq!(projection["repair_needed"], false);
+        assert!(
+            projection["detail"]
+                .as_str()
+                .is_some_and(|detail| detail.contains("workspace pool is detached"))
+        );
+    }
 }
 
 #[tokio::test]
@@ -204,9 +201,18 @@ async fn test_status_page_renders_health_sections() {
     assert!(html.contains("Overall Health"));
     assert!(html.contains("Daemon Phase"));
     assert!(html.contains("Session Phases"));
-    assert!(html.contains("Projection Freshness"));
-    assert!(html.contains("Canonical / Projected Revision"));
-    assert!(html.contains("Projection Revision Lag"));
+    assert_eq!(
+        html.matches("id=\"data-plane-projection-tantivy-status\"")
+            .count(),
+        1
+    );
+    assert_eq!(
+        html.matches("id=\"data-plane-projection-web_edges-status\"")
+            .count(),
+        1
+    );
+    assert!(html.contains("data-plane-projection-${projection.name}"));
+    assert!(html.contains("d.health.data_plane.projections || []"));
     assert!(html.contains("Indexing Operation"));
     assert!(html.contains("Dirty Projection Entries"));
     assert!(html.contains("Repair Reasons"));

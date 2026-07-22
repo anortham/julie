@@ -111,37 +111,39 @@
           <span id="data-plane-files">{{ health.data_plane.file_count }}</span>
         </td>
       </tr>
+      {% for projection in health.data_plane.projections %}
       <tr>
-        <td>Projection Workspace</td>
-        <td id="data-plane-projection-workspace">{{ health.data_plane.search_projection.workspace_id | default(value="NONE") }}</td>
+        <td>{{ projection.name | upper | replace(from="_", to=" ") }} Workspace</td>
+        <td id="data-plane-projection-{{ projection.name }}-workspace">{{ projection.workspace_id | default(value="NONE") }}</td>
       </tr>
       <tr>
-        <td>Projection Status</td>
-        <td id="data-plane-projection-status">{{ health.data_plane.search_projection.state | upper }}</td>
+        <td>{{ projection.name | upper | replace(from="_", to=" ") }} Status</td>
+        <td id="data-plane-projection-{{ projection.name }}-status">{{ projection.state | upper }}</td>
       </tr>
       <tr>
-        <td>Projection Freshness</td>
-        <td id="data-plane-projection-freshness">{{ health.data_plane.search_projection.freshness | upper | replace(from="_", to=" ") }}</td>
+        <td>{{ projection.name | upper | replace(from="_", to=" ") }} Freshness</td>
+        <td id="data-plane-projection-{{ projection.name }}-freshness">{{ projection.freshness | upper | replace(from="_", to=" ") }}</td>
       </tr>
       <tr>
-        <td>Canonical / Projected Revision</td>
-        <td id="data-plane-projection-revisions">
-          {{ health.data_plane.search_projection.canonical_revision | default(value="NONE") }} /
-          {{ health.data_plane.search_projection.projected_revision | default(value="UNKNOWN") }}
+        <td>{{ projection.name | upper | replace(from="_", to=" ") }} Canonical / Projected Revision</td>
+        <td id="data-plane-projection-{{ projection.name }}-revisions">
+          {{ projection.canonical_revision | default(value="NONE") }} /
+          {{ projection.projected_revision | default(value="UNKNOWN") }}
         </td>
       </tr>
       <tr>
-        <td>Projection Revision Lag</td>
-        <td id="data-plane-projection-lag">{{ health.data_plane.search_projection.revision_lag | default(value="UNKNOWN") }}</td>
+        <td>{{ projection.name | upper | replace(from="_", to=" ") }} Revision Lag</td>
+        <td id="data-plane-projection-{{ projection.name }}-lag">{{ projection.revision_lag | default(value="UNKNOWN") }}</td>
       </tr>
       <tr>
-        <td>Projection Repair Needed</td>
-        <td id="data-plane-projection-repair-needed">{% if health.data_plane.search_projection.repair_needed %}Yes{% else %}No{% endif %}</td>
+        <td>{{ projection.name | upper | replace(from="_", to=" ") }} Repair Needed</td>
+        <td id="data-plane-projection-{{ projection.name }}-repair-needed">{% if projection.repair_needed %}Yes{% else %}No{% endif %}</td>
       </tr>
       <tr>
-        <td>Projection Detail</td>
-        <td id="data-plane-projection-detail">{{ health.data_plane.search_projection.detail }}</td>
+        <td>{{ projection.name | upper | replace(from="_", to=" ") }} Detail</td>
+        <td id="data-plane-projection-{{ projection.name }}-detail">{{ projection.detail }}</td>
       </tr>
+      {% endfor %}
       <tr>
         <td>Indexing Operation</td>
         <td id="data-plane-indexing-operation">

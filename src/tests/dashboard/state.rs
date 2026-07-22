@@ -3,15 +3,11 @@ use std::sync::RwLock;
 use std::time::Instant;
 
 use crate::dashboard::state::{DashboardDaemonPhase, DashboardEvent, DashboardState};
-use crate::database::types::FileInfo;
-use crate::extractors::{Symbol, SymbolKind};
-use crate::health::{HealthLevel, ProjectionFreshness, ProjectionState, SystemStatus};
+use crate::health::{HealthLevel, SystemStatus};
 use crate::registry::database::DaemonDatabase;
 use crate::registry::embedding_service::EmbeddingService;
 use crate::registry::lifecycle::{LifecyclePhase, ShutdownCause};
 use crate::registry::session::{SessionLifecyclePhase, SessionTracker};
-use crate::search::SearchProjection;
-use crate::workspace::registry::generate_workspace_id;
 
 #[tokio::test]
 async fn test_dashboard_health_snapshot_reports_ready_state() {
@@ -390,110 +386,18 @@ async fn test_dashboard_health_snapshot_reports_daemon_and_session_phases() {
     assert_eq!(health.control_plane.session_phases.closing, 0);
 }
 
-fn make_file(path: &str, content: &str) -> FileInfo {
-    FileInfo {
-        path: path.to_string(),
-        language: "rust".to_string(),
-        hash: format!("hash_{path}"),
-        size: content.len() as i64,
-        last_modified: 1000,
-        last_indexed: 0,
-        symbol_count: 1,
-        line_count: content.lines().count() as i32,
-        content: Some(content.to_string()),
-    }
-}
-
-fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
-    Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 1,
-        end_column: 24,
-        start_byte: 0,
-        end_byte: 24,
-        signature: Some(format!("fn {}()", name)),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: Some(format!("fn {}() {{}}", name)),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
-    }
-}
-
-#[ignore = "dashboard live-data dark after Phase 3d.2b pool de-type; standalone registry-reader dashboard rebuilt in 3d.3"]
 #[tokio::test]
-async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
+async fn test_dashboard_health_snapshot_reports_detached_projection_contract() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let workspace_root = temp_dir.path().join("workspace");
-    std::fs::create_dir_all(&workspace_root).unwrap();
-    let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
-
     let sessions = Arc::new(SessionTracker::new());
     let daemon_db =
         Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon.db"));
     daemon_db
-        .upsert_workspace(&workspace_id, &workspace_root.to_string_lossy(), "ready")
+        .upsert_workspace("ready-a", "/proj/a", "ready")
         .unwrap();
     daemon_db
-        .update_workspace_stats(&workspace_id, 2, 1, None, None, None)
+        .update_workspace_stats("ready-a", 2, 1, None, None, None)
         .unwrap();
-
-    let workspace = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(workspace_root.clone())
-            .await
-            .expect("workspace init"),
-    );
-
-    {
-        let mut db = workspace
-            .db
-            .as_ref()
-            .expect("workspace db")
-            .lock()
-            .expect("db lock");
-        db.bulk_store_fresh_atomic(
-            &[make_file("src/lib.rs", "fn first_symbol() {}\n")],
-            &[make_symbol("sym_1", "first_symbol", "src/lib.rs")],
-            &[],
-            &[],
-            &[],
-            &workspace_id,
-        )
-        .unwrap();
-
-        let search_index = workspace
-            .search_index
-            .as_ref()
-            .expect("search index")
-            .clone();
-        SearchProjection::tantivy(&workspace_id)
-            .ensure_current_from_database(&mut db, &search_index)
-            .unwrap();
-        drop(search_index);
-
-        db.incremental_update_atomic(
-            &["src/lib.rs".to_string()],
-            &[make_file("src/lib.rs", "fn second_symbol() {}\n")],
-            &[make_symbol("sym_2", "second_symbol", "src/lib.rs")],
-            &[],
-            &[],
-            &[],
-            &workspace_id,
-        )
-        .unwrap();
-    }
 
     let state = DashboardState::new(
         Arc::clone(&sessions),
@@ -505,29 +409,15 @@ async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
     );
 
     let health = state.health_snapshot().await;
-
-    assert_eq!(
-        health.data_plane.search_projection.workspace_id.as_deref(),
-        Some(workspace_id.as_str())
-    );
-    assert_eq!(
-        health.data_plane.search_projection.state,
-        ProjectionState::Ready
-    );
-    assert_eq!(
-        health.data_plane.search_projection.freshness,
-        ProjectionFreshness::Lagging
-    );
-    assert_eq!(
-        health.data_plane.search_projection.canonical_revision,
-        Some(2)
-    );
-    assert_eq!(
-        health.data_plane.search_projection.projected_revision,
-        Some(1)
-    );
-    assert_eq!(health.data_plane.search_projection.revision_lag, Some(1));
-    assert!(health.data_plane.search_projection.repair_needed);
+    assert_eq!(health.data_plane.projections.len(), 2);
+    assert_eq!(health.data_plane.projections[0].name, "tantivy");
+    assert_eq!(health.data_plane.projections[1].name, "web_edges");
+    for projection in &health.data_plane.projections {
+        assert_eq!(projection.level, HealthLevel::Unavailable);
+        assert!(!projection.repair_needed);
+        assert!(projection.workspace_id.is_none());
+        assert!(projection.detail.contains("workspace pool is detached"));
+    }
 }
 
 // ---- test helpers ----

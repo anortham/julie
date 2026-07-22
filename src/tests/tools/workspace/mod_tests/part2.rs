@@ -208,6 +208,10 @@ async fn test_health_snapshot_classifies_plane_states_for_local_workspace() {
     }
 
     let snapshot = HealthChecker::system_snapshot(&handler).await.unwrap();
+    let tantivy = snapshot
+        .data_plane
+        .projection("tantivy")
+        .expect("tantivy projection");
 
     assert_eq!(snapshot.overall, HealthLevel::Degraded);
     assert_eq!(
@@ -219,18 +223,9 @@ async fn test_health_snapshot_classifies_plane_states_for_local_workspace() {
         snapshot.data_plane.canonical_store.level,
         HealthLevel::Ready
     );
-    assert_eq!(
-        snapshot.data_plane.search_projection.state,
-        ProjectionState::Missing
-    );
-    assert_eq!(
-        snapshot.data_plane.search_projection.freshness,
-        ProjectionFreshness::RebuildRequired
-    );
-    assert_eq!(
-        snapshot.data_plane.search_projection.level,
-        HealthLevel::Degraded
-    );
+    assert_eq!(tantivy.state, ProjectionState::Missing);
+    assert_eq!(tantivy.freshness, ProjectionFreshness::RebuildRequired);
+    assert_eq!(tantivy.level, HealthLevel::Degraded);
     assert_eq!(snapshot.data_plane.indexing.level, HealthLevel::Degraded);
     assert_eq!(
         snapshot.data_plane.indexing.active_operation.as_deref(),
@@ -342,15 +337,11 @@ async fn test_manage_workspace_health_reports_control_data_and_runtime_planes() 
     assert!(health.contains("Runtime Plane"), "{health}");
     assert!(health.contains("Daemon Status: DIRECT"), "{health}");
     assert!(health.contains("Watcher Status: LOCAL"), "{health}");
-    assert!(health.contains("Projection Status: MISSING"), "{health}");
-    assert!(
-        health.contains("Projection Freshness: REBUILD REQUIRED"),
-        "{health}"
-    );
-    assert!(
-        health.contains("Projection Repair Needed: true"),
-        "{health}"
-    );
+    assert!(health.contains("Projection tantivy"), "{health}");
+    assert!(health.contains("Projection web_edges"), "{health}");
+    assert!(health.contains("Status: MISSING"), "{health}");
+    assert!(health.contains("Freshness: REBUILD REQUIRED"), "{health}");
+    assert!(health.contains("Repair Needed: true"), "{health}");
     assert!(health.contains("Indexing Operation: CATCH_UP"), "{health}");
     assert!(health.contains("Indexing Stage: PROJECTING"), "{health}");
     assert!(health.contains("Catch-Up Active: true"), "{health}");

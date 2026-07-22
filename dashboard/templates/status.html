@@ -122,26 +122,17 @@ setInterval(async () => {
     if (el('data-plane-other')) el('data-plane-other').textContent = d.health.data_plane.other_workspace_count;
     if (el('data-plane-symbols')) el('data-plane-symbols').textContent = d.health.data_plane.symbol_count;
     if (el('data-plane-files')) el('data-plane-files').textContent = d.health.data_plane.file_count;
-    if (el('data-plane-projection-workspace')) {
-      el('data-plane-projection-workspace').textContent = d.health.data_plane.search_projection.workspace_id || 'NONE';
-    }
-    if (el('data-plane-projection-status')) {
-      el('data-plane-projection-status').textContent = formatUpperValue(d.health.data_plane.search_projection.state);
-    }
-    if (el('data-plane-projection-freshness')) {
-      el('data-plane-projection-freshness').textContent = formatUpperValue(d.health.data_plane.search_projection.freshness);
-    }
-    if (el('data-plane-projection-revisions')) {
-      el('data-plane-projection-revisions').textContent = `${formatOptionalValue(d.health.data_plane.search_projection.canonical_revision, 'NONE')} / ${formatOptionalValue(d.health.data_plane.search_projection.projected_revision)}`;
-    }
-    if (el('data-plane-projection-lag')) {
-      el('data-plane-projection-lag').textContent = formatOptionalValue(d.health.data_plane.search_projection.revision_lag);
-    }
-    if (el('data-plane-projection-repair-needed')) {
-      el('data-plane-projection-repair-needed').textContent = formatBool(d.health.data_plane.search_projection.repair_needed);
-    }
-    if (el('data-plane-projection-detail')) {
-      el('data-plane-projection-detail').textContent = d.health.data_plane.search_projection.detail;
+    for (const projection of d.health.data_plane.projections || []) {
+      const prefix = `data-plane-projection-${projection.name}`;
+      if (el(`${prefix}-workspace`)) el(`${prefix}-workspace`).textContent = projection.workspace_id || 'NONE';
+      if (el(`${prefix}-status`)) el(`${prefix}-status`).textContent = formatUpperValue(projection.state);
+      if (el(`${prefix}-freshness`)) el(`${prefix}-freshness`).textContent = formatUpperValue(projection.freshness);
+      if (el(`${prefix}-revisions`)) {
+        el(`${prefix}-revisions`).textContent = `${formatOptionalValue(projection.canonical_revision, 'NONE')} / ${formatOptionalValue(projection.projected_revision)}`;
+      }
+      if (el(`${prefix}-lag`)) el(`${prefix}-lag`).textContent = formatOptionalValue(projection.revision_lag);
+      if (el(`${prefix}-repair-needed`)) el(`${prefix}-repair-needed`).textContent = formatBool(projection.repair_needed);
+      if (el(`${prefix}-detail`)) el(`${prefix}-detail`).textContent = projection.detail;
     }
     if (el('data-plane-indexing-operation')) {
       el('data-plane-indexing-operation').textContent = formatUpperValue(d.health.data_plane.indexing.active_operation);
