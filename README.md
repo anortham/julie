@@ -524,7 +524,7 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 
 ### Prerequisites
 
-- **Rust** (stable, 1.85+) — [rustup.rs](https://rustup.rs)
+- **Rust** — [rustup](https://rustup.rs) installs the repository-pinned Rust 1.97.0 toolchain automatically
 - **[uv](https://docs.astral.sh/uv/)** — auto-provisions Python 3.12 and the embedding sidecar (see [Embeddings and GPU Acceleration](#embeddings-and-gpu-acceleration))
 
 ### Building

@@ -1,8 +1,16 @@
 # Development Commands
 
-**Last Updated:** 2026-03-25
+**Last Updated:** 2026-07-22
 
 Daily commands and workflows for Julie development.
+
+Julie pins Rust 1.97.0 in `rust-toolchain.toml`. Use rustup's `cargo` and
+`rustc` proxies so local builds, formatting, and release CI select the same
+official toolchain. Verify the active selection with:
+
+```bash
+rustup show active-toolchain
+```
 
 ## Daily Development
 
@@ -51,7 +59,21 @@ lld links significantly faster than the default macOS linker on large Rust proje
 brew install lld
 ```
 
-`ld64.lld` lands in `/opt/homebrew/bin/` which is on the standard Homebrew PATH. The `rustflags` block in `.cargo/config.toml` activates it automatically for macOS targets; no further steps needed.
+The `rustflags` block in `.cargo/config.toml` activates `ld64.lld`
+automatically for macOS targets. Cargo also supplies
+`MACOSX_DEPLOYMENT_TARGET=11.0` to native build scripts so bundled C objects
+retain Julie's supported deployment target.
+
+If both Homebrew Rust and Homebrew rustup are installed, put the rustup proxies
+before `/opt/homebrew/bin` so the repository pin is honored:
+
+```bash
+export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
+```
+
+Do not use Homebrew's host-targeted `rustc` for Julie release builds. Confirm
+`command -v cargo`, `command -v rustc`, and `rustup show active-toolchain`
+before diagnosing linker object-version warnings.
 
 **Fallback:** if the linker causes issues, remove the `[target.'cfg(target_os = "macos")']` block from `.cargo/config.toml` to restore the default linker.
 
