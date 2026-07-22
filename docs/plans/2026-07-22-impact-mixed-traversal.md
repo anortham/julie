@@ -224,13 +224,13 @@ Expected: all PASS with existing direct-web provenance, fanout, and budget behav
 - `serial-worker-commit`: checkpoint, commit the reviewed implementation as `feat(impact): traverse mixed graph in web mode`, and record the SHA.
 
 **Acceptance criteria:**
-- [ ] Web mode finds every expected HTTP and SQL mixed path at the shortest distance.
-- [ ] External/ambiguous edges remain terminal with zero unexpected internal links.
-- [ ] Cycles, self-calls, duplicate routes, combined depth, and deterministic ordering pass exact tests.
-- [ ] Default mode remains byte-identical to the Task 1 snapshot.
-- [ ] Existing direct web caller provenance and ordinary walk budget tests pass.
-- [ ] `walk.rs` and every new test file stay within project line limits.
-- [ ] Exact RED/GREEN and focused regression evidence is recorded and the slice is committed.
+- [x] Web mode finds every expected HTTP and SQL mixed path at the shortest distance.
+- [x] External/ambiguous edges remain terminal with zero unexpected internal links.
+- [x] Cycles, self-calls, duplicate routes, combined depth, and deterministic ordering pass exact tests.
+- [x] Default mode remains byte-identical to the Task 1 snapshot.
+- [x] Existing direct web caller provenance and ordinary walk budget tests pass.
+- [x] `walk.rs` and every new test file stay within project line limits.
+- [x] Exact RED/GREEN and focused regression evidence is recorded and the slice is committed.
 
 ### Task 3: Promotion evidence and roadmap closeout
 
