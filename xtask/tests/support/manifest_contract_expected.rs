@@ -277,7 +277,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             "tools-get-symbols",
             ExpectedBucket {
                 expected_seconds: 40,
-                timeout_seconds: 120,
+                timeout_seconds: 300,
                 commands: &[
                     "cargo nextest run --lib tests::tools::get_symbols:: -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_relative_paths -- --skip search_quality",

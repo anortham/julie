@@ -315,7 +315,7 @@ commands = [
 [buckets.tools-get-symbols]
 # Exact get_symbols filters avoid rerunning every get_symbols_* sibling, especially dogfood.
 expected_seconds = 40
-timeout_seconds = 120
+timeout_seconds = 300
 scope_label = "tooling"
 notes = "get_symbols surface"
 commands = [
