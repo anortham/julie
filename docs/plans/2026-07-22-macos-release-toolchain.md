@@ -79,10 +79,10 @@
 **Approach:** Start with one repository contract test that reads all shipped configuration surfaces and fails against the current state. Keep lld enabled; the fix is selecting compatible compiler artifacts and targeting native C dependencies correctly. Validate the shell in a fresh login process before the release build so the build cannot accidentally reuse Homebrew `cargo` or `rustc`.
 
 **Acceptance criteria:**
-- [ ] The exact contract test fails before configuration changes and passes after them.
-- [ ] `zsh -lic 'command -v cargo; command -v rustc; cargo --version; rustc --version'` resolves both tools through `/opt/homebrew/opt/rustup/bin` and reports `1.97.0` inside the Julie worktree.
-- [ ] `cargo build --release --bin julie-server --bin julie-embedding-host` passes with no object-version linker warning.
-- [ ] `vtool -show-build target/release/julie-server` reports minimum macOS `11.0`.
-- [ ] Release CI uses Rust `1.97.0` for all four matrix targets and keeps the existing target list and build command.
-- [ ] The verification ledger records the warning-free release evidence at the exact commit.
-- [ ] Worker-scope verification passes and the change is either committed by the worker or handed to the lead per commit mode.
+- [x] The exact contract test fails before configuration changes and passes after them.
+- [x] `zsh -lic 'command -v cargo; command -v rustc; cargo --version; rustc --version'` resolves both tools through `/opt/homebrew/opt/rustup/bin` and reports `1.97.0` inside the Julie worktree.
+- [x] `cargo build --release --bin julie-server --bin julie-embedding-host` passes with no object-version linker warning.
+- [x] `vtool -show-build target/release/julie-server` reports minimum macOS `11.0`.
+- [x] Release CI uses Rust `1.97.0` for all four matrix targets and keeps the existing target list and build command.
+- [x] The verification ledger records the warning-free release evidence at the exact commit.
+- [x] Worker-scope verification passes and the change is either committed by the worker or handed to the lead per commit mode.
