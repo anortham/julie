@@ -4,11 +4,19 @@
 
 A cross-platform code intelligence server built in Rust, providing LSP-quality features across 34 programming languages via the Model Context Protocol (MCP).
 
-## Maintenance Mode
+## Retired
 
-Julie is now in maintenance mode. Existing users can keep using the current release line, but new code-intelligence development has moved to [Miller](https://github.com/anortham/miller).
+Julie is retired as of 2026-07-28. **v7.17.0 is the final release.** No further development, bug fixes, or
+releases will ship — including the open items in [TODO.md](TODO.md), which are wontfix by policy.
+[Miller](https://github.com/anortham/miller) (v1.14.0+) is the supported replacement; its
+[migration guide](https://github.com/anortham/miller/blob/main/docs/migration-from-julie.md) covers the
+tool-by-tool mapping, verification steps, and rollback.
 
-If you are choosing a tool for a new agent workflow, start with Miller instead of Julie. Julie remains available for existing deployments that depend on its current MCP server, extraction, or plugin behavior.
+Support window: existing releases and this repository remain available as-is, indefinitely, with no
+support. Keep Julie configured as a rollback option only for as long as your own Miller verification
+needs it. Extraction development continues upstream in
+[julie-extractors](https://github.com/anortham/julie-extractors), which Miller consumes at a newer
+version than Julie's final pin.
 
 ## Why Julie?
 

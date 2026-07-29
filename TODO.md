@@ -1,6 +1,9 @@
 # TODO
 
-## Bugs (found by Eros CT acceptance run, 2026-07-02, at v7.15.3 HEAD a12aad88)
+Julie is retired (see [README](README.md)); every item below is **wontfix by policy** as of 2026-07-28.
+The list is preserved as a record for anyone still running the final release line.
+
+## Bugs (found by Eros CT acceptance run, 2026-07-02, at v7.15.3 HEAD a12aad88) — wontfix
 
 - [ ] **`one_sidecar_serves_three_sessions` fails under any non-default TMPDIR** -- deterministic,
   cohort-independent: `TMPDIR=$(mktemp -d) cargo test --lib -- --exact 'tests::registry::embedding_host_multi_session::unix::one_sidecar_serves_three_sessions'`
