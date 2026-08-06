@@ -3,6 +3,10 @@ on:
   push:
     branches: [main]
     paths: ['docs/site/**']
+  # A cancelled deploy cannot be re-run: the Pages deployment id is the commit
+  # SHA, so re-running the same run collides with the cancelled id. Manual
+  # dispatch on a later commit is the recovery path.
+  workflow_dispatch:
 permissions:
   pages: write
   id-token: write
