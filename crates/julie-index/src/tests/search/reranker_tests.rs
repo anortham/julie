@@ -451,6 +451,80 @@ fn variable_without_a_declaration_role_keeps_its_kind_boost() {
 }
 
 #[test]
+fn doc_language_symbol_ranks_below_code_of_a_lower_kind() {
+    let field = Candidate::builder()
+        .title("command")
+        .path("src/Handler.cs")
+        .kind(SymbolKind::Field)
+        .role("source")
+        .build();
+    let xml_element = Candidate::builder()
+        .title("Command")
+        .path("src/schema.xsd")
+        .kind(SymbolKind::Module)
+        .role("docs")
+        .build();
+
+    let ranked = rerank_unified(&parse_query("command"), &[xml_element, field]);
+
+    assert_eq!(
+        ranked[0].original_index, 1,
+        "code field must outrank the XML element despite a lower kind boost; got {ranked:?}"
+    );
+}
+
+#[test]
+fn markdown_heading_ranks_below_code_of_a_lower_kind() {
+    let field = Candidate::builder()
+        .title("command")
+        .path("src/Handler.cs")
+        .kind(SymbolKind::Field)
+        .role("source")
+        .build();
+    let heading = Candidate::builder()
+        .title("Command")
+        .path("docs/notes.md")
+        .kind(SymbolKind::Module)
+        .role("docs")
+        .build();
+
+    let ranked = rerank_unified(&parse_query("command"), &[heading, field]);
+
+    assert_eq!(
+        ranked[0].original_index, 1,
+        "code field must outrank the markdown heading; got {ranked:?}"
+    );
+}
+
+#[test]
+fn doc_language_symbol_stays_findable_above_non_matching_results() {
+    let unrelated = Candidate::builder()
+        .title("Dispatcher")
+        .path("src/Handler.cs")
+        .kind(SymbolKind::Class)
+        .role("source")
+        .build();
+    let xml_element = Candidate::builder()
+        .title("Command")
+        .path("src/schema.xsd")
+        .kind(SymbolKind::Module)
+        .role("docs")
+        .build();
+
+    let ranked = rerank_unified(&parse_query("command"), &[xml_element, unrelated]);
+
+    assert_eq!(
+        ranked[0].original_index, 0,
+        "an exact-name doc symbol must stay findable above non-matching results; got {ranked:?}"
+    );
+    assert!(
+        ranked[0].final_score > 0.0,
+        "demoted doc symbol must keep a positive score, got {}",
+        ranked[0].final_score
+    );
+}
+
+#[test]
 fn local_variable_still_outranks_a_candidate_that_does_not_match() {
     let unrelated = Candidate::builder()
         .title("Dispatcher")

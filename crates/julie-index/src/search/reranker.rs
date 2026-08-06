@@ -68,6 +68,22 @@ pub(crate) const GENERATED_PENALTY: f32 = 130.0;
 /// the exact-name promotion tier keeps it ahead of partial-name matches.
 pub(crate) const FUNCTION_SCOPED_BINDING_PENALTY: f32 = 90.0;
 
+/// Demotion applied to SYMBOL rows from documentation and markup languages
+/// (see [`crate::search::scoring::DOC_LANGUAGES`]). Their symbols are headings
+/// and named config elements, not definitions other code can call.
+///
+/// Calibration: kind boost alone ranked these above real code, because both a
+/// markdown heading and an XML `name`-bearing element extract as `Module`
+/// (30.0) while a field or property is 20.0. The penalty must exceed that 10
+/// point gap by enough to survive a path or body boost the doc row may also
+/// collect; 40 leaves a code field ahead by 30 on an exact-name query. An
+/// exact-name doc symbol still nets +90, so it stays findable and keeps
+/// outranking non-matching rows.
+///
+/// File rows are deliberately exempt: a markdown FILE is the right answer for a
+/// documentation query, and only its symbol rows compete with code definitions.
+pub(crate) const DOC_LANGUAGE_SYMBOL_PENALTY: f32 = 40.0;
+
 // ---------------------------------------------------------------------------
 // Candidate
 // ---------------------------------------------------------------------------
@@ -236,6 +252,19 @@ fn role_demotion(c: &Candidate) -> f32 {
         "vendor" => -VENDOR_PENALTY,
         "generated" => -GENERATED_PENALTY,
         _ => 0.0,
+    }
+}
+
+/// Returns a NEGATIVE adjustment (or zero) for documentation symbol rows, so a
+/// heading or config element cannot outrank a code definition on kind boost
+/// alone. Keyed on the `docs` role rather than on `is_source_language`, because
+/// that flag is false both for a genuine doc language and for a candidate whose
+/// language was never set — only the role distinguishes them.
+fn doc_language_demotion(c: &Candidate) -> f32 {
+    if !c.is_file_doc && c.role == "docs" {
+        -DOC_LANGUAGE_SYMBOL_PENALTY
+    } else {
+        0.0
     }
 }
 
@@ -512,6 +541,7 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
             // ── Role demotion ─────────────────────────────────────────────
             score += role_demotion(c);
             score += declaration_demotion(c);
+            score += doc_language_demotion(c);
 
             Ranked {
                 candidate: c.clone(),

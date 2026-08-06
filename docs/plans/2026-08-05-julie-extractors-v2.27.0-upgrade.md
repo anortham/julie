@@ -319,9 +319,29 @@ were previously text-only. Adding XML to `DOC_LANGUAGES` and `NON_EMBEDDABLE_LAN
 correct — it fixes the source-phrase bonus and keeps XML out of the vector space — it simply cannot
 fix a demotion path that was never wired.
 
-**Follow-up (own TDD cycle, not this release):** wire `DOC_LANGUAGES` into a real demotion in
-`rerank_unified`, sized so a doc symbol sits below a code symbol of any kind. It changes markdown,
-JSON, TOML, and YAML ranking too, so it needs a full `dogfood` validation of its own.
+**FIXED in this release** (owner elected to fix before shipping). `doc_language_demotion` in
+`rerank_unified` applies `DOC_LANGUAGE_SYMBOL_PENALTY` (40.0) to documentation **symbol** rows.
+
+Two design notes worth keeping:
+
+- **Keyed on `role == "docs"`, not `is_source_language`.** The first attempt used
+  `!is_source_language` and broke 17 existing tests, because that flag is `false` both for a genuine
+  doc language and for a candidate whose language was never set. Flipping its default is equally
+  wrong — `test_reranker_score_phrase_boost_fires_at_4_terms` depends on the `false` default to
+  assert *no* source bonus. `role` defaults to `"unknown"`, so keying on `"docs"` distinguishes a
+  real doc symbol from an unset one and leaves every pre-existing test untouched.
+- **File rows are exempt** (`!c.is_file_doc`). A markdown *file* is the right answer to a
+  documentation query; only its *symbol* rows compete with code definitions.
+
+An exact-name doc symbol still nets +90, so it stays findable and outranks non-matching rows.
+This also repairs the markdown case, which was silently broken before this release.
+
+| Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
+|---|---|---|---|---|---|---|
+| Doc symbols rank below code | `cargo test --lib -p julie-index reranker_tests::` | worker-red-green | 475405bc | pass (27) | 2026-08-06T02:20:00Z | no |
+| Search regression after ranking change | `cargo test --lib -p julie-index tests::search::` | affected-change | 475405bc | pass (212) | 2026-08-06T02:24:00Z | no |
+| Dogfood after ranking change | `cargo xtask test dogfood` | expensive-specialist | 475405bc | pass (2 buckets, 647.1s) | 2026-08-06T02:40:00Z | no |
+| Dev after ranking change | `cargo xtask test dev` | branch-gate | 475405bc | pass (27 buckets, 170.8s) | 2026-08-06T02:45:00Z | no |
 
 ---
 
