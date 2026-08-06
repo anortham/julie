@@ -157,6 +157,8 @@ fn make_call_path_relationship(id: &str, from: &str, to: &str) -> Relationship {
         kind: RelationshipKind::Calls,
         file_path: "src/start.rs".to_string(),
         line_number: 10,
+        span: None,
+        reference_site_is_exact: false,
         confidence: 1.0,
         metadata: None,
     }

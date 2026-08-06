@@ -1,26 +1,178 @@
 use crate::search::language_config::{LanguageConfig, LanguageConfigs};
 
-/// Verify that ALL 34 embedded language configs parse successfully.
+/// Verify that every embedded language config parses successfully.
 ///
 /// With the old warn+skip behavior, a broken TOML would silently reduce the
 /// count. With the new panic behavior, this test documents that all configs
 /// are present and valid. If this count fails, check that a new language was
 /// added to the embedded list in `load_embedded` and its .toml parses cleanly.
 ///
-/// 34 == every supported language has an embedded config. VB.NET was the last
-/// holdout (added with the Phase 3b literal-carrier work): without an embedded
-/// config its `[literal_carriers]` never loaded, so the gate silently dropped
-/// every VB.NET literal. Keeping this at the full language count guarantees no
-/// language ships a TOML on disk that the runtime never loads.
+/// The count equals the user-facing language surface: every language the
+/// extractor registry supports ships an embedded config. `jsx`/`tsx` are
+/// aliased onto `javascript`/`typescript` at build time, so the registry's 38
+/// `LanguageSpec` entries collapse to 36 configs here. A language without an
+/// embedded config still indexes, but silently loses code-aware tokenization,
+/// test-evidence rules, annotation classes, and its `[literal_carriers]` gate —
+/// VB.NET was the original holdout that motivated this guard, and Erlang + XML
+/// were the second (added with extractor v2.21.0).
 #[test]
 fn test_all_embedded_language_configs_load_without_skips() {
     let configs = LanguageConfigs::load_embedded();
     assert_eq!(
         configs.len(),
-        34,
-        "Expected exactly 34 embedded language configs, got {}. \
+        36,
+        "Expected exactly 36 embedded language configs, got {}. \
              A broken TOML or missing entry would cause this count to be wrong.",
         configs.len()
+    );
+}
+
+#[test]
+fn test_erlang_config_covers_module_macro_and_test_conventions() {
+    let configs = LanguageConfigs::load_embedded();
+    let erlang = configs.get("erlang").expect("erlang config should exist");
+
+    assert!(
+        erlang.tokenizer.preserve_patterns.contains(&"->".into()),
+        "Erlang clause/spec arrow must survive tokenization; got {:?}",
+        erlang.tokenizer.preserve_patterns
+    );
+    assert!(
+        erlang.tokenizer.preserve_patterns.contains(&"=:=".into()),
+        "Erlang exact-equality operator must survive tokenization; got {:?}",
+        erlang.tokenizer.preserve_patterns
+    );
+    assert!(
+        erlang
+            .tokenizer
+            .naming_styles
+            .contains(&"snake_case".into()),
+        "Erlang atoms and functions are snake_case"
+    );
+    assert!(
+        erlang
+            .tokenizer
+            .naming_styles
+            .contains(&"SCREAMING_SNAKE_CASE".into()),
+        "Erlang macros are SCREAMING_SNAKE_CASE"
+    );
+    assert!(
+        erlang
+            .tokenizer
+            .meaningful_affixes
+            .contains(&"handle_".into()),
+        "OTP callbacks share the handle_ prefix; got {:?}",
+        erlang.tokenizer.meaningful_affixes
+    );
+
+    for suffix in ["_test", "_test_", "_SUITE"] {
+        assert!(
+            erlang.variants.strip_suffixes.contains(&suffix.into()),
+            "EUnit/Common Test naming suffix {suffix:?} must be strippable; got {:?}",
+            erlang.variants.strip_suffixes
+        );
+    }
+
+    for pattern in ["-module(", "-behaviour(", "-record(", "-define("] {
+        assert!(
+            erlang.scoring.important_patterns.contains(&pattern.into()),
+            "Erlang declaration form {pattern:?} must be a scoring pattern; got {:?}",
+            erlang.scoring.important_patterns
+        );
+    }
+
+    for assertion in ["assert", "assertequal", "assertmatch"] {
+        assert!(
+            erlang
+                .test_evidence
+                .assertion_identifiers
+                .contains(&assertion.into()),
+            "EUnit assertion macro {assertion:?} must count as test evidence; got {:?}",
+            erlang.test_evidence.assertion_identifiers
+        );
+    }
+    for error_assertion in ["asserterror", "assertthrow", "assertexit"] {
+        assert!(
+            erlang
+                .test_evidence
+                .error_assertion_identifiers
+                .contains(&error_assertion.into()),
+            "EUnit error-path macro {error_assertion:?} must count as error evidence; got {:?}",
+            erlang.test_evidence.error_assertion_identifiers
+        );
+    }
+}
+
+#[test]
+fn test_erlang_config_has_no_test_annotation_classes() {
+    let configs = LanguageConfigs::load_embedded();
+    let erlang = configs.get("erlang").expect("erlang config should exist");
+
+    let test = &erlang.annotation_classes.test;
+    assert!(
+        test.test_case.is_empty()
+            && test.parameterized_test.is_empty()
+            && test.fixture_setup.is_empty()
+            && test.fixture_teardown.is_empty()
+            && test.test_container.is_empty()
+            && test.test_base_types.is_empty(),
+        "Erlang attributes normalize to keys like spec/doc/behaviour; EUnit and \
+         Common Test are name-convention frameworks with no test annotation"
+    );
+}
+
+#[test]
+fn test_xml_config_covers_markup_and_schema_shape() {
+    let configs = LanguageConfigs::load_embedded();
+    let xml = configs.get("xml").expect("xml config should exist");
+
+    for pattern in ["<!", "<?", "/>"] {
+        assert!(
+            xml.tokenizer.preserve_patterns.contains(&pattern.into()),
+            "XML markup delimiter {pattern:?} must survive tokenization; got {:?}",
+            xml.tokenizer.preserve_patterns
+        );
+    }
+    assert!(
+        xml.tokenizer.naming_styles.contains(&"PascalCase".into()),
+        "XSD component names are PascalCase"
+    );
+
+    for suffix in [".xml", ".xsd", ".wsdl"] {
+        assert!(
+            xml.variants.strip_suffixes.contains(&suffix.into()),
+            "XML dialect extension {suffix:?} must be strippable; got {:?}",
+            xml.variants.strip_suffixes
+        );
+    }
+    assert!(
+        xml.scoring
+            .important_patterns
+            .contains(&"complexType".into()),
+        "XSD type declarations must be a scoring pattern; got {:?}",
+        xml.scoring.important_patterns
+    );
+}
+
+#[test]
+fn test_xml_literal_carriers_recognize_url_attributes() {
+    let configs = LanguageConfigs::load_embedded();
+    let carriers = configs.build_literal_carrier_configs();
+    let xml = carriers.get("xml").expect("xml carrier config");
+
+    for attribute in ["location", "schemalocation", "href", "src"] {
+        assert!(
+            xml.url.contains(attribute),
+            "XML url carriers must include the {attribute:?} attribute so the \
+             bloat gate keeps WSDL/XSD endpoint literals; got {:?}",
+            xml.url
+        );
+    }
+    assert!(
+        xml.sql.is_empty(),
+        "The XML extractor records attribute values only, never element text, \
+         so no attribute carries SQL; got {:?}",
+        xml.sql
     );
 }
 

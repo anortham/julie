@@ -41,6 +41,7 @@ impl SearchIndex {
         tantivy_doc.add_text(f.kind, &doc.kind);
         tantivy_doc.add_text(f.role, &doc.role);
         tantivy_doc.add_text(f.test_role, &doc.test_role);
+        tantivy_doc.add_text(f.declaration_role, &doc.declaration_role);
 
         // ---- symbol fields ----
         tantivy_doc.add_text(f.name, &doc.name);

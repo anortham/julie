@@ -6,7 +6,7 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust. LSP-quality features across 34 languages via tree-sitter, Tantivy full-text search, and instant search availability.
+**Julie** is a cross-platform code intelligence server built in Rust. LSP-quality features across 36 languages via tree-sitter, Tantivy full-text search, and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, cross-platform)
@@ -14,17 +14,17 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 - **Architecture**: Tantivy full-text search + SQLite structured storage + KNN vector search (embeddings)
 - **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout). The no-args `julie-server` serves **in-process** over rmcp stdio, leader-locked per workspace. There is no forked daemon, stdio adapter, HTTP MCP bridge, or `julie daemon` runtime.
 - **Origin**: Native Rust implementation for true cross-platform compatibility
-- **Crown Jewels**: 34 tree-sitter extractors with comprehensive test suites, now maintained in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo and consumed here as a pinned git dependency
+- **Crown Jewels**: 36 tree-sitter extractors with comprehensive test suites, now maintained in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo and consumed here as a pinned git dependency
 
-### 🏆 Current Language Support (34 - Complete)
+### 🏆 Current Language Support (36 - Complete)
 
-The 34 extractors live upstream in [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) (consumed as a pinned git dep). Language and parser work — adding languages, upgrading parsers, golden fixtures, capability tests — happens there. Re-pin julie's `julie-extractors` git-dep in `Cargo.toml` and sync `SEMANTIC_INDEX_ENGINE_VERSION` (in `src/tools/workspace/indexing/engine_version.rs`) to the new tag's `EXTRACTION_CONTRACT_VERSION` to pick up a new release.
+The 36 extractors live upstream in [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) (consumed as a pinned git dep). Language and parser work — adding languages, upgrading parsers, golden fixtures, capability tests — happens there. Re-pin julie's `julie-extractors` git-dep in `Cargo.toml` and sync `SEMANTIC_INDEX_ENGINE_VERSION` (in `src/tools/workspace/indexing/engine_version.rs`) to the new tag's `EXTRACTION_CONTRACT_VERSION` to pick up a new release.
 
 **Core Languages:** Rust, TypeScript, JavaScript, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala
 **Systems Languages:** C, C++, Go, Lua, Zig
-**Functional:** Elixir
+**Functional:** Elixir, Erlang
 **Specialized:** GDScript, Vue, Razor, QML, R, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
-**Documentation:** Markdown, JSON, TOML, YAML
+**Documentation:** Markdown, JSON, TOML, YAML, XML
 
 ---
 
@@ -159,7 +159,7 @@ For the tight edit-test loop during implementation:
 
 (Previous known failures in `core-embeddings` and `workspace_init` were resolved as of 2026-03-19.)
 
-(As of v2.0.3, the per-language extractor unit suite — 2291 tests across all 34 extractors — lives and runs in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. Julie's own dev/full tiers no longer include extractor-unit or golden buckets.)
+(The per-language extractor unit suite — every one of the 36 extractors — lives and runs in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. Julie's own dev/full tiers no longer include extractor-unit or golden buckets.)
 
 ### Why Dogfood Is Slow
 
@@ -405,17 +405,17 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
 
 ### 🔴 CRITICAL: Language-Agnostic Design (Non-Negotiable)
 
-**Julie supports 34 languages and indexes ANY codebase.** All scoring, ranking, filtering, path analysis, and heuristics MUST work across all project layouts — not just Rust or Julie's own directory structure.
+**Julie supports 36 languages and indexes ANY codebase.** All scoring, ranking, filtering, path analysis, and heuristics MUST work across all project layouts — not just Rust or Julie's own directory structure.
 
 #### Feature parity: every feature, every language that supports the concept
 
-**The 34 languages are first-class peers. We do NOT pick a favorite language — or a convenient 3 — and make them better than the rest.** When you build any extraction or intelligence feature (a new symbol kind, an annotation class, type-argument capture, literal capture, a relationship edge, an enrichment), the target is **every language whose grammar expresses the underlying concept** — not "the language I'm testing with," not "the consumer who asked for it," not "the easy ones first and the rest never."
+**The 36 languages are first-class peers. We do NOT pick a favorite language — or a convenient 3 — and make them better than the rest.** When you build any extraction or intelligence feature (a new symbol kind, an annotation class, type-argument capture, literal capture, a relationship edge, an enrichment), the target is **every language whose grammar expresses the underlying concept** — not "the language I'm testing with," not "the consumer who asked for it," not "the easy ones first and the rest never."
 
-**A feature is not "done" when only some languages have it.** "Done for C#/TS/Python" is not done — it is a partial rollout that must be tracked to completion across all applicable languages. Before declaring any cross-language feature complete, **enumerate all 34 languages and classify each: implemented, or verified-not-applicable.** There is no third "we'll get to it" bucket masquerading as done.
+**A feature is not "done" when only some languages have it.** "Done for C#/TS/Python" is not done — it is a partial rollout that must be tracked to completion across all applicable languages. Before declaring any cross-language feature complete, **enumerate all 36 languages and classify each: implemented, or verified-not-applicable.** There is no third "we'll get to it" bucket masquerading as done.
 
 **The only legitimate exclusion is genuine absence of the concept** (e.g. generic type arguments in Bash, inheritance in JSON). That exclusion is a **positive claim that must be verified** — check the grammar's `node-types.json` or the extractor source, cite the evidence, and record it. Never assume a language lacks a feature; that is exactly how breadth silently rots. (See the global rule "Negative claims need positive verification.")
 
-- ❌ "I implemented it for C#/TS/Python; the others can come later" — that is silently shrinking a 34-language feature to 3.
+- ❌ "I implemented it for C#/TS/Python; the others can come later" — that is silently shrinking a 36-language feature to 3.
 - ❌ "Language X probably doesn't have this" — verify against the grammar before excluding.
 - ❌ Scoping a broad feature to one consumer's corpus and calling the feature finished.
 - ✅ Build the language-agnostic infrastructure once, then add every applicable language (a per-grammar reader + a test), driving the "implemented vs verified-n/a" ledger to 100%.
@@ -528,4 +528,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-05-06 | **Status:** Production Ready (v7.7.3, extractor quality + workspace lifecycle + 34 languages)
+**Last Updated:** 2026-08-05 | **Status:** Production Ready (v7.18.0, extractor quality + workspace lifecycle + 36 languages)

@@ -351,6 +351,8 @@ impl RelationshipBuilder {
             kind: self.kind,
             file_path: self.file_path,
             line_number: self.line_number,
+            span: None,
+            reference_site_is_exact: false,
             confidence: self.confidence,
             metadata: self.metadata,
         }

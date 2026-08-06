@@ -308,6 +308,105 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_lifecycle_names_classify_teardown_across_languages() {
+        let lifecycle_metadata = || {
+            HashMap::from([
+                ("is_test".to_string(), serde_json::Value::Bool(true)),
+                ("test_lifecycle".to_string(), serde_json::Value::Bool(true)),
+            ])
+        };
+
+        let teardown_names = [
+            ("javascript", "afterEach"),
+            ("javascript", "afterAll"),
+            ("javascript", "after"),
+            ("go", "AfterSuite"),
+            ("go", "JustAfterEach"),
+            ("dart", "tearDown"),
+            ("dart", "tearDownAll"),
+            ("lua", "lazy_teardown"),
+            ("csharp", "OneTimeTearDown"),
+            ("csharp", "TestCleanup"),
+            ("erlang", "end_per_suite"),
+            ("erlang", "end_per_testcase"),
+            ("erlang", "end_per_group"),
+        ];
+        for (language, name) in teardown_names {
+            let symbol = make_symbol_named(
+                name,
+                SymbolKind::Function,
+                language,
+                vec![],
+                Some(lifecycle_metadata()),
+            );
+            assert_eq!(
+                classify_test_role(&symbol, None),
+                Some(TestRole::FixtureTeardown),
+                "{language} lifecycle hook {name} must classify as teardown"
+            );
+        }
+
+        let setup_names = [
+            ("javascript", "beforeEach"),
+            ("javascript", "beforeAll"),
+            ("javascript", "before"),
+            ("go", "JustBeforeEach"),
+            ("dart", "setUpAll"),
+            ("lua", "lazy_setup"),
+            ("python", "setUpClass"),
+            ("csharp", "TestInitialize"),
+            ("elixir", "setup_all"),
+            ("erlang", "init_per_suite"),
+            ("erlang", "init_per_testcase"),
+            ("erlang", "init_per_group"),
+        ];
+        for (language, name) in setup_names {
+            let symbol = make_symbol_named(
+                name,
+                SymbolKind::Function,
+                language,
+                vec![],
+                Some(lifecycle_metadata()),
+            );
+            assert_eq!(
+                classify_test_role(&symbol, None),
+                Some(TestRole::FixtureSetup),
+                "{language} lifecycle hook {name} must classify as setup"
+            );
+        }
+    }
+
+    #[test]
+    fn test_lifecycle_teardown_words_match_on_word_boundaries_only() {
+        let lifecycle_metadata = || {
+            HashMap::from([
+                ("is_test".to_string(), serde_json::Value::Bool(true)),
+                ("test_lifecycle".to_string(), serde_json::Value::Bool(true)),
+            ])
+        };
+
+        for name in [
+            "beforeSend",
+            "before_append",
+            "prepareBackend",
+            "setup_ending",
+        ] {
+            let symbol = make_symbol_named(
+                name,
+                SymbolKind::Function,
+                "javascript",
+                vec![],
+                Some(lifecycle_metadata()),
+            );
+            assert_eq!(
+                classify_test_role(&symbol, None),
+                Some(TestRole::FixtureSetup),
+                "{name} embeds a teardown word inside a longer word and must stay setup"
+            );
+        }
+    }
+
     // ---------------------------------------------------------------
     // is_scorable_test tests
     // ---------------------------------------------------------------

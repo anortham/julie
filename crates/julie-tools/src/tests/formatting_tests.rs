@@ -44,6 +44,8 @@ fn make_test_relationship(file_path: &str, line: u32, kind: RelationshipKind) ->
         kind,
         file_path: file_path.to_string(),
         line_number: line,
+        span: None,
+        reference_site_is_exact: false,
         confidence: 1.0,
         metadata: None,
     }

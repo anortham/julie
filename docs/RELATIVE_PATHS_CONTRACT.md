@@ -2,7 +2,7 @@
 
 ## Status: Complete
 
-All 34 language extractors store relative Unix-style paths. This document describes the contract and utilities.
+All 36 language extractors store relative Unix-style paths. This document describes the contract and utilities.
 
 ## Motivation
 
@@ -118,7 +118,7 @@ to_relative_unix_style("/etc/passwd", workspace_root)
 
 - `src/utils/paths.rs` - `to_relative_unix_style()` and `to_absolute_native()` utilities
 - `src/base/extractor.rs` in the external `anortham/julie-extractors` repo - `BaseExtractor::new()` accepts `workspace_root: &Path`
-- All 34 language extractors in that repo pass `workspace_root` through
+- All 36 language extractors in that repo pass `workspace_root` through
 
 ---
 

@@ -61,7 +61,7 @@ pub fn is_embeddable_for_language(
 /// Languages that are structural/configuration rather than code logic.
 /// These shouldn't compete with code symbols in the semantic vector space.
 pub const NON_EMBEDDABLE_LANGUAGES: &[&str] = &[
-    "markdown", "json", "jsonl", "toml", "yaml", "css", "html", "regex", "sql",
+    "markdown", "json", "jsonl", "toml", "yaml", "xml", "css", "html", "regex", "sql",
 ];
 
 /// Policy for including variable symbols in embedding batches.

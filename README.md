@@ -1,22 +1,25 @@
 # Julie
 
-**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-12)** · **[External Extract](#external-extract-host-integration)** · **[Skills](#skills)** · **[34 Languages](#supported-languages-34)**
+**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-12)** · **[External Extract](#external-extract-host-integration)** · **[Skills](#skills)** · **[36 Languages](#supported-languages-36)**
 
-A cross-platform code intelligence server built in Rust, providing LSP-quality features across 34 programming languages via the Model Context Protocol (MCP).
+A cross-platform code intelligence server built in Rust, providing LSP-quality features across 36 programming languages via the Model Context Protocol (MCP).
 
 ## Retired
 
-Julie is retired as of 2026-07-28. **v7.17.0 is the final release.** No further development, bug fixes, or
-releases will ship — including the open items in [TODO.md](TODO.md), which are wontfix by policy.
+Julie is retired as of 2026-07-28. No further development ships here, and the open items in
+[TODO.md](TODO.md) are wontfix by policy.
 [Miller](https://github.com/anortham/miller) (v1.14.0+) is the supported replacement; its
 [migration guide](https://github.com/anortham/miller/blob/main/docs/migration-from-julie.md) covers the
 tool-by-tool mapping, verification steps, and rollback.
 
+**v7.18.0 is a maintenance release, not a resumption of development.** It moves the pinned extractor
+to julie-extractors v2.27.0 so the final release line picks up eleven releases of upstream extraction
+work, including two new languages. Nothing further is planned.
+
 Support window: existing releases and this repository remain available as-is, indefinitely, with no
 support. Keep Julie configured as a rollback option only for as long as your own Miller verification
 needs it. Extraction development continues upstream in
-[julie-extractors](https://github.com/anortham/julie-extractors), which Miller consumes at a newer
-version than Julie's final pin.
+[julie-extractors](https://github.com/anortham/julie-extractors).
 
 ## Why Julie?
 
@@ -36,8 +39,8 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 ## Features
 
 - **Fast symbol search** with code-aware tokenization (CamelCase/snake_case splitting, stemming, <5ms)
-- **Cross-language code navigation** (go-to-definition, find-references) across 34 languages
-- **Test-aware search** — automatic test detection across all 34 languages with smart filtering (`exclude_tests`)
+- **Cross-language code navigation** (go-to-definition, find-references) across 36 languages
+- **Test-aware search** — automatic test detection across all 36 languages with smart filtering (`exclude_tests`)
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
@@ -105,17 +108,17 @@ Python 3.12 is used because it has the best PyTorch hardware acceleration compat
 - `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`, 768d code-optimized). Changing models automatically wipes and re-embeds all vectors on the next indexing run.
 - See `docs/operations/embedding-sidecar.md` for all environment variables and troubleshooting
 
-## Supported Languages (34)
+## Supported Languages (36)
 
 **Core:** Rust, TypeScript, JavaScript, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala
 
 **Systems:** C, C++, Go, Lua, Zig
 
-**Functional:** Elixir
+**Functional:** Elixir, Erlang
 
 **Specialized:** GDScript, Vue, QML, R, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
 
-**Documentation:** Markdown, JSON, TOML, YAML
+**Documentation:** Markdown, JSON, TOML, YAML, XML
 
 ## Installation
 
@@ -459,7 +462,7 @@ See **[docs/EXTERNAL_EXTRACT.md](docs/EXTERNAL_EXTRACT.md)** for the full report
 
 ## Test Detection
 
-Julie automatically detects tests during indexing across all 34 languages, with no configuration required. It recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and other language-specific test patterns.
+Julie automatically detects tests during indexing across all 36 languages, with no configuration required. It recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and other language-specific test patterns.
 
 - **Search filtering** — `fast_search` supports `exclude_tests` to keep test symbols out of production code results
 - **Test navigation** — `deep_dive` shows which test functions reference a symbol, so agents can find relevant tests without grepping
@@ -613,7 +616,7 @@ src/
 ├── cli_tools/       # Standalone CLI command bootstrap
 ├── daemon/          # Registry DB, leader-lock compatibility, project logging
 ├── dashboard/       # Standalone read-only dashboard (htmx + Tera templates)
-├── extractors/      # Thin re-export of the external 34-language extractor crate
+├── extractors/      # Thin re-export of the external 36-language extractor crate
 ├── external_extract/ # Process-facing extractor commands
 ├── health/          # Health report and diagnostics
 ├── indexing_core/   # Shared indexing orchestration

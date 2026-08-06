@@ -313,5 +313,5 @@ pub mod registry;
 // ============================================================================
 // EXTRACTOR TESTS - Live in the external julie-extractors repo
 // ============================================================================
-// All 34 language extractor tests now live upstream in anortham/julie-extractors
+// All 36 language extractor tests now live upstream in anortham/julie-extractors
 // (consumed here as a pinned git dependency). Run them in that repo's checkout.

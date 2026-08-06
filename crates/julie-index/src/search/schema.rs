@@ -42,6 +42,10 @@ pub mod fields {
     // C.3 enriched schema: role/test_role for the reranker.
     pub const ROLE: &str = "role";
     pub const TEST_ROLE: &str = "test_role";
+    /// Extractor-declared per-symbol role (`local`, `parameter`, or empty).
+    /// Not to be confused with [`ROLE`], which classifies the file a symbol
+    /// lives in; the two vocabularies are disjoint and must stay separate.
+    pub const DECLARATION_ROLE: &str = "declaration_role";
     // Phase 2 unified schema fields.
     pub const PRETOKENIZED_CODE: &str = "pretokenized_code";
     pub const RELATIONSHIP_TEXT: &str = "relationship_text";
@@ -99,6 +103,7 @@ pub fn create_schema() -> Schema {
     // them as exact-match text.
     builder.add_text_field(fields::ROLE, STRING | STORED);
     builder.add_text_field(fields::TEST_ROLE, STRING | STORED);
+    builder.add_text_field(fields::DECLARATION_ROLE, STRING | STORED);
 
     // File content field (code-tokenized, not stored)
     builder.add_text_field(fields::CONTENT, code_text_not_stored.clone());
@@ -152,6 +157,7 @@ pub struct SchemaFields {
     pub content: Field,
     pub role: Field,
     pub test_role: Field,
+    pub declaration_role: Field,
     // Phase 2 unified schema fields.
     pub pretokenized_code: Field,
     pub relationship_text: Field,
@@ -182,6 +188,7 @@ impl SchemaFields {
             content: schema.get_field(fields::CONTENT).unwrap(),
             role: schema.get_field(fields::ROLE).unwrap(),
             test_role: schema.get_field(fields::TEST_ROLE).unwrap(),
+            declaration_role: schema.get_field(fields::DECLARATION_ROLE).unwrap(),
             pretokenized_code: schema.get_field(fields::PRETOKENIZED_CODE).unwrap(),
             relationship_text: schema.get_field(fields::RELATIONSHIP_TEXT).unwrap(),
         }

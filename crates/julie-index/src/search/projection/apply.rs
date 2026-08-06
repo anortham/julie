@@ -7,7 +7,7 @@ use super::facts_text::{
     truncate_to_whitespace_boundary,
 };
 use crate::search::SearchIndex;
-use crate::search::index::{SearchDocument, truncate_utf8_bytes};
+use crate::search::index::{SearchDocument, declaration_role_from_metadata, truncate_utf8_bytes};
 use crate::search::scoring::{classify_role, test_subrole};
 use crate::search::tokenizer::pretokenize_code;
 use julie_core::database::{FileInfo, SymbolDatabase};
@@ -321,6 +321,7 @@ fn file_info_to_search_document(file_info: &FileInfo) -> SearchDocument {
         kind: "file".to_string(),
         role: role.to_string(),
         test_role: test_role_str.to_string(),
+        declaration_role: String::new(),
         signature: String::new(),
         doc_comment: String::new(),
         code_body: String::new(),
@@ -392,6 +393,7 @@ fn symbol_to_search_document(
         kind: symbol.kind.to_string(),
         role,
         test_role,
+        declaration_role: declaration_role_from_metadata(meta),
         signature,
         doc_comment: symbol.doc_comment.clone().unwrap_or_default(),
         code_body,
@@ -434,6 +436,7 @@ fn raw_file_to_search_document(file_path: &str, content: &str, language: &str) -
         kind: "file".to_string(),
         role: role.to_string(),
         test_role: test_role_str.to_string(),
+        declaration_role: String::new(),
         signature: String::new(),
         doc_comment: String::new(),
         code_body: String::new(),

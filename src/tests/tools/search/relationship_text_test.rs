@@ -84,6 +84,8 @@ mod relationship_text_test {
             kind: RelationshipKind::Calls,
             file_path: "src/lib.rs".to_string(),
             line_number: 3,
+            span: None,
+            reference_site_is_exact: false,
             confidence: 1.0,
             metadata: None,
         }
@@ -384,6 +386,8 @@ mod relationship_text_test {
             kind: RelationshipKind::Calls,
             file_path: "src/file_a.rs".to_string(),
             line_number: 3,
+            span: None,
+            reference_site_is_exact: false,
             confidence: 1.0,
             metadata: None,
         };
@@ -603,6 +607,8 @@ mod relationship_text_test {
             kind: RelationshipKind::Calls,
             file_path: "src/dirty_a.rs".to_string(),
             line_number: 1,
+            span: None,
+            reference_site_is_exact: false,
             confidence: 1.0,
             metadata: None,
         }])
@@ -695,6 +701,8 @@ mod relationship_text_test {
                 kind: RelationshipKind::Calls,
                 file_path: hub.file_path.clone(),
                 line_number: 1,
+                span: None,
+                reference_site_is_exact: false,
                 confidence: 1.0,
                 metadata: None,
             })

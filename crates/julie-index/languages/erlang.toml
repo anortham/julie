@@ -1,0 +1,142 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "->",   # clause head / spec return arrow
+    "<-",   # comprehension generator
+    "=>",   # map association (new key)
+    ":=",   # map update (existing key)
+    "::",   # type annotation in specs and records
+    "=:=",  # exact equality
+    "=/=",  # exact inequality
+    "<<",   # binary open
+    ">>",   # binary close
+    "||",   # comprehension qualifier separator
+    "!",    # message send
+    "?",    # macro reference prefix
+]
+
+# Naming conventions to recognize. Atoms and function names are snake_case,
+# variables are PascalCase, macros are SCREAMING_SNAKE_CASE.
+naming_styles = ["snake_case", "PascalCase", "SCREAMING_SNAKE_CASE"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "is_",       # guard-safe predicates (is_atom, is_pid)
+    "has_",
+    "get_",
+    "set_",
+    "do_",
+    "handle_",   # OTP callbacks (handle_call, handle_cast, handle_info)
+    "init_",
+    "start_",
+    "stop_",
+]
+
+[variants]
+# `_Unused` marks an intentionally unused variable.
+strip_prefixes = ["_"]
+strip_suffixes = [
+    "_test",     # EUnit test function
+    "_test_",    # EUnit test generator
+    "_SUITE",    # Common Test suite module
+    "_suite",
+    "_server",   # OTP gen_server module
+    "_sup",      # OTP supervisor module
+    "_statem",   # OTP gen_statem module
+    "_app",      # OTP application module
+]
+
+[scoring]
+# Matched against the symbol signature, which for an attribute is its verbatim
+# source text (`-module(bank)`, `-record(account, {id, balance})`).
+important_patterns = [
+    "-module(",
+    "-behaviour(",
+    "-behavior(",
+    "-record(",
+    "-define(",
+    "-callback ",
+    "-opaque ",
+    "-type ",
+]
+
+[embeddings]
+# Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
+extra_kinds = []
+
+# Erlang attributes normalize to keys like `spec`, `doc`, `behaviour`, and
+# `callback`. EUnit and Common Test are name-convention frameworks, so no test
+# annotation exists to classify — the extractor sets `is_test`/`test_lifecycle`
+# metadata from the name and arity instead.
+[annotation_classes]
+
+# A macro call `?assertEqual(A, B)` yields a `call` identifier named after the
+# macro without its `?`, so the identifiers here are the bare macro names.
+# EUnit also ships lazy `?_assert*` generator forms.
+[test_evidence]
+assertion_identifiers = [
+    "assert",
+    "assertnot",
+    "assertequal",
+    "assertnotequal",
+    "assertmatch",
+    "assertnotmatch",
+    "_assert",
+    "_assertnot",
+    "_assertequal",
+    "_assertnotequal",
+    "_assertmatch",
+    "_assertnotmatch",
+]
+error_assertion_identifiers = [
+    "asserterror",
+    "assertexit",
+    "assertthrow",
+    "assertexception",
+    "assertnotexception",
+    "_asserterror",
+    "_assertexit",
+    "_assertthrow",
+    "_assertexception",
+]
+# meck is the de-facto Erlang mocking library; a remote call `meck:unload(M)`
+# yields the bare callee `unload`. `meck:new` is omitted because the bare `new`
+# would match every constructor-style call.
+mock_identifiers = ["expect", "unload", "passthrough"]
+
+[early_warnings]
+schema_version = 1
+
+# String-literal call-argument carriers. A remote call carries `module:function`
+# and a local call carries the bare callee, so remote clients are written with
+# their module and DB verbs are written bare (the gate's last-segment rule).
+[literal_carriers]
+url = [
+    "httpc.request",    # inets stdlib client
+    "hackney.get",      # hackney
+    "hackney.post",
+    "hackney.put",
+    "hackney.delete",
+    "hackney.patch",
+    "hackney.head",
+    "hackney.request",
+    "ibrowse.send_req", # ibrowse
+    "gun.get",          # gun
+    "gun.post",
+    "gun.put",
+    "gun.delete",
+    "gun.patch",
+    "gun.head",
+    "shotgun.get",      # shotgun
+    "shotgun.post",
+]
+sql = [
+    "squery",           # epgsql simple query
+    "equery",           # epgsql extended query
+    "extended_query",   # epgsql
+    "execute",          # epgsql / mysql-otp / odbc
+    "prepare",          # epgsql / mysql-otp
+    "sql_query",        # odbc
+    "param_query",      # odbc
+]
+route = []

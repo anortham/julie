@@ -62,6 +62,21 @@ fn test_classify_role_docs_by_language() {
 }
 
 #[test]
+fn test_classify_role_xml_is_data_not_source() {
+    assert_eq!(classify_role("pom.xml", "xml"), "docs");
+    assert_eq!(classify_role("src/main/resources/beans.xml", "xml"), "docs");
+    assert_eq!(classify_role("schemas/order.xsd", "xml"), "docs");
+    assert_eq!(classify_role("contracts/billing.wsdl", "xml"), "docs");
+}
+
+#[test]
+fn test_classify_role_erlang_is_source() {
+    assert_eq!(classify_role("src/bank_server.erl", "erlang"), "source");
+    assert_eq!(classify_role("include/bank.hrl", "erlang"), "source");
+    assert_eq!(classify_role("test/bank_SUITE.erl", "erlang"), "test");
+}
+
+#[test]
 fn test_classify_role_vendor_node_modules() {
     assert_eq!(
         classify_role("node_modules/lodash/lodash.js", "javascript"),

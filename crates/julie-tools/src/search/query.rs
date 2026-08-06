@@ -83,6 +83,8 @@ fn has_known_file_extension(token: &str) -> bool {
             | "kts"
             | "scala"
             | "go"
+            | "erl"
+            | "hrl"
             | "c"
             | "h"
             | "cpp"
@@ -109,6 +111,8 @@ fn has_known_file_extension(token: &str) -> bool {
             | "yaml"
             | "yml"
             | "xml"
+            | "xsd"
+            | "wsdl"
     )
 }
 

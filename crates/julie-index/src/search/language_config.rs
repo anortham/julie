@@ -187,6 +187,7 @@ impl LanguageConfigs {
             ("css", include_str!("../../languages/css.toml")),
             ("dart", include_str!("../../languages/dart.toml")),
             ("elixir", include_str!("../../languages/elixir.toml")),
+            ("erlang", include_str!("../../languages/erlang.toml")),
             ("gdscript", include_str!("../../languages/gdscript.toml")),
             ("go", include_str!("../../languages/go.toml")),
             ("html", include_str!("../../languages/html.toml")),
@@ -221,6 +222,7 @@ impl LanguageConfigs {
             ),
             ("vbnet", include_str!("../../languages/vbnet.toml")),
             ("vue", include_str!("../../languages/vue.toml")),
+            ("xml", include_str!("../../languages/xml.toml")),
             ("yaml", include_str!("../../languages/yaml.toml")),
             ("zig", include_str!("../../languages/zig.toml")),
         ];

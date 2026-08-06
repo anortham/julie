@@ -253,6 +253,8 @@ fn build_resolved_relationship_with_span(
         kind: pending.kind.clone(),
         file_path: pending.file_path.clone(),
         line_number: pending.line_number,
+        span: None,
+        reference_site_is_exact: false,
         confidence: pending.confidence,
         metadata,
     }
@@ -298,6 +300,7 @@ pub fn resolve_batch(
             target: UnresolvedTarget::simple(pending.callee_name.clone()),
             caller_scope_symbol_id: None,
             span: None,
+            reference_site_is_exact: false,
         })
         .collect();
     resolve_structured_batch(&structured, db)

@@ -274,6 +274,8 @@ async fn setup_rebound_primary_fast_refs_handler()
             kind: RelationshipKind::Calls,
             file_path: "src/rebound.rs".to_string(),
             line_number: 4,
+            span: None,
+            reference_site_is_exact: false,
             confidence: 1.0,
             metadata: None,
         };

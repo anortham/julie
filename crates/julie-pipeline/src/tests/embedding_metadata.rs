@@ -81,6 +81,11 @@ mod tests {
             "vue",
             "bash",
             "powershell",
+            "erlang",
+            "elixir",
+            "scala",
+            "vbnet",
+            "razor",
         ];
         for lang in &code_languages {
             assert!(is_embeddable_language(lang), "{lang} should be embeddable");
@@ -90,7 +95,7 @@ mod tests {
     #[test]
     fn test_non_embeddable_languages() {
         let non_code_languages = [
-            "markdown", "json", "jsonl", "toml", "yaml", "css", "html", "regex", "sql",
+            "markdown", "json", "jsonl", "toml", "yaml", "xml", "css", "html", "regex", "sql",
         ];
         for lang in &non_code_languages {
             assert!(

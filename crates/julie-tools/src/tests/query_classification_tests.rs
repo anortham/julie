@@ -134,4 +134,17 @@ mod nl_query_detection_tests {
         assert!(!is_nl_like_query("foo_bar baz_qux"));
         assert!(!is_nl_like_query("parse_query score_candidate"));
     }
+
+    #[test]
+    fn test_erlang_and_xml_schema_extensions_detect_as_file_pattern() {
+        use crate::search::{QueryType, detect_query_type};
+
+        for query in ["bank_server.erl", "bank.hrl", "order.xsd", "billing.wsdl"] {
+            assert_eq!(
+                detect_query_type(query),
+                QueryType::Glob,
+                "{query} names a supported source/data file"
+            );
+        }
+    }
 }

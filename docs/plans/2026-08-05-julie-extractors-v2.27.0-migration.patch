@@ -1,0 +1,570 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index e6d08040..d3b1c6c6 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1776,8 +1776,8 @@ dependencies = [
+ 
+ [[package]]
+ name = "julie-extractors"
+-version = "2.16.0"
+-source = "git+https://github.com/anortham/julie-extractors?tag=v2.16.0#c8324f84cce6412a1add06f75ca221b277b4f956"
++version = "2.27.0"
++source = "git+https://github.com/anortham/julie-extractors?tag=v2.27.0#ab7b16ad8ab3f921665a719b43b8a281ae1942d6"
+ dependencies = [
+  "anyhow",
+  "md5",
+@@ -1794,6 +1794,7 @@ dependencies = [
+  "tree-sitter-css",
+  "tree-sitter-dart",
+  "tree-sitter-elixir",
++ "tree-sitter-erlang",
+  "tree-sitter-gdscript",
+  "tree-sitter-go",
+  "tree-sitter-html",
+@@ -1818,6 +1819,7 @@ dependencies = [
+  "tree-sitter-toml-ng",
+  "tree-sitter-typescript",
+  "tree-sitter-vb-dotnet",
++ "tree-sitter-xml",
+  "tree-sitter-yaml",
+  "tree-sitter-zig",
+ ]
+@@ -4178,6 +4180,16 @@ dependencies = [
+  "tree-sitter-language",
+ ]
+ 
++[[package]]
++name = "tree-sitter-erlang"
++version = "0.20.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3107efc581d335488dc38d2f51ca8b7a6a98e36f07f95a8e963f031edda6f568"
++dependencies = [
++ "cc",
++ "tree-sitter-language",
++]
++
+ [[package]]
+ name = "tree-sitter-gdscript"
+ version = "6.1.0"
+@@ -4419,6 +4431,16 @@ dependencies = [
+  "tree-sitter-language",
+ ]
+ 
++[[package]]
++name = "tree-sitter-xml"
++version = "0.7.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e670041f591d994f54d597ddcd8f4ebc930e282c4c76a42268743b71f0c8b6b3"
++dependencies = [
++ "cc",
++ "tree-sitter-language",
++]
++
+ [[package]]
+ name = "tree-sitter-yaml"
+ version = "0.7.2"
+diff --git a/Cargo.toml b/Cargo.toml
+index 5183bbb4..283578e9 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -37,7 +37,7 @@ embeddings-sidecar = []
+ # Language/parser work happens in anortham/julie-extractors; re-pin the tag here and sync
+ # SEMANTIC_INDEX_ENGINE_VERSION (src/tools/workspace/indexing/engine_version.rs) to the
+ # tag's EXTRACTION_CONTRACT_VERSION so the changed extraction shape forces a reindex.
+-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.16.0" }
++julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.27.0" }
+ 
+ # Julie leaf crate (bottom of the workspace DAG — no handler/tools/daemon deps)
+ julie-core = { path = "crates/julie-core" }
+diff --git a/crates/julie-core/Cargo.toml b/crates/julie-core/Cargo.toml
+index 185cca93..d1e652e2 100644
+--- a/crates/julie-core/Cargo.toml
++++ b/crates/julie-core/Cargo.toml
+@@ -13,7 +13,7 @@ test-support = ["dep:tempfile"]
+ 
+ [dependencies]
+ # Julie Extractors — identical pin to the root crate so julie_extractors:: types unify
+-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.16.0" }
++julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.27.0" }
+ 
+ # Glob matching — for glob pattern filtering (julie_core::glob)
+ globset = "0.4.16"
+diff --git a/crates/julie-core/src/database/helpers.rs b/crates/julie-core/src/database/helpers.rs
+index 87aaa58f..ddc8c87b 100644
+--- a/crates/julie-core/src/database/helpers.rs
++++ b/crates/julie-core/src/database/helpers.rs
+@@ -300,6 +300,8 @@ impl SymbolDatabase {
+             kind,
+             file_path: row.get("file_path")?,
+             line_number: row.get("line_number")?,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: row.get::<_, Option<f64>>("confidence")?.unwrap_or(1.0) as f32,
+             metadata,
+         })
+diff --git a/crates/julie-core/src/test_support/db/rows.rs b/crates/julie-core/src/test_support/db/rows.rs
+index b64434ef..956b1249 100644
+--- a/crates/julie-core/src/test_support/db/rows.rs
++++ b/crates/julie-core/src/test_support/db/rows.rs
+@@ -351,6 +351,8 @@ impl RelationshipBuilder {
+             kind: self.kind,
+             file_path: self.file_path,
+             line_number: self.line_number,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: self.confidence,
+             metadata: self.metadata,
+         }
+diff --git a/crates/julie-core/src/tests/database/relationships.rs b/crates/julie-core/src/tests/database/relationships.rs
+index 64becdd7..9a2d3d8f 100644
+--- a/crates/julie-core/src/tests/database/relationships.rs
++++ b/crates/julie-core/src/tests/database/relationships.rs
+@@ -83,6 +83,8 @@ async fn test_relationship_with_id_field() {
+         kind: julie_extractors::base::RelationshipKind::Calls,
+         file_path: "main.rs".to_string(),
+         line_number: 42,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: 0.9,
+         metadata: None,
+     };
+@@ -265,6 +267,8 @@ async fn test_get_outgoing_relationships_for_symbols_batch() {
+             kind: julie_extractors::RelationshipKind::Calls,
+             file_path: "main.rs".to_string(),
+             line_number: 10,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 1.0,
+             metadata: None,
+         },
+@@ -275,6 +279,8 @@ async fn test_get_outgoing_relationships_for_symbols_batch() {
+             kind: julie_extractors::RelationshipKind::Calls,
+             file_path: "main.rs".to_string(),
+             line_number: 20,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 1.0,
+             metadata: None,
+         },
+diff --git a/crates/julie-index/Cargo.toml b/crates/julie-index/Cargo.toml
+index 8f6f0cdb..0fb578d3 100644
+--- a/crates/julie-index/Cargo.toml
++++ b/crates/julie-index/Cargo.toml
+@@ -9,7 +9,7 @@ description = "Search + analysis layer above julie-core — Tantivy indexing, sc
+ [dependencies]
+ # Julie workspace crates
+ julie-core = { path = "../julie-core" }
+-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.16.0" }
++julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.27.0" }
+ 
+ # Full-text search engine with custom code tokenizer
+ tantivy = "0.26.0"
+diff --git a/crates/julie-pipeline/Cargo.toml b/crates/julie-pipeline/Cargo.toml
+index 12d2e72e..6fde4042 100644
+--- a/crates/julie-pipeline/Cargo.toml
++++ b/crates/julie-pipeline/Cargo.toml
+@@ -14,7 +14,7 @@ embeddings-sidecar = []
+ # Julie workspace crates
+ julie-core = { path = "../julie-core" }
+ julie-index = { path = "../julie-index" }
+-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.16.0" }
++julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.27.0" }
+ 
+ # Async runtime
+ tokio = { version = "1.47.1", features = ["full"] }
+diff --git a/crates/julie-pipeline/src/resolver.rs b/crates/julie-pipeline/src/resolver.rs
+index 1848e7af..338afa59 100644
+--- a/crates/julie-pipeline/src/resolver.rs
++++ b/crates/julie-pipeline/src/resolver.rs
+@@ -253,6 +253,8 @@ fn build_resolved_relationship_with_span(
+         kind: pending.kind.clone(),
+         file_path: pending.file_path.clone(),
+         line_number: pending.line_number,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: pending.confidence,
+         metadata,
+     }
+@@ -298,6 +300,7 @@ pub fn resolve_batch(
+             target: UnresolvedTarget::simple(pending.callee_name.clone()),
+             caller_scope_symbol_id: None,
+             span: None,
++            reference_site_is_exact: false,
+         })
+         .collect();
+     resolve_structured_batch(&structured, db)
+diff --git a/crates/julie-pipeline/src/tests/batch_resolver.rs b/crates/julie-pipeline/src/tests/batch_resolver.rs
+index cd58be05..439e3f46 100644
+--- a/crates/julie-pipeline/src/tests/batch_resolver.rs
++++ b/crates/julie-pipeline/src/tests/batch_resolver.rs
+@@ -373,9 +373,9 @@ fn test_resolve_structured_batch_keeps_same_line_calls_distinct_by_span() {
+     };
+     let pendings = vec![
+         structured_pending("caller-1", "authenticate", "authenticate", &[], "src/db.rs")
+-            .with_span(first_span),
++            .with_context_span(first_span),
+         structured_pending("caller-1", "authenticate", "authenticate", &[], "src/db.rs")
+-            .with_span(second_span),
++            .with_context_span(second_span),
+     ];
+ 
+     let (resolved, stats) = resolver::resolve_structured_batch(&pendings, &db);
+diff --git a/crates/julie-runtime/Cargo.toml b/crates/julie-runtime/Cargo.toml
+index 413c0cb6..1deb3072 100644
+--- a/crates/julie-runtime/Cargo.toml
++++ b/crates/julie-runtime/Cargo.toml
+@@ -15,7 +15,7 @@ test-support = ["dep:julie-test-support"]
+ julie-core = { path = "../julie-core" }
+ julie-index = { path = "../julie-index" }
+ julie-pipeline = { path = "../julie-pipeline" }
+-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.16.0" }
++julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.27.0" }
+ 
+ # Test-support helpers (optional; enabled by the test-support feature or cfg(test))
+ julie-test-support = { path = "../julie-test-support", optional = true }
+diff --git a/crates/julie-tools/Cargo.toml b/crates/julie-tools/Cargo.toml
+index 9ddbae54..8fae2de1 100644
+--- a/crates/julie-tools/Cargo.toml
++++ b/crates/julie-tools/Cargo.toml
+@@ -14,7 +14,7 @@ julie-pipeline = { path = "../julie-pipeline" }
+ julie-context  = { path = "../julie-context" }
+ 
+ # Julie extractors (symbol types, language parsers)
+-julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.16.0" }
++julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.27.0" }
+ 
+ # MCP schema derives (JsonSchema on tool param structs)
+ schemars = "1.0"
+diff --git a/crates/julie-tools/src/navigation/fast_refs.rs b/crates/julie-tools/src/navigation/fast_refs.rs
+index d0729a27..aae74663 100644
+--- a/crates/julie-tools/src/navigation/fast_refs.rs
++++ b/crates/julie-tools/src/navigation/fast_refs.rs
+@@ -356,6 +356,8 @@ impl FastRefsTool {
+                             kind: RelationshipKind::Imports,
+                             file_path: sym.file_path.clone(),
+                             line_number: sym.start_line,
++                            span: None,
++                            reference_site_is_exact: false,
+                             confidence: 1.0,
+                             metadata: None,
+                         });
+@@ -451,6 +453,8 @@ impl FastRefsTool {
+                         kind: rel_kind,
+                         file_path: ident.file_path,
+                         line_number: ident.start_line,
++                        span: None,
++                        reference_site_is_exact: false,
+                         confidence: ident.confidence,
+                         metadata: None,
+                     });
+diff --git a/crates/julie-tools/src/navigation/target_workspace.rs b/crates/julie-tools/src/navigation/target_workspace.rs
+index 8b7f826c..eb6411e2 100644
+--- a/crates/julie-tools/src/navigation/target_workspace.rs
++++ b/crates/julie-tools/src/navigation/target_workspace.rs
+@@ -118,6 +118,8 @@ pub async fn find_references_in_target_workspace(
+                     kind: RelationshipKind::Imports,
+                     file_path: sym.file_path.clone(),
+                     line_number: sym.start_line,
++                    span: None,
++                    reference_site_is_exact: false,
+                     confidence: 1.0,
+                     metadata: None,
+                 });
+@@ -217,6 +219,8 @@ pub async fn find_references_in_target_workspace(
+                 kind: rel_kind,
+                 file_path: ident.file_path,
+                 line_number: ident.start_line,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: ident.confidence,
+                 metadata: None,
+             });
+diff --git a/crates/julie-tools/src/tests/deep_dive_regression_tests.rs b/crates/julie-tools/src/tests/deep_dive_regression_tests.rs
+index 3a929eb0..528746eb 100644
+--- a/crates/julie-tools/src/tests/deep_dive_regression_tests.rs
++++ b/crates/julie-tools/src/tests/deep_dive_regression_tests.rs
+@@ -94,6 +94,8 @@ fn make_rel(
+         kind,
+         file_path: file.to_string(),
+         line_number: line,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: 0.9,
+         metadata: None,
+     }
+diff --git a/crates/julie-tools/src/tests/deep_dive_tests/data_tests.rs b/crates/julie-tools/src/tests/deep_dive_tests/data_tests.rs
+index f0312953..3c3c37af 100644
+--- a/crates/julie-tools/src/tests/deep_dive_tests/data_tests.rs
++++ b/crates/julie-tools/src/tests/deep_dive_tests/data_tests.rs
+@@ -92,6 +92,8 @@ fn make_rel(
+         kind,
+         file_path: file.to_string(),
+         line_number: line,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: 0.9,
+         metadata: None,
+     }
+diff --git a/crates/julie-tools/src/tests/formatting_tests.rs b/crates/julie-tools/src/tests/formatting_tests.rs
+index 316ea3f0..fa776b40 100644
+--- a/crates/julie-tools/src/tests/formatting_tests.rs
++++ b/crates/julie-tools/src/tests/formatting_tests.rs
+@@ -44,6 +44,8 @@ fn make_test_relationship(file_path: &str, line: u32, kind: RelationshipKind) ->
+         kind,
+         file_path: file_path.to_string(),
+         line_number: line,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: 1.0,
+         metadata: None,
+     }
+diff --git a/crates/julie-tools/src/tests/get_context_graph_expansion_tests.rs b/crates/julie-tools/src/tests/get_context_graph_expansion_tests.rs
+index 58ce2263..a0615df5 100644
+--- a/crates/julie-tools/src/tests/get_context_graph_expansion_tests.rs
++++ b/crates/julie-tools/src/tests/get_context_graph_expansion_tests.rs
+@@ -84,6 +84,8 @@ mod graph_expansion_tests {
+             kind,
+             file_path: file.to_string(),
+             line_number: line,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 0.9,
+             metadata: None,
+         }
+diff --git a/crates/julie-tools/src/tests/get_context_pipeline_tests.rs b/crates/julie-tools/src/tests/get_context_pipeline_tests.rs
+index 28080df2..effcb813 100644
+--- a/crates/julie-tools/src/tests/get_context_pipeline_tests.rs
++++ b/crates/julie-tools/src/tests/get_context_pipeline_tests.rs
+@@ -198,6 +198,8 @@ mod pipeline_integration_tests {
+                 kind: RelationshipKind::Calls,
+                 file_path: "src/handler.rs".to_string(),
+                 line_number: 11,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: 0.9,
+                 metadata: None,
+             },
+@@ -208,6 +210,8 @@ mod pipeline_integration_tests {
+                 kind: RelationshipKind::Calls,
+                 file_path: "src/handler.rs".to_string(),
+                 line_number: 13,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: 0.9,
+                 metadata: None,
+             },
+@@ -218,6 +222,8 @@ mod pipeline_integration_tests {
+                 kind: RelationshipKind::Calls,
+                 file_path: "src/error.rs".to_string(),
+                 line_number: 3,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: 0.9,
+                 metadata: None,
+             },
+@@ -228,6 +234,8 @@ mod pipeline_integration_tests {
+                 kind: RelationshipKind::Calls,
+                 file_path: "src/main.rs".to_string(),
+                 line_number: 2,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: 0.9,
+                 metadata: None,
+             },
+@@ -394,6 +402,8 @@ mod pipeline_integration_tests {
+                 kind: RelationshipKind::Calls,
+                 file_path: "src/handler.rs".to_string(),
+                 line_number: 55,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: 0.9,
+                 metadata: None,
+             },
+@@ -404,6 +414,8 @@ mod pipeline_integration_tests {
+                 kind: RelationshipKind::Calls,
+                 file_path: "src/handler.rs".to_string(),
+                 line_number: 56,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: 0.9,
+                 metadata: None,
+             },
+@@ -414,6 +426,8 @@ mod pipeline_integration_tests {
+                 kind: RelationshipKind::Calls,
+                 file_path: "src/handler.rs".to_string(),
+                 line_number: 57,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: 0.9,
+                 metadata: None,
+             },
+@@ -483,6 +497,8 @@ mod pipeline_integration_tests {
+             kind: RelationshipKind::Calls,
+             file_path: "src/tests/handler_tests.rs".to_string(),
+             line_number: 15,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 0.9,
+             metadata: None,
+         };
+diff --git a/crates/julie-tools/src/tests/get_context_task_inputs_tests.rs b/crates/julie-tools/src/tests/get_context_task_inputs_tests.rs
+index 2b1de100..1f98cd32 100644
+--- a/crates/julie-tools/src/tests/get_context_task_inputs_tests.rs
++++ b/crates/julie-tools/src/tests/get_context_task_inputs_tests.rs
+@@ -85,6 +85,8 @@ mod tests {
+             kind: RelationshipKind::Calls,
+             file_path: file_path.to_string(),
+             line_number: 2,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 1.0,
+             metadata: None,
+         }
+diff --git a/src/tests/core/incremental_update_atomic.rs b/src/tests/core/incremental_update_atomic.rs
+index b8b908fa..23acb78c 100644
+--- a/src/tests/core/incremental_update_atomic.rs
++++ b/src/tests/core/incremental_update_atomic.rs
+@@ -98,6 +98,8 @@ fn make_relationship(id: &str, from: &str, to: &str, file_path: &str) -> Relatio
+         kind: RelationshipKind::Calls,
+         file_path: file_path.to_string(),
+         line_number: 5,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: 1.0,
+         metadata: None,
+     }
+diff --git a/src/tests/integration/bulk_storage_atomicity.rs b/src/tests/integration/bulk_storage_atomicity.rs
+index 29b62606..bcfbffc7 100644
+--- a/src/tests/integration/bulk_storage_atomicity.rs
++++ b/src/tests/integration/bulk_storage_atomicity.rs
+@@ -68,6 +68,8 @@ fn create_test_relationship(from_id: &str, to_id: &str, kind: RelationshipKind)
+         kind,
+         file_path: "/test/file.rs".to_string(),
+         line_number: 10,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: 1.0,
+         metadata: None,
+     }
+diff --git a/src/tests/tools/blast_radius_tests.rs b/src/tests/tools/blast_radius_tests.rs
+index 0f47d81f..dd22f41a 100644
+--- a/src/tests/tools/blast_radius_tests.rs
++++ b/src/tests/tools/blast_radius_tests.rs
+@@ -79,6 +79,8 @@ fn make_relationship(
+         kind,
+         file_path: file_path.to_string(),
+         line_number: 1,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: 1.0,
+         metadata: None,
+     }
+diff --git a/src/tests/tools/call_path_tests.rs b/src/tests/tools/call_path_tests.rs
+index dbc96d85..eae0bcff 100644
+--- a/src/tests/tools/call_path_tests.rs
++++ b/src/tests/tools/call_path_tests.rs
+@@ -157,6 +157,8 @@ fn make_call_path_relationship(id: &str, from: &str, to: &str) -> Relationship {
+         kind: RelationshipKind::Calls,
+         file_path: "src/start.rs".to_string(),
+         line_number: 10,
++        span: None,
++        reference_site_is_exact: false,
+         confidence: 1.0,
+         metadata: None,
+     }
+diff --git a/src/tests/tools/fast_refs_primary_rebind_tests.rs b/src/tests/tools/fast_refs_primary_rebind_tests.rs
+index 5a44c47a..15738822 100644
+--- a/src/tests/tools/fast_refs_primary_rebind_tests.rs
++++ b/src/tests/tools/fast_refs_primary_rebind_tests.rs
+@@ -274,6 +274,8 @@ async fn setup_rebound_primary_fast_refs_handler()
+             kind: RelationshipKind::Calls,
+             file_path: "src/rebound.rs".to_string(),
+             line_number: 4,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 1.0,
+             metadata: None,
+         };
+diff --git a/src/tests/tools/search/relationship_text_test.rs b/src/tests/tools/search/relationship_text_test.rs
+index 830c45b3..9755ea7c 100644
+--- a/src/tests/tools/search/relationship_text_test.rs
++++ b/src/tests/tools/search/relationship_text_test.rs
+@@ -84,6 +84,8 @@ mod relationship_text_test {
+             kind: RelationshipKind::Calls,
+             file_path: "src/lib.rs".to_string(),
+             line_number: 3,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 1.0,
+             metadata: None,
+         }
+@@ -384,6 +386,8 @@ mod relationship_text_test {
+             kind: RelationshipKind::Calls,
+             file_path: "src/file_a.rs".to_string(),
+             line_number: 3,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 1.0,
+             metadata: None,
+         };
+@@ -603,6 +607,8 @@ mod relationship_text_test {
+             kind: RelationshipKind::Calls,
+             file_path: "src/dirty_a.rs".to_string(),
+             line_number: 1,
++            span: None,
++            reference_site_is_exact: false,
+             confidence: 1.0,
+             metadata: None,
+         }])
+@@ -695,6 +701,8 @@ mod relationship_text_test {
+                 kind: RelationshipKind::Calls,
+                 file_path: hub.file_path.clone(),
+                 line_number: 1,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: 1.0,
+                 metadata: None,
+             })
+diff --git a/src/tests/tools/target_workspace_fast_refs_tests.rs b/src/tests/tools/target_workspace_fast_refs_tests.rs
+index d4dd3701..1c905d7f 100644
+--- a/src/tests/tools/target_workspace_fast_refs_tests.rs
++++ b/src/tests/tools/target_workspace_fast_refs_tests.rs
+@@ -84,6 +84,8 @@ mod tests {
+             kind,
+             file_path: file_path.to_string(),
+             line_number: line,
++            span: None,
++            reference_site_is_exact: false,
+             confidence,
+             metadata: None,
+         }
+@@ -235,6 +237,8 @@ mod tests {
+                     kind: RelationshipKind::Imports,
+                     file_path: sym.file_path.clone(),
+                     line_number: sym.start_line,
++                    span: None,
++                    reference_site_is_exact: false,
+                     confidence: 1.0,
+                     metadata: None,
+                 });
+@@ -308,6 +312,8 @@ mod tests {
+                 kind: rel_kind,
+                 file_path: ident.file_path,
+                 line_number: ident.start_line,
++                span: None,
++                reference_site_is_exact: false,
+                 confidence: ident.confidence,
+                 metadata: None,
+             });
+diff --git a/src/tests/tools/workspace/processor.rs b/src/tests/tools/workspace/processor.rs
+index 9ba1ddd1..70202494 100644
+--- a/src/tests/tools/workspace/processor.rs
++++ b/src/tests/tools/workspace/processor.rs
+@@ -263,6 +263,7 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
+ 
+     let diagnostic = ParseDiagnostic {
+         kind: ParseDiagnosticKind::Error,
++        message: None,
+         start_line: 1,
+         start_column: 0,
+         end_line: 3,

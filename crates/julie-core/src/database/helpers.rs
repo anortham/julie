@@ -300,6 +300,8 @@ impl SymbolDatabase {
             kind,
             file_path: row.get("file_path")?,
             line_number: row.get("line_number")?,
+            span: None,
+            reference_site_is_exact: false,
             confidence: row.get::<_, Option<f64>>("confidence")?.unwrap_or(1.0) as f32,
             metadata,
         })

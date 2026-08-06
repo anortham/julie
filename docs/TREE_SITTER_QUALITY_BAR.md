@@ -26,7 +26,7 @@ The restored verification docs were historical evidence, not current certificati
 
 2026-05-11 validation facts:
 
-- `fixtures/extraction/capabilities.json` tracks 36 registry rows: 34 user-facing language rows plus `tsx` and `jsx`.
+- `fixtures/extraction/capabilities.json` tracks one row per user-facing language (36 at the pinned `julie-extractors` tag) plus the `tsx` and `jsx` variant rows.
 - `fixtures/extraction/capabilities.json` records 17 capability-gap rows, all `status: "exception"`; there are no open capability gaps.
 - `fixtures/extraction/capabilities.json` (in the external `anortham/julie-extractors` repo) records fixture-backed per-kind coverage for symbols, relationships, identifiers, and body spans. The certification report and real-world evidence JSON are generated artifacts that now live upstream, not in this repo.
 - The real-world corpus toml (110 specs, 5 per repo) and the 22-repo evidence run are maintained upstream in `anortham/julie-extractors`.

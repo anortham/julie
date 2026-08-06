@@ -356,6 +356,8 @@ impl FastRefsTool {
                             kind: RelationshipKind::Imports,
                             file_path: sym.file_path.clone(),
                             line_number: sym.start_line,
+                            span: None,
+                            reference_site_is_exact: false,
                             confidence: 1.0,
                             metadata: None,
                         });
@@ -451,6 +453,8 @@ impl FastRefsTool {
                         kind: rel_kind,
                         file_path: ident.file_path,
                         line_number: ident.start_line,
+                        span: None,
+                        reference_site_is_exact: false,
                         confidence: ident.confidence,
                         metadata: None,
                     });

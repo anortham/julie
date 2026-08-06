@@ -79,6 +79,8 @@ fn make_relationship(
         kind,
         file_path: file_path.to_string(),
         line_number: 1,
+        span: None,
+        reference_site_is_exact: false,
         confidence: 1.0,
         metadata: None,
     }

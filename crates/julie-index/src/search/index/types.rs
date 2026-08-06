@@ -42,6 +42,9 @@ pub struct SearchDocument {
     pub kind: String,      // symbol kind string, or "file"
     pub role: String,      // classify_role result
     pub test_role: String, // test_subrole result
+    /// Extractor-declared per-symbol role (`local`, `parameter`, or empty).
+    /// Independent of `role` above, which classifies the file.
+    pub declaration_role: String,
 
     // ---- symbol fields ----
     pub signature: String,
@@ -94,6 +97,7 @@ impl SearchDocument {
             kind: symbol.kind.to_string(),
             role,
             test_role,
+            declaration_role: declaration_role_from_metadata(symbol.metadata.as_ref()),
             signature: symbol.signature.clone().unwrap_or_default(),
             doc_comment: symbol.doc_comment.clone().unwrap_or_default(),
             code_body,
@@ -140,6 +144,7 @@ impl SearchDocument {
             kind: kind.into(),
             role: role.to_string(),
             test_role: test_role.to_string(),
+            declaration_role: String::new(),
             signature: signature.into(),
             doc_comment: doc_comment.into(),
             code_body: code_body.into(),
@@ -182,6 +187,7 @@ impl SearchDocument {
             kind: "file".to_string(),
             role: role.to_string(),
             test_role: test_role.to_string(),
+            declaration_role: String::new(),
             signature: String::new(),
             doc_comment: String::new(),
             code_body: String::new(),
@@ -218,6 +224,7 @@ impl SearchDocument {
             kind: "file".to_string(),
             role: role.to_string(),
             test_role: test_role.to_string(),
+            declaration_role: String::new(),
             signature: String::new(),
             doc_comment: String::new(),
             code_body: String::new(),
@@ -297,6 +304,22 @@ impl SearchFilter {
 
 pub(crate) fn is_test_symbol_result(file_path: &str, role: &str) -> bool {
     is_test_path(file_path) || role == "test"
+}
+
+/// Read the extractor's per-symbol declaration role (`local`, `parameter`, …)
+/// from symbol metadata, or an empty string when the extractor emits none.
+///
+/// Deliberately separate from [`symbol_role_and_test_role`]: that function
+/// produces the file-classification `role`, this one carries the extractor's
+/// unrelated symbol-level `role` key through to the reranker.
+pub(crate) fn declaration_role_from_metadata(
+    metadata: Option<&std::collections::HashMap<String, serde_json::Value>>,
+) -> String {
+    metadata
+        .and_then(|m| m.get("role"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Project search role fields from path classification plus extractor test metadata.
@@ -426,5 +449,8 @@ pub struct UnifiedHit {
     pub start_line: u32,
     pub role: String,
     pub test_role: String,
+    /// Extractor-declared per-symbol role (`local`, `parameter`, or empty).
+    /// Independent of `role` above, which classifies the file.
+    pub declaration_role: String,
     pub tantivy_score: f32,
 }

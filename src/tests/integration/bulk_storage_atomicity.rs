@@ -68,6 +68,8 @@ fn create_test_relationship(from_id: &str, to_id: &str, kind: RelationshipKind) 
         kind,
         file_path: "/test/file.rs".to_string(),
         line_number: 10,
+        span: None,
+        reference_site_is_exact: false,
         confidence: 1.0,
         metadata: None,
     }

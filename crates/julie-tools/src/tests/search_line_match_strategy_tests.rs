@@ -606,4 +606,22 @@ mod line_match_strategy_tests {
             );
         }
     }
+
+    #[test]
+    fn test_erlang_and_xml_schema_extensions_are_path_like_queries() {
+        use crate::search::query::looks_like_file_or_path_query;
+
+        for query in [
+            "bank_server.erl",
+            "bank.hrl",
+            "order.xsd",
+            "billing.wsdl",
+            "pom.xml",
+        ] {
+            assert!(
+                looks_like_file_or_path_query(query),
+                "{query} names a supported source/data file and must read as a path query"
+            );
+        }
+    }
 }

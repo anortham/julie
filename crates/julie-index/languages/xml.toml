@@ -1,0 +1,68 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "<!",   # doctype / comment / CDATA start
+    "<?",   # processing instruction and XML declaration start
+    "?>",   # processing instruction end
+    "/>",   # self-closing tag
+    "]]>",  # CDATA end
+]
+
+# Naming conventions to recognize. XSD components are PascalCase, Java/Spring
+# configuration is camelCase, and document dialects use kebab-case or
+# snake_case for element and attribute names.
+naming_styles = ["PascalCase", "camelCase", "kebab-case", "snake_case"]
+
+# Namespace prefixes (`xs:`, `xsi:`) and kebab-case names split on their
+# delimiters before affix matching runs, so XML has no affix left to strip; the
+# XSD/WSDL type-name conventions live in `[variants]` instead.
+meaningful_affixes = []
+
+[variants]
+strip_prefixes = []
+# Extension strips mirror the other data languages; the type/message suffixes
+# are the XSD and WSDL naming conventions for generated contract components.
+strip_suffixes = [
+    ".xml",
+    ".xsd",
+    ".wsdl",
+    "Type",
+    "Request",
+    "Response",
+]
+
+[scoring]
+# Matched against the symbol signature, which is the verbatim start tag
+# (`<xs:complexType name="AddPhone">`). Local names are used without a
+# namespace prefix so both the `xs:` and `xsd:` conventions match.
+important_patterns = [
+    "complexType",
+    "simpleType",
+    "portType",
+    "operation",
+    "service",
+    "bean",
+]
+
+[embeddings]
+# XML is in NON_EMBEDDABLE_LANGUAGES; element names promoted from `name`/`id`
+# attributes are structure, not code logic.
+extra_kinds = []
+
+# Attribute-value literals carry a `tag.attribute` carrier, so the entries below
+# are bare attribute names matched by the gate's last-segment rule. There are no
+# SQL carriers: the extractor records attribute values only, never element text,
+# and XML dialects that embed SQL (MyBatis, Hibernate) put it in element text.
+[literal_carriers]
+url = [
+    "location",        # wsdl:import / soap:address
+    "schemalocation",  # xs:import / xs:include / xsi:schemaLocation
+    "href",            # xlink and generic document references
+    "src",             # generic document references
+    "uri",             # namespace and resource references
+    "url",             # connection and endpoint configuration
+    "endpoint",        # service configuration
+    "address",         # service configuration
+]
+sql = []
+route = []

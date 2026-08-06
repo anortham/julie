@@ -27,7 +27,9 @@ pub use types::{
     FileMatchKind, FileSearchResult, FileSearchResults, SearchDocument, SearchFilter,
     SymbolSearchResult, SymbolSearchResults, UnifiedHit, truncate_utf8_bytes,
 };
-pub(crate) use types::{is_test_symbol_result, symbol_role_and_test_role};
+pub(crate) use types::{
+    declaration_role_from_metadata, is_test_symbol_result, symbol_role_and_test_role,
+};
 
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};

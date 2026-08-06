@@ -59,7 +59,7 @@ const MAX_LIMIT: u32 = 500;
 pub struct FastSearchTool {
     /// Search query. Exact symbol names, file path fragments, and natural-language descriptions all work. Too many results? Add file_pattern or language filter. Zero lexical results may show labeled semantic fallback candidates for identifier-like queries when backend is omitted and embeddings are ready. Still zero? Run manage_workspace(operation="index")
     pub query: String,
-    /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "vbnet", "php", "ruby", "swift", "kotlin", "scala", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
+    /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "vbnet", "php", "ruby", "swift", "kotlin", "scala", "c", "cpp", "go", "lua", "zig", "elixir", "erlang", "gdscript", "vue", "qml", "r", "razor", "sql", "html", "css", "regex", "bash", "powershell", "dart", "markdown", "json", "toml", "yaml", "xml"
     #[serde(default)]
     pub language: Option<String>,
     /// File pattern filter (glob syntax)

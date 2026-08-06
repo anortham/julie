@@ -57,6 +57,9 @@ impl SearchIndex {
                             start_line: symbol.start_line,
                             role: symbol.role,
                             test_role: symbol.test_role,
+                            // Annotation rows are matched by annotation key, and
+                            // no extractor annotates a local or a parameter.
+                            declaration_role: String::new(),
                             tantivy_score: symbol.score,
                         }
                     })
@@ -247,6 +250,7 @@ impl SearchIndex {
                 start_line: Self::get_u64_field(&doc, f.start_line) as u32,
                 role: Self::get_text_field(&doc, f.role),
                 test_role: Self::get_text_field(&doc, f.test_role),
+                declaration_role: Self::get_text_field(&doc, f.declaration_role),
                 tantivy_score: score,
             });
         }
@@ -323,6 +327,7 @@ impl SearchIndex {
                         .kind(kind)
                         .role(role)
                         .test_role(test_role)
+                        .declaration_role(hit.declaration_role.clone())
                         .is_test(is_test)
                         .is_file_doc(is_file_doc)
                         .is_source_language(source_language)

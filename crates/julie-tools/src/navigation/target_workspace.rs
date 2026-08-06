@@ -118,6 +118,8 @@ pub async fn find_references_in_target_workspace(
                     kind: RelationshipKind::Imports,
                     file_path: sym.file_path.clone(),
                     line_number: sym.start_line,
+                    span: None,
+                    reference_site_is_exact: false,
                     confidence: 1.0,
                     metadata: None,
                 });
@@ -150,7 +152,7 @@ pub async fn find_references_in_target_workspace(
         .for_each(|rel| refs.push(rel));
 
         // Strategy 4: Identifier-based reference discovery
-        // The identifiers table stores every usage site extracted by all 34 language extractors.
+        // The identifiers table stores every usage site extracted by all 36 language extractors.
         // This catches references that relationships miss (struct type usages, function calls
         // without extracted relationships, member accesses, etc.)
         let mut all_names = vec![effective_symbol.clone()];
@@ -217,6 +219,8 @@ pub async fn find_references_in_target_workspace(
                 kind: rel_kind,
                 file_path: ident.file_path,
                 line_number: ident.start_line,
+                span: None,
+                reference_site_is_exact: false,
                 confidence: ident.confidence,
                 metadata: None,
             });

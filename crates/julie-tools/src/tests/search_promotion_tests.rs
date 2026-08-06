@@ -512,4 +512,17 @@ mod tests {
         ));
         assert!(text.contains("file_pattern is valid for text search within a known file.",));
     }
+
+    #[test]
+    fn erlang_and_xml_schema_extensions_produce_file_target_hint() {
+        use crate::search::hint_formatter::build_content_zero_hit_hint;
+
+        for query in ["bank_server.erl", "bank.hrl", "order.xsd", "billing.wsdl"] {
+            let hint = build_content_zero_hit_hint(query, None, None, None, None, None);
+            assert!(
+                matches!(hint, Some((HintKind::FileTargetHint, _))),
+                "{query} names a supported file extension and must produce a file-target hint, got {hint:?}"
+            );
+        }
+    }
 }

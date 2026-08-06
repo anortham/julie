@@ -373,9 +373,9 @@ fn test_resolve_structured_batch_keeps_same_line_calls_distinct_by_span() {
     };
     let pendings = vec![
         structured_pending("caller-1", "authenticate", "authenticate", &[], "src/db.rs")
-            .with_span(first_span),
+            .with_context_span(first_span),
         structured_pending("caller-1", "authenticate", "authenticate", &[], "src/db.rs")
-            .with_span(second_span),
+            .with_context_span(second_span),
     ];
 
     let (resolved, stats) = resolver::resolve_structured_batch(&pendings, &db);

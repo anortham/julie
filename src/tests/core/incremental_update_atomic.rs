@@ -98,6 +98,8 @@ fn make_relationship(id: &str, from: &str, to: &str, file_path: &str) -> Relatio
         kind: RelationshipKind::Calls,
         file_path: file_path.to_string(),
         line_number: 5,
+        span: None,
+        reference_site_is_exact: false,
         confidence: 1.0,
         metadata: None,
     }

@@ -85,6 +85,8 @@ mod tests {
             kind: RelationshipKind::Calls,
             file_path: file_path.to_string(),
             line_number: 2,
+            span: None,
+            reference_site_is_exact: false,
             confidence: 1.0,
             metadata: None,
         }

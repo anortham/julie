@@ -112,21 +112,61 @@ fn metadata_bool(symbol: &Symbol, key: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Compound words that mark a teardown hook wherever they appear in the name,
+/// even when the surrounding convention glues them to other words. Each is long
+/// and distinctive enough that a substring match cannot collide with an
+/// unrelated word: `tearDown`, `lazy_teardown`, `TestCleanup`, `DisposeAsync`.
+const TEARDOWN_PHRASES: &[&str] = &["teardown", "cleanup", "dispose", "finalize"];
+
+/// Single words that mark a teardown hook only when they stand alone as a word
+/// in the name. `after`/`end` are too short to match as substrings — `beforeSend`
+/// and `prepareBackend` would both read as teardown — so they are matched
+/// against the name's split words instead. `post` is deliberately absent: a
+/// Common Test hook named `post_init_per_suite` runs after setup, not at
+/// teardown.
+const TEARDOWN_WORDS: &[&str] = &["after", "end"];
+
+/// Split an identifier into lowercase words across every naming convention:
+/// `end_per_suite` -> `[end, per, suite]`, `JustAfterEach` -> `[just, after,
+/// each]`, `after-all` -> `[after, all]`.
+fn lifecycle_name_words(name: &str) -> Vec<String> {
+    name.split(|ch: char| !ch.is_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .flat_map(crate::search::tokenizer::split_camel_case)
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// Classify a lifecycle hook as setup or teardown from its name alone.
+///
+/// Language-agnostic by construction: it reads the name's words rather than any
+/// framework's vocabulary, so `afterEach` (Jest), `tearDownAll` (Dart),
+/// `AfterSuite` (Ginkgo), `TestCleanup` (MSTest), `lazy_teardown` (busted), and
+/// `end_per_suite` (Erlang Common Test) all resolve without a per-language
+/// branch. Setup is the default because setup hooks have no shared marker word.
 fn lifecycle_role_from_name(name: &str) -> TestRole {
-    let normalized = name
+    let squashed = name
         .chars()
-        .filter(|ch| *ch != '_' && *ch != '-')
+        .filter(|ch| ch.is_alphanumeric())
         .flat_map(char::to_lowercase)
         .collect::<String>();
 
-    if normalized.starts_with("after")
-        || normalized.contains("teardown")
-        || normalized.contains("cleanup")
+    if TEARDOWN_PHRASES
+        .iter()
+        .any(|phrase| squashed.contains(phrase))
     {
-        TestRole::FixtureTeardown
-    } else {
-        TestRole::FixtureSetup
+        return TestRole::FixtureTeardown;
     }
+
+    let words = lifecycle_name_words(name);
+    if words
+        .iter()
+        .any(|word| TEARDOWN_WORDS.contains(&word.as_str()))
+    {
+        return TestRole::FixtureTeardown;
+    }
+
+    TestRole::FixtureSetup
 }
 
 /// Classify a single symbol's test role.

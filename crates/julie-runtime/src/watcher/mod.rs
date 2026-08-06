@@ -267,7 +267,8 @@ pub(super) async fn dispatch_file_event(
                     // Same post-commit hazard as Created/Modified: queue the rename
                     // target for Tantivy retry so a mid-handler error cannot leave
                     // the projection falsely Ready.
-                    if let Ok(rel_to) = julie_core::paths::to_relative_unix_style(&to, workspace_root)
+                    if let Ok(rel_to) =
+                        julie_core::paths::to_relative_unix_style(&to, workspace_root)
                     {
                         tantivy_dirty
                             .lock()

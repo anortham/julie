@@ -163,7 +163,7 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
 
 /// Common method/function names that are too ambiguous to resolve reliably.
 ///
-/// These names appear across virtually all 34 supported languages (e.g., `new`, `len`,
+/// These names appear across virtually all 36 supported languages (e.g., `new`, `len`,
 /// `get`, `from`). The relationship resolver often picks the wrong symbol because
 /// dozens of definitions share the name. Filtering them from callee/neighbor lists
 /// prevents misleading results and frees token budget for real symbols.

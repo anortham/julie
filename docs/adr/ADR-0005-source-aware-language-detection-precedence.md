@@ -11,7 +11,7 @@ Language detection in Julie answers two different questions:
 
 This ADR governs question 2. Question 1 is correctly answered by `detect_language_from_extension` (used at e.g. `src/watcher/runtime.rs::path_has_registered_extractor`) and is out of scope.
 
-Julie indexes 34 languages. Attribution by extension alone breaks for one stubborn case: C/C++ headers. The `.h` extension is shared by C and C++. Pre-cleanup, four places made independent attribution decisions about a `.h` file:
+Julie indexes 36 languages. Attribution by extension alone breaks for one stubborn case: C/C++ headers. The `.h` extension is shared by C and C++. Pre-cleanup, four places made independent attribution decisions about a `.h` file:
 
 - Extractor pipeline (`crates/julie-extractors/src/pipeline.rs`) — defaulted to C via the language spec.
 - `LanguageSpec` registry (`crates/julie-extractors/src/language_spec/specs.rs`) — `.h` → C.

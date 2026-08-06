@@ -12,6 +12,7 @@
 use std::cmp::Ordering;
 
 use crate::search::query_parse::{ParsedQuery, QueryIntent};
+use crate::search::scoring::is_function_scoped_binding;
 use julie_extractors::SymbolKind;
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,22 @@ pub(crate) const VENDOR_PENALTY: f32 = 130.0;
 /// magnitude as [`VENDOR_PENALTY`].
 pub(crate) const GENERATED_PENALTY: f32 = 130.0;
 
+/// Demotion applied to symbols the extractor declared as function-scoped
+/// bindings — locals and formal parameters (see
+/// [`crate::search::scoring::is_function_scoped_binding`]). Extractors began
+/// emitting these as `Variable` symbols, and without a demotion a local that
+/// shadows a field or property of the same name wins on the exact-title path.
+///
+/// Calibration: both a binding and a real member score
+/// `EXACT_TITLE_BOOST + kind_boost(...)` = 100 + 20 = 120 on an exact-name
+/// query. The binding also collects `PATH_BOOST` (40) and `BODY_TERM_BOOST`
+/// (10) whenever the query term appears in its path or body, so the penalty
+/// must exceed 50 for the member to win regardless. Set to 90 so the member
+/// leads by at least 40 points. A binding whose name matches exactly still
+/// nets +30, keeping "where is this local declared" queries answerable, and
+/// the exact-name promotion tier keeps it ahead of partial-name matches.
+pub(crate) const FUNCTION_SCOPED_BINDING_PENALTY: f32 = 90.0;
+
 // ---------------------------------------------------------------------------
 // Candidate
 // ---------------------------------------------------------------------------
@@ -72,6 +89,9 @@ pub struct Candidate {
     pub role: String,
     /// Test sub-role per C.3: `"unit" | "integration" | "smoke" | ""`.
     pub test_role: String,
+    /// Extractor-declared per-symbol role: `"local" | "parameter" | ""`.
+    /// A separate vocabulary from `role` above, which classifies the file.
+    pub declaration_role: String,
     pub is_test: bool,
     pub is_file_doc: bool,
     pub is_source_language: bool,
@@ -112,6 +132,7 @@ impl Default for CandidateBuilder {
                 kind: SymbolKind::Function,
                 role: "unknown".to_string(),
                 test_role: String::new(),
+                declaration_role: String::new(),
                 is_test: false,
                 is_file_doc: false,
                 is_source_language: false,
@@ -145,6 +166,10 @@ impl CandidateBuilder {
     }
     pub fn test_role(mut self, v: impl Into<String>) -> Self {
         self.inner.test_role = v.into();
+        self
+    }
+    pub fn declaration_role(mut self, v: impl Into<String>) -> Self {
+        self.inner.declaration_role = v.into();
         self
     }
     pub fn is_test(mut self, v: bool) -> Self {
@@ -211,6 +236,16 @@ fn role_demotion(c: &Candidate) -> f32 {
         "vendor" => -VENDOR_PENALTY,
         "generated" => -GENERATED_PENALTY,
         _ => 0.0,
+    }
+}
+
+/// Returns a NEGATIVE adjustment (or zero) for locals and formal parameters,
+/// keyed on the extractor's declaration role rather than on any language.
+fn declaration_demotion(c: &Candidate) -> f32 {
+    if is_function_scoped_binding(&c.kind, &c.declaration_role) {
+        -FUNCTION_SCOPED_BINDING_PENALTY
+    } else {
+        0.0
     }
 }
 
@@ -476,6 +511,7 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
 
             // ── Role demotion ─────────────────────────────────────────────
             score += role_demotion(c);
+            score += declaration_demotion(c);
 
             Ranked {
                 candidate: c.clone(),

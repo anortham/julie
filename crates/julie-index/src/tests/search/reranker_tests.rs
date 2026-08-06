@@ -390,3 +390,89 @@ fn reranker_writeback_disambiguates_same_name_same_path() {
          that share (path, title) but differ in row type"
     );
 }
+
+// ----- Function-scoped bindings (extractor declaration role) -----
+
+#[test]
+fn local_variable_ranks_below_a_field_with_the_same_name() {
+    let field = Candidate::builder()
+        .title("command")
+        .path("src/Runner.cs")
+        .kind(SymbolKind::Field)
+        .build();
+    let local = Candidate::builder()
+        .title("command")
+        .path("src/command/Dispatcher.cs")
+        .kind(SymbolKind::Variable)
+        .declaration_role("local")
+        .build();
+
+    let ranked = rerank_unified(&parse_query("command"), &[local, field]);
+
+    assert_eq!(
+        ranked[0].original_index, 1,
+        "field must outrank the shadowing local; got {ranked:?}"
+    );
+}
+
+#[test]
+fn formal_parameter_ranks_below_a_property_with_the_same_name() {
+    let property = Candidate::builder()
+        .title("requested")
+        .path("src/Runner.cs")
+        .kind(SymbolKind::Property)
+        .build();
+    let parameter = Candidate::builder()
+        .title("requested")
+        .path("src/requested/Dispatcher.cs")
+        .kind(SymbolKind::Variable)
+        .declaration_role("parameter")
+        .build();
+
+    let ranked = rerank_unified(&parse_query("requested"), &[parameter, property]);
+
+    assert_eq!(
+        ranked[0].original_index, 1,
+        "property must outrank the shadowing parameter; got {ranked:?}"
+    );
+}
+
+#[test]
+fn variable_without_a_declaration_role_keeps_its_kind_boost() {
+    let module_level = Candidate::builder()
+        .title("settings")
+        .kind(SymbolKind::Variable)
+        .build();
+
+    let s = score_query("settings", module_level);
+    let expected = EXACT_TITLE_BOOST + kind_boost(&SymbolKind::Variable);
+
+    assert!((s - expected).abs() < 1e-3, "got {s}, expected {expected}");
+}
+
+#[test]
+fn local_variable_still_outranks_a_candidate_that_does_not_match() {
+    let unrelated = Candidate::builder()
+        .title("Dispatcher")
+        .path("src/Runner.cs")
+        .kind(SymbolKind::Class)
+        .build();
+    let local = Candidate::builder()
+        .title("command")
+        .path("src/Runner.cs")
+        .kind(SymbolKind::Variable)
+        .declaration_role("local")
+        .build();
+
+    let ranked = rerank_unified(&parse_query("command"), &[local, unrelated]);
+
+    assert_eq!(
+        ranked[0].original_index, 0,
+        "an exact-name local must stay findable above non-matching results; got {ranked:?}"
+    );
+    assert!(
+        ranked[0].final_score > 0.0,
+        "demoted local must keep a positive score, got {}",
+        ranked[0].final_score
+    );
+}

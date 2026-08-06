@@ -17,7 +17,7 @@ fn repo_file(path: &str) -> PathBuf {
 }
 
 #[test]
-fn extractor_dependency_release_is_v2_16_0() {
+fn extractor_dependency_release_is_v2_27_0() {
     for manifest in MANIFESTS {
         let contents = std::fs::read_to_string(repo_file(manifest)).unwrap();
         let parsed: toml::Value = toml::from_str(&contents).unwrap();
@@ -28,8 +28,8 @@ fn extractor_dependency_release_is_v2_16_0() {
 
         assert_eq!(
             dependency.get("tag").and_then(toml::Value::as_str),
-            Some("v2.16.0"),
-            "{manifest} must pin v2.16.0"
+            Some("v2.27.0"),
+            "{manifest} must pin v2.27.0"
         );
         assert_eq!(
             dependency.get("git").and_then(toml::Value::as_str),

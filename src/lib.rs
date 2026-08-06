@@ -1,6 +1,6 @@
 // Julie - Cross-Platform Code Intelligence Server Library
 //!
-//! Julie provides code intelligence across 34 programming languages using
+//! Julie provides code intelligence across 36 programming languages using
 //! Tantivy search with code-aware tokenization (CamelCase/snake_case splitting).
 
 pub use julie_index::analysis;

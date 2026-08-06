@@ -263,6 +263,7 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
 
     let diagnostic = ParseDiagnostic {
         kind: ParseDiagnosticKind::Error,
+        message: None,
         start_line: 1,
         start_column: 0,
         end_line: 3,

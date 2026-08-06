@@ -92,6 +92,8 @@ fn make_rel(
         kind,
         file_path: file.to_string(),
         line_number: line,
+        span: None,
+        reference_site_is_exact: false,
         confidence: 0.9,
         metadata: None,
     }

@@ -494,10 +494,38 @@ pub(crate) const DEFINITION_KINDS: &[&str] = &[
     "delegate",
 ];
 
+/// Declaration roles that extractors record in a symbol's own `role` metadata
+/// key for bindings scoped to a single function body or signature.
+///
+/// This vocabulary is the EXTRACTOR's per-symbol declaration role. It is a
+/// different concept from the path-derived search role produced by
+/// [`classify_role`] (`source` / `test` / `docs` / `vendor` / `generated`),
+/// which describes the file a symbol lives in. The two share the name `role`
+/// upstream and must never be read from, or written to, the same field.
+pub(crate) const FUNCTION_SCOPED_DECLARATION_ROLES: &[&str] = &["local", "parameter"];
+
+/// True when a symbol is a binding declared inside a function body or
+/// signature — a local variable or a formal parameter — rather than a member
+/// that other code can reference by name.
+///
+/// Language-agnostic by construction: the predicate is the `Variable` kind
+/// plus the extractor's declaration-role vocabulary, so every extractor that
+/// emits the same vocabulary is covered without a per-language branch.
+pub(crate) fn is_function_scoped_binding(
+    kind: &julie_extractors::SymbolKind,
+    declaration_role: &str,
+) -> bool {
+    matches!(kind, julie_extractors::SymbolKind::Variable)
+        && FUNCTION_SCOPED_DECLARATION_ROLES.contains(&declaration_role)
+}
+
 /// Documentation/markup languages whose symbols should rank below code definitions.
 /// When a markdown heading and a Go struct both match "Command" as definitions,
-/// the Go struct is almost certainly what the user wants.
-pub(crate) const DOC_LANGUAGES: &[&str] = &["markdown", "json", "toml", "yaml"];
+/// the Go struct is almost certainly what the user wants. XML joins the config
+/// formats because its symbols are elements promoted from a `name`/`id`
+/// attribute — a `<bean id="Command">` or `<xs:element name="Command">` is data,
+/// not a definition that competes with code.
+pub(crate) const DOC_LANGUAGES: &[&str] = &["markdown", "json", "toml", "yaml", "xml"];
 
 /// Check if a symbol name matches a query, supporting qualified names.
 /// Matches if the full name matches OR the last component of a dot-qualified name matches.

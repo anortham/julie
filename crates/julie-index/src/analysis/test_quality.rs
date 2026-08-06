@@ -256,7 +256,7 @@ fn is_placeholder_body(body: &str) -> bool {
 ///
 /// Replaces content inside comments and strings with spaces, preserving
 /// newlines so that line counts remain accurate. Language-agnostic: handles
-/// the common comment/string syntaxes across all 34 supported languages.
+/// the common comment/string syntaxes across all 36 supported languages.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum StripState {
     Normal,
