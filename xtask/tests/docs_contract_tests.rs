@@ -244,7 +244,7 @@ fn docs_contract_tests_extractor_enrichment_surfaces_are_documented() {
             "agent instructions missing {required}"
         );
     }
-    assert!(dependencies.contains("julie-extractors v2.27.0"));
+    assert!(dependencies.contains("julie-extractors v2.34.3"));
     assert!(extraction.contains("Schema version 29"));
 }
 

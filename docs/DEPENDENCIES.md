@@ -1,6 +1,6 @@
 # Dependencies Management
 
-**Last Updated:** 2026-08-05
+**Last Updated:** 2026-08-20
 
 ## Tree-Sitter Dependencies
 
@@ -9,7 +9,7 @@ Tree-sitter parser output is a data contract for Julie. Parser dependencies are 
 Current baseline:
 
 - `tree-sitter = "0.26.11"` (core ABI)
-- `julie-extractors v2.27.0` is consumed as a pinned git dependency from [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors); see the official [v2.21.0](https://github.com/anortham/julie-extractors/releases/tag/v2.21.0) (adds the Erlang and XML languages) and [v2.27.0](https://github.com/anortham/julie-extractors/releases/tag/v2.27.0) releases
+- `julie-extractors v2.34.3` is consumed as a pinned git dependency from [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors); see the official [v2.21.0](https://github.com/anortham/julie-extractors/releases/tag/v2.21.0) (adds the Erlang and XML languages) and [v2.34.3](https://github.com/anortham/julie-extractors/releases/tag/v2.34.3) releases
 - Julie persists the upstream `source_regions`, `structural_facts`, and `complexity_metrics` domains through one normalized consumer path
 - Parser crate inventory and decisions live in `docs/TREE_SITTER_UPGRADES.md` (for context) and in the external repo's `Cargo.toml`
 - Parser metadata (`language_spec.rs`), capability coverage (`capabilities.json`), and golden fixtures all live in the external `anortham/julie-extractors` repo

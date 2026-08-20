@@ -12,9 +12,9 @@ Julie is retired as of 2026-07-28. No further development ships here, and the op
 [migration guide](https://github.com/anortham/miller/blob/main/docs/migration-from-julie.md) covers the
 tool-by-tool mapping, verification steps, and rollback.
 
-**v7.18.0 is a maintenance release, not a resumption of development.** It moves the pinned extractor
-to julie-extractors v2.27.0 so the final release line picks up eleven releases of upstream extraction
-work, including two new languages. Nothing further is planned.
+**v7.18.1 is a maintenance release, not a resumption of development.** The pinned extractor is now
+julie-extractors v2.34.3 so the final release line picks up upstream extraction work, including
+narrower Python, Scala, and Elixir test-role evidence. Nothing further is planned.
 
 Support window: existing releases and this repository remain available as-is, indefinitely, with no
 support. Keep Julie configured as a rollback option only for as long as your own Miller verification

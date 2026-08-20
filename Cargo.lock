@@ -1672,7 +1672,7 @@ dependencies = [
 
 [[package]]
 name = "julie"
-version = "7.18.0"
+version = "7.18.1"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -1776,8 +1776,8 @@ dependencies = [
 
 [[package]]
 name = "julie-extractors"
-version = "2.27.0"
-source = "git+https://github.com/anortham/julie-extractors?tag=v2.27.0#ab7b16ad8ab3f921665a719b43b8a281ae1942d6"
+version = "2.34.3"
+source = "git+https://github.com/anortham/julie-extractors?tag=v2.34.3#320b5bab09269b2b86046a434aad82a3ba1b2685"
 dependencies = [
  "anyhow",
  "md5",
