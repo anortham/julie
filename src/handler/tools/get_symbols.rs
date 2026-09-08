@@ -28,6 +28,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<GetSymbolsTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_get_symbols(params)
+            .await
+            .map_err(|e| classify_tool_failure("get_symbols", &e))
+    }
+
+    pub(crate) async fn execute_get_symbols(
+        &self,
+        params: GetSymbolsTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("📋 Get symbols for file: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
@@ -47,7 +56,7 @@ impl JulieServerHandler {
                     input_bytes,
                     &message,
                 );
-                return Err(classify_tool_failure("get_symbols", &e));
+                return Err(e);
             }
         };
         let report = ToolCallReport {

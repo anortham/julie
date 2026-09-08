@@ -1,5 +1,7 @@
 #[path = "handler/embedding_init.rs"]
 pub(crate) mod embedding_init;
+#[path = "handler/mcp_adapter.rs"]
+pub(crate) mod mcp_adapter;
 #[path = "handler/search_telemetry.rs"]
 pub(crate) mod search_telemetry;
 pub mod session_workspace;
@@ -18,10 +20,10 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
-    handler::server::tool::{ToolCallContext, ToolRouter},
+    handler::server::tool::ToolRouter,
     model::{
-        CallToolRequestParams, CallToolResult, Implementation, InitializeRequestParams,
-        ListToolsResult, ServerCapabilities, ServerInfo, Tool,
+        CallToolRequestParams, CallToolResponse, CallToolResult, InitializeRequestParams,
+        ListToolsResult, ServerInfo, Tool,
     },
     service::{NotificationContext, Peer, RequestContext},
 };
@@ -281,7 +283,9 @@ pub struct JulieServerHandler {
     pub(crate) leadership: Arc<LeadershipState>,
     /// Embedding provider injected by `new_in_process`. When `Some`, takes
     /// priority over `embedding_service` and the per-workspace provider.
-    injected_embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    injected_embedding_provider:
+        Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>,
+
     /// Index root override for in-process sessions (T8/F2).  When `Some`, the
     /// non-pool branch of `initialize_workspace_with_force` routes db/tantivy
     /// to the daemon shared directory (`~/.julie/indexes/{ws}/`) so storage
@@ -813,8 +817,9 @@ impl JulieServerHandler {
             dashboard_tx: None,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
-            injected_embedding_provider: None,
+            injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             in_process_index_root: None,
+
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -923,8 +928,9 @@ impl JulieServerHandler {
             dashboard_tx,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
-            injected_embedding_provider: None,
+            injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             in_process_index_root: None,
+
             #[cfg(test)]
             test_temp_guard: None,
         };
@@ -1019,8 +1025,9 @@ impl JulieServerHandler {
             dashboard_tx,
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
-            injected_embedding_provider: None,
+            injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             in_process_index_root: None,
+
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -1082,7 +1089,7 @@ impl JulieServerHandler {
 
         // Override the leadership, injected-provider, and index-root fields.
         handler.leadership = Arc::new(leader);
-        handler.injected_embedding_provider = embedding_provider;
+        handler.injected_embedding_provider = Arc::new(std::sync::RwLock::new(embedding_provider));
         handler.in_process_index_root = index_root;
 
         Ok(handler)
@@ -1486,8 +1493,10 @@ impl JulieServerHandler {
         &self,
     ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
         // In-process mode: injected provider takes priority.
-        if let Some(ref p) = self.injected_embedding_provider {
-            return Some(Arc::clone(p));
+        if let Ok(guard) = self.injected_embedding_provider.read() {
+            if let Some(ref p) = *guard {
+                return Some(Arc::clone(p));
+            }
         }
         // Daemon mode: use shared service
         if let Some(ref service) = self.embedding_service {
@@ -1496,6 +1505,16 @@ impl JulieServerHandler {
         // Stdio mode: use per-workspace provider
         let ws = self.workspace.read().await;
         ws.as_ref().and_then(|ws| ws.embedding_provider.clone())
+    }
+
+    /// Dynamically inject or clear the in-process embedding provider.
+    pub fn set_injected_embedding_provider(
+        &self,
+        provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    ) {
+        if let Ok(mut guard) = self.injected_embedding_provider.write() {
+            *guard = provider;
+        }
     }
 
     /// Get embedding runtime status, preferring daemon shared service.
@@ -1520,6 +1539,7 @@ impl JulieServerHandler {
     /// in `maybe_initialize_embeddings_for_nl_definitions`:
     ///   `if workspace.embedding_runtime_status.is_none() { ... probe ... }`
     /// so the 8-10s sidecar probe is never entered for NL queries.
+    #[allow(dead_code)]
     pub(crate) async fn mark_standalone_embedding_skipped(&self) {
         let mut ws = self.workspace.write().await;
         if let Some(workspace) = ws.as_mut() {
@@ -2620,6 +2640,7 @@ pub(crate) fn is_write_exempt(
 ///
 /// On expiry, returns `Err(McpError)` naming the tool and the elapsed ceiling
 /// so the caller gets a JSON-RPC error rather than a session hang.
+#[allow(dead_code)]
 pub(crate) async fn dispatch_with_deadline(
     tool_name: &str,
     exempt: bool,
@@ -2644,20 +2665,40 @@ pub(crate) async fn dispatch_with_deadline(
     }
 }
 
+impl JulieServerHandler {
+    pub fn request_engine(&self) -> crate::request_engine::RequestEngine {
+        let registry_paths = crate::paths::RegistryPaths::try_new().unwrap_or_else(|_| {
+            crate::paths::RegistryPaths::with_home(self.current_workspace_root().join(".julie"))
+        });
+        let index_base_override = self
+            .in_process_index_root
+            .as_ref()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+        let resolver = crate::request_engine::BindingResolver::new(
+            Some(self.current_workspace_root()),
+            self.in_process_index_root.is_some(),
+            registry_paths.clone(),
+        )
+        .with_daemon_db(self.daemon_db.clone())
+        .with_index_base_override(index_base_override);
+        let runtimes = std::sync::Arc::new(crate::request_engine::RuntimeFactory::with_handler(
+            std::sync::Arc::new(self.clone()),
+            registry_paths,
+        ));
+        crate::request_engine::RequestEngine::new(resolver, runtimes)
+    }
+}
+
 /// ServerHandler implementation
 impl ServerHandler for JulieServerHandler {
+    fn supported_protocol_versions(
+        &self,
+    ) -> std::borrow::Cow<'static, [rmcp::model::ProtocolVersion]> {
+        std::borrow::Cow::Borrowed(mcp_adapter::JULIE_PROTOCOL_VERSIONS)
+    }
+
     fn get_info(&self) -> ServerInfo {
-        let server_info = Implementation::new("Julie", env!("CARGO_PKG_VERSION"))
-            .with_title("Julie - Code Intelligence Server");
-
-        let mut info = ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(server_info);
-
-        if let Some(instructions) = self.load_agent_instructions() {
-            info = info.with_instructions(instructions);
-        }
-
-        info
+        mcp_adapter::get_server_info(self.load_agent_instructions())
     }
 
     async fn initialize(
@@ -2676,9 +2717,7 @@ impl ServerHandler for JulieServerHandler {
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
-        // Compute tool_name and exempt early — both needed before request/context
-        // are moved into the in-process bounded future below.
+    ) -> Result<CallToolResponse, McpError> {
         let tool_name = request.name.as_ref().to_string();
         let exempt = is_write_exempt(&tool_name, request.arguments.as_ref());
 
@@ -2686,33 +2725,9 @@ impl ServerHandler for JulieServerHandler {
             let complete_deferred_auto_index = !(request.name.as_ref() == "manage_workspace"
                 && Self::manage_workspace_primary_index_request(request.arguments.as_ref()));
 
-            // F1: In-process handlers (leader or follower) get a bounded read
-            // envelope. Without it, `list_roots_from_peer` (unbounded peer
-            // round-trip) or the deferred auto-index running inline on the first
-            // request can hang the session indefinitely.
-            //
-            // Gate strictly on `is_in_process()`: daemon/stdio handlers use
-            // `LeadershipState::none()` (is_in_process()==false) and MUST take
-            // the existing path byte-for-byte unchanged.
-            //
-            // Write-exempt tools (edit_file, rename_symbol, rewrite_symbol,
-            // manage_workspace mutating ops) fall through to the existing path —
-            // aborting a canonical write mid-transaction would corrupt state.
             if self.is_in_process() && !exempt {
-                // Leader only: if the deferred auto-index is pending, spawn a
-                // NON-CANCELLABLE background task. The timeout below cancels the
-                // read envelope but NEVER the spawned repair — that task holds
-                // its own `deferred_auto_index_gate` lock and runs to completion.
-                // Followers skip (their write gate in complete_deferred_auto_index
-                // returns Ok(()) immediately — no write races).
                 if self.is_leader() {
                     use std::sync::atomic::Ordering;
-                    // Spawn ONLY when a repair is pending AND we win the
-                    // single-flight claim (codex pre-merge F-C). Losing the
-                    // claim means a repair task is already outstanding — piling
-                    // on a duplicate would re-run a persistently-failing repair
-                    // once per concurrent read. The spawned task releases the
-                    // slot when it finishes so the next pending cycle can retry.
                     if self.deferred_auto_index_pending.load(Ordering::Acquire)
                         && self.try_claim_deferred_repair_slot()
                     {
@@ -2724,22 +2739,19 @@ impl ServerHandler for JulieServerHandler {
                     }
                 }
 
-                // Bound the WHOLE read path (workspace resolution + tool call)
-                // in a single timeout. On expiry → bounded McpError, not a hang.
                 let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
                 let handler = self.clone();
                 let bounded_fut = async move {
-                    // Pass complete_deferred_auto_index=false: the repair was
-                    // spawned above (leader) or skipped by gate (follower).
-                    // Running it inline here would re-introduce the hang risk.
                     handler
                         .ensure_primary_workspace_for_request(&context.peer, false)
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-                    handler
-                        .tool_router
-                        .call(ToolCallContext::new(&handler, request, context))
-                        .await
+                    let adapter = mcp_adapter::McpAdapter::new(
+                        std::sync::Arc::new(handler.request_engine()),
+                        Some(handler.current_workspace_root()),
+                    )
+                    .with_instructions(handler.load_agent_instructions());
+                    adapter.call_tool(request, context).await
                 };
 
                 return match deadline {
@@ -2759,19 +2771,17 @@ impl ServerHandler for JulieServerHandler {
                 };
             }
 
-            // Non-in-process path OR in-process write path: existing behavior
-            // unchanged. Writes are unbounded by design (T3 / dispatch_with_deadline
-            // exemption); daemon/stdio take this path for all tools.
             self.ensure_primary_workspace_for_request(&context.peer, complete_deferred_auto_index)
                 .await
                 .map_err(|err| McpError::internal_error(err.to_string(), None))?;
         }
 
-        let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
-        let fut = self
-            .tool_router
-            .call(ToolCallContext::new(self, request, context));
-        dispatch_with_deadline(&tool_name, exempt, fut, deadline).await
+        let adapter = mcp_adapter::McpAdapter::new(
+            std::sync::Arc::new(self.request_engine()),
+            Some(self.current_workspace_root()),
+        )
+        .with_instructions(self.load_agent_instructions());
+        adapter.call_tool(request, context).await
     }
 
     async fn list_tools(

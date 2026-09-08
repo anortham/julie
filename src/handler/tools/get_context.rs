@@ -29,6 +29,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<GetContextTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_get_context(params)
+            .await
+            .map_err(|e| classify_tool_failure("get_context", &e))
+    }
+
+    pub(crate) async fn execute_get_context(
+        &self,
+        params: GetContextTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("📦 Get context: {:?}", params);
         let start = std::time::Instant::now();
         let metadata = tool_targets::get_context_metadata(&params);
@@ -51,7 +60,7 @@ impl JulieServerHandler {
                         Self::input_bytes_from_metadata(&metadata),
                         &message,
                     );
-                    return Err(classify_tool_failure("get_context", &e));
+                    return Err(e);
                 }
             };
 
@@ -71,7 +80,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("get_context", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

@@ -27,6 +27,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<PatternsTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_patterns(params)
+            .await
+            .map_err(|e| classify_tool_failure("patterns", &e))
+    }
+
+    pub(crate) async fn execute_patterns(
+        &self,
+        params: PatternsTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("Query patterns: {:?}", params);
         let start = std::time::Instant::now();
         let metadata = tool_targets::patterns_metadata(&params);
@@ -44,7 +53,7 @@ impl JulieServerHandler {
                         Self::input_bytes_from_metadata(&metadata),
                         &message,
                     );
-                    return Err(classify_tool_failure("patterns", &error));
+                    return Err(error);
                 }
             };
         let workspace_snapshot = self
@@ -63,7 +72,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("patterns", &error));
+                return Err(error);
             }
         };
         let report = ToolCallReport {

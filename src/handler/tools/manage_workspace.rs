@@ -28,6 +28,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<ManageWorkspaceTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_manage_workspace(params)
+            .await
+            .map_err(|e| classify_tool_failure("manage_workspace", &e))
+    }
+
+    pub(crate) async fn execute_manage_workspace(
+        &self,
+        params: ManageWorkspaceTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         info!("🏗️ Managing workspace: {}", params.operation);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
@@ -45,7 +54,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("manage_workspace", &e));
+                return Err(e);
             }
         };
         let report = ToolCallReport {

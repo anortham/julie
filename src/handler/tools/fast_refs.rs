@@ -29,6 +29,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<FastRefsTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_fast_refs(params)
+            .await
+            .map_err(|e| classify_tool_failure("fast_refs", &e))
+    }
+
+    pub(crate) async fn execute_fast_refs(
+        &self,
+        params: FastRefsTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("⚡ Fast find references: {:?}", params);
         let start = std::time::Instant::now();
         let metadata = tool_targets::fast_refs_metadata(&params);
@@ -50,7 +59,7 @@ impl JulieServerHandler {
                         Self::input_bytes_from_metadata(&metadata),
                         &message,
                     );
-                    return Err(classify_tool_failure("fast_refs", &e));
+                    return Err(e);
                 }
             };
 
@@ -70,7 +79,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("fast_refs", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

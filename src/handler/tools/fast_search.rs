@@ -29,6 +29,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<FastSearchParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_fast_search(params)
+            .await
+            .map_err(|e| classify_tool_failure("fast_search", &e))
+    }
+
+    pub(crate) async fn execute_fast_search(
+        &self,
+        params: FastSearchParams,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("⚡ Fast search: {:?}", params);
         let start = std::time::Instant::now();
 
@@ -54,7 +63,7 @@ impl JulieServerHandler {
                         Self::input_bytes_from_metadata(&metadata),
                         &message,
                     );
-                    return Err(classify_tool_failure("fast_search", &e));
+                    return Err(e);
                 }
             };
 
@@ -82,7 +91,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("fast_search", &e));
+                return Err(e);
             }
         };
         let metadata = search_telemetry::fast_search_metadata_with_regions(

@@ -15,15 +15,7 @@ use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content| match content.raw {
-            rmcp::model::RawContent::Text(ref text) => Some(text.text.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    crate::mcp_compat::call_tool_result_text(result)
 }
 
 async fn initialize_indexed_handler(workspace_path: &Path) -> JulieServerHandler {

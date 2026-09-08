@@ -27,17 +27,19 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<crate::tools::editing::rewrite_symbol::RewriteSymbolTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_rewrite_symbol(params)
+            .await
+            .map_err(|e| classify_tool_failure("rewrite_symbol", &e))
+    }
+
+    pub(crate) async fn execute_rewrite_symbol(
+        &self,
+        params: crate::tools::editing::rewrite_symbol::RewriteSymbolTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!(
             "✏️ rewrite_symbol: {} {} (dry_run={})",
             params.operation, params.symbol, params.dry_run
         );
-        // T7 (Risk #2): refuse writes on in-process followers.
-        if self.is_in_process_follower() {
-            let e = anyhow::anyhow!(
-                "another session owns writes for this workspace; this is a read-only follower"
-            );
-            return Err(classify_tool_failure("rewrite_symbol", &e));
-        }
         let start = std::time::Instant::now();
         let workspace_snapshot = if params.workspace.as_deref().unwrap_or("primary") == "primary" {
             self.require_primary_workspace_binding().ok()
@@ -62,7 +64,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("rewrite_symbol", &e));
+                return Err(e);
             }
         };
         let metadata = tool_targets::merge_object(
@@ -93,7 +95,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("rewrite_symbol", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

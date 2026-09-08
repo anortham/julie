@@ -311,11 +311,19 @@ builds after `cargo clean`.
 
 ### Development Workflow
 1. **Development Mode**: Always work in `debug` mode for fast iteration
-2. **CLI-First Tool Testing**: Julie's CLI is available for autonomous dogfood checks without the release rebuild and MCP client restart loop:
+2. **CLI-First Tool Testing**: Julie's CLI provides first-class autonomous dogfooding without rebuilding release binaries or restarting live MCP clients:
    - Run `cargo build` for a debug binary
-   - Use `./target/debug/julie-server <tool-command> --workspace . --standalone --json`
-   - Example: `./target/debug/julie-server search "@test" --target definitions --workspace . --standalone --json`
-   - Prefer this path for tool behavior checks before asking the user to restart a live MCP client
+   - Direct named subcommands:
+     - Navigation & Search: `fast-search` (alias `search`), `fast-refs` (alias `refs`), `get-symbols` (alias `symbols`), `get-context` (alias `context`), `call-path`, `blast-radius`, `deep-dive`, `patterns`, `spillover-get` (alias `spillover`)
+     - Safe Editing: `edit-file` (alias `edit`), `rewrite-symbol` (alias `rewrite`), `rename-symbol` (alias `rename`)
+     - Workspace: `manage-workspace` (alias `workspace`), `dashboard --foreground`
+   - Generic tool runner: `./target/debug/julie-server tool <name> --params '{"key":"value"}' --json` (supports `--params`, `--params-file`, and `--params-stdin` with 16 MiB ceiling)
+   - Zero-warmup discovery: `./target/debug/julie-server tools list --json` and `./target/debug/julie-server tools schema <name> --json` (instant <15ms)
+   - Serial batch replay: `./target/debug/julie-server tools replay --input trace.jsonl --json`
+   - Fast lexical mode: add `--semantics off` to skip all embedding checks and run purely in Tantivy/SQLite lexical mode
+   - Strict semantic verification: add `--semantics required` to verify vector health (fails with exit code 4 if vectors are missing, stale, or incompatible)
+   - Predictable exit codes: 0 = ok, 2 = arg error, 3 = tool error, 4 = semantics not ready / follower read-only, 124 = timeout, 130 = cancel
+   - Clean stdout discipline: stdout is strictly JSON envelopes when `--json` is passed; all diagnostics and tracing go to stderr
 3. **Live MCP Testing**: When ready to test the full MCP integration:
    - Agent asks user to exit Claude Code
    - User runs: `cargo build --release`

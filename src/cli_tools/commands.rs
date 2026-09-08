@@ -1,21 +1,20 @@
 //! `CliToolCommand` implementations for each CLI subcommand.
 //!
 //! These bridge CLI args into the tool execution pipeline. Each named
-//! subcommand maps to an MCP tool name and produces the JSON parameters
-//! for daemon-mode dispatch. The `call_standalone` methods construct real
-//! tool structs and execute them via `.call_tool(&handler)`.
+//! subcommand maps to an MCP tool name and produces normalized JSON parameters
+//! for `RequestEngine::execute`.
 
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
+use crate::request_engine::RequestFailure;
 
 use super::CliToolCommand;
 use super::subcommands::{
-    BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, PatternsArgs, RefsArgs,
-    SearchArgs, SymbolsArgs, WorkspaceArgs,
+    BlastRadiusArgs, CallPathArgs, ContextArgs, DeepDiveArgs, EditArgs, GenericToolArgs,
+    PatternsArgs, RefsArgs, RenameArgs, RewriteArgs, SearchArgs, SpilloverArgs, SymbolsArgs,
+    WorkspaceArgs,
 };
 
 fn resolve_git_diff_file_paths(rev: &str) -> Result<Vec<String>> {
@@ -33,23 +32,18 @@ fn resolve_git_diff_file_paths(rev: &str) -> Result<Vec<String>> {
                 .collect();
             if rev_files.is_empty() {
                 anyhow::bail!(
-                    "No changed files found for revision '{}'. Verify the revision exists and has changes.",
-                    rev
+                    "No changed files found for revision '{rev}'. Verify the revision exists and has changes."
                 );
             }
             Ok(rev_files)
         }
         Ok(o) => {
             let stderr = String::from_utf8_lossy(&o.stderr);
-            anyhow::bail!("git diff --name-only {} failed: {}", rev, stderr.trim());
+            anyhow::bail!("git diff --name-only {rev} failed: {}", stderr.trim());
         }
-        Err(e) => {
-            anyhow::bail!(
-                "Failed to run git to resolve --rev '{}': {}. Use --files to specify file paths directly.",
-                rev,
-                e
-            );
-        }
+        Err(e) => anyhow::bail!(
+            "Failed to run git to resolve --rev '{rev}': {e}. Use --files to specify file paths directly."
+        ),
     }
 }
 
@@ -62,18 +56,10 @@ fn validate_blast_radius_symbol_ids(symbols: &[String]) -> Result<()> {
 
     if looks_like_name {
         anyhow::bail!(
-            "The --symbols flag expects internal symbol IDs, not human-readable names.\n\
-             Received: {}\n\n\
-             To analyze by symbol name, use:\n  \
-             julie-server search \"{}\" --target definitions\n\
-             to find the symbol, then use --files with the file path instead.\n\n\
-             To analyze by file path:\n  \
-             julie-server blast-radius --files src/path/to/file.rs",
-            symbols.join(", "),
-            symbols.first().map(|s| s.as_str()).unwrap_or("SymbolName"),
+            "The --symbols flag expects internal symbol IDs, not human-readable names. Received: {}. Use --files to analyze by file path.",
+            symbols.join(", ")
         );
     }
-
     Ok(())
 }
 
@@ -86,22 +72,13 @@ fn build_blast_radius_tool_args(args: &BlastRadiusArgs) -> Result<Value> {
     }
 
     if !file_paths.is_empty() {
-        tool_args["file_paths"] = Value::Array(
-            file_paths
-                .iter()
-                .map(|path| Value::String(path.clone()))
-                .collect(),
-        );
+        tool_args["file_paths"] = Value::Array(file_paths.into_iter().map(Value::String).collect());
     }
 
     if let Some(ref symbols) = args.symbols {
         validate_blast_radius_symbol_ids(symbols)?;
-        tool_args["symbol_ids"] = Value::Array(
-            symbols
-                .iter()
-                .map(|symbol| Value::String(symbol.clone()))
-                .collect(),
-        );
+        tool_args["symbol_ids"] =
+            Value::Array(symbols.iter().cloned().map(Value::String).collect());
     }
 
     if let Some(ref fmt) = args.report_format {
@@ -111,224 +88,141 @@ fn build_blast_radius_tool_args(args: &BlastRadiusArgs) -> Result<Value> {
     Ok(tool_args)
 }
 
-// ---------------------------------------------------------------------------
-// search -> fast_search
-// ---------------------------------------------------------------------------
-
+// --- search -> fast_search ---
 #[async_trait]
 impl CliToolCommand for SearchArgs {
     fn tool_name(&self) -> &'static str {
         "fast_search"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        let mut args = serde_json::json!({
-            "query": self.query,
-            "limit": self.limit,
-        });
-
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("query".into(), Value::String(self.query.clone()));
+        map.insert("limit".into(), Value::Number(self.limit.into()));
         if let Some(ref lang) = self.language {
-            args["language"] = Value::String(lang.clone());
+            map.insert("language".into(), Value::String(lang.clone()));
         }
-        if let Some(ref pattern) = self.file_pattern {
-            args["file_pattern"] = Value::String(pattern.clone());
+        if let Some(ref fp) = self.file_pattern {
+            map.insert("file_pattern".into(), Value::String(fp.clone()));
         }
-        if let Some(lines) = self.context_lines {
-            args["context_lines"] = Value::Number(lines.into());
+        if let Some(cl) = self.context_lines {
+            map.insert("context_lines".into(), Value::Number(cl.into()));
         }
         if self.exclude_tests {
-            args["exclude_tests"] = Value::Bool(true);
+            map.insert("exclude_tests".into(), Value::Bool(true));
         }
-        if let Some(ref regions) = self.regions {
-            args["regions"] = Value::String(regions.clone());
+        if let Some(ref r) = self.regions {
+            map.insert("regions".into(), Value::String(r.clone()));
         }
-
-        Ok(args)
-    }
-
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use crate::tools::search::{FastSearchParams, FastSearchTool};
-
-        let tool = FastSearchParams {
-            search: FastSearchTool {
-                query: self.query.clone(),
-                limit: self.limit,
-                language: self.language.clone(),
-                file_pattern: self.file_pattern.clone(),
-                context_lines: self.context_lines,
-                exclude_tests: if self.exclude_tests { Some(true) } else { None },
-                ..Default::default()
-            },
-            regions: self.regions.clone(),
-        };
-        tool.call_tool(handler).await
+        Ok(map)
     }
 }
 
+// --- patterns ---
 #[async_trait]
 impl CliToolCommand for PatternsArgs {
     fn tool_name(&self) -> &'static str {
         "patterns"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        let mut args = serde_json::json!({
-            "operation": self.operation,
-            "group_by": self.group_by,
-            "limit": self.limit,
-        });
-        if let Some(pattern_id) = &self.pattern_id {
-            args["pattern_id"] = Value::String(pattern_id.clone());
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("operation".into(), Value::String(self.operation.clone()));
+        if let Some(ref id) = self.pattern_id {
+            map.insert("pattern_id".into(), Value::String(id.clone()));
         }
-        if let Some(query) = &self.query {
-            args["query"] = Value::String(query.clone());
+        if let Some(ref q) = self.query {
+            map.insert("query".into(), Value::String(q.clone()));
         }
-        if let Some(path) = &self.path {
-            args["path"] = Value::String(path.clone());
+        if let Some(ref p) = self.path {
+            map.insert("path".into(), Value::String(p.clone()));
         }
-        if let Some(language) = &self.language {
-            args["language"] = Value::String(language.clone());
+        if let Some(ref l) = self.language {
+            map.insert("language".into(), Value::String(l.clone()));
         }
         if !self.where_filters.is_empty() {
-            args["where"] = Value::String(self.where_filters.join(";"));
+            map.insert("where".into(), Value::String(self.where_filters.join(";")));
         }
-        if let Some(facet) = &self.facet {
-            args["facet"] = Value::String(facet.clone());
+        if let Some(ref f) = self.facet {
+            map.insert("facet".into(), Value::String(f.clone()));
         }
-        Ok(args)
-    }
-
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        let tool: crate::tools::PatternsTool = serde_json::from_value(self.to_tool_args()?)?;
-        tool.call_tool(handler).await
+        map.insert("group_by".into(), Value::String(self.group_by.clone()));
+        map.insert("limit".into(), Value::Number(self.limit.into()));
+        Ok(map)
     }
 }
 
-// ---------------------------------------------------------------------------
-// refs -> fast_refs
-// ---------------------------------------------------------------------------
-
+// --- refs -> fast_refs ---
 #[async_trait]
 impl CliToolCommand for RefsArgs {
     fn tool_name(&self) -> &'static str {
         "fast_refs"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        let mut args = serde_json::json!({
-            "symbol": self.symbol,
-            "include_definition": self.include_definition,
-            "limit": self.limit,
-        });
-
-        if let Some(ref workspace) = self.workspace {
-            args["workspace"] = Value::String(workspace.clone());
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("symbol".into(), Value::String(self.symbol.clone()));
+        map.insert(
+            "include_definition".into(),
+            Value::Bool(self.include_definition),
+        );
+        map.insert("limit".into(), Value::Number(self.limit.into()));
+        if let Some(ref ws) = self.workspace {
+            map.insert("workspace".into(), Value::String(ws.clone()));
         }
-        if let Some(ref kind) = self.kind {
-            args["reference_kind"] = Value::String(kind.clone());
+        if let Some(ref k) = self.kind {
+            map.insert("reference_kind".into(), Value::String(k.clone()));
         }
-
-        Ok(args)
-    }
-
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use crate::tools::FastRefsTool;
-
-        let tool: FastRefsTool = serde_json::from_value(self.to_tool_args()?)?;
-        tool.call_tool(handler).await
+        Ok(map)
     }
 }
 
-// ---------------------------------------------------------------------------
-// symbols -> get_symbols
-// ---------------------------------------------------------------------------
-
+// --- symbols -> get_symbols ---
 #[async_trait]
 impl CliToolCommand for SymbolsArgs {
     fn tool_name(&self) -> &'static str {
         "get_symbols"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        let mut args = serde_json::json!({
-            "file_path": self.file_path,
-            "mode": self.mode,
-            "limit": self.limit,
-            "max_depth": self.max_depth,
-        });
-
-        if let Some(ref target) = self.target {
-            args["target"] = Value::String(target.clone());
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("file_path".into(), Value::String(self.file_path.clone()));
+        map.insert("mode".into(), Value::String(self.mode.clone()));
+        if let Some(ref t) = self.target {
+            map.insert("target".into(), Value::String(t.clone()));
         }
-
-        Ok(args)
-    }
-
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use crate::tools::symbols::GetSymbolsTool;
-
-        let tool = GetSymbolsTool {
-            file_path: self.file_path.clone(),
-            max_depth: self.max_depth,
-            target: self.target.clone(),
-            limit: Some(self.limit),
-            mode: Some(self.mode.clone()),
-            workspace: None,
-        };
-        tool.call_tool(handler).await
+        map.insert("limit".into(), Value::Number(self.limit.into()));
+        map.insert("max_depth".into(), Value::Number(self.max_depth.into()));
+        Ok(map)
     }
 }
 
-// ---------------------------------------------------------------------------
-// context -> get_context
-// ---------------------------------------------------------------------------
-
+// --- context -> get_context ---
 #[async_trait]
 impl CliToolCommand for ContextArgs {
     fn tool_name(&self) -> &'static str {
         "get_context"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        let mut args = serde_json::json!({
-            "query": self.query,
-        });
-
-        if let Some(budget) = self.budget {
-            args["max_tokens"] = Value::Number(budget.into());
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("query".into(), Value::String(self.query.clone()));
+        if let Some(b) = self.budget {
+            map.insert("max_tokens".into(), Value::Number(b.into()));
         }
-        if let Some(hops) = self.max_hops {
-            args["max_hops"] = Value::Number(hops.into());
+        if let Some(h) = self.max_hops {
+            map.insert("max_hops".into(), Value::Number(h.into()));
         }
-        if let Some(ref symbols) = self.entry_symbols {
-            args["entry_symbols"] =
-                Value::Array(symbols.iter().map(|s| Value::String(s.clone())).collect());
+        if let Some(ref es) = self.entry_symbols {
+            map.insert(
+                "entry_symbols".into(),
+                Value::Array(es.iter().cloned().map(Value::String).collect()),
+            );
         }
         if self.prefer_tests {
-            args["prefer_tests"] = Value::Bool(true);
+            map.insert("prefer_tests".into(), Value::Bool(true));
         }
-
-        Ok(args)
-    }
-
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use crate::tools::get_context::GetContextTool;
-
-        let tool = GetContextTool {
-            query: self.query.clone(),
-            max_tokens: self.budget,
-            workspace: None,
-            language: None,
-            file_pattern: None,
-            format: None,
-            edited_files: None,
-            entry_symbols: self.entry_symbols.clone(),
-            stack_trace: None,
-            failing_test: None,
-            max_hops: self.max_hops,
-            prefer_tests: if self.prefer_tests { Some(true) } else { None },
-        };
-        tool.call_tool(handler).await
+        Ok(map)
     }
 }
 
@@ -342,31 +236,21 @@ impl CliToolCommand for CallPathArgs {
         "call_path"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        let mut args = serde_json::json!({
-            "from": self.from,
-            "to": self.to,
-            "max_hops": self.max_hops,
-        });
-
-        if let Some(ref workspace) = self.workspace {
-            args["workspace"] = Value::String(workspace.clone());
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("from".into(), Value::String(self.from.clone()));
+        map.insert("to".into(), Value::String(self.to.clone()));
+        map.insert("max_hops".into(), Value::Number(self.max_hops.into()));
+        if let Some(ref ws) = self.workspace {
+            map.insert("workspace".into(), Value::String(ws.clone()));
         }
-        if let Some(ref path) = self.from_file_path {
-            args["from_file_path"] = Value::String(path.clone());
+        if let Some(ref f) = self.from_file_path {
+            map.insert("from_file_path".into(), Value::String(f.clone()));
         }
-        if let Some(ref path) = self.to_file_path {
-            args["to_file_path"] = Value::String(path.clone());
+        if let Some(ref t) = self.to_file_path {
+            map.insert("to_file_path".into(), Value::String(t.clone()));
         }
-
-        Ok(args)
-    }
-
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use crate::tools::navigation::CallPathTool;
-
-        let tool: CallPathTool = serde_json::from_value(self.to_tool_args()?)?;
-        tool.call_tool(handler).await
+        Ok(map)
     }
 }
 
@@ -380,15 +264,12 @@ impl CliToolCommand for BlastRadiusArgs {
         "blast_radius"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        build_blast_radius_tool_args(self)
-    }
-
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use crate::tools::impact::BlastRadiusTool;
-
-        let tool: BlastRadiusTool = serde_json::from_value(build_blast_radius_tool_args(self)?)?;
-        tool.call_tool(handler).await
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let val = build_blast_radius_tool_args(self)
+            .map_err(|e| RequestFailure::invalid_arguments(e.to_string()))?;
+        val.as_object()
+            .cloned()
+            .ok_or_else(|| RequestFailure::invalid_arguments("expected object"))
     }
 }
 
@@ -402,121 +283,208 @@ impl CliToolCommand for WorkspaceArgs {
         "manage_workspace"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        let mut args = serde_json::json!({
-            "operation": self.operation,
-        });
-
-        if let Some(ref path) = self.path {
-            args["path"] = Value::String(path.clone());
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("operation".into(), Value::String(self.operation.clone()));
+        if let Some(ref p) = self.path {
+            map.insert("path".into(), Value::String(p.clone()));
         }
         if self.force {
-            args["force"] = Value::Bool(true);
+            map.insert("force".into(), Value::Bool(true));
         }
-        if let Some(ref name) = self.name {
-            args["name"] = Value::String(name.clone());
+        if let Some(ref n) = self.name {
+            map.insert("name".into(), Value::String(n.clone()));
         }
-
-        Ok(args)
+        if self.foreground {
+            map.insert("foreground".into(), Value::Bool(true));
+        }
+        Ok(map)
     }
 
     fn validate_standalone(&self) -> Result<()> {
         match self.operation.as_str() {
-            "open" => anyhow::bail!(
-                "Workspace `open` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
-            ),
-            "register" => anyhow::bail!(
-                "Workspace `register` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
-            ),
-            "remove" => anyhow::bail!(
-                "Workspace `remove` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
-            ),
-            "refresh" => anyhow::bail!(
-                "Workspace `refresh` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
-            ),
-            "stats" => anyhow::bail!(
-                "Workspace `stats` is not available from the standalone CLI. Use the `manage_workspace` tool from your MCP client — workspace registry operations run in the in-process server."
-            ),
-            "dashboard" => anyhow::bail!(
-                "Workspace `dashboard` is not available from the one-shot standalone CLI. Use `julie-server dashboard` from a shell, or `manage_workspace(operation=\"dashboard\")` from your MCP client."
-            ),
+            "open" | "register" | "remove" | "refresh" | "stats" => {
+                anyhow::bail!(
+                    "Workspace operation '{}' is not available from the standalone CLI.\n\
+                     Use the MCP manage_workspace tool instead.",
+                    self.operation
+                );
+            }
+            "dashboard" if !self.foreground => {
+                anyhow::bail!(
+                    "Workspace operation 'dashboard' via manage_workspace is not available from the standalone CLI. Run `julie-server dashboard` instead."
+                );
+            }
             _ => Ok(()),
         }
     }
+}
 
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use crate::tools::workspace::commands::ManageWorkspaceTool;
+// --- tool (generic) ---
+#[async_trait]
+impl CliToolCommand for GenericToolArgs {
+    fn tool_name(&self) -> &'static str {
+        Box::leak(self.name.clone().into_boxed_str())
+    }
 
-        let tool = ManageWorkspaceTool {
-            operation: self.operation.clone(),
-            path: self.path.clone(),
-            force: if self.force { Some(true) } else { None },
-            name: self.name.clone(),
-            workspace_id: None,
-            detailed: None,
-        };
-        tool.call_tool(handler).await
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = self.resolve_params()?;
+        if self.foreground {
+            map.insert("foreground".into(), Value::Bool(true));
+        }
+        Ok(map)
+    }
+
+    fn to_tool_args(&self) -> Result<Value> {
+        let raw = self.params.as_deref().unwrap_or("{}");
+        let parsed: Value = serde_json::from_str(raw)
+            .map_err(|e| anyhow::anyhow!("Invalid JSON in --params: {e}"))?;
+        if !parsed.is_object() {
+            anyhow::bail!("--params must be a JSON object, got: {parsed}");
+        }
+        Ok(parsed)
+    }
+
+    fn validate_standalone(&self) -> Result<()> {
+        if self.name == "manage_workspace" {
+            let map = self.resolve_params().map_err(|e| anyhow::anyhow!("{e}"))?;
+            if map.get("operation").and_then(|v| v.as_str()) == Some("dashboard")
+                && !self.foreground
+            {
+                anyhow::bail!(
+                    "Workspace operation 'dashboard' via manage_workspace is not available without foreground mode. Run `julie-server dashboard` or add --foreground."
+                );
+            }
+        }
+        Ok(())
     }
 }
 
 // ---------------------------------------------------------------------------
-// tool (generic) -> any tool by name
+// deep-dive -> deep_dive
 // ---------------------------------------------------------------------------
 
 #[async_trait]
-impl CliToolCommand for GenericToolArgs {
+impl CliToolCommand for DeepDiveArgs {
     fn tool_name(&self) -> &'static str {
-        // The generic tool command uses the user-provided name.
-        // This is a lifetime workaround: we leak the string since tool_name
-        // returns &'static str for the trait. Fine for a CLI binary that
-        // exits after one invocation.
-        Box::leak(self.name.clone().into_boxed_str())
+        "deep_dive"
     }
 
-    fn to_tool_args(&self) -> Result<Value> {
-        let args: Value = serde_json::from_str(&self.params).map_err(|e| {
-            anyhow::anyhow!(
-                "Invalid JSON in --params: {}\n\
-                 Expected valid JSON object, e.g. '{{\"query\":\"test\"}}'",
-                e
-            )
-        })?;
-
-        if !args.is_object() {
-            anyhow::bail!("Tool parameters must be a JSON object, got: {}", args);
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("symbol".into(), Value::String(self.symbol.clone()));
+        if let Some(ref d) = self.depth {
+            map.insert("depth".into(), Value::String(d.clone()));
         }
+        if let Some(ref c) = self.context_file {
+            map.insert("context_file".into(), Value::String(c.clone()));
+        }
+        if let Some(ref ws) = self.workspace {
+            map.insert("workspace".into(), Value::String(ws.clone()));
+        }
+        Ok(map)
+    }
+}
 
-        Ok(args)
+// ---------------------------------------------------------------------------
+// edit -> edit_file
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl CliToolCommand for EditArgs {
+    fn tool_name(&self) -> &'static str {
+        "edit_file"
     }
 
-    fn validate_standalone(&self) -> Result<()> {
-        if self.name != "manage_workspace" {
-            return Ok(());
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("file_path".into(), Value::String(self.file_path.clone()));
+        map.insert("old_text".into(), Value::String(self.old_text.clone()));
+        map.insert("new_text".into(), Value::String(self.new_text.clone()));
+        map.insert("dry_run".into(), Value::Bool(self.dry_run));
+        if let Some(ref occ) = self.occurrence {
+            map.insert("occurrence".into(), Value::String(occ.clone()));
         }
-
-        let params = self.to_tool_args()?;
-        if params.get("operation").and_then(serde_json::Value::as_str) == Some("dashboard") {
-            anyhow::bail!(
-                "Tool `manage_workspace` operation `dashboard` is not available from the one-shot standalone CLI. Use `julie-server dashboard` from a shell, or `manage_workspace(operation=\"dashboard\")` from your MCP client."
-            );
+        if let Some(ref ws) = self.workspace {
+            map.insert("workspace".into(), Value::String(ws.clone()));
         }
+        Ok(map)
+    }
+}
 
-        Ok(())
+// ---------------------------------------------------------------------------
+// rename -> rename_symbol
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl CliToolCommand for RenameArgs {
+    fn tool_name(&self) -> &'static str {
+        "rename_symbol"
     }
 
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        let params: Value = serde_json::from_str(&self.params).map_err(|e| {
-            anyhow::anyhow!(
-                "Invalid JSON in --params: {}\n\
-                 Expected valid JSON object, e.g. '{{\"query\":\"test\"}}'",
-                e
-            )
-        })?;
-
-        if !params.is_object() {
-            anyhow::bail!("Tool parameters must be a JSON object, got: {}", params);
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("old_name".into(), Value::String(self.old_name.clone()));
+        map.insert("new_name".into(), Value::String(self.new_name.clone()));
+        if let Some(ref s) = self.scope {
+            map.insert("scope".into(), Value::String(s.clone()));
         }
+        map.insert("dry_run".into(), Value::Bool(self.dry_run));
+        if let Some(ref ws) = self.workspace {
+            map.insert("workspace".into(), Value::String(ws.clone()));
+        }
+        Ok(map)
+    }
+}
 
-        super::generic::dispatch_generic_tool(&self.name, params, handler).await
+// ---------------------------------------------------------------------------
+// rewrite -> rewrite_symbol
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl CliToolCommand for RewriteArgs {
+    fn tool_name(&self) -> &'static str {
+        "rewrite_symbol"
+    }
+
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert("symbol".into(), Value::String(self.symbol.clone()));
+        map.insert("operation".into(), Value::String(self.operation.clone()));
+        map.insert("content".into(), Value::String(self.content.clone()));
+        if let Some(ref f) = self.file_path {
+            map.insert("file_path".into(), Value::String(f.clone()));
+        }
+        map.insert("dry_run".into(), Value::Bool(self.dry_run));
+        if let Some(ref ws) = self.workspace {
+            map.insert("workspace".into(), Value::String(ws.clone()));
+        }
+        Ok(map)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// spillover -> spillover_get
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl CliToolCommand for SpilloverArgs {
+    fn tool_name(&self) -> &'static str {
+        "spillover_get"
+    }
+
+    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
+        let mut map = Map::new();
+        map.insert(
+            "spillover_handle".into(),
+            Value::String(self.spillover_handle.clone()),
+        );
+        if let Some(l) = self.limit {
+            map.insert("limit".into(), Value::Number(l.into()));
+        }
+        if let Some(ref f) = self.format {
+            map.insert("format".into(), Value::String(f.clone()));
+        }
+        Ok(map)
     }
 }

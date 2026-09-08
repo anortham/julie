@@ -4,7 +4,6 @@
 use crate::registry::embedding_service::EmbeddingService;
 use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
 use crate::startup::run_primary_workspace_repair;
 use crate::tests::helpers::mcp::answer_next_list_roots_request;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -94,19 +93,8 @@ impl EmbeddingProvider for BatchMarkerEmbeddingProvider {
     }
 }
 
-fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+fn extract_text_from_result(result: &impl crate::mcp_compat::AsCallToolResult) -> String {
+    crate::mcp_compat::call_tool_result_text(result)
 }
 
 async fn wait_for_embedding_tasks_to_finish(handler: &JulieServerHandler) {

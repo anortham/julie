@@ -28,6 +28,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<DeepDiveTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_deep_dive(params)
+            .await
+            .map_err(|e| classify_tool_failure("deep_dive", &e))
+    }
+
+    pub(crate) async fn execute_deep_dive(
+        &self,
+        params: DeepDiveTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("🔍 Deep dive: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
@@ -45,7 +54,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &full_message,
                 );
-                return Err(classify_tool_failure("deep_dive", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

@@ -28,6 +28,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<SpilloverGetTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_spillover_get(params)
+            .await
+            .map_err(|e| classify_tool_failure("spillover_get", &e))
+    }
+
+    pub(crate) async fn execute_spillover_get(
+        &self,
+        params: SpilloverGetTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("📄 Spillover get: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
@@ -45,7 +54,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("spillover_get", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

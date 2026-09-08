@@ -7,6 +7,9 @@ edition = "2024"
 authors = ["Alan"]
 license = "MIT"
 
+[workspace.dependencies]
+rmcp = { version = "=3.0.1" }
+
 [package]
 name = "julie"
 version = "7.18.1"
@@ -58,7 +61,7 @@ julie-context = { path = "crates/julie-context" }
 julie-tools = { path = "crates/julie-tools" }
 
 # MCP Server SDK - Official Anthropic SDK
-rmcp = { version = "1.6", features = ["server", "client", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "macros"] }
+rmcp = { workspace = true, features = ["server", "client", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "macros"] }
 schemars = "1.0"  # For JsonSchema derives in tool parameters
 
 # Async recursion support

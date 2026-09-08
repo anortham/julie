@@ -64,7 +64,7 @@ ignore = "0.4"
 shellexpand = "3.1"
 
 # MCP SDK — for mcp_compat (pure result-wrapper types, no upward deps)
-rmcp = { version = "1.6", features = ["server"] }
+rmcp = { workspace = true, features = ["server"] }
 
 # JSON Schema derives (mcp_compat)
 schemars = "1.0"

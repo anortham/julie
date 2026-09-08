@@ -68,20 +68,38 @@ pub async fn resolve_workspace_filter(
     match workspace_param {
         "primary" => Ok(WorkspaceTarget::Primary),
         workspace_id => {
+            // Recognize current primary workspace if passed by ID or path
+            let canonical_target =
+                JulieServerHandler::canonicalize_workspace_path(PathBuf::from(workspace_id));
+            if handler.current_workspace_id().as_deref() == Some(workspace_id)
+                || std::path::Path::new(workspace_id) == handler.current_workspace_root()
+                || canonical_target == handler.current_workspace_root()
+            {
+                return Ok(WorkspaceTarget::Primary);
+            }
+
             // Daemon mode: validate against DaemonDatabase and suggest closest match
             if let Some(ref db) = handler.daemon_db {
-                return match db.get_workspace(workspace_id)? {
+                let workspace_row_opt = match db.get_workspace(workspace_id)? {
+                    Some(row) => Some(row),
+                    None => db.get_workspace_by_path(&canonical_target.to_string_lossy())?,
+                };
+
+                return match workspace_row_opt {
                     Some(workspace_row) => {
                         let startup_workspace_loaded_for_session =
-                            handler.loaded_workspace_id().as_deref() == Some(workspace_id)
+                            handler.loaded_workspace_id().as_deref()
+                                == Some(workspace_row.workspace_id.as_str())
                                 && handler
-                                    .was_workspace_attached_in_session(workspace_id)
+                                    .was_workspace_attached_in_session(&workspace_row.workspace_id)
                                     .await;
 
-                        if handler.is_workspace_active(workspace_id).await
+                        if handler
+                            .is_workspace_active(&workspace_row.workspace_id)
+                            .await
                             || startup_workspace_loaded_for_session
                         {
-                            Ok(WorkspaceTarget::Target(workspace_id.to_string()))
+                            Ok(WorkspaceTarget::Target(workspace_row.workspace_id))
                         } else if workspace_row.status != "ready" {
                             Err(workspace_resolution_failure(
                                 WorkspaceResolutionFailureKind::WorkspaceNotReady,
@@ -98,10 +116,13 @@ pub async fn resolve_workspace_filter(
                         } else {
                             let workspace_root = PathBuf::from(&workspace_row.path);
                             match handler
-                                .activate_workspace_with_root(workspace_id, workspace_root)
+                                .activate_workspace_with_root(
+                                    &workspace_row.workspace_id,
+                                    workspace_root,
+                                )
                                 .await
                             {
-                                Ok(_) => Ok(WorkspaceTarget::Target(workspace_id.to_string())),
+                                Ok(_) => Ok(WorkspaceTarget::Target(workspace_row.workspace_id)),
                                 Err(error) => Err(workspace_resolution_failure(
                                     WorkspaceResolutionFailureKind::AutoActivationFailed,
                                     format!(

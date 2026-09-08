@@ -147,16 +147,14 @@ fn test_workspace_args_tool_name() {
         path: None,
         force: false,
         name: None,
+        foreground: false,
     };
     assert_eq!(args.tool_name(), "manage_workspace");
 }
 
 #[test]
 fn test_generic_tool_args_tool_name() {
-    let args = GenericToolArgs {
-        name: "deep_dive".into(),
-        params: "{}".into(),
-    };
+    let args = GenericToolArgs::from_params("deep_dive", "{}");
     assert_eq!(args.tool_name(), "deep_dive");
 }
 
@@ -365,6 +363,7 @@ fn test_workspace_to_tool_args_with_force() {
         path: Some("/code/project".into()),
         force: true,
         name: Some("My Project".into()),
+        foreground: false,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["operation"], "index");
@@ -375,10 +374,7 @@ fn test_workspace_to_tool_args_with_force() {
 
 #[test]
 fn test_generic_to_tool_args_valid_json() {
-    let args = GenericToolArgs {
-        name: "fast_search".into(),
-        params: r#"{"query":"test","limit":5}"#.into(),
-    };
+    let args = GenericToolArgs::from_params("fast_search", r#"{"query":"test","limit":5}"#);
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["query"], "test");
     assert_eq!(json["limit"], 5);
@@ -386,10 +382,7 @@ fn test_generic_to_tool_args_valid_json() {
 
 #[test]
 fn test_generic_to_tool_args_invalid_json() {
-    let args = GenericToolArgs {
-        name: "fast_search".into(),
-        params: "not valid json".into(),
-    };
+    let args = GenericToolArgs::from_params("fast_search", "not valid json");
     let result = args.to_tool_args();
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
@@ -398,10 +391,7 @@ fn test_generic_to_tool_args_invalid_json() {
 
 #[test]
 fn test_generic_to_tool_args_non_object() {
-    let args = GenericToolArgs {
-        name: "fast_search".into(),
-        params: r#"["array", "not", "object"]"#.into(),
-    };
+    let args = GenericToolArgs::from_params("fast_search", r#"["array", "not", "object"]"#);
     let result = args.to_tool_args();
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
@@ -597,6 +587,7 @@ async fn test_run_cli_tool_standalone_workspace_stats_not_available_via_cli() {
         path: None,
         force: false,
         name: None,
+        foreground: false,
     };
 
     let result = run_cli_tool(&args, Some(temp.path().to_path_buf()), true).await;
@@ -617,6 +608,7 @@ fn test_workspace_dashboard_is_not_available_from_one_shot_cli_wrapper() {
         path: None,
         force: false,
         name: None,
+        foreground: false,
     };
 
     let err = args
@@ -631,10 +623,7 @@ fn test_workspace_dashboard_is_not_available_from_one_shot_cli_wrapper() {
 
 #[test]
 fn test_generic_manage_workspace_dashboard_is_not_available_from_one_shot_cli() {
-    let args = GenericToolArgs {
-        name: "manage_workspace".to_string(),
-        params: r#"{"operation":"dashboard"}"#.to_string(),
-    };
+    let args = GenericToolArgs::from_params("manage_workspace", r#"{"operation":"dashboard"}"#);
 
     let err = args
         .validate_standalone()

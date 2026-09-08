@@ -47,6 +47,8 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **In-process stdio MCP server** — single binary, zero configuration, works with any MCP client
 - **Multi-session coordination** — per-workspace leader locks allow one writer and read-only followers over shared indexes
 - **Shared registry and indexes** — `$JULIE_HOME/registry.db` plus `$JULIE_HOME/indexes/` keep related workspaces available across sessions
+- **Unified RequestEngine & Complete CLI** — All 13 tools operate as first-class CLI subcommands and via generic `tool <name>` with identical access classification, workspace binding, and safety checks as MCP. Includes zero-warmup discovery (`tools list`, `tools schema`) and serial batch replay (`tools replay`).
+- **Date-Versioned MCP Protocol `2026-07-28`** — Supports modern Model Context Protocol date-versioned revision `2026-07-28` as primary with direct first-message `tools/call` without handshake, alongside full backward compatibility for `2025-11-25`.
 
 ### Performance Characteristics
 
@@ -565,12 +567,118 @@ claude mcp add julie-dev -- /path/to/julie/target/debug/julie-server
 After rebuilding (`cargo build`), restart your MCP client or start a new
 session so the client launches the new binary.
 
-Useful local commands:
+## Command-Line Interface (CLI)
+
+Julie exposes all 13 tools directly to the terminal through named subcommands, a generic tool runner, instant schema discovery, and serial request replay. Every CLI invocation routes through `RequestEngine::execute`, guaranteeing identical parameter validation, follower safety, and execution semantics as MCP sessions.
+
+### 13 Named Tool Subcommands
+
+Every tool is directly accessible as a named subcommand (with ergonomic aliases):
 
 ```bash
-julie-server dashboard   # Open the web dashboard in your browser
-julie-server search "query" --workspace . --standalone --json
+# Search & Navigation
+julie-server fast-search "query" --workspace . --standalone --json       # alias: search
+julie-server fast-refs "SymbolName" --workspace . --standalone --json     # alias: refs
+julie-server get-symbols --file src/lib.rs --workspace . --json          # alias: symbols
+julie-server get-context --concept "authentication" --workspace . --json   # alias: context
+julie-server call-path "fn_a" "fn_b" --workspace . --json
+julie-server blast-radius --files src/lib.rs --workspace . --json
+julie-server deep-dive "SymbolName" --workspace . --json
+julie-server patterns --operation search --pattern-id http.request --workspace . --json
+julie-server spillover-get --handle <handle_id> --page 2 --json          # alias: spillover
+
+# Editing & Refactoring (Preview dry-run by default; execute mutation without --dry-run)
+julie-server edit-file --file src/lib.rs --find "old" --replace "new" --dry-run     # alias: edit
+julie-server rewrite-symbol --symbol "MyStruct" --action replace_body --content "..." # alias: rewrite
+julie-server rename-symbol --old-name "old" --new-name "new" --dry-run             # alias: rename
+
+# Workspace Management & Dashboard
+julie-server manage-workspace --operation health --workspace . --json    # alias: workspace
+julie-server dashboard --foreground                                      # Launches browser UI
 ```
+
+### Generic Tool Runner (`tool`)
+
+Invoke any tool dynamically with structured JSON parameters. Parameter sources (`--params`, `--params-file`, `--params-stdin`) are mutually exclusive via `clap::ArgGroup`:
+
+```bash
+# Inline JSON params
+julie-server tool fast_search --params '{"query":"UserSession","limit":5}' --workspace . --json
+
+# File-based params (ideal for multi-line edits or complex AST payloads)
+julie-server tool edit_file --params-file edit_req.json --json
+
+# Standard input streaming (up to 16 MiB payload ceiling)
+cat edit_req.json | julie-server tool edit_file --params-stdin --json
+```
+
+### Zero-Warmup Discovery (`tools list` & `tools schema`)
+
+Instant catalog inspection answering in <15ms without starting file watchers, compiling indexes, or warming PyTorch/GPU embedding models:
+
+```bash
+# List all 13 registered tools with descriptions and schema availability
+julie-server tools list --json
+
+# Print the complete JSON Schema for a specific tool
+julie-server tools schema fast_search --json
+```
+
+### Serial Request Replay (`tools replay`)
+
+Execute a recorded stream of requests from a newline-delimited JSON (JSONL) file serially:
+
+```bash
+julie-server tools replay --input trace.jsonl --json
+```
+
+- Validates JSON framing and auto-assigns line-numbered `request_id` values if omitted.
+- Halts on malformed framing.
+- Outputs standard JSON envelopes to stdout and returns the first non-zero exit code.
+
+### Semantic Modes (`--semantics`)
+
+Control semantic vector readiness requirements across CLI operations:
+
+```bash
+julie-server fast-search "auth flow" --semantics auto     # Default: use vectors if ready, degrade to lexical
+julie-server fast-search "auth flow" --semantics off      # Fast: zero model/vector work, pure lexical Tantivy search
+julie-server fast-search "auth flow" --semantics required # Strict: fails with exit 4 if vectors missing/stale/incompatible
+```
+
+### Exit Codes and Output Envelope
+
+When `--json` is supplied, stdout outputs a single machine-readable JSON envelope:
+
+```json
+{
+  "schema_version": 1,
+  "ok": true,
+  "request_id": "req-1",
+  "tool": "fast_search",
+  "workspace_id": "target_abc",
+  "result": { ... },
+  "readiness": { "mode": "ready" }
+}
+```
+
+All logging, progress bars, and diagnostics are emitted strictly to `stderr`. Exit codes conform to standard semantics:
+- `0`: Success (`ok: true`)
+- `2`: Invalid CLI arguments, syntax errors, unknown tools, or conflicting parameter sources
+- `3`: Tool execution domain error (`isError: true` in envelope)
+- `4`: Readiness failure (`SEMANTICS_NOT_READY` in required mode) or Follower refusal (`FOLLOWER_READ_ONLY`)
+- `5`: Stale index or unindexed workspace
+- `124`: Request deadline / timeout exceeded
+- `130`: Process cancellation / SIGINT
+- `1`: Internal application failure or unhandled panic
+
+### Date-Versioned MCP Protocol `2026-07-28`
+
+Julie is built on `rmcp` 3.0.1:
+- Primary protocol revision: `2026-07-28`
+- Legacy protocol revision: `2025-11-25`
+- **Direct first-message tool call**: Modern clients can send `tools/call` as the first message over stdio with `_meta` (`io.modelcontextprotocol/protocolVersion`: `"2026-07-28"`). Julie automatically initializes workspace context on demand without requiring preceding `initialize` or `initialized` handshakes.
+
 
 ### Testing
 

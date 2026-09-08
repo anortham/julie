@@ -42,7 +42,7 @@ async fn test_edit_file_metrics_attribute_root_file_source_bytes() -> Result<()>
     )
     .await?;
     assert!(
-        !result.content.is_empty(),
+        !result.as_result().content.is_empty(),
         "edit_file should return a tool response"
     );
 

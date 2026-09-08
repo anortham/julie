@@ -22,6 +22,7 @@ pub mod harness; // Plan B.3: InProcessDaemon fixture for in-process daemon test
 // ============================================================================
 pub mod cli; // End-to-end CLI integration tests (binary invocation via std::process::Command)
 pub mod cli_execution_tests; // CLI execution core (daemon/standalone mode, handler bootstrap)
+pub mod cli_input_contract; // CLI request input parsing, sizing, and contract tests
 pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
 pub mod cli_tools_tests; // CLI tool subcommand parsing (search, refs, symbols, etc.)
 pub mod external_extract;
@@ -308,7 +309,13 @@ pub mod dashboard;
 // ============================================================================
 // DAEMON TESTS - v6 daemon infrastructure (paths, PID, lifecycle)
 // ============================================================================
+pub mod mcp_protocol_contract;
 pub mod registry;
+pub mod request_engine;
+pub mod request_process_helpers;
+mod request_scenarios;
+mod request_transport_parity;
+pub mod semantic_request_contract;
 
 // ============================================================================
 // EXTRACTOR TESTS - Live in the external julie-extractors repo

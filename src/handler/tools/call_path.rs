@@ -27,6 +27,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<crate::tools::navigation::CallPathTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_call_path(params)
+            .await
+            .map_err(|e| classify_tool_failure("call_path", &e))
+    }
+
+    pub(crate) async fn execute_call_path(
+        &self,
+        params: crate::tools::navigation::CallPathTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("🧭 call_path: {} -> {}", params.from, params.to);
         let start = std::time::Instant::now();
         let workspace_snapshot = if params.workspace.as_deref().unwrap_or("primary") == "primary" {
@@ -52,7 +61,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("call_path", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

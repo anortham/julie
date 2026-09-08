@@ -28,14 +28,16 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<RenameSymbolTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_rename_symbol(params)
+            .await
+            .map_err(|e| classify_tool_failure("rename_symbol", &e))
+    }
+
+    pub(crate) async fn execute_rename_symbol(
+        &self,
+        params: RenameSymbolTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("✏️ Rename symbol: {:?}", params);
-        // T7 (Risk #2): refuse writes on in-process followers.
-        if self.is_in_process_follower() {
-            let e = anyhow::anyhow!(
-                "another session owns writes for this workspace; this is a read-only follower"
-            );
-            return Err(classify_tool_failure("rename_symbol", &e));
-        }
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = params
@@ -60,7 +62,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("rename_symbol", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

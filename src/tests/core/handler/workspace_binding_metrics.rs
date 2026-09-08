@@ -367,7 +367,7 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
     .await?;
 
     assert!(
-        !result.content.is_empty(),
+        !result.as_result().content.is_empty(),
         "fast_refs should return a tool response"
     );
 

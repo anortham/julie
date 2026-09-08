@@ -561,7 +561,7 @@ fn test_workspace_cmd_short_flags() {
 fn test_generic_tool_defaults() {
     let args = GenericToolArgs::parse_from(["tool", "fast_search"]);
     assert_eq!(args.name, "fast_search");
-    assert_eq!(args.params, "{}");
+    assert_eq!(args.params, None);
 }
 
 #[test]
@@ -573,7 +573,7 @@ fn test_generic_tool_with_params() {
         r#"{"symbol":"Command","depth":"full"}"#,
     ]);
     assert_eq!(args.name, "deep_dive");
-    assert!(args.params.contains("Command"));
+    assert!(args.params.as_deref().unwrap().contains("Command"));
 }
 
 #[test]
@@ -581,7 +581,7 @@ fn test_generic_tool_short_flag() {
     let args =
         GenericToolArgs::parse_from(["tool", "get_symbols", "-p", r#"{"file_path":"src/cli.rs"}"#]);
     assert_eq!(args.name, "get_symbols");
-    assert!(args.params.contains("cli.rs"));
+    assert!(args.params.as_deref().unwrap().contains("cli.rs"));
 }
 
 // ---------------------------------------------------------------------------
@@ -594,6 +594,7 @@ fn test_global_flags_json_shorthand() {
         json: true,
         format: None,
         standalone: false,
+        semantics: None,
     };
     assert_eq!(flags.effective_format(), OutputFormat::Json);
 }
@@ -604,6 +605,7 @@ fn test_global_flags_format_overrides_json() {
         json: true,
         format: Some(OutputFormat::Markdown),
         standalone: false,
+        semantics: None,
     };
     // --format takes precedence over --json
     assert_eq!(flags.effective_format(), OutputFormat::Markdown);
@@ -615,7 +617,9 @@ fn test_global_flags_default_text() {
         json: false,
         format: None,
         standalone: false,
+        semantics: None,
     };
+
     assert_eq!(flags.effective_format(), OutputFormat::Text);
 }
 

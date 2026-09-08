@@ -27,17 +27,19 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<crate::tools::editing::edit_file::EditFileTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_edit_file(params)
+            .await
+            .map_err(|e| classify_tool_failure("edit_file", &e))
+    }
+
+    pub(crate) async fn execute_edit_file(
+        &self,
+        params: crate::tools::editing::edit_file::EditFileTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!(
             "✏️ edit_file: {} (dry_run={})",
             params.file_path, params.dry_run
         );
-        // T7 (Risk #2): refuse writes on in-process followers.
-        if self.is_in_process_follower() {
-            let e = anyhow::anyhow!(
-                "another session owns writes for this workspace; this is a read-only follower"
-            );
-            return Err(classify_tool_failure("edit_file", &e));
-        }
         let start = std::time::Instant::now();
         let workspace_snapshot = if params.workspace.as_deref().unwrap_or("primary") == "primary" {
             self.require_primary_workspace_binding().ok()
@@ -61,7 +63,7 @@ impl JulieServerHandler {
                     Some(params.request_input_bytes()),
                     &message,
                 );
-                return Err(classify_tool_failure("edit_file", &e));
+                return Err(e);
             }
         };
         let metadata = tool_targets::merge_object(
@@ -95,7 +97,7 @@ impl JulieServerHandler {
                     input_bytes,
                     &message,
                 );
-                return Err(classify_tool_failure("edit_file", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

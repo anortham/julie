@@ -10,13 +10,19 @@
 //! It runs every tool in standalone mode: creates a local handler, indexes
 //! the workspace in-process, and executes the tool.
 
+pub mod catalog;
 pub mod commands;
 pub mod generic;
+pub mod input;
 pub mod output;
+pub mod replay;
+pub mod signals_output;
 pub mod subcommands;
 
+pub use input::{MAX_INPUT_BYTES, parse_request_input};
 pub use subcommands::*;
 
+use clap::Parser;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -27,6 +33,7 @@ use serde_json::Value;
 use crate::cli::resolve_workspace_root;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::request_engine::RequestFailure;
 
 // ---------------------------------------------------------------------------
 // Execution mode tracking
@@ -78,73 +85,102 @@ pub struct CliToolOutput {
 // ---------------------------------------------------------------------------
 
 /// Trait that each CLI tool command implements to bridge CLI args into
-/// tool execution. A3 implements this for each named subcommand.
-///
-/// The trait provides two pieces of behavior:
-/// - `tool_name()` + `to_tool_args()` for MCP-style argument conversion
-/// - `call_standalone()` for direct in-process CLI execution
+/// tool execution.
 #[async_trait]
 pub trait CliToolCommand: Send + Sync {
     /// The MCP tool name (e.g. "fast_search", "fast_refs", "get_symbols").
     fn tool_name(&self) -> &'static str;
 
+    /// Normalized argument map ready for ToolRequest.
+    fn to_tool_args_map(
+        &self,
+    ) -> Result<serde_json::Map<String, Value>, crate::request_engine::RequestFailure>;
+
+    /// Returns (&'static str, Map<String, Value>) directly.
+    fn to_request(
+        &self,
+    ) -> Result<(&'static str, serde_json::Map<String, Value>), crate::request_engine::RequestFailure>
+    {
+        Ok((self.tool_name(), self.to_tool_args_map()?))
+    }
+
     /// Convert CLI args to JSON tool parameters.
-    fn to_tool_args(&self) -> Result<Value>;
+    fn to_tool_args(&self) -> Result<Value> {
+        let map = self
+            .to_tool_args_map()
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(Value::Object(map))
+    }
 
     /// Validate that the command can run in standalone mode.
-    ///
-    /// Most commands support standalone execution. Commands that rely on
-    /// daemon-only registry state should override this and return a clear
-    /// actionable error.
     fn validate_standalone(&self) -> Result<()> {
         Ok(())
     }
-
-    /// Execute the tool directly against a handler in standalone mode.
-    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult>;
 }
 
 // ---------------------------------------------------------------------------
 // Execution core
 // ---------------------------------------------------------------------------
 
-/// Execute a CLI tool command in standalone mode.
-///
-/// This is the single entry point for all tool subcommands. It resolves the
-/// workspace, creates a local handler, indexes the workspace in-process, and
-/// returns the result for formatting.
-///
-/// `command` implements `CliToolCommand` (A3 wires each subcommand's args).
-/// `cli_workspace` is the `--workspace` flag from the CLI, if any.
-/// `_standalone` is accepted for CLI compatibility but ignored — execution is
-/// always standalone.
+/// Execute a CLI tool command in standalone mode via RequestEngine.
 pub async fn run_cli_tool(
     command: &dyn CliToolCommand,
     cli_workspace: Option<PathBuf>,
     _standalone: bool,
-) -> Result<CliToolOutput> {
-    command.validate_standalone()?;
+) -> Result<CliToolOutput, RequestFailure> {
+    command
+        .validate_standalone()
+        .map_err(|e| RequestFailure::invalid_arguments(e.to_string()))?;
 
     let start = Instant::now();
-    let workspace_root = resolve_workspace_root(cli_workspace);
+    let workspace_root = resolve_workspace_root(cli_workspace.clone());
 
     if !workspace_root.exists() {
-        anyhow::bail!(
+        return Err(RequestFailure::invalid_arguments(format!(
             "Workspace path does not exist: {}",
             workspace_root.display()
-        );
+        )));
     }
     if !workspace_root.is_dir() {
-        anyhow::bail!(
+        return Err(RequestFailure::invalid_arguments(format!(
             "Workspace path is not a directory: {}",
             workspace_root.display()
-        );
+        )));
     }
 
     eprintln!("julie: workspace {}", workspace_root.display());
 
-    let result = run_standalone(command, &workspace_root).await?;
-    let (result_value, is_error) = serialize_call_tool_result(result)?;
+    let (tool_name, arguments) = command.to_request()?;
+
+    let registry_paths = crate::paths::RegistryPaths::default();
+    let binding_resolver = crate::request_engine::BindingResolver::new(
+        Some(workspace_root.clone()),
+        true,
+        registry_paths.clone(),
+    );
+    let runtime_factory =
+        std::sync::Arc::new(crate::request_engine::RuntimeFactory::new(registry_paths));
+    let engine = crate::request_engine::RequestEngine::new(binding_resolver, runtime_factory);
+
+    let tool_request = crate::request_engine::ToolRequest {
+        name: tool_name.to_string(),
+        arguments,
+        workspace: cli_workspace,
+        semantics: crate::cli::Cli::try_parse()
+            .ok()
+            .and_then(|c| c.tool_flags.semantics)
+            .unwrap_or(crate::request_engine::SemanticMode::Auto),
+    };
+
+    let context = crate::request_engine::RequestContext::new(
+        crate::request_engine::RequestOrigin::Cli,
+        None,
+        tokio_util::sync::CancellationToken::new(),
+    );
+
+    let reply = engine.execute(tool_request, context).await?;
+
+    let is_error = reply.is_error();
     let mode = CliExecutionMode::Standalone;
 
     let elapsed = start.elapsed();
@@ -153,23 +189,16 @@ pub async fn run_cli_tool(
     Ok(CliToolOutput {
         mode,
         workspace_root,
-        result: result_value,
+        result: reply.result,
         is_error,
     })
 }
 
 // ---------------------------------------------------------------------------
-// Standalone mode
+// Standalone mode handler bootstrap
 // ---------------------------------------------------------------------------
 
 /// Bootstrap a standalone handler with an indexed workspace.
-///
-/// This is the shared infrastructure for standalone tool execution. It creates
-/// a `JulieServerHandler`, validates the workspace path, and ensures the
-/// workspace is indexed before returning the handler.
-///
-/// Exposed as `pub` so A3 tool wrappers can use it for testing or custom
-/// standalone flows, though the normal path goes through `run_standalone`.
 pub async fn bootstrap_standalone_handler(
     workspace_root: &std::path::Path,
 ) -> Result<JulieServerHandler> {
@@ -200,10 +229,6 @@ pub async fn bootstrap_standalone_handler(
         .await
         .context("Failed to initialize workspace")?;
 
-    // In standalone mode, initialize_workspace_with_force opens the workspace
-    // handles, while run_auto_indexing normally fills SQLite and Tantivy after
-    // the MCP on_initialized callback. CLI mode has no callback, so run the
-    // index path here and skip embeddings to keep startup responsive.
     let has_workspace = handler.workspace.read().await.is_some();
     if has_workspace {
         let index_tool = crate::tools::workspace::commands::ManageWorkspaceTool {
@@ -218,22 +243,6 @@ pub async fn bootstrap_standalone_handler(
             .call_tool_with_options(&handler, true)
             .await
             .context("Failed to index standalone workspace")?;
-
-        // Mark embedding init as "skipped for standalone mode". Without this,
-        // the first NL definitions query (`is_nl_like_query` → true) triggers
-        // `maybe_initialize_embeddings_for_nl_definitions`, which probes and
-        // launches the Python embedding sidecar in `spawn_blocking`. That
-        // probe costs ~8-10s on a cold machine. Standalone mode is a
-        // single-shot CLI tool — launching the sidecar wastes time and would
-        // be torn down immediately. Long-running MCP sessions handle embedding
-        // init separately in the background; keyword-only search is the right
-        // degraded mode for standalone.
-        //
-        // Setting `embedding_runtime_status` to `Some(...)` satisfies the
-        // guard in `maybe_initialize_embeddings_for_nl_definitions`:
-        //   if workspace.embedding_runtime_status.is_none() { ... probe ... }
-        // so the slow path is never entered.
-        handler.mark_standalone_embedding_skipped().await;
     } else {
         anyhow::bail!(
             "Workspace not indexed: {}\n\
@@ -244,15 +253,6 @@ pub async fn bootstrap_standalone_handler(
     }
 
     Ok(handler)
-}
-
-/// Execute a tool in standalone mode with a local handler.
-async fn run_standalone(
-    command: &dyn CliToolCommand,
-    workspace_root: &std::path::Path,
-) -> Result<CallToolResult> {
-    let handler = bootstrap_standalone_handler(workspace_root).await?;
-    command.call_standalone(&handler).await
 }
 
 // ---------------------------------------------------------------------------

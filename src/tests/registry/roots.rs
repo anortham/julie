@@ -113,19 +113,8 @@ mod list_changed_refresh;
 mod secondary_targets;
 mod startup_deferral;
 
-fn extract_text(result: &rmcp::model::CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+fn extract_text(result: &impl crate::mcp_compat::AsCallToolResult) -> String {
+    crate::mcp_compat::call_tool_result_text(result)
 }
 
 async fn wait_for_session_count(daemon_db: &DaemonDatabase, workspace_id: &str, expected: i64) {

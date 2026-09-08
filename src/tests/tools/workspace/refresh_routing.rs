@@ -8,7 +8,6 @@ use rmcp::{
 };
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
 use crate::registry::database::DaemonDatabase;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::route::IndexRoute;
@@ -16,19 +15,8 @@ use crate::workspace::registry::generate_workspace_id;
 
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
 
-fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|value| value.as_str())
-                    .map(|text| text.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+fn extract_text_from_result(result: &impl crate::mcp_compat::AsCallToolResult) -> String {
+    crate::mcp_compat::call_tool_result_text(result)
 }
 
 #[tokio::test]

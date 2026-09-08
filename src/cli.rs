@@ -2,8 +2,9 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use crate::cli_tools::subcommands::{
-    BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, GlobalToolFlags, PatternsArgs,
-    RefsArgs, SearchArgs, SignalsArgs, SymbolsArgs, WorkspaceArgs,
+    BlastRadiusArgs, CallPathArgs, ContextArgs, DeepDiveArgs, EditArgs, GenericToolArgs,
+    GlobalToolFlags, PatternsArgs, RefsArgs, RenameArgs, RewriteArgs, SearchArgs, SignalsArgs,
+    SpilloverArgs, SymbolsArgs, ToolsArgs, WorkspaceArgs,
 };
 use crate::external_extract::ExternalExtractRawArgs;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
@@ -32,6 +33,11 @@ pub enum Command {
     /// Open the dashboard in the default browser
     Dashboard,
 
+    // -- Discovery & Replay --------------------------------------------------
+    /// Discover tool schemas or replay tool requests
+    #[command(name = "tools")]
+    Tools(ToolsArgs),
+
     // -- Tool commands (named wrappers) --------------------------------------
     /// Search code, symbols, or file paths
     Search(SearchArgs),
@@ -47,6 +53,21 @@ pub enum Command {
     BlastRadius(BlastRadiusArgs),
     /// Query generic structural patterns
     Patterns(PatternsArgs),
+    /// Deep dive on a specific symbol
+    #[command(name = "deep-dive", alias = "deep_dive")]
+    DeepDive(DeepDiveArgs),
+    /// Edit a file with search-and-replace
+    #[command(name = "edit", alias = "edit_file")]
+    Edit(EditArgs),
+    /// Rename a symbol across the codebase
+    #[command(name = "rename", alias = "rename_symbol")]
+    Rename(RenameArgs),
+    /// Rewrite a symbol definition
+    #[command(name = "rewrite", alias = "rewrite_symbol")]
+    Rewrite(RewriteArgs),
+    /// Retrieve paginated results via spillover handle
+    #[command(name = "spillover", alias = "spillover_get")]
+    Spillover(SpilloverArgs),
     /// Manage workspaces (index, list, stats, health, etc.)
     #[command(name = "workspace")]
     Workspace(WorkspaceArgs),

@@ -232,32 +232,9 @@ pub async fn run_in_process_server(
         }
     };
 
-    // 5. Acquire embedding provider with a bounded timeout (Part D).
-    //    A cold host can take up to 180 s to spawn — we must NOT block serve()
-    //    on startup.  On timeout the session degrades to keyword-only; the
-    //    background spawn_blocking task keeps running and warms the host for
-    //    later sessions.
-    let embed_wait_secs: u64 = std::env::var("JULIE_INPROCESS_EMBED_WAIT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(5);
-    let embedding_provider = match tokio::time::timeout(
-        std::time::Duration::from_secs(embed_wait_secs),
-        acquire_in_process_embedding_provider(&paths),
-    )
-    .await
-    {
-        Ok(provider) => provider,
-        Err(_elapsed) => {
-            warn!(
-                timeout_secs = embed_wait_secs,
-                "Embedding provider not ready within timeout — serving without \
-                 semantic search (keyword-only). The host continues warming in \
-                 the background for later sessions."
-            );
-            None
-        }
-    };
+    // 5. In-process embedding provider acquisition is deferred to on-demand
+    //    request execution via SemanticRuntime. Zero model warmup occurs at startup.
+    let embedding_provider = None;
 
     // Registry DB powers dashboard/list visibility only — core MCP tools
     // (search/navigation/edit) do not need it. Degrade gracefully if it cannot

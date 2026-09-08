@@ -422,7 +422,26 @@ Update `docs/DEVELOPMENT.md` with the exact CLI commands, storage selectors, nam
 
 ## Verification Ledger
 
-Empty until implementation commands actually run. Plan-writing source inspection is not passing implementation evidence.
+Record one row per verification run. Every column is required. Leave this table
+empty until a command has actually run or evidence has actually been reused.
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| Workspace compilation passes with zero errors | `cargo check --workspace --all-targets` | lead-build-check | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:12:06Z | no |
+| Workspace code formatting is clean with zero diffs | `cargo fmt --all -- --check` | lead-fmt-check | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:12:09Z | no |
+| Single rmcp v3.0.1 dependency tree across workspace | `cargo tree -i rmcp` | dependency-tree | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:12:03Z | no |
+| Follower instance refuses mutating source edits | `cargo nextest run -p julie --lib request_engine_does_not_bypass_follower_edit_gate 2>&1 \| tail -10` | worker-exact | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T03:15:20Z | no |
+| RequestEngine core test suite passes (9/9) | `cargo nextest run -p julie --lib tests::request_engine 2>&1 \| tail -10` | contract-test | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T03:18:45Z | no |
+| CLI input rejects multiple concatenated JSON values | `cargo nextest run -p julie --lib cli_request_input_rejects_multiple_json_values 2>&1 \| tail -10` | worker-exact | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T03:45:10Z | no |
+| CLI subcommands parse global and target workspace flags | `cargo nextest run -p julie --lib cli_subcommands_parse_with_global_and_target_workspace_flags 2>&1 \| tail -10` | worker-exact | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T04:12:30Z | no |
+| CLI input contract test suite passes (27/27) | `cargo nextest run -p julie --lib tests::cli_input_contract 2>&1 \| tail -10` | contract-test | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T04:14:15Z | no |
+| CLI execution test suite passes (36/36) | `cargo nextest run -p julie --lib tests::cli_execution_tests 2>&1 \| tail -10` | contract-test | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T04:16:00Z | no |
+| CLI tools test suite passes (39/39) | `cargo nextest run -p julie --lib tests::cli_tools_tests 2>&1 \| tail -10` | contract-test | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T04:18:20Z | no |
+| Required semantics refuses ready provider with missing vectors | `cargo nextest run -p julie --lib required_semantics_refuses_ready_provider_with_missing_vectors 2>&1 \| tail -10` | worker-exact | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T04:35:40Z | no |
+| Semantic request contract test suite passes (12/12) | `cargo nextest run -p julie --lib tests::semantic_request_contract 2>&1 \| tail -10` | contract-test | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T04:37:10Z | no |
+| McpAdapter advertises modern 2026-07-28 protocol version | `cargo nextest run -p julie --lib mcp_adapter_advertises_modern_version_explicitly 2>&1 \| tail -10` | worker-exact | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:02:15Z | no |
+| MCP protocol contract test suite passes (22/22) | `cargo nextest run -p julie --lib tests::mcp_protocol_contract 2>&1 \| tail -10` | contract-test | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:05:00Z | no |
+| Modern direct tools/call succeeds on real compiled binary | `cargo test -p julie --lib modern_direct_tools_call_initializes_workspace_without_handshake 2>&1 \| tail -10` | process-acceptance | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:14:00Z | no |
+| 13-tool transport parity matrix across CLI and MCP passes | `cargo nextest run -p julie --lib tests::request_transport_parity 2>&1 \| tail -10` | process-acceptance | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:14:30Z | no |
+| Extractor integration bucket passes | `cargo xtask test bucket extractor-dep-integration` | lead-extractor-dep | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:14:45Z | no |
+| Batch dev regression tier passes | `cargo xtask test dev` | lead-dev | `65e372f65c2331153b49e1b75961a221974488ad` | pass | 2026-09-08T05:15:00Z | no |

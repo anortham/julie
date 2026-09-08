@@ -54,6 +54,21 @@ struct Config {
     (dir, src)
 }
 
+/// Extracts the tool result object from CLI JSON output.
+///
+/// In Plan 3, `--json` mode emits structured envelopes:
+/// `{"schema_version":1,"ok":true,"reply":{"result":{...}}}`.
+/// Legacy or raw format output returns `{...}` directly.
+fn extract_tool_result(json: &serde_json::Value) -> &serde_json::Value {
+    if let Some(result) = json.get("reply").and_then(|r| r.get("result")) {
+        result
+    } else if let Some(result) = json.get("result") {
+        result
+    } else {
+        json
+    }
+}
+
 // ---------------------------------------------------------------------------
 // --help tests
 // ---------------------------------------------------------------------------
@@ -179,11 +194,14 @@ fn test_search_named_wrapper_json_output() {
         serde_json::from_str(&stdout).expect("stdout should be valid JSON");
 
     // Verify CallToolResult structure
+    let result = extract_tool_result(&json);
     assert!(
-        json.get("content").is_some(),
+        result.get("content").is_some(),
         "JSON should have 'content' field"
     );
-    let content = json["content"].as_array().expect("content should be array");
+    let content = result["content"]
+        .as_array()
+        .expect("content should be array");
     assert!(!content.is_empty(), "content array should not be empty");
 
     // Each content item should have "type" and "text"
@@ -205,11 +223,11 @@ fn test_search_named_wrapper_json_output() {
 
     // isError field
     assert!(
-        json.get("isError").is_some(),
-        "JSON should have 'isError' field"
+        result.get("isError").is_some(),
+        "result should have 'isError' field"
     );
     assert_eq!(
-        json["isError"].as_bool().unwrap(),
+        result["isError"].as_bool().unwrap(),
         false,
         "isError should be false for a successful search"
     );
@@ -284,8 +302,9 @@ fn test_generic_tool_path_json_output() {
         serde_json::from_str(&stdout).expect("generic tool JSON output should parse");
 
     // Same CallToolResult structure as named wrappers
-    assert!(json.get("content").is_some(), "should have 'content'");
-    assert!(json.get("isError").is_some(), "should have 'isError'");
+    let result = extract_tool_result(&json);
+    assert!(result.get("content").is_some(), "should have 'content'");
+    assert!(result.get("isError").is_some(), "should have 'isError'");
 }
 
 #[test]
@@ -403,10 +422,12 @@ fn test_json_shorthand_flag_equivalent_to_format_json() {
 
     // Both should have the same structure (content may differ due to timing,
     // but both should be CallToolResult shaped)
-    assert!(json_short.get("content").is_some());
-    assert!(json_explicit.get("content").is_some());
-    assert!(json_short.get("isError").is_some());
-    assert!(json_explicit.get("isError").is_some());
+    let res_short = extract_tool_result(&json_short);
+    let res_explicit = extract_tool_result(&json_explicit);
+    assert!(res_short.get("content").is_some());
+    assert!(res_explicit.get("content").is_some());
+    assert!(res_short.get("isError").is_some());
+    assert!(res_explicit.get("isError").is_some());
 }
 
 // ---------------------------------------------------------------------------
@@ -439,8 +460,9 @@ fn test_symbols_named_wrapper_json() {
     let json: serde_json::Value =
         serde_json::from_str(&stdout).expect("symbols JSON should be valid");
 
-    assert!(json.get("content").is_some(), "should have 'content'");
-    assert!(json.get("isError").is_some(), "should have 'isError'");
+    let result = extract_tool_result(&json);
+    assert!(result.get("content").is_some(), "should have 'content'");
+    assert!(result.get("isError").is_some(), "should have 'isError'");
 }
 
 // ---------------------------------------------------------------------------
@@ -505,8 +527,9 @@ fn test_generic_tool_path_get_symbols() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value =
         serde_json::from_str(&stdout).expect("get_symbols JSON should be valid");
-    assert!(json.get("content").is_some());
-    assert!(json.get("isError").is_some());
+    let result = extract_tool_result(&json);
+    assert!(result.get("content").is_some());
+    assert!(result.get("isError").is_some());
 }
 
 pub mod cli_search_no_target_test;

@@ -1,79 +1,138 @@
-//! Output formatting for CLI tool results.
+//! Formatting CLI tool outputs for stdout.
 //!
-//! Three modes:
-//! - **Text** (default): prints the tool's text payload as-is. Tools already
-//!   produce formatted text for MCP clients (terminals), so no transformation
-//!   is needed.
-//! - **JSON**: pretty-prints the full `CallToolResult` value for piping into
-//!   `jq` or other automation.
-//! - **Markdown**: wraps the output in report-style headers and fenced code
-//!   blocks for documentation or review workflows.
+//! Formats tool outputs as JSON envelopes, text, or markdown based on user preferences.
+//! All logs, diagnostics, and errors should be written to stderr; stdout is reserved
+//! for machine-readable envelopes or user-facing formatted results.
 
-use super::{CliToolOutput, OutputFormat};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::io::Write;
+
+use crate::cli_tools::CliToolOutput;
+use crate::cli_tools::subcommands::OutputFormat;
+use crate::request_engine::{RequestFailure, ToolReply};
 
 // ---------------------------------------------------------------------------
-// Public API
+// Standardized JSON Envelopes
 // ---------------------------------------------------------------------------
 
-/// Format CLI tool output according to the requested format.
-///
-/// `tool_name` is used by the markdown formatter as a section header.
-/// Pass `command.tool_name()` from the calling site.
-pub fn format_output(output: &CliToolOutput, format: OutputFormat, tool_name: &str) -> String {
-    match format {
-        OutputFormat::Text => format_text(&output.result),
-        OutputFormat::Json => format_json(&output.result),
-        OutputFormat::Markdown => format_markdown(&output.result, tool_name),
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CliSuccessEnvelope {
+    pub schema_version: u32,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    pub reply: ToolReply,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CliFailureEnvelope {
+    pub schema_version: u32,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    pub error: CliErrorDetails,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CliErrorDetails {
+    pub code: String,
+    pub message: String,
+    pub retryable: bool,
+    pub details: Value,
+}
+
+impl CliSuccessEnvelope {
+    pub fn new(request_id: Option<String>, reply: ToolReply) -> Self {
+        Self {
+            schema_version: 1,
+            ok: true,
+            request_id,
+            reply,
+        }
+    }
+}
+
+impl CliFailureEnvelope {
+    pub fn new(request_id: Option<String>, failure: &RequestFailure) -> Self {
+        Self {
+            schema_version: 1,
+            ok: false,
+            request_id,
+            error: CliErrorDetails {
+                code: failure.code.clone(),
+                message: failure.message.clone(),
+                retryable: failure.retryable,
+                details: failure.details.clone(),
+            },
+        }
+    }
+}
+
+pub fn format_success_envelope(request_id: Option<String>, reply: &ToolReply) -> String {
+    let envelope = CliSuccessEnvelope::new(request_id, reply.clone());
+    serde_json::to_string(&envelope).unwrap_or_default()
+}
+
+pub fn format_failure_envelope(request_id: Option<String>, failure: &RequestFailure) -> String {
+    let envelope = CliFailureEnvelope::new(request_id, failure);
+    serde_json::to_string(&envelope).unwrap_or_default()
+}
+
+/// Resolve process exit code from a request execution result.
+pub fn resolve_exit_code(result: &Result<ToolReply, RequestFailure>) -> i32 {
+    match result {
+        Ok(reply) => {
+            if reply.is_error() {
+                3
+            } else {
+                0
+            }
+        }
+        Err(failure) => failure.exit_code(),
+    }
+}
+
+/// Safe stdout writer that terminates with exit 1 on broken pipe.
+pub fn write_stdout_safe(content: &str) {
+    let mut stdout = std::io::stdout().lock();
+    if writeln!(stdout, "{}", content).is_err() {
+        std::process::exit(1);
     }
 }
 
 // ---------------------------------------------------------------------------
-// Text formatter
+// Legacy / Human Output Formatters
 // ---------------------------------------------------------------------------
 
-/// Extract text content from a serialized `CallToolResult` and return it as-is.
-///
-/// The result JSON has shape `{ "content": [{ "type": "text", "text": "..." }], ... }`.
-/// We concatenate all text items with newlines. If the structure is unexpected
-/// (e.g. a raw daemon response), fall back to pretty-printed JSON.
-fn format_text(result: &serde_json::Value) -> String {
-    extract_text_items(result)
-        .unwrap_or_else(|| serde_json::to_string_pretty(result).unwrap_or_default())
+/// Format a tool output according to the requested format.
+pub fn format_output(output: &CliToolOutput, format: OutputFormat, tool_name: &str) -> String {
+    match format {
+        OutputFormat::Text => format_text(output),
+        OutputFormat::Json => format_json(output),
+        OutputFormat::Markdown => format_markdown(output, tool_name),
+    }
 }
 
-// ---------------------------------------------------------------------------
-// JSON formatter
-// ---------------------------------------------------------------------------
-
-/// Pretty-print the full result value for machine consumption.
-fn format_json(result: &serde_json::Value) -> String {
-    serde_json::to_string_pretty(result).unwrap_or_default()
+/// Text formatter: extracts text content from CallToolResult if available,
+/// falling back to pretty-printed JSON.
+fn format_text(output: &CliToolOutput) -> String {
+    extract_text_items(&output.result)
+        .unwrap_or_else(|| serde_json::to_string_pretty(&output.result).unwrap_or_default())
 }
 
-// ---------------------------------------------------------------------------
-// Markdown formatter
-// ---------------------------------------------------------------------------
+/// JSON formatter: pretty-printed JSON of the raw result.
+fn format_json(output: &CliToolOutput) -> String {
+    serde_json::to_string_pretty(&output.result).unwrap_or_default()
+}
 
-/// Render the tool result as a markdown report with a header and fenced blocks.
-///
-/// Structure:
-/// ```text
-/// # fast_search
-///
-/// ```
-/// <tool output>
-/// ```
-/// ```
-fn format_markdown(result: &serde_json::Value, tool_name: &str) -> String {
-    let body = extract_text_items(result)
-        .unwrap_or_else(|| serde_json::to_string_pretty(result).unwrap_or_default());
+/// Markdown formatter: wraps output in a fenced code block with tool name header.
+fn format_markdown(output: &CliToolOutput, tool_name: &str) -> String {
+    let body = extract_text_items(&output.result)
+        .unwrap_or_else(|| serde_json::to_string_pretty(&output.result).unwrap_or_default());
 
-    let mut out = String::with_capacity(tool_name.len() + body.len() + 32);
-    out.push_str("# ");
-    out.push_str(tool_name);
-    out.push_str("\n\n```\n");
+    let mut out = format!("# {}\n\n```\n", tool_name);
     out.push_str(&body);
-    // Ensure the fenced block closing is on its own line
     if !body.ends_with('\n') {
         out.push('\n');
     }
@@ -81,190 +140,8 @@ fn format_markdown(result: &serde_json::Value, tool_name: &str) -> String {
     out
 }
 
-// ---------------------------------------------------------------------------
-// Signals report formatter
-// ---------------------------------------------------------------------------
-
-/// Format an early warning signals report for CLI output.
-pub fn format_signals_report(
-    report: &crate::analysis::EarlyWarningReport,
-    format: OutputFormat,
-) -> String {
-    match format {
-        OutputFormat::Json => serde_json::to_string_pretty(report).unwrap_or_default(),
-        OutputFormat::Text => format_signals_text(report),
-        OutputFormat::Markdown => format_signals_markdown(report),
-    }
-}
-
-fn format_signals_text(report: &crate::analysis::EarlyWarningReport) -> String {
-    let mut out = String::new();
-    let s = &report.summary;
-    out.push_str(&format!(
-        "Early Warning Signals  (entry_points: {}, auth_coverage_candidates: {}, review_markers: {}, scheduler: {}, ep_linkage_gaps: {}, centrality_gaps: {})\n",
-        s.entry_points, s.auth_coverage_candidates, s.review_markers,
-        s.scheduler_signals, s.entry_point_linkage_gaps, s.high_centrality_linkage_gaps
-    ));
-    if report.from_cache {
-        out.push_str("  (from cache)\n");
-    }
-    out.push('\n');
-
-    if !report.entry_points.is_empty() {
-        out.push_str("Entry Points:\n");
-        for ep in &report.entry_points {
-            out.push_str(&format!(
-                "  {} ({}:{}) [{}]\n",
-                ep.symbol_name, ep.file_path, ep.start_line, ep.annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.auth_coverage_candidates.is_empty() {
-        out.push_str("Auth Coverage Candidates:\n");
-        for ac in &report.auth_coverage_candidates {
-            out.push_str(&format!(
-                "  {} ({}:{}) [{}]\n",
-                ac.symbol_name, ac.file_path, ac.start_line, ac.annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.review_markers.is_empty() {
-        out.push_str("Review Markers:\n");
-        for rm in &report.review_markers {
-            out.push_str(&format!(
-                "  {} ({}:{}) [{}]\n",
-                rm.symbol_name, rm.file_path, rm.start_line, rm.annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.scheduler_signals.is_empty() {
-        out.push_str("Scheduler Signals:\n");
-        for ss in &report.scheduler_signals {
-            out.push_str(&format!(
-                "  {} ({}:{}) [{}]\n",
-                ss.symbol_name, ss.file_path, ss.start_line, ss.annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.entry_point_linkage_gaps.is_empty() {
-        out.push_str("Entry Point Linkage Gaps:\n");
-        for gap in &report.entry_point_linkage_gaps {
-            out.push_str(&format!(
-                "  {} ({}:{}) [{}]\n",
-                gap.symbol_name, gap.file_path, gap.start_line, gap.entry_annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.high_centrality_linkage_gaps.is_empty() {
-        out.push_str("High Centrality Linkage Gaps:\n");
-        for gap in &report.high_centrality_linkage_gaps {
-            out.push_str(&format!(
-                "  {} ({}:{}) score={:.2}\n",
-                gap.symbol_name, gap.file_path, gap.start_line, gap.reference_score
-            ));
-        }
-    }
-
-    out
-}
-
-fn format_signals_markdown(report: &crate::analysis::EarlyWarningReport) -> String {
-    let mut out = String::new();
-    let s = &report.summary;
-    out.push_str("# Early Warning Signals\n\n");
-    out.push_str(&format!(
-        "| Metric | Count |\n|--------|-------|\n| Entry Points | {} |\n| Auth Coverage Candidates | {} |\n| Review Markers | {} |\n| Scheduler Signals | {} |\n| Entry Point Linkage Gaps | {} |\n| High Centrality Linkage Gaps | {} |\n\n",
-        s.entry_points, s.auth_coverage_candidates, s.review_markers,
-        s.scheduler_signals, s.entry_point_linkage_gaps, s.high_centrality_linkage_gaps
-    ));
-
-    if !report.entry_points.is_empty() {
-        out.push_str("## Entry Points\n\n| Symbol | File | Line | Annotation |\n|--------|------|------|------------|\n");
-        for ep in &report.entry_points {
-            out.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                ep.symbol_name, ep.file_path, ep.start_line, ep.annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.auth_coverage_candidates.is_empty() {
-        out.push_str("## Auth Coverage Candidates\n\n| Symbol | File | Line | Annotation |\n|--------|------|------|------------|\n");
-        for ac in &report.auth_coverage_candidates {
-            out.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                ac.symbol_name, ac.file_path, ac.start_line, ac.annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.review_markers.is_empty() {
-        out.push_str("## Review Markers\n\n| Symbol | File | Line | Annotation |\n|--------|------|------|------------|\n");
-        for rm in &report.review_markers {
-            out.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                rm.symbol_name, rm.file_path, rm.start_line, rm.annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.scheduler_signals.is_empty() {
-        out.push_str("## Scheduler Signals\n\n| Symbol | File | Line | Annotation |\n|--------|------|------|------------|\n");
-        for ss in &report.scheduler_signals {
-            out.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                ss.symbol_name, ss.file_path, ss.start_line, ss.annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.entry_point_linkage_gaps.is_empty() {
-        out.push_str("## Entry Point Linkage Gaps\n\n| Symbol | File | Line | Entry Annotation |\n|--------|------|------|------------------|\n");
-        for gap in &report.entry_point_linkage_gaps {
-            out.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                gap.symbol_name, gap.file_path, gap.start_line, gap.entry_annotation
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !report.high_centrality_linkage_gaps.is_empty() {
-        out.push_str("## High Centrality Linkage Gaps\n\n| Symbol | File | Line | Reference Score |\n|--------|------|------|-----------------|\n");
-        for gap in &report.high_centrality_linkage_gaps {
-            out.push_str(&format!(
-                "| {} | {} | {} | {:.2} |\n",
-                gap.symbol_name, gap.file_path, gap.start_line, gap.reference_score
-            ));
-        }
-    }
-
-    out
-}
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
 /// Extract text items from a serialized `CallToolResult`.
-///
-/// Returns `None` if the JSON doesn't have the expected `content` array
-/// structure, signaling the caller to fall back to raw JSON output.
-fn extract_text_items(result: &serde_json::Value) -> Option<String> {
+fn extract_text_items(result: &Value) -> Option<String> {
     let content = result.get("content")?.as_array()?;
     let texts: Vec<&str> = content
         .iter()
@@ -286,10 +163,10 @@ fn extract_text_items(result: &serde_json::Value) -> Option<String> {
 mod tests {
     use super::*;
     use crate::cli_tools::{CliExecutionMode, CliToolOutput};
+    use crate::request_engine::RequestReadiness;
     use std::path::PathBuf;
 
-    /// Build a `CliToolOutput` with the given result JSON for testing.
-    fn make_output(result: serde_json::Value) -> CliToolOutput {
+    fn make_output(result: Value) -> CliToolOutput {
         CliToolOutput {
             mode: CliExecutionMode::Standalone,
             workspace_root: PathBuf::from("/tmp/test"),
@@ -298,8 +175,7 @@ mod tests {
         }
     }
 
-    /// Build a result JSON matching `CallToolResult::success(vec![Content::text(text)])`.
-    fn success_result(text: &str) -> serde_json::Value {
+    fn success_result(text: &str) -> Value {
         serde_json::json!({
             "content": [
                 { "type": "text", "text": text }
@@ -307,8 +183,7 @@ mod tests {
         })
     }
 
-    /// Build an error result JSON.
-    fn error_result(text: &str) -> serde_json::Value {
+    fn error_result(text: &str) -> Value {
         serde_json::json!({
             "content": [
                 { "type": "text", "text": text }
@@ -316,8 +191,6 @@ mod tests {
             "isError": true
         })
     }
-
-    // -- Text formatter tests -------------------------------------------------
 
     #[test]
     fn test_text_format_extracts_text_content() {
@@ -357,7 +230,6 @@ mod tests {
         });
         let output = make_output(result.clone());
         let formatted = format_output(&output, OutputFormat::Text, "test_tool");
-        // No text items found, should fall back to pretty JSON
         let expected = serde_json::to_string_pretty(&result).unwrap();
         assert_eq!(formatted, expected);
     }
@@ -371,16 +243,13 @@ mod tests {
         assert_eq!(formatted, expected);
     }
 
-    // -- JSON formatter tests -------------------------------------------------
-
     #[test]
     fn test_json_format_produces_valid_json() {
         let result = success_result("search results here");
         let output = make_output(result.clone());
         let formatted = format_output(&output, OutputFormat::Json, "fast_search");
 
-        // Must parse back to the same value
-        let parsed: serde_json::Value = serde_json::from_str(&formatted).unwrap();
+        let parsed: Value = serde_json::from_str(&formatted).unwrap();
         assert_eq!(parsed, result);
     }
 
@@ -390,7 +259,7 @@ mod tests {
         let output = make_output(result);
         let formatted = format_output(&output, OutputFormat::Json, "fast_search");
 
-        let parsed: serde_json::Value = serde_json::from_str(&formatted).unwrap();
+        let parsed: Value = serde_json::from_str(&formatted).unwrap();
         assert_eq!(parsed["isError"], serde_json::json!(true));
         assert_eq!(parsed["content"][0]["text"], "something went wrong");
     }
@@ -401,12 +270,9 @@ mod tests {
         let output = make_output(result);
         let formatted = format_output(&output, OutputFormat::Json, "test_tool");
 
-        // Pretty-printed JSON has newlines and indentation
         assert!(formatted.contains('\n'));
         assert!(formatted.contains("  "));
     }
-
-    // -- Markdown formatter tests ---------------------------------------------
 
     #[test]
     fn test_markdown_format_has_header_and_fenced_block() {
@@ -416,7 +282,6 @@ mod tests {
         assert!(formatted.starts_with("# fast_search\n"));
         assert!(formatted.contains("```\n"));
         assert!(formatted.contains("search output here"));
-        // Should end with closing fence
         assert!(formatted.ends_with("```\n"));
     }
 
@@ -432,7 +297,6 @@ mod tests {
         let output = make_output(success_result("line1\nline2\nline3"));
         let formatted = format_output(&output, OutputFormat::Markdown, "test_tool");
 
-        // The body should be between the opening and closing fences
         let expected = "# test_tool\n\n```\nline1\nline2\nline3\n```\n";
         assert_eq!(formatted, expected);
     }
@@ -442,11 +306,8 @@ mod tests {
         let output = make_output(success_result("no trailing newline"));
         let formatted = format_output(&output, OutputFormat::Markdown, "test_tool");
 
-        // Should add a newline before closing fence
         assert!(formatted.contains("no trailing newline\n```\n"));
     }
-
-    // -- extract_text_items tests ---------------------------------------------
 
     #[test]
     fn test_extract_text_items_from_valid_result() {
@@ -472,8 +333,6 @@ mod tests {
         assert_eq!(extract_text_items(&result), None);
     }
 
-    // -- Error output tests ---------------------------------------------------
-
     #[test]
     fn test_error_result_text_format_extracts_error_message() {
         let output = CliToolOutput {
@@ -495,7 +354,75 @@ mod tests {
             is_error: true,
         };
         let formatted = format_output(&output, OutputFormat::Json, "fast_search");
-        let parsed: serde_json::Value = serde_json::from_str(&formatted).unwrap();
+        let parsed: Value = serde_json::from_str(&formatted).unwrap();
         assert_eq!(parsed["isError"], true);
+    }
+
+    #[test]
+    fn test_cli_success_and_failure_envelopes() {
+        let reply = ToolReply::from_result(
+            "fast_search",
+            Some("ws-123".to_string()),
+            serde_json::json!({"content": [{"type": "text", "text": "found"}]}),
+            RequestReadiness::ready(crate::request_engine::SemanticMode::Auto),
+        );
+        let success_json = format_success_envelope(Some("req-1".to_string()), &reply);
+        let parsed_success: Value = serde_json::from_str(&success_json).unwrap();
+        assert_eq!(parsed_success["schema_version"], 1);
+        assert_eq!(parsed_success["ok"], true);
+        assert_eq!(parsed_success["request_id"], "req-1");
+        assert_eq!(parsed_success["reply"]["tool"], "fast_search");
+
+        let failure = RequestFailure::invalid_arguments("test invalid");
+        let failure_json = format_failure_envelope(Some("req-2".to_string()), &failure);
+        let parsed_failure: Value = serde_json::from_str(&failure_json).unwrap();
+        assert_eq!(parsed_failure["schema_version"], 1);
+        assert_eq!(parsed_failure["ok"], false);
+        assert_eq!(parsed_failure["request_id"], "req-2");
+        assert_eq!(parsed_failure["error"]["code"], "INVALID_ARGUMENTS");
+    }
+
+    #[test]
+    fn test_resolve_exit_code() {
+        let reply_ok = ToolReply::from_result(
+            "test",
+            None,
+            serde_json::json!({}),
+            RequestReadiness::ready(crate::request_engine::SemanticMode::Auto),
+        );
+        assert_eq!(resolve_exit_code(&Ok(reply_ok)), 0);
+
+        let reply_err = ToolReply::from_result(
+            "test",
+            None,
+            serde_json::json!({"isError": true}),
+            RequestReadiness::ready(crate::request_engine::SemanticMode::Auto),
+        );
+        assert_eq!(resolve_exit_code(&Ok(reply_err)), 3);
+
+        assert_eq!(
+            resolve_exit_code(&Err(RequestFailure::invalid_arguments("bad"))),
+            2
+        );
+        assert_eq!(
+            resolve_exit_code(&Err(RequestFailure::tool_error("failed"))),
+            3
+        );
+        assert_eq!(
+            resolve_exit_code(&Err(RequestFailure::follower_read_only("ro"))),
+            4
+        );
+        assert_eq!(
+            resolve_exit_code(&Err(RequestFailure::stale_edit("conflict"))),
+            5
+        );
+        assert_eq!(
+            resolve_exit_code(&Err(RequestFailure::deadline_exceeded("timeout"))),
+            124
+        );
+        assert_eq!(
+            resolve_exit_code(&Err(RequestFailure::cancelled("cancelled"))),
+            130
+        );
     }
 }

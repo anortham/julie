@@ -28,6 +28,15 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<BlastRadiusTool>,
     ) -> Result<CallToolResult, McpError> {
+        self.execute_blast_radius(params)
+            .await
+            .map_err(|e| classify_tool_failure("blast_radius", &e))
+    }
+
+    pub(crate) async fn execute_blast_radius(
+        &self,
+        params: BlastRadiusTool,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("💥 Blast radius: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
@@ -46,7 +55,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(classify_tool_failure("blast_radius", &e));
+                return Err(e);
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);
