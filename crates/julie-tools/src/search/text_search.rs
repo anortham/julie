@@ -2,7 +2,8 @@
 
 use anyhow::Result;
 
-use julie_extractors::{Symbol, SymbolKind};
+use julie_core::Symbol;
+use julie_extractors::SymbolKind;
 
 use julie_context::ToolContext;
 
@@ -23,7 +24,7 @@ pub fn definition_search_with_index_for_test(
     limit: usize,
     index: &julie_index::search::index::SearchIndex,
     db: Option<&julie_core::database::SymbolDatabase>,
-) -> anyhow::Result<(Vec<julie_extractors::Symbol>, bool, usize)> {
+) -> anyhow::Result<(Vec<Symbol>, bool, usize)> {
     // Route through `search_symbols` so annotation queries (`@Test`,
     // `[Authorize]`, etc.) hit the annotation-aware path that filters on
     // the `annotations_exact` indexed key.  Plain queries fall through to
@@ -39,46 +40,48 @@ pub fn definition_search_with_index_for_test(
     // moved into the test helper so callers don't have to know about it.
     julie_index::search::scoring::apply_nl_path_prior(&mut symbol_results.results, query);
     symbol_results.results.truncate(limit);
-    let mut symbols: Vec<julie_extractors::Symbol> = symbol_results
+    let mut symbols: Vec<Symbol> = symbol_results
         .results
         .into_iter()
         .map(|h| {
             // SymbolSearchResult doesn't carry code_body the way UnifiedHit
             // does, but the test only asserts on `code_context` for cases
             // where the symbol is hydrated from SQLite below.
-            julie_extractors::Symbol {
-                id: h.id,
-                name: h.name,
-                kind: julie_extractors::SymbolKind::try_from_string(&h.kind)
-                    .unwrap_or(julie_extractors::SymbolKind::Variable),
-                language: h.language,
-                file_path: h.file_path,
-                start_line: h.start_line,
-                signature: if h.signature.is_empty() {
-                    None
-                } else {
-                    Some(h.signature)
+            Symbol {
+                extracted: julie_extractors::Symbol {
+                    id: h.id,
+                    name: h.name,
+                    kind: julie_extractors::SymbolKind::try_from_string(&h.kind)
+                        .unwrap_or(julie_extractors::SymbolKind::Variable),
+                    language: h.language,
+                    file_path: h.file_path,
+                    start_line: h.start_line,
+                    signature: if h.signature.is_empty() {
+                        None
+                    } else {
+                        Some(h.signature)
+                    },
+                    doc_comment: if h.doc_comment.is_empty() {
+                        None
+                    } else {
+                        Some(h.doc_comment)
+                    },
+                    start_column: 0,
+                    end_line: 0,
+                    end_column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: Some(h.score),
+                    content_type: None,
+                    body_span: None,
+                    body_hash: None,
+                    annotations: Vec::new(),
                 },
-                doc_comment: if h.doc_comment.is_empty() {
-                    None
-                } else {
-                    Some(h.doc_comment)
-                },
-                start_column: 0,
-                end_line: 0,
-                end_column: 0,
-                start_byte: 0,
-                end_byte: 0,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: Some(h.score),
                 code_context: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
             }
         })
         .collect();
@@ -126,37 +129,39 @@ pub fn definition_search_with_index_for_test(
 fn unified_hit_to_symbol(hit: julie_index::search::index::UnifiedHit) -> Symbol {
     let kind = SymbolKind::try_from_string(&hit.kind).unwrap_or(SymbolKind::Variable);
     Symbol {
-        id: hit.id,
-        name: hit.name,
-        kind,
-        language: hit.language,
-        file_path: hit.file_path,
-        start_line: hit.start_line,
-        signature: if hit.signature.is_empty() {
-            None
-        } else {
-            Some(hit.signature)
+        extracted: julie_extractors::Symbol {
+            id: hit.id,
+            name: hit.name,
+            kind,
+            language: hit.language,
+            file_path: hit.file_path,
+            start_line: hit.start_line,
+            signature: if hit.signature.is_empty() {
+                None
+            } else {
+                Some(hit.signature)
+            },
+            doc_comment: if hit.doc_comment.is_empty() {
+                None
+            } else {
+                Some(hit.doc_comment)
+            },
+            start_column: 0,
+            end_line: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 0,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(hit.tantivy_score),
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
         },
-        doc_comment: if hit.doc_comment.is_empty() {
-            None
-        } else {
-            Some(hit.doc_comment)
-        },
-        start_column: 0,
-        end_line: 0,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: Some(hit.tantivy_score),
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 
@@ -320,14 +325,15 @@ fn enrich_symbols_from_db(symbols: &mut [Symbol], db: &julie_core::database::Sym
             let enrichment_map: std::collections::HashMap<String, _> = db_symbols
                 .into_iter()
                 .map(|s| {
+                    let id = s.extracted.id.clone();
                     (
-                        s.id,
+                        id,
                         (
                             s.code_context,
-                            s.visibility,
-                            s.metadata,
-                            s.body_span,
-                            s.body_hash,
+                            s.extracted.visibility,
+                            s.extracted.metadata,
+                            s.extracted.body_span,
+                            s.extracted.body_hash,
                         ),
                     )
                 })
@@ -445,7 +451,7 @@ pub async fn text_search_impl(
     _context_lines: Option<u32>,
     exclude_tests: Option<bool>,
     handler: &dyn ToolContext,
-) -> anyhow::Result<(Vec<julie_extractors::Symbol>, bool, usize)> {
+) -> anyhow::Result<(Vec<Symbol>, bool, usize)> {
     let mut filter = julie_index::search::SearchFilter::default();
     if let Some(lang) = language {
         filter.language = Some(lang.clone());

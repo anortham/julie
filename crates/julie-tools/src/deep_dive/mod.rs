@@ -233,8 +233,8 @@ pub fn deep_dive_query(
 /// Returns None when results span multiple files (real disambiguation needed).
 fn auto_select_same_file_overload(
     db: &julie_core::database::SymbolDatabase,
-    symbols: &[julie_extractors::base::Symbol],
-) -> Option<julie_extractors::base::Symbol> {
+    symbols: &[julie_core::Symbol],
+) -> Option<julie_core::Symbol> {
     use std::collections::HashMap;
 
     if symbols.is_empty() {
@@ -257,14 +257,14 @@ fn auto_select_same_file_overload(
         return None;
     }
 
-    let same_file_symbols: Vec<&julie_extractors::base::Symbol> = symbols
+    let same_file_symbols: Vec<&julie_core::Symbol> = symbols
         .iter()
         .filter(|s| s.file_path == most_common_file)
         .collect();
 
     // Priority 1: Prefer class/struct/interface (the type definition itself)
-    use julie_extractors::base::SymbolKind;
-    let type_defs: Vec<&&julie_extractors::base::Symbol> = same_file_symbols
+    use julie_extractors::SymbolKind;
+    let type_defs: Vec<&&julie_core::Symbol> = same_file_symbols
         .iter()
         .filter(|s| {
             matches!(

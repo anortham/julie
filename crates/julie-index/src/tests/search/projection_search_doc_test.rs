@@ -10,8 +10,9 @@ use tempfile::TempDir;
 
 use crate::search::projection::apply_documents;
 use crate::search::{SearchFilter, SearchIndex};
+use julie_core::Symbol;
 use julie_core::database::types::FileInfo;
-use julie_extractors::{Symbol, SymbolKind};
+use julie_extractors::SymbolKind;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -19,29 +20,31 @@ use julie_extractors::{Symbol, SymbolKind};
 
 fn make_test_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 5,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 64,
-        signature: Some(format!("fn {}(input: &str) -> u64", name)),
-        doc_comment: Some(format!("Docs for {}", name)),
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 5,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 64,
+            signature: Some(format!("fn {}(input: &str) -> u64", name)),
+            doc_comment: Some(format!("Docs for {}", name)),
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: Some(format!("fn {}(input: &str) -> u64 {{ 0 }}", name)),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 

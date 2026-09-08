@@ -8,11 +8,11 @@ fn test_extractor_enrichment_domains_roundtrip_replace_and_delete() {
 
     let file_info = make_file("src/lib.rs");
     let symbol = make_symbol("symbol-1", "request", "src/lib.rs");
-    let source_region = julie_extractors::base::SourceRegion {
+    let source_region = julie_extractors::SourceRegion {
         id: "region-1".into(),
         file_path: "src/lib.rs".into(),
         language: "rust".into(),
-        kind: julie_extractors::base::SourceRegionKind::DocComment,
+        kind: julie_extractors::SourceRegionKind::DocComment,
         containing_symbol_id: Some("symbol-1".into()),
         start_line: 1,
         start_column: 0,
@@ -25,7 +25,7 @@ fn test_extractor_enrichment_domains_roundtrip_replace_and_delete() {
             serde_json::json!("outer"),
         )])),
     };
-    let structural_fact = julie_extractors::base::StructuralFact {
+    let structural_fact = julie_extractors::StructuralFact {
         id: "fact-1".into(),
         file_path: "src/lib.rs".into(),
         language: "rust".into(),
@@ -45,7 +45,7 @@ fn test_extractor_enrichment_domains_roundtrip_replace_and_delete() {
             ("method".into(), serde_json::json!("GET")),
         ])),
     };
-    let complexity_metric = julie_extractors::base::ComplexityMetric {
+    let complexity_metric = julie_extractors::ComplexityMetric {
         id: "complexity-1".into(),
         file_path: "src/lib.rs".into(),
         language: "rust".into(),
@@ -390,11 +390,11 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
     )
     .expect("seeding literals should succeed");
 
-    let orphan_source_regions = vec![julie_extractors::base::SourceRegion {
+    let orphan_source_regions = vec![julie_extractors::SourceRegion {
         id: "orphan-region".into(),
         file_path: "orphan.rs".into(),
         language: "rust".into(),
-        kind: julie_extractors::base::SourceRegionKind::Comment,
+        kind: julie_extractors::SourceRegionKind::Comment,
         containing_symbol_id: None,
         start_line: 1,
         start_column: 0,
@@ -404,7 +404,7 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         end_byte: 8,
         metadata: None,
     }];
-    let orphan_structural_facts = vec![julie_extractors::base::StructuralFact {
+    let orphan_structural_facts = vec![julie_extractors::StructuralFact {
         id: "orphan-fact".into(),
         file_path: "orphan.rs".into(),
         language: "rust".into(),
@@ -421,7 +421,7 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         confidence: 1.0,
         metadata: None,
     }];
-    let orphan_complexity_metrics = vec![julie_extractors::base::ComplexityMetric {
+    let orphan_complexity_metrics = vec![julie_extractors::ComplexityMetric {
         id: "orphan-complexity".into(),
         file_path: "orphan.rs".into(),
         language: "rust".into(),

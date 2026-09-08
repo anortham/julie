@@ -177,7 +177,7 @@ pub fn collect_likely_tests(
         .filter_map(|identifier| identifier.containing_symbol_id.clone())
         .collect();
     let containing_symbols = db.get_symbols_by_ids(&containing_ids)?;
-    let containing_map: HashMap<String, julie_extractors::Symbol> = containing_symbols
+    let containing_map: HashMap<String, julie_core::Symbol> = containing_symbols
         .into_iter()
         .map(|symbol| (symbol.id.clone(), symbol))
         .collect();
@@ -268,6 +268,6 @@ fn sort_identifier_refs(refs: &mut [IdentifierRef]) {
     });
 }
 
-fn is_test_symbol(symbol: &julie_extractors::Symbol) -> bool {
+fn is_test_symbol(symbol: &julie_core::Symbol) -> bool {
     julie_index::analysis::test_roles::is_test_related(symbol) || is_test_path(&symbol.file_path)
 }

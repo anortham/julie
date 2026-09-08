@@ -1,15 +1,13 @@
 //! Tests for markdown section line ranges covering full content, not just headings.
 
-use julie_extractors::base::Symbol;
-use julie_extractors::manager::ExtractorManager;
+use julie_extractors::Symbol;
 use std::path::PathBuf;
 
 fn extract_markdown_symbols(source: &str) -> Vec<Symbol> {
     let workspace_root = PathBuf::from("/tmp");
-    let manager = ExtractorManager::new();
-    manager
-        .extract_symbols("/tmp/test.md", source, &workspace_root)
-        .expect("Failed to extract markdown symbols")
+    let extracted = julie_extractors::extract_canonical("/tmp/test.md", source, &workspace_root)
+        .expect("Failed to extract markdown symbols");
+    extracted.symbols
 }
 
 #[test]

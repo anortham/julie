@@ -15,10 +15,7 @@ use tracing::warn;
 ///
 /// Derived from the canonical `julie_extractors::language::supported_extensions()`.
 pub fn build_supported_extensions() -> HashSet<String> {
-    julie_extractors::language::supported_extensions()
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    file_policy::supported_extensions_for_indexing().clone()
 }
 
 /// Walk `dir` recursively (up to `max_depth` levels) and collect paths of all

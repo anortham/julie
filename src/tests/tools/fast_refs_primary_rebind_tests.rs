@@ -4,14 +4,13 @@ use std::sync::Arc;
 use anyhow::Result;
 use tempfile::TempDir;
 
-use crate::extractors::{
-    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
-};
+use crate::extractors::{Identifier, IdentifierKind, Relationship, RelationshipKind, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::registry::database::DaemonDatabase;
 use crate::tools::navigation::FastRefsTool;
 use crate::workspace::registry::generate_workspace_id;
+use julie_core::Symbol;
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
     result
@@ -28,60 +27,75 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
         .join("\n")
 }
 
-fn rebound_symbol() -> Symbol {
+fn test_symbol(
+    id: &str,
+    name: &str,
+    kind: SymbolKind,
+    file_path: &str,
+    start_line: u32,
+    end_line: u32,
+    start_byte: u32,
+    end_byte: u32,
+    signature: Option<String>,
+    parent_id: Option<String>,
+) -> Symbol {
     Symbol {
-        id: "rebound-primary-symbol-id".to_string(),
-        name: "rebound_primary_symbol".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "src/rebound.rs".to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 1,
-        end_column: 32,
-        start_byte: 0,
-        end_byte: 32,
-        signature: Some("pub fn rebound_primary_symbol()".to_string()),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line,
+            start_column: 0,
+            end_line,
+            end_column: 0,
+            start_byte,
+            end_byte,
+            signature,
+            doc_comment: None,
+            visibility: None,
+            parent_id,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 
+fn rebound_symbol() -> Symbol {
+    test_symbol(
+        "rebound-primary-symbol-id",
+        "rebound_primary_symbol",
+        SymbolKind::Function,
+        "src/rebound.rs",
+        1,
+        1,
+        0,
+        32,
+        Some("pub fn rebound_primary_symbol()".to_string()),
+        None,
+    )
+}
+
 fn rebound_caller_symbol() -> Symbol {
-    Symbol {
-        id: "rebound-primary-caller-id".to_string(),
-        name: "rebound_primary_caller".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "src/rebound.rs".to_string(),
-        start_line: 3,
-        start_column: 0,
-        end_line: 3,
-        end_column: 32,
-        start_byte: 35,
-        end_byte: 67,
-        signature: Some("pub fn rebound_primary_caller()".to_string()),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
-    }
+    test_symbol(
+        "rebound-primary-caller-id",
+        "rebound_primary_caller",
+        SymbolKind::Function,
+        "src/rebound.rs",
+        3,
+        3,
+        35,
+        67,
+        Some("pub fn rebound_primary_caller()".to_string()),
+        None,
+    )
 }
 
 fn make_file_info(path: &str, content: &str) -> crate::database::types::FileInfo {
@@ -99,59 +113,33 @@ fn make_file_info(path: &str, content: &str) -> crate::database::types::FileInfo
 }
 
 fn make_struct_symbol(id: &str, name: &str, file_path: &str, line: u32) -> Symbol {
-    Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Class,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: line,
-        start_column: 0,
-        end_line: line + 20,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        signature: Some(format!("pub struct {}", name)),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
-    }
+    test_symbol(
+        id,
+        name,
+        SymbolKind::Class,
+        file_path,
+        line,
+        line + 20,
+        0,
+        0,
+        Some(format!("pub struct {}", name)),
+        None,
+    )
 }
 
 fn make_method_symbol(id: &str, name: &str, file_path: &str, line: u32, parent_id: &str) -> Symbol {
-    Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Method,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: line,
-        start_column: 0,
-        end_line: line + 5,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        signature: Some(format!("pub fn {}()", name)),
-        doc_comment: None,
-        visibility: None,
-        parent_id: Some(parent_id.to_string()),
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
-    }
+    test_symbol(
+        id,
+        name,
+        SymbolKind::Method,
+        file_path,
+        line,
+        line + 5,
+        0,
+        0,
+        Some(format!("pub fn {}()", name)),
+        Some(parent_id.to_string()),
+    )
 }
 
 fn make_identifier(
@@ -180,6 +168,7 @@ fn make_identifier(
         target_symbol_id: target_symbol_id.map(|value| value.to_string()),
         confidence: 1.0,
         code_context: None,
+        receiver_type: None,
     }
 }
 
@@ -295,6 +284,7 @@ async fn setup_rebound_primary_fast_refs_handler()
             target_symbol_id: Some(rebound_symbol().id.clone()),
             confidence: 1.0,
             code_context: None,
+            receiver_type: None,
         };
         rebound_db.bulk_store_fresh_atomic(
             &[file_info],
@@ -407,57 +397,31 @@ async fn test_fast_refs_primary_qualified_identifier_fallback_respects_parent_fi
         "tool-other",
     );
 
-    let caller = Symbol {
-        id: "caller-fast-refs".to_string(),
-        name: "caller_fast_refs".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "src/caller.rs".to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 6,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        signature: Some("pub fn caller_fast_refs()".to_string()),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
-    };
+    let caller = test_symbol(
+        "caller-fast-refs",
+        "caller_fast_refs",
+        SymbolKind::Function,
+        "src/caller.rs",
+        1,
+        6,
+        0,
+        0,
+        Some("pub fn caller_fast_refs()".to_string()),
+        None,
+    );
 
-    let other_caller = Symbol {
-        id: "caller-other".to_string(),
-        name: "caller_other".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "src/other_caller.rs".to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 6,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        signature: Some("pub fn caller_other()".to_string()),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
-    };
+    let other_caller = test_symbol(
+        "caller-other",
+        "caller_other",
+        SymbolKind::Function,
+        "src/other_caller.rs",
+        1,
+        6,
+        0,
+        0,
+        Some("pub fn caller_other()".to_string()),
+        None,
+    );
 
     seed_primary_fast_refs_snapshot(
         &handler,
@@ -555,31 +519,18 @@ async fn test_fast_refs_primary_identifier_fallback_dedupes_within_batch() -> Re
         10,
         "tool-fast-refs",
     );
-    let caller = Symbol {
-        id: "caller-fast-refs".to_string(),
-        name: "caller_fast_refs".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "src/caller.rs".to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 6,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        signature: Some("pub fn caller_fast_refs()".to_string()),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
-    };
+    let caller = test_symbol(
+        "caller-fast-refs",
+        "caller_fast_refs",
+        SymbolKind::Function,
+        "src/caller.rs",
+        1,
+        6,
+        0,
+        0,
+        Some("pub fn caller_fast_refs()".to_string()),
+        None,
+    );
 
     seed_primary_fast_refs_snapshot(
         &handler,

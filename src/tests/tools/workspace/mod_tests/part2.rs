@@ -73,7 +73,7 @@ async fn test_workspace_index_records_parse_diagnostics_for_recovered_file() -> 
 
     assert!(
         diagnostics.iter().any(
-            |diagnostic| diagnostic.kind == crate::extractors::base::ParseDiagnosticKind::Error
+            |diagnostic| diagnostic.kind == crate::extractors::ParseDiagnosticKind::Error
         ),
         "workspace indexing should persist parse diagnostics for recovered malformed files: {diagnostics:?}"
     );

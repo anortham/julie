@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use julie_extractors::base::ComplexityMetric;
+use julie_extractors::ComplexityMetric;
 use rusqlite::{Transaction, params};
 
 pub(crate) fn insert_complexity_metrics_tx(

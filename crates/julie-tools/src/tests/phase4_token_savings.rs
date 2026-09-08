@@ -3,8 +3,8 @@
 //! Measure token reduction from data structure optimizations (skip_serializing_if).
 
 use anyhow::Result;
-use julie_extractors::base::Visibility;
-use julie_extractors::{Symbol, SymbolKind};
+use julie_core::Symbol;
+use julie_extractors::{SymbolKind, Visibility};
 use serde_json;
 
 #[cfg(test)]
@@ -14,29 +14,31 @@ mod tests {
     /// Helper: Create a Symbol with many null fields (typical real-world scenario)
     fn create_sparse_symbol(name: &str) -> Symbol {
         Symbol {
-            id: format!("test_{}", name),
-            name: name.to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: "src/tools/shared.rs".to_string(),
-            start_line: 100,
-            start_column: 4,
-            end_line: 110,
-            end_column: 5,
-            start_byte: 3000,
-            end_byte: 3500,
-            signature: Some(format!("fn {}()", name)),
-            doc_comment: None,    // NULL
-            visibility: None,     // NULL
-            parent_id: None,      // NULL
-            metadata: None,       // NULL
-            semantic_group: None, // NULL
-            confidence: None,     // NULL
-            code_context: None,   // NULL
-            content_type: None,   // NULL
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
+            extracted: julie_extractors::Symbol {
+                id: format!("test_{}", name),
+                name: name.to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/tools/shared.rs".to_string(),
+                start_line: 100,
+                start_column: 4,
+                end_line: 110,
+                end_column: 5,
+                start_byte: 3000,
+                end_byte: 3500,
+                signature: Some(format!("fn {}()", name)),
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
+            code_context: None,
         }
     }
 
@@ -150,29 +152,31 @@ mod tests {
     fn test_non_null_fields_still_serialized() -> Result<()> {
         // Create a symbol with ALL fields populated
         let symbol = Symbol {
-            id: "test_full".to_string(),
-            name: "full_func".to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: "src/lib.rs".to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 10,
-            end_column: 1,
-            start_byte: 0,
-            end_byte: 500,
-            signature: Some("fn full_func()".to_string()),
-            doc_comment: Some("/// This is a doc comment".to_string()),
-            visibility: Some(Visibility::Public),
-            parent_id: Some("parent_123".to_string()),
-            metadata: Some(std::collections::HashMap::new()),
-            semantic_group: Some("utilities".to_string()),
-            confidence: Some(0.95),
+            extracted: julie_extractors::Symbol {
+                id: "test_full".to_string(),
+                name: "full_func".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/lib.rs".to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 10,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: 500,
+                signature: Some("fn full_func()".to_string()),
+                doc_comment: Some("/// This is a doc comment".to_string()),
+                visibility: Some(Visibility::Public),
+                parent_id: Some("parent_123".to_string()),
+                metadata: Some(std::collections::HashMap::new()),
+                semantic_group: Some("utilities".to_string()),
+                confidence: Some(0.95),
+                content_type: Some("code".to_string()),
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: Some("fn main() { ... }".to_string()),
-            content_type: Some("code".to_string()),
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         };
 
         let json = serde_json::to_string(&symbol)?;

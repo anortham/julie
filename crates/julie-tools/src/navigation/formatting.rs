@@ -7,7 +7,8 @@
 
 use std::collections::HashMap;
 
-use julie_extractors::{Relationship, Symbol, SymbolKind};
+use julie_core::Symbol;
+use julie_extractors::{Relationship, SymbolKind};
 use julie_index::search::similarity::SimilarEntry;
 
 /// Truncate a signature to `max_len` characters, appending "..." if trimmed.

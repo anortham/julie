@@ -1,7 +1,8 @@
-use julie_extractors::base::{
-    ComplexityMetric, ParseDiagnostic, SourceRegion, StructuralFact, StructuredPendingRelationship,
+use julie_core::Symbol;
+use julie_extractors::{
+    ComplexityMetric, Identifier, Literal, ParseDiagnostic, PendingRelationship, Relationship,
+    SourceRegion, StructuralFact, StructuredPendingRelationship, TypeInfo,
 };
-use julie_extractors::{Identifier, Literal, PendingRelationship, Relationship, Symbol};
 
 #[derive(Debug)]
 pub struct ExtractedBatch {
@@ -10,7 +11,7 @@ pub struct ExtractedBatch {
     pub all_pending_relationships: Vec<PendingRelationship>,
     pub all_structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub all_identifiers: Vec<Identifier>,
-    pub all_types: Vec<julie_extractors::base::TypeInfo>,
+    pub all_types: Vec<TypeInfo>,
     /// Flattened ordered/nested generic type-argument rows (Miller bridge
     /// Phase 2), accumulated per file from each result's `TypeArgumentUsage`
     /// trees. Borrowed by `canonical_write_set()` for persistence.

@@ -4,35 +4,37 @@ use std::collections::HashMap;
 
 use crate::navigation::formatting::{format_lean_refs_results, format_semantic_fallback};
 use crate::navigation::resolution::parse_qualified_name;
-use julie_extractors::base::{RelationshipKind, SymbolKind, Visibility};
-use julie_extractors::{Relationship, Symbol};
+use julie_core::Symbol;
+use julie_extractors::{Relationship, RelationshipKind, SymbolKind};
 use julie_index::search::similarity::SimilarEntry;
 
 fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
     Symbol {
-        id: format!("test_{}_{}", file_path, line),
-        name: "TestSymbol".to_string(),
-        kind,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: line,
-        end_line: line + 5,
-        start_column: 0,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        parent_id: None,
-        signature: sig.map(|s| s.to_string()),
-        doc_comment: None,
-        visibility: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: format!("test_{}_{}", file_path, line),
+            name: "TestSymbol".to_string(),
+            kind,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: line,
+            end_line: line + 5,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 0,
+            parent_id: None,
+            signature: sig.map(|s| s.to_string()),
+            doc_comment: None,
+            visibility: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 
@@ -425,32 +427,10 @@ fn test_parse_qualified_name_dot_nested() {
 
 #[test]
 fn test_format_semantic_fallback_with_results() {
+    let mut symbol = make_test_symbol("src/api/models.cs", 45, SymbolKind::Class, None);
+    symbol.name = "UserDto".to_string();
     let entries = vec![SimilarEntry {
-        symbol: Symbol {
-            id: "s1".to_string(),
-            name: "UserDto".to_string(),
-            kind: SymbolKind::Class,
-            language: "csharp".to_string(),
-            file_path: "src/api/models.cs".to_string(),
-            start_line: 45,
-            end_line: 80,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            parent_id: None,
-            signature: None,
-            visibility: Some(Visibility::Public),
-            doc_comment: None,
-            content_type: None,
-            confidence: None,
-            semantic_group: None,
-            metadata: None,
-            code_context: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
-        },
+        symbol,
         score: 0.82,
     }];
 

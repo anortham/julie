@@ -13,7 +13,7 @@
 use anyhow::Result;
 use rusqlite::{Transaction, params};
 
-use julie_extractors::base::{TypeArgument, TypeArgumentUsage};
+use julie_extractors::{TypeArgument, TypeArgumentUsage};
 
 /// One flattened `type_arguments` row, ready to insert.
 ///

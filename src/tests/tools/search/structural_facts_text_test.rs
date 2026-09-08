@@ -20,8 +20,7 @@ mod structural_facts_text_test {
     use crate::database::SymbolDatabase;
     use crate::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
     use crate::database::types::FileInfo;
-    use crate::extractors::base::StructuralFact;
-    use crate::extractors::{Symbol, SymbolKind};
+    use crate::extractors::{StructuralFact, Symbol, SymbolKind};
     use crate::search::index::UnifiedHit;
     use crate::search::projection::apply_documents_with_db;
     use crate::search::projection::collect_structural_facts_text_bounded;
@@ -46,31 +45,31 @@ mod structural_facts_text_test {
         language: &str,
     ) -> Symbol {
         Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind,
-            language: language.to_string(),
-            file_path: file_path.to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 5,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 64,
-            signature: Some(format!("fn {name}()")),
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
-            // Empty body so name/body matches do not pollute the fact-isolation
-            // assertions (the searched token appears ONLY in the fact).
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind,
+                language: language.to_string(),
+                file_path: file_path.to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 5,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 64,
+                signature: Some(format!("fn {name}()")),
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
 

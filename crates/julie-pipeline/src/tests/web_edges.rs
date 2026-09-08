@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use julie_core::database::WebEdgeKind;
-use julie_extractors::base::StructuralFact;
+use julie_extractors::StructuralFact;
 use serde_json::json;
 
 use crate::indexing_core::web_edges::{derive_http_call_edges, derive_sql_query_edges};

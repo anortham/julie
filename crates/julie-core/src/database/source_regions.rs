@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use julie_extractors::base::{SourceRegion, SourceRegionKind};
+use julie_extractors::{SourceRegion, SourceRegionKind};
 use rusqlite::params;
 
 use super::SymbolDatabase;

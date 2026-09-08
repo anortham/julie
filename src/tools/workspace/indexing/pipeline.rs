@@ -9,13 +9,13 @@ use tracing::{debug, info, warn};
 use super::finalize::{analyze_batch, resolve_pending_relationships};
 use super::route::IndexRoute;
 use super::state::{IndexedFileDisposition, IndexingBatchState, IndexingOperation, IndexingStage};
-use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::indexing_core::batch::ExtractedBatch;
 use crate::indexing_core::extraction::{
     ExtractedFileDisposition, ExtractedFileRecord, extract_files_for_indexing_with_records,
 };
 use crate::tools::workspace::commands::ManageWorkspaceTool;
+use julie_core::Symbol;
 use julie_pipeline::indexing_core::web_edges::rebuild_web_edges_for_workspace;
 
 pub(crate) struct IndexingPipelineResult {

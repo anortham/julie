@@ -7,8 +7,9 @@ mod quality_tests {
     use tempfile::TempDir;
 
     use crate::get_context::pipeline::run_pipeline;
+    use julie_core::Symbol;
     use julie_core::database::{FileInfo, SymbolDatabase};
-    use julie_extractors::base::{Symbol, SymbolKind, Visibility};
+    use julie_extractors::{SymbolKind, Visibility};
     use julie_index::search::index::{SearchDocument, SearchIndex};
 
     fn setup_quality_fixture() -> (TempDir, TempDir, SymbolDatabase, SearchIndex) {
@@ -50,29 +51,31 @@ mod quality_tests {
         }
 
         let mk = |id: &str, name: &str, file: &str, doc: &str, sig: &str| Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: file.to_string(),
-            start_line: 1,
-            end_line: 20,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            parent_id: None,
-            signature: Some(sig.to_string()),
-            doc_comment: Some(doc.to_string()),
-            visibility: Some(Visibility::Public),
-            metadata: None,
-            semantic_group: None,
-            confidence: Some(0.95),
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: file.to_string(),
+                start_line: 1,
+                end_line: 20,
+                start_column: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 100,
+                parent_id: None,
+                signature: Some(sig.to_string()),
+                doc_comment: Some(doc.to_string()),
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(0.95),
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: Some(format!("{} {{ /* {} */ }}", sig, doc)),
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         };
 
         let symbols = vec![

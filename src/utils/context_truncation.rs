@@ -163,3 +163,13 @@ impl ContextTruncator {
         essential
     }
 }
+
+/// Truncate a UTF-8 string to at most max_chars Unicode scalar values, appending "..." if truncated.
+pub fn truncate_string(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{}...", truncated)
+    }
+}

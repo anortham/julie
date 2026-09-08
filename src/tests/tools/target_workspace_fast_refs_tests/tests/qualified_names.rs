@@ -34,7 +34,7 @@ fn find_defs_qualified(db: &SymbolDatabase, symbol: &str) -> Vec<Symbol> {
             let matching_parent_ids: std::collections::HashSet<String> = parents
                 .into_iter()
                 .filter(|p| p.name == *parent)
-                .map(|p| p.id)
+                .map(|p| p.extracted.id)
                 .collect();
 
             // Keep only definitions whose parent_id is in matching_parent_ids
@@ -56,58 +56,62 @@ fn find_defs_qualified(db: &SymbolDatabase, symbol: &str) -> Vec<Symbol> {
 /// Helper to create a class/struct symbol (parent container)
 fn make_class_symbol(id: &str, name: &str, file_path: &str, line: u32) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Class,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: line,
-        end_line: line + 20,
-        start_column: 0,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        parent_id: None,
-        signature: Some(format!("struct {}", name)),
-        doc_comment: None,
-        visibility: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Class,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: line,
+            end_line: line + 20,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 0,
+            parent_id: None,
+            signature: Some(format!("struct {}", name)),
+            doc_comment: None,
+            visibility: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 
 /// Helper to create a method symbol with a parent_id
 fn make_method_symbol(id: &str, name: &str, file_path: &str, line: u32, parent_id: &str) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Method,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: line,
-        end_line: line + 5,
-        start_column: 0,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 0,
-        parent_id: Some(parent_id.to_string()),
-        signature: Some(format!("pub fn {}()", name)),
-        doc_comment: None,
-        visibility: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Method,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: line,
+            end_line: line + 5,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 0,
+            parent_id: Some(parent_id.to_string()),
+            signature: Some(format!("pub fn {}()", name)),
+            doc_comment: None,
+            visibility: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 

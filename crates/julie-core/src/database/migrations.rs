@@ -12,8 +12,11 @@ fn get_unix_timestamp() -> Result<i64> {
         .map_err(|e| anyhow!("System time error: {}", e))
 }
 
+#[path = "migrations/receiver_type.rs"]
+mod receiver_type;
+
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 30;
+pub const LATEST_SCHEMA_VERSION: i32 = 31;
 
 impl SymbolDatabase {
     // ============================================================
@@ -126,6 +129,7 @@ impl SymbolDatabase {
             28 => self.migration_028_add_literals()?,
             29 => self.migration_029_add_extractor_enrichments()?,
             30 => self.migration_030_add_web_edges()?,
+            31 => self.migration_031_add_identifier_receiver_type()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -164,6 +168,7 @@ impl SymbolDatabase {
             28 => "Add literals table",
             29 => "Add extractor enrichment tables",
             30 => "Add web_edges table for derived web navigation edges",
+            31 => "Add receiver_type column to identifiers table",
             _ => "Unknown migration",
         };
 

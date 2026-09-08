@@ -13,7 +13,6 @@ use crate::watcher::handlers::handle_file_created_or_modified_static;
 use crate::watcher::observability::LogCapture;
 use crate::workspace::mutation_gate::acquire_gate;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::ExtractorManager;
 use std::fs;
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::layer::SubscriberExt;
@@ -55,21 +54,13 @@ async fn test_hash_match_logs_skipped_info() {
     let abs = test_file.canonicalize().unwrap();
 
     let db = make_db(&workspace_root);
-    let extractor = Arc::new(ExtractorManager::new());
 
     // First index — establishes the hash (no capture needed here).
     {
         let guard = acquire_gate("obs_hash_skip_first").await;
-        handle_file_created_or_modified_static(
-            abs.clone(),
-            &db,
-            &extractor,
-            &workspace_root,
-            None,
-            &guard,
-        )
-        .await
-        .expect("first index should succeed");
+        handle_file_created_or_modified_static(abs.clone(), &db, &workspace_root, None, &guard)
+            .await
+            .expect("first index should succeed");
     }
 
     // Second index — content unchanged, should produce an INFO "unchanged" log.
@@ -77,16 +68,9 @@ async fn test_hash_match_logs_skipped_info() {
 
     {
         let guard = acquire_gate("obs_hash_skip_second").await;
-        handle_file_created_or_modified_static(
-            abs.clone(),
-            &db,
-            &extractor,
-            &workspace_root,
-            None,
-            &guard,
-        )
-        .await
-        .expect("second index should succeed");
+        handle_file_created_or_modified_static(abs.clone(), &db, &workspace_root, None, &guard)
+            .await
+            .expect("second index should succeed");
     }
 
     // Drop the subscriber guard before asserting (not strictly necessary but clean).
@@ -120,22 +104,14 @@ async fn test_indexed_file_logs_symbol_count_info() {
     let abs = test_file.canonicalize().unwrap();
 
     let db = make_db(&workspace_root);
-    let extractor = Arc::new(ExtractorManager::new());
 
     let (capture, _sub_guard) = install_capture();
 
     {
         let guard = acquire_gate("obs_indexed").await;
-        handle_file_created_or_modified_static(
-            abs.clone(),
-            &db,
-            &extractor,
-            &workspace_root,
-            None,
-            &guard,
-        )
-        .await
-        .expect("index should succeed");
+        handle_file_created_or_modified_static(abs.clone(), &db, &workspace_root, None, &guard)
+            .await
+            .expect("index should succeed");
     }
 
     drop(_sub_guard);

@@ -6,7 +6,8 @@
 
 use std::collections::HashMap;
 
-use julie_extractors::{Symbol, SymbolKind};
+use julie_core::Symbol;
+use julie_extractors::SymbolKind;
 use julie_index::search::language_config::LanguageConfigs;
 use julie_index::search::scoring::is_test_path;
 

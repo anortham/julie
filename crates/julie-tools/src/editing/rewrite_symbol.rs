@@ -13,23 +13,20 @@ use tracing::debug;
 
 use crate::navigation::resolution::{WorkspaceTarget, file_path_matches_suffix};
 use julie_context::ToolContext;
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
 use julie_core::file_utils::secure_path_resolution;
 use julie_core::mcp_compat::CallToolResultExt;
 use julie_core::mcp_compat::{CallToolResult, Content};
-use julie_extractors::{ExtractorManager, Symbol};
-use tree_sitter::{Node, Parser, Tree};
+use julie_extractors::ParseDiagnostic;
+use tree_sitter::{Node, Tree};
 
 use super::EditingTransaction;
 use super::validation::{
     check_bracket_balance, format_dry_run_diff, format_unified_diff, should_check_balance,
 };
 
-fn diagnostic_touches_range(
-    diagnostic: &julie_extractors::base::ParseDiagnostic,
-    start: usize,
-    end: usize,
-) -> bool {
+fn diagnostic_touches_range(diagnostic: &ParseDiagnostic, start: usize, end: usize) -> bool {
     let diagnostic_start = diagnostic.start_byte as usize;
     let diagnostic_end = diagnostic.end_byte as usize;
 
@@ -38,16 +35,6 @@ fn diagnostic_touches_range(
     }
 
     diagnostic_start < end && diagnostic_end > start
-}
-
-fn first_parse_diagnostic_touching_range(
-    tree: &Tree,
-    start: usize,
-    end: usize,
-) -> Option<julie_extractors::base::ParseDiagnostic> {
-    julie_extractors::pipeline::parse_diagnostics_for_tree(tree)
-        .into_iter()
-        .find(|diagnostic| diagnostic_touches_range(diagnostic, start, end))
 }
 
 fn default_dry_run() -> bool {
@@ -132,7 +119,7 @@ impl WorkspaceEditTarget {
 }
 
 struct LiveSymbolContext {
-    live_symbol: Symbol,
+    live_symbol: julie_extractors::Symbol,
     tree: Tree,
 }
 
@@ -290,17 +277,6 @@ fn insert_after_line(source: &str, byte_index: usize, new_content: &str) -> Resu
     Ok(result)
 }
 
-fn parse_live_tree(file_path: &str, content: &str) -> Result<Tree> {
-    let language = julie_extractors::language::detect_language_for_source(file_path, content)
-        .ok_or_else(|| anyhow!("Could not detect language for '{}'", file_path))?;
-    let ts_language = julie_extractors::language::get_tree_sitter_language(&language)?;
-    let mut parser = Parser::new();
-    parser.set_language(&ts_language)?;
-    parser
-        .parse(content, None)
-        .ok_or_else(|| anyhow!("Failed to parse {} file '{}'", language, file_path))
-}
-
 fn find_exact_span_node(node: Node<'_>, start: usize, end: usize) -> Option<Node<'_>> {
     if node.start_byte() == start && node.end_byte() == end {
         return Some(node);
@@ -332,8 +308,12 @@ fn live_symbol_context(
     content: &str,
     workspace_root: &Path,
 ) -> Result<LiveSymbolContext> {
-    let extractor = ExtractorManager::new();
-    let live_symbols = extractor.extract_symbols(file_path, content, workspace_root)?;
+    let adapter = super::syntax::SyntaxAdapter::default();
+    let (parsed, extracted) = adapter
+        .parse_and_extract(Path::new(file_path), content, workspace_root, None, None)
+        .map_err(|e| rewrite_symbol_error(e.error_kind(), e.to_string()))?;
+
+    let live_symbols = extracted.symbols;
     let live_symbol = if let Some(symbol) = live_symbols
         .iter()
         .find(|symbol| symbol.id == indexed_symbol.id)
@@ -367,12 +347,13 @@ fn live_symbol_context(
         candidates.remove(0)
     };
 
-    let tree = parse_live_tree(file_path, content)?;
-    if let Some(diagnostic) = first_parse_diagnostic_touching_range(
-        &tree,
-        live_symbol.start_byte as usize,
-        live_symbol.end_byte as usize,
-    ) {
+    if let Some(diagnostic) = parsed.diagnostics.iter().find(|diagnostic| {
+        diagnostic_touches_range(
+            diagnostic,
+            live_symbol.start_byte as usize,
+            live_symbol.end_byte as usize,
+        )
+    }) {
         return Err(rewrite_symbol_error(
             "parse_error",
             format!(
@@ -385,7 +366,10 @@ fn live_symbol_context(
             ),
         ));
     }
-    Ok(LiveSymbolContext { live_symbol, tree })
+    Ok(LiveSymbolContext {
+        live_symbol,
+        tree: parsed.tree,
+    })
 }
 
 fn collect_node_field_names(node: Node<'_>) -> String {
@@ -431,7 +415,7 @@ enum SpanContext {
 fn span_for_operation(
     operation: &str,
     original_content: &str,
-    live_symbol: &Symbol,
+    live_symbol: &julie_extractors::Symbol,
     tree: &Tree,
 ) -> Result<Option<ByteRange>> {
     let full_range = ByteRange {

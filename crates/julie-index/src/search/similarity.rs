@@ -5,8 +5,8 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::base::Symbol;
 
 /// Minimum similarity score (1.0 - cosine_distance) to include in results.
 /// Below this threshold, matches are likely noise.
@@ -123,7 +123,7 @@ pub fn find_similar_symbols(
 mod tests {
     use super::*;
     use julie_core::database::{FileInfo, SymbolDatabase};
-    use julie_extractors::base::{SymbolKind, Visibility};
+    use julie_extractors::{SymbolKind, Visibility};
     use tempfile::TempDir;
 
     fn setup_db() -> (TempDir, SymbolDatabase) {
@@ -152,29 +152,31 @@ mod tests {
 
     fn make_symbol(id: &str, name: &str, kind: SymbolKind, file: &str, line: u32) -> Symbol {
         Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind,
-            language: "rust".to_string(),
-            file_path: file.to_string(),
-            start_line: line,
-            end_line: line + 10,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            parent_id: None,
-            signature: Some(format!("fn {}()", name)),
-            visibility: Some(Visibility::Public),
-            doc_comment: None,
-            content_type: None,
-            confidence: None,
-            semantic_group: None,
-            metadata: None,
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind,
+                language: "rust".to_string(),
+                file_path: file.to_string(),
+                start_line: line,
+                end_line: line + 10,
+                start_column: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 100,
+                parent_id: None,
+                signature: Some(format!("fn {}()", name)),
+                visibility: Some(Visibility::Public),
+                doc_comment: None,
+                content_type: None,
+                confidence: None,
+                semantic_group: None,
+                metadata: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
 

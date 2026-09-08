@@ -10,42 +10,43 @@ mod resolver_tests {
         ParentReferenceContext, build_resolved_relationship, resolve_structured_batch,
         select_best_candidate,
     };
-    use julie_extractors::base::{
+    use julie_core::Symbol;
+    use julie_extractors::{
         Identifier, IdentifierKind, PendingRelationship, RelationshipKind,
-        StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget, Visibility,
+        StructuredPendingRelationship, SymbolKind, UnresolvedTarget, Visibility,
     };
     use std::collections::{HashMap, HashSet};
     use tempfile::TempDir;
-
     /// Helper to create a minimal Symbol for testing
     fn make_symbol(name: &str, kind: SymbolKind, language: &str, file_path: &str) -> Symbol {
         Symbol {
-            id: format!("{}_{}", name, file_path.replace('/', "_")),
-            name: name.to_string(),
-            kind,
-            language: language.to_string(),
-            file_path: file_path.to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 10,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            signature: None,
-            doc_comment: None,
-            visibility: Some(Visibility::Public),
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
+            extracted: julie_extractors::Symbol {
+                id: format!("{}_{}", name, file_path.replace('/', "_")),
+                name: name.to_string(),
+                kind,
+                language: language.to_string(),
+                file_path: file_path.to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 10,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 100,
+                signature: None,
+                doc_comment: None,
+                visibility: Some(Visibility::Public),
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
-
     /// Helper to create a PendingRelationship
     fn make_pending(from_id: &str, callee_name: &str, file_path: &str) -> PendingRelationship {
         make_pending_at_line(from_id, callee_name, file_path, 42)
@@ -103,13 +104,12 @@ mod resolver_tests {
             target_symbol_id: None,
             confidence: 1.0,
             code_context: None,
+            receiver_type: None,
         }
     }
-
     // =========================================================================
     // Kind filtering
     // =========================================================================
-
     #[test]
     fn test_excludes_import_symbols() {
         // An Import symbol should never be selected as a resolution target
@@ -120,7 +120,6 @@ mod resolver_tests {
             "src/lib.rs",
         )];
         let pending = make_pending("caller_1", "process", "src/main.rs");
-
         let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(
             result.is_none(),

@@ -14,13 +14,14 @@
 //!    test subclasses from stealing centrality from production symbols
 
 mod namespace;
+mod receiver_type;
 mod rust_reexports;
 mod scoring;
 
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::base::relationship_resolution::PendingSpan;
-use julie_extractors::base::{
-    PendingRelationship, Relationship, StructuredPendingRelationship, Symbol, SymbolKind,
+use julie_extractors::{
+    PendingRelationship, PendingSpan, Relationship, StructuredPendingRelationship, SymbolKind,
     UnresolvedTarget,
 };
 use std::collections::{HashMap, HashSet};
@@ -301,6 +302,7 @@ pub fn resolve_batch(
             caller_scope_symbol_id: None,
             span: None,
             reference_site_is_exact: false,
+            receiver_type: None,
         })
         .collect();
     resolve_structured_batch(&structured, db)
@@ -396,8 +398,24 @@ pub fn resolve_structured_batch(
         let caller_language = caller_language_for_pending(&structured.pending, &caller_languages);
         match candidates_map.get(&structured.target.terminal_name) {
             Some(candidates) if !candidates.is_empty() => {
+                let candidate_storage: Vec<Symbol>;
+                let candidate_slice = if let Some(receiver) = structured.receiver_type.as_deref() {
+                    let filtered = receiver_type::filter_candidates_by_receiver(
+                        candidates,
+                        receiver,
+                        structured.caller_scope_symbol_id.as_deref(),
+                        &structured.pending.file_path,
+                        caller_language,
+                        db,
+                    );
+                    candidate_storage = filtered.into_iter().cloned().collect();
+                    &candidate_storage[..]
+                } else {
+                    candidates.as_slice()
+                };
+
                 if let Some(target) = select_best_candidate_for_target(
-                    candidates,
+                    candidate_slice,
                     &reexport_imports,
                     &structured.pending,
                     Some(&structured.target),
@@ -416,7 +434,7 @@ pub fn resolve_structured_batch(
                     trace!(
                         "Could not resolve '{}' - no valid target among {} candidates",
                         structured.target.display_name,
-                        candidates.len()
+                        candidate_slice.len()
                     );
                 }
             }

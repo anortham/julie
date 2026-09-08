@@ -9,7 +9,6 @@ use crate::watcher::handlers::{
 use crate::workspace::mutation_gate::acquire_gate;
 use julie_core::database::SymbolDatabase;
 use julie_core::indexing_state::IndexingRepairReason;
-use julie_extractors::ExtractorManager;
 use std::fs;
 use std::sync::{Arc, Mutex};
 
@@ -47,14 +46,12 @@ fn caller() -> i32 {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_stores_identifiers").await;
 
     // Index the file
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -133,19 +130,11 @@ public:
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_watcher_cpp_header_language").await;
 
-    handle_file_created_or_modified_static(
-        absolute_path,
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-        &guard,
-    )
-    .await
-    .expect("watcher indexing should succeed");
+    handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &guard)
+        .await
+        .expect("watcher indexing should succeed");
 
     let db_lock = db.lock().unwrap();
     let stored_language: String = db_lock
@@ -204,30 +193,15 @@ pub fn should_use_semantic_fallback() {}
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_cross_file_pending").await;
 
-    handle_file_created_or_modified_static(
-        callee_abs,
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-        &guard,
-    )
-    .await
-    .expect("callee file indexing should succeed");
+    handle_file_created_or_modified_static(callee_abs, &db, &workspace_root, None, &guard)
+        .await
+        .expect("callee file indexing should succeed");
 
-    handle_file_created_or_modified_static(
-        caller_abs.clone(),
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-        &guard,
-    )
-    .await
-    .expect("initial caller file indexing should succeed");
+    handle_file_created_or_modified_static(caller_abs.clone(), &db, &workspace_root, None, &guard)
+        .await
+        .expect("initial caller file indexing should succeed");
 
     fs::write(
         &caller_file,
@@ -239,16 +213,9 @@ fn caller() {
     )
     .unwrap();
 
-    handle_file_created_or_modified_static(
-        caller_abs,
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-        &guard,
-    )
-    .await
-    .expect("caller update introducing cross-file call should succeed");
+    handle_file_created_or_modified_static(caller_abs, &db, &workspace_root, None, &guard)
+        .await
+        .expect("caller update introducing cross-file call should succeed");
 
     let db_lock = db.lock().unwrap();
     let resolved_calls: i64 = db_lock
@@ -291,13 +258,11 @@ fn original_symbol() {}
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_oversized_text_only").await;
 
     let initial_outcome = handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -312,16 +277,10 @@ fn original_symbol() {}
     let oversized = format!("fn gigantic() {{\n{}\n}}\n", "a".repeat(5_000_010));
     fs::write(&file_path, oversized).unwrap();
 
-    let outcome = handle_file_created_or_modified_static(
-        absolute_path,
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-        &guard,
-    )
-    .await
-    .expect("oversized update should be handled");
+    let outcome =
+        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &guard)
+            .await
+            .expect("oversized update should be handled");
 
     assert!(
         outcome.repair_reason.is_none(),
@@ -379,8 +338,6 @@ fn initial_function() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
 
-    // Initialize extractor manager
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_absolute_path_handling").await;
 
     println!("DEBUG: absolute_path = {}", absolute_path.display());
@@ -390,7 +347,6 @@ fn initial_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -438,7 +394,6 @@ fn modified_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -527,7 +482,6 @@ fn third_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -577,7 +531,6 @@ fn third_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -636,7 +589,6 @@ fn final_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -671,14 +623,12 @@ async fn test_file_deletion_absolute_path() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_file_deletion").await;
 
     // Index the file
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -724,14 +674,12 @@ async fn test_file_rename_absolute_paths() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_file_rename").await;
 
     // Index original file
     handle_file_created_or_modified_static(
         old_absolute.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -749,7 +697,6 @@ async fn test_file_rename_absolute_paths() {
         old_absolute,
         new_absolute.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -785,13 +732,11 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_rename_destination_failure").await;
 
     handle_file_created_or_modified_static(
         old_absolute.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -806,7 +751,6 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
     handle_file_created_or_modified_static(
         initial_new_absolute,
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -827,7 +771,6 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
         old_absolute,
         new_absolute,
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -866,13 +809,11 @@ async fn test_file_rename_persists_repair_when_source_retirement_fails() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_rename_source_retirement").await;
 
     handle_file_created_or_modified_static(
         old_absolute.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -903,7 +844,6 @@ async fn test_file_rename_persists_repair_when_source_retirement_fails() {
         old_absolute,
         new_absolute,
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,

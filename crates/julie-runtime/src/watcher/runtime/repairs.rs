@@ -110,7 +110,6 @@ impl QueueRuntime {
                     timestamp: SystemTime::now(),
                 },
                 &self.db,
-                &self.extractor_manager,
                 &self.search_index,
                 &provider_snapshot,
                 &self.workspace_root,
@@ -180,15 +179,8 @@ impl QueueRuntime {
     }
 
     fn path_has_registered_extractor(path: &Path) -> bool {
-        let Some(language) = path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .and_then(julie_extractors::language::detect_language_from_extension)
-        else {
-            return false;
-        };
-
-        julie_extractors::registry::registry_entry(language).is_ok()
+        let language = julie_core::file_policy::detect_language_for_indexing(path);
+        julie_core::file_policy::is_parser_supported_language(&language)
     }
 
     pub(super) async fn run_repair_scan_if_needed(&self) {
@@ -301,7 +293,6 @@ impl QueueRuntime {
                         timestamp: SystemTime::now(),
                     },
                     &self.db,
-                    &self.extractor_manager,
                     &self.search_index,
                     &provider_snapshot,
                     &self.workspace_root,
@@ -326,7 +317,6 @@ impl QueueRuntime {
                             timestamp: SystemTime::now(),
                         },
                         &self.db,
-                        &self.extractor_manager,
                         &self.search_index,
                         &provider_snapshot,
                         &self.workspace_root,
@@ -372,7 +362,6 @@ impl QueueRuntime {
                     timestamp: SystemTime::now(),
                 },
                 &self.db,
-                &self.extractor_manager,
                 &self.search_index,
                 &provider_snapshot,
                 &self.workspace_root,

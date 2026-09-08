@@ -1,7 +1,6 @@
 use crate::database::SymbolDatabase;
 use crate::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
-use crate::extractors::SymbolKind;
-use crate::extractors::base::ComplexityMetric;
+use crate::extractors::{ComplexityMetric, SymbolKind};
 use crate::tests::helpers::db::{file_info_builder, symbol_builder};
 use crate::tools::deep_dive::deep_dive_query;
 use tempfile::TempDir;

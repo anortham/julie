@@ -44,7 +44,7 @@ impl SymbolDatabase {
     pub fn store_file_parse_diagnostics(
         &self,
         file_path: &str,
-        diagnostics: &[julie_extractors::base::ParseDiagnostic],
+        diagnostics: &[julie_extractors::ParseDiagnostic],
     ) -> Result<()> {
         let payload = if diagnostics.is_empty() {
             None
@@ -63,7 +63,7 @@ impl SymbolDatabase {
     pub fn get_file_parse_diagnostics(
         &self,
         file_path: &str,
-    ) -> Result<Vec<julie_extractors::base::ParseDiagnostic>> {
+    ) -> Result<Vec<julie_extractors::ParseDiagnostic>> {
         let mut stmt = self
             .conn
             .prepare("SELECT parse_cache FROM files WHERE path = ?1")?;

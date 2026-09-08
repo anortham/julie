@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::database::{ProjectionStatus, WebEdge, WebEdgeKind};
-use julie_extractors::base::StructuralFact;
+use julie_extractors::StructuralFact;
 use julie_pipeline::indexing_core::batch::ExtractedBatch;
 
 fn client_fact(

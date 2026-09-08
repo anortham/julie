@@ -75,7 +75,7 @@ impl SearchDocument {
     /// `owner_names_text` from `SymbolIndexContext` (projection layer).
     /// `code_body` is truncated here to ≤ 2000 bytes.
     pub fn for_symbol(
-        symbol: &julie_extractors::Symbol,
+        symbol: &julie_core::Symbol,
         annotation_keys: Vec<String>,
         annotations_text: String,
         owner_names_text: String,

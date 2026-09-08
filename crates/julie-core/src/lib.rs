@@ -20,7 +20,10 @@ pub mod paths;
 pub mod serde_lenient;
 pub mod shared;
 pub mod string_similarity;
+pub mod symbol;
 pub mod token_estimation;
+
+pub use symbol::Symbol;
 pub mod walk;
 pub mod workspace;
 pub mod workspace_errors;

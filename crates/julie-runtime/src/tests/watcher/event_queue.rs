@@ -137,28 +137,19 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
     };
     use crate::workspace::mutation_gate::acquire_gate;
     use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_delete_toctou").await;
 
     // Index a real file first
     let test_file = dir.path().join("toctou.rs");
     fs::write(&test_file, "pub fn will_be_deleted() {}").unwrap();
-    handle_file_created_or_modified_static(
-        test_file.clone(),
-        &db,
-        &extractor_manager,
-        dir.path(),
-        None,
-        &guard,
-    )
-    .await
-    .unwrap();
+    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &guard)
+        .await
+        .unwrap();
 
     let before = {
         let db_lock = db.lock().unwrap();

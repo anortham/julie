@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use julie_extractors::base::StructuralFact;
+use julie_extractors::StructuralFact;
 use rusqlite::params_from_iter;
 use rusqlite::types::Value;
 

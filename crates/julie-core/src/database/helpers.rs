@@ -79,10 +79,8 @@ fn parse_symbol_kind(kind: &str) -> rusqlite::Result<SymbolKind> {
         .ok_or_else(|| row_conversion_error(2, format!("unknown symbol kind: {kind}")))
 }
 
-fn parse_symbol_visibility(
-    visibility: &str,
-) -> rusqlite::Result<julie_extractors::base::Visibility> {
-    julie_extractors::base::Visibility::from_storage_str(visibility)
+fn parse_symbol_visibility(visibility: &str) -> rusqlite::Result<julie_extractors::Visibility> {
+    julie_extractors::Visibility::from_storage_str(visibility)
         .ok_or_else(|| row_conversion_error(13, format!("unknown symbol visibility: {visibility}")))
 }
 
@@ -91,7 +89,7 @@ fn parse_relationship_kind(kind: &str) -> rusqlite::Result<RelationshipKind> {
         .ok_or_else(|| row_conversion_error(3, format!("unknown relationship kind: {kind}")))
 }
 
-fn row_to_body_span(row: &Row) -> rusqlite::Result<Option<julie_extractors::base::NormalizedSpan>> {
+fn row_to_body_span(row: &Row) -> rusqlite::Result<Option<julie_extractors::NormalizedSpan>> {
     let start_line: Option<u32> = row.get("body_start_line")?;
     let start_column: Option<u32> = row.get("body_start_col")?;
     let end_line: Option<u32> = row.get("body_end_line")?;
@@ -115,7 +113,7 @@ fn row_to_body_span(row: &Row) -> rusqlite::Result<Option<julie_extractors::base
             Some(end_column),
             Some(start_byte),
             Some(end_byte),
-        ) => Ok(Some(julie_extractors::base::NormalizedSpan {
+        ) => Ok(Some(julie_extractors::NormalizedSpan {
             start_line,
             start_column,
             end_line,
@@ -220,29 +218,31 @@ impl SymbolDatabase {
             .transpose()?;
 
         Ok(Symbol {
-            id: row.get("id")?,
-            name: row.get("name")?,
-            kind,
-            language: row.get("language")?,
-            file_path: row.get("file_path")?,
-            signature: row.get("signature")?,
-            start_line: row.get("start_line")?,
-            start_column: row.get("start_col")?,
-            end_line: row.get("end_line")?,
-            end_column: row.get("end_col")?,
-            start_byte: row.get("start_byte")?,
-            end_byte: row.get("end_byte")?,
-            doc_comment: row.get("doc_comment")?,
-            visibility,
-            parent_id: row.get("parent_id")?,
-            metadata,
-            semantic_group: row.get("semantic_group")?,
-            confidence: row.get("confidence")?,
+            extracted: julie_extractors::Symbol {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                kind,
+                language: row.get("language")?,
+                file_path: row.get("file_path")?,
+                signature: row.get("signature")?,
+                start_line: row.get("start_line")?,
+                start_column: row.get("start_col")?,
+                end_line: row.get("end_line")?,
+                end_column: row.get("end_col")?,
+                start_byte: row.get("start_byte")?,
+                end_byte: row.get("end_byte")?,
+                doc_comment: row.get("doc_comment")?,
+                visibility,
+                parent_id: row.get("parent_id")?,
+                metadata,
+                semantic_group: row.get("semantic_group")?,
+                confidence: row.get("confidence")?,
+                content_type: row.get("content_type")?,
+                body_span: row_to_body_span(row)?,
+                body_hash: row.get("body_hash")?,
+                annotations: Vec::new(),
+            },
             code_context: row.get("code_context")?,
-            content_type: row.get("content_type")?,
-            body_span: row_to_body_span(row)?,
-            body_hash: row.get("body_hash")?,
-            annotations: Vec::new(),
         })
     }
 
@@ -259,29 +259,31 @@ impl SymbolDatabase {
             .transpose()?;
 
         Ok(Symbol {
-            id: row.get("id")?,
-            name: row.get("name")?,
-            kind,
-            language: row.get("language")?,
-            file_path: row.get("file_path")?,
-            signature: row.get("signature")?,
-            start_line: row.get("start_line")?,
-            start_column: row.get("start_col")?,
-            end_line: row.get("end_line")?,
-            end_column: row.get("end_col")?,
-            start_byte: row.get("start_byte")?,
-            end_byte: row.get("end_byte")?,
-            doc_comment: row.get("doc_comment")?,
-            visibility,
-            parent_id: row.get("parent_id")?,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
+            extracted: julie_extractors::Symbol {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                kind,
+                language: row.get("language")?,
+                file_path: row.get("file_path")?,
+                signature: row.get("signature")?,
+                start_line: row.get("start_line")?,
+                start_column: row.get("start_col")?,
+                end_line: row.get("end_line")?,
+                end_column: row.get("end_col")?,
+                start_byte: row.get("start_byte")?,
+                end_byte: row.get("end_byte")?,
+                doc_comment: row.get("doc_comment")?,
+                visibility,
+                parent_id: row.get("parent_id")?,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: row_to_body_span(row)?,
+                body_hash: row.get("body_hash")?,
+                annotations: Vec::new(),
+            },
             code_context: None,
-            content_type: None,
-            body_span: row_to_body_span(row)?,
-            body_hash: row.get("body_hash")?,
-            annotations: Vec::new(),
         })
     }
 

@@ -707,14 +707,10 @@ impl JulieWorkspace {
 
         info!("Initializing file watcher for: {}", self.root.display());
 
-        // Create placeholder extractor manager for now
-        let extractor_manager = Arc::new(julie_extractors::ExtractorManager::new());
-
         let shared_provider = Arc::new(std::sync::RwLock::new(self.embedding_provider.clone()));
         let file_watcher = IncrementalIndexer::new(
             self.root.clone(),
             self.db.as_ref().unwrap().clone(),
-            extractor_manager,
             self.search_index.clone(),
             shared_provider,
             Arc::clone(&self.indexing_runtime),

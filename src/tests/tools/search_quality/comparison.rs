@@ -155,17 +155,20 @@ pub async fn capture_snapshot_for_query_set(
             .into_iter()
             .take(top_n)
             .enumerate()
-            .map(|(index, symbol)| SearchHitSnapshot {
-                rank: index + 1,
-                file_path: symbol.file_path,
-                symbol_name: if symbol.name.is_empty() {
-                    None
-                } else {
-                    Some(symbol.name)
-                },
-                kind: symbol.kind.to_string(),
-                language: symbol.language,
-                start_line: symbol.start_line,
+            .map(|(index, symbol)| {
+                let extracted = symbol.extracted;
+                SearchHitSnapshot {
+                    rank: index + 1,
+                    file_path: extracted.file_path,
+                    symbol_name: if extracted.name.is_empty() {
+                        None
+                    } else {
+                        Some(extracted.name)
+                    },
+                    kind: extracted.kind.to_string(),
+                    language: extracted.language,
+                    start_line: extracted.start_line,
+                }
             })
             .collect::<Vec<_>>();
 

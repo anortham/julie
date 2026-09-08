@@ -21,11 +21,11 @@ pub mod write_set;
 pub(crate) fn collect_referenced_symbol_ids(
     relationships: &[Relationship],
     identifiers: &[julie_extractors::Identifier],
-    types: &[julie_extractors::base::TypeInfo],
+    types: &[julie_extractors::TypeInfo],
     literals: &[julie_extractors::Literal],
-    source_regions: &[julie_extractors::base::SourceRegion],
-    structural_facts: &[julie_extractors::base::StructuralFact],
-    complexity_metrics: &[julie_extractors::base::ComplexityMetric],
+    source_regions: &[julie_extractors::SourceRegion],
+    structural_facts: &[julie_extractors::StructuralFact],
+    complexity_metrics: &[julie_extractors::ComplexityMetric],
 ) -> HashSet<String> {
     let mut ids = HashSet::new();
     for rel in relationships {

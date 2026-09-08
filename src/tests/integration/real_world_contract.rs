@@ -1,4 +1,4 @@
-use crate::extractors::pipeline::extract_canonical;
+use crate::extractors::extract_canonical;
 use std::fs;
 use std::path::{Path, PathBuf};
 

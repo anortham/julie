@@ -101,7 +101,7 @@ mod tests {
 
         // Verify metadata was written
         let prod = db.get_symbol_by_id("prod_1").unwrap().unwrap();
-        let meta = prod.metadata.unwrap();
+        let meta = prod.metadata.as_ref().unwrap();
         let linkage = meta.get("test_linkage").unwrap();
         let test_count = linkage.get("test_count").unwrap().as_u64().unwrap();
         assert_eq!(test_count, 2);
@@ -159,7 +159,7 @@ mod tests {
         );
 
         let prod = db.get_symbol_by_id("prod_u").unwrap().unwrap();
-        let meta = prod.metadata.unwrap();
+        let meta = prod.metadata.as_ref().unwrap();
         let linkage = meta.get("test_linkage").unwrap();
         assert_eq!(linkage.get("test_count").unwrap().as_u64().unwrap(), 1);
         assert_eq!(
@@ -278,7 +278,7 @@ mod tests {
 
         let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         let prod = db.get_symbol_by_id("prod_1").unwrap().unwrap();
-        let meta = prod.metadata.unwrap();
+        let meta = prod.metadata.as_ref().unwrap();
         let linkage = meta.get("test_linkage").unwrap();
         let names = linkage.get("linked_tests").unwrap().as_array().unwrap();
         assert!(
@@ -569,7 +569,7 @@ mod tests {
 
         let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         let prod = db.get_symbol_by_id("prod_1").unwrap().unwrap();
-        let meta = prod.metadata.unwrap();
+        let meta = prod.metadata.as_ref().unwrap();
         let linkage = meta.get("test_linkage").unwrap();
         let count = linkage.get("test_count").unwrap().as_u64().unwrap();
         assert_eq!(

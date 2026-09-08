@@ -14,13 +14,14 @@ use crate::external_extract::{
     EXTRACT_CONTRACT_VERSION, ExternalExtractArgs, ExternalExtractCommand, ExternalInfoSchemaState,
     format_external_extract_report, read_external_extract_info,
 };
-use crate::extractors::{Identifier, IdentifierKind, Symbol, SymbolKind};
+use crate::extractors::{Identifier, IdentifierKind, SymbolKind};
 use crate::indexing_core::batch::ExtractedBatch;
 use crate::indexing_core::extraction::extract_files_for_indexing;
 use crate::indexing_core::persistence::{
     persist_force_rebuild, persist_incremental_scan, persist_single_file_delete,
 };
 use crate::tests::helpers::db::{file_info_builder, identifier_builder, symbol_builder};
+use julie_core::Symbol;
 
 fn make_file(path: &str, hash: &str) -> FileInfo {
     file_info_builder(path)
@@ -775,7 +776,7 @@ async fn extract_update_changed_file_replaces_only_that_file() {
         .get_all_symbols()
         .expect("symbols")
         .into_iter()
-        .map(|symbol| symbol.name)
+        .map(|symbol| symbol.extracted.name)
         .collect();
     assert!(names.contains(&"new_a".to_string()));
     assert!(names.contains(&"stable_b".to_string()));

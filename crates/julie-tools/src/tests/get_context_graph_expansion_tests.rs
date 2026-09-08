@@ -5,10 +5,10 @@ mod graph_expansion_tests {
     use tempfile::TempDir;
 
     use crate::get_context::pipeline::{NeighborDirection, Pivot, expand_graph};
+    use julie_core::Symbol;
     use julie_core::database::{FileInfo, SymbolDatabase};
     use julie_extractors::{
-        IdentifierKind,
-        base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility},
+        IdentifierKind, Relationship, RelationshipKind, SymbolKind, Visibility,
     };
     use julie_index::search::index::SymbolSearchResult;
     use julie_test_support::db::identifier_builder;
@@ -43,29 +43,31 @@ mod graph_expansion_tests {
 
     fn make_symbol(id: &str, name: &str, kind: SymbolKind, file: &str, line: u32) -> Symbol {
         Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind,
-            language: "rust".to_string(),
-            file_path: file.to_string(),
-            start_line: line,
-            end_line: line + 10,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            parent_id: None,
-            signature: Some(format!("fn {}()", name)),
-            doc_comment: None,
-            visibility: Some(Visibility::Public),
-            metadata: None,
-            semantic_group: None,
-            confidence: Some(0.9),
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind,
+                language: "rust".to_string(),
+                file_path: file.to_string(),
+                start_line: line,
+                end_line: line + 10,
+                start_column: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 100,
+                parent_id: None,
+                signature: Some(format!("fn {}()", name)),
+                doc_comment: None,
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(0.9),
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
 

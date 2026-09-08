@@ -1,5 +1,6 @@
 use super::{namespace, scoring::is_resolvable_target};
-use julie_extractors::base::{PendingRelationship, Symbol, SymbolKind, UnresolvedTarget};
+use julie_core::Symbol;
+use julie_extractors::{PendingRelationship, SymbolKind, UnresolvedTarget};
 use std::collections::HashSet;
 
 pub(super) fn select_definition<'a>(
@@ -118,7 +119,7 @@ fn workspace_glob_reexport_target_paths(
     reexport_namespace: &[String],
     target: &UnresolvedTarget,
 ) -> Vec<ReexportTargetPath> {
-    let workspace_crates = reexport_imports
+    let workspace_crates: HashSet<String> = reexport_imports
         .iter()
         .filter(|candidate| candidate.kind == SymbolKind::Import)
         .filter(|candidate| {
@@ -132,7 +133,7 @@ fn workspace_glob_reexport_target_paths(
                 .and_then(workspace_crate_glob_from_use_signature)
         })
         .filter(|crate_name| workspace_has_crate_root(reexport_imports, crate_name))
-        .collect::<HashSet<_>>();
+        .collect();
 
     let mut target_paths = Vec::new();
     for crate_name in workspace_crates {

@@ -346,7 +346,7 @@ mod tests {
         );
 
         let prod = db.get_symbol_by_id("prod_core").unwrap().unwrap();
-        let meta = prod.metadata.unwrap();
+        let meta = prod.metadata.as_ref().unwrap();
         let linkage = meta.get("test_linkage").unwrap();
 
         // Fixture should be excluded, so only test_case_1 and legacy_test
@@ -417,7 +417,7 @@ mod tests {
         crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
         let prod = db.get_symbol_by_id("prod_eng").unwrap().unwrap();
-        let meta = prod.metadata.unwrap();
+        let meta = prod.metadata.as_ref().unwrap();
         let linkage = meta.get("test_linkage").unwrap();
 
         let best_confidence = linkage.get("best_confidence").unwrap().as_f64().unwrap();
@@ -592,7 +592,7 @@ mod tests {
         crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
         let prod = db.get_symbol_by_id("prod_old").unwrap().unwrap();
-        let meta = prod.metadata.unwrap();
+        let meta = prod.metadata.as_ref().unwrap();
         let linkage = meta.get("test_linkage").unwrap();
 
         let best_confidence = linkage.get("best_confidence").unwrap().as_f64().unwrap();

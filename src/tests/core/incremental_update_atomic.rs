@@ -10,11 +10,11 @@ use crate::database::SymbolDatabase;
 use crate::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
 use crate::database::bulk::type_arguments::{TypeArgumentRow, flatten_type_argument_usages};
 use crate::database::types::FileInfo;
-use crate::extractors::base::{TypeArgument, TypeArgumentUsage, TypeInfo};
 use crate::extractors::{
-    Identifier, IdentifierKind, Literal, LiteralKind, Relationship, RelationshipKind, Symbol,
-    SymbolKind,
+    Identifier, IdentifierKind, Literal, LiteralKind, Relationship, RelationshipKind, SymbolKind,
+    TypeArgument, TypeArgumentUsage, TypeInfo,
 };
+use julie_core::Symbol;
 use tempfile::TempDir;
 
 /// Helper: build a minimal carrier-gated Literal row (post-classification
@@ -45,32 +45,33 @@ fn make_literal(
     }
 }
 
-/// Helper: build a minimal Symbol with the given id, name, and file_path.
 fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 10,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 100,
-        signature: None,
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 10,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 
@@ -123,6 +124,7 @@ fn make_identifier(id: &str, name: &str, file_path: &str) -> Identifier {
         target_symbol_id: None,
         confidence: 1.0,
         code_context: None,
+        receiver_type: None,
     }
 }
 

@@ -7,23 +7,11 @@ async fn test_extractor_database_integration() {
     let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Simulate what an extractor would create
-    use julie_extractors::base::BaseExtractor;
-
-    let source_code = r#"
+    let _source_code = r#"
         function getUserById(id: string): Promise<User> {
             return fetchUser(id);
         }
         "#;
-
-    // This test will initially fail - we need to verify extractors can create symbols
-    // with the new field structure that work with the database
-    let workspace_root = std::path::PathBuf::from("/tmp/test");
-    let base_extractor = BaseExtractor::new(
-        "typescript".to_string(),
-        "test.ts".to_string(),
-        source_code.to_string(),
-        &workspace_root,
-    );
 
     // Create a symbol like an extractor would
     let mut metadata = HashMap::new();
@@ -34,29 +22,31 @@ async fn test_extractor_database_integration() {
     );
 
     let symbol = Symbol {
-        id: base_extractor.generate_id("getUserById", 2, 8),
-        name: "getUserById".to_string(),
-        kind: SymbolKind::Function,
-        language: "typescript".to_string(),
-        file_path: "test.ts".to_string(),
-        start_line: 2,
-        start_column: 8,
-        end_line: 4,
-        end_column: 9,
-        start_byte: 0,
-        end_byte: 0,
-        signature: Some("function getUserById(id: string): Promise<User>".to_string()),
-        doc_comment: None,
-        visibility: Some(julie_extractors::base::Visibility::Public),
-        parent_id: None,
-        metadata: Some(metadata),
-        semantic_group: None, // Will be populated during cross-language analysis
-        confidence: None,     // Will be calculated based on parsing context
+        extracted: julie_extractors::Symbol {
+            id: "test.ts_getUserById_2_8".to_string(),
+            name: "getUserById".to_string(),
+            kind: SymbolKind::Function,
+            language: "typescript".to_string(),
+            file_path: "test.ts".to_string(),
+            start_line: 2,
+            start_column: 8,
+            end_line: 4,
+            end_column: 9,
+            start_byte: 0,
+            end_byte: 0,
+            signature: Some("function getUserById(id: string): Promise<User>".to_string()),
+            doc_comment: None,
+            visibility: Some(Visibility::Public),
+            parent_id: None,
+            metadata: Some(metadata),
+            semantic_group: None, // Will be populated during cross-language analysis
+            confidence: None,     // Will be calculated based on parsing context
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     };
 
     // Following foreign key contract: store file record first
@@ -80,7 +70,7 @@ async fn test_extractor_database_integration() {
     assert_eq!(retrieved.name, "getUserById");
     assert!(retrieved.metadata.is_some());
 
-    let metadata = retrieved.metadata.unwrap();
+    let metadata = retrieved.metadata.as_ref().unwrap();
     assert_eq!(
         metadata.get("returnType").unwrap().as_str().unwrap(),
         "Promise<User>"
@@ -111,40 +101,42 @@ async fn test_complete_symbol_field_persistence() {
 
     // Create symbol with ALL fields populated (including the missing ones)
     let symbol = Symbol {
-        id: "complete-symbol-id".to_string(),
-        name: "complete_function".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "complete_test.rs".to_string(),
-        start_line: 10,
-        start_column: 4,
-        end_line: 20,
-        end_column: 5,
-        // 🔴 THESE FIELDS ARE CURRENTLY LOST (not in database schema):
-        start_byte: 150,
-        end_byte: 450,
-        doc_comment: Some("/// This function does something important".to_string()),
-        visibility: Some(julie_extractors::base::Visibility::Public),
+        extracted: julie_extractors::Symbol {
+            id: "complete-symbol-id".to_string(),
+            name: "complete_function".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "complete_test.rs".to_string(),
+            start_line: 10,
+            start_column: 4,
+            end_line: 20,
+            end_column: 5,
+            // 🔴 THESE FIELDS ARE CURRENTLY LOST (not in database schema):
+            start_byte: 150,
+            end_byte: 450,
+            doc_comment: Some("/// This function does something important".to_string()),
+            visibility: Some(Visibility::Public),
+            content_type: None,
+            body_span: Some(julie_extractors::NormalizedSpan {
+                start_line: 12,
+                start_column: 4,
+                end_line: 18,
+                end_column: 5,
+                start_byte: 180,
+                end_byte: 420,
+            }),
+            body_hash: Some("hash:complete-function-body".to_string()),
+            // Regular fields that work:
+            signature: Some("fn complete_function() -> Result<()>".to_string()),
+            parent_id: None,
+            metadata: None,
+            semantic_group: Some("test-group".to_string()),
+            confidence: Some(0.95),
+            annotations: Vec::new(),
+        },
         code_context: Some(
             "  // line before\n  fn complete_function() {\n  // line after".to_string(),
         ),
-        content_type: None,
-        body_span: Some(julie_extractors::base::NormalizedSpan {
-            start_line: 12,
-            start_column: 4,
-            end_line: 18,
-            end_column: 5,
-            start_byte: 180,
-            end_byte: 420,
-        }),
-        body_hash: Some("hash:complete-function-body".to_string()),
-        // Regular fields that work:
-        signature: Some("fn complete_function() -> Result<()>".to_string()),
-        parent_id: None,
-        metadata: None,
-        semantic_group: Some("test-group".to_string()),
-        confidence: Some(0.95),
-        annotations: Vec::new(),
     };
 
     // Store the symbol
@@ -171,7 +163,7 @@ async fn test_complete_symbol_field_persistence() {
     );
     assert_eq!(
         retrieved.visibility,
-        Some(julie_extractors::base::Visibility::Public),
+        Some(Visibility::Public),
         "visibility should be persisted"
     );
     assert_eq!(
@@ -181,7 +173,7 @@ async fn test_complete_symbol_field_persistence() {
     );
     assert_eq!(
         retrieved.body_span,
-        Some(julie_extractors::base::NormalizedSpan {
+        Some(julie_extractors::NormalizedSpan {
             start_line: 12,
             start_column: 4,
             end_line: 18,

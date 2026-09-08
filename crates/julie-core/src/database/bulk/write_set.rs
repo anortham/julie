@@ -1,11 +1,14 @@
 use crate::database::FileInfo;
-use julie_extractors::{Relationship, Symbol};
+use crate::symbol::Symbol;
+use julie_extractors::{
+    ComplexityMetric, ParseDiagnostic, Relationship, SourceRegion, StructuralFact, TypeInfo,
+};
 
 use super::type_arguments::TypeArgumentRow;
 
 #[derive(Clone, Copy, Default)]
 pub struct AtomicPersistenceMetadata<'a> {
-    pub parse_diagnostics_by_file: &'a [(String, Vec<julie_extractors::base::ParseDiagnostic>)],
+    pub parse_diagnostics_by_file: &'a [(String, Vec<ParseDiagnostic>)],
     pub repair_entries: &'a [(String, String)],
     pub mark_external_analysis_stale: bool,
 }
@@ -25,7 +28,7 @@ pub struct CanonicalWriteSet<'a> {
     pub symbols: &'a [Symbol],
     pub relationships: &'a [Relationship],
     pub identifiers: &'a [julie_extractors::Identifier],
-    pub types: &'a [julie_extractors::base::TypeInfo],
+    pub types: &'a [TypeInfo],
     /// Flattened type-argument usage rows. These are derived from extractor
     /// `TypeArgumentUsage` trees in the indexing persistence layer so the
     /// database bulk path can stay schema-shaped.
@@ -33,7 +36,7 @@ pub struct CanonicalWriteSet<'a> {
     /// String-literal call arguments captured by extractors and classified by
     /// the indexing pipeline before persistence.
     pub literals: &'a [julie_extractors::Literal],
-    pub source_regions: &'a [julie_extractors::base::SourceRegion],
-    pub structural_facts: &'a [julie_extractors::base::StructuralFact],
-    pub complexity_metrics: &'a [julie_extractors::base::ComplexityMetric],
+    pub source_regions: &'a [SourceRegion],
+    pub structural_facts: &'a [StructuralFact],
+    pub complexity_metrics: &'a [ComplexityMetric],
 }

@@ -1,5 +1,6 @@
 use crate::database::{FileInfo, SymbolDatabase};
-use crate::extractors::{AnnotationMarker, Symbol, SymbolKind};
+use crate::extractors::{AnnotationMarker, SymbolKind};
+use julie_core::Symbol;
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -33,29 +34,31 @@ fn marker(
 
 fn symbol(id: &str, name: &str, file_path: &str, annotations: Vec<AnnotationMarker>) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 3,
-        start_column: 4,
-        end_line: 8,
-        end_column: 1,
-        start_byte: 20,
-        end_byte: 80,
-        signature: Some(format!("fn {name}()")),
-        doc_comment: Some(format!("/// docs for {name}")),
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: Some("annotation-storage".to_string()),
-        confidence: Some(0.98),
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: 3,
+            start_column: 4,
+            end_line: 8,
+            end_column: 1,
+            start_byte: 20,
+            end_byte: 80,
+            signature: Some(format!("fn {name}()")),
+            doc_comment: Some(format!("/// docs for {name}")),
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: Some("annotation-storage".to_string()),
+            confidence: Some(0.98),
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations,
+        },
         code_context: Some(format!("fn {name}() {{}}")),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations,
     }
 }
 

@@ -1,8 +1,6 @@
-use crate::extractors::*;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tree_sitter::{Parser, Tree};
 
 /// Get absolute path to real-world fixtures (prevents CWD issues in parallel tests)
 fn real_world_test_dir() -> PathBuf {
@@ -11,261 +9,21 @@ fn real_world_test_dir() -> PathBuf {
 
 const REAL_WORLD_TEST_DIR: &str = "fixtures/real-world"; // Deprecated - use real_world_test_dir() instead
 
-/// Initialize a tree-sitter parser for the given language
-fn init_parser(code: &str, language: &str) -> Tree {
-    let mut parser = Parser::new();
-
-    // Use the language module to get tree-sitter language
-    let lang = crate::language::get_tree_sitter_language(language)
-        .unwrap_or_else(|_| panic!("Unsupported language: {}", language));
-
-    parser.set_language(&lang).unwrap();
-    parser.parse(code, None).unwrap()
-}
-
 /// Test a real-world file and validate meaningful extraction
-fn test_real_world_file(file_path: &Path, language: &str) {
+fn test_real_world_file(file_path: &Path, _language: &str) {
     println!("🧪 Testing real-world file: {}", file_path.display());
 
     let content = fs::read_to_string(file_path)
         .unwrap_or_else(|e| panic!("Failed to read {}: {}", file_path.display(), e));
 
-    let tree = init_parser(&content, language);
-
-    // Derive workspace_root from file_path
     let workspace_root = file_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new(REAL_WORLD_TEST_DIR));
 
-    // Extract symbols using the appropriate extractor
-    let symbols = match language {
-        "kotlin" => {
-            let mut extractor = kotlin::KotlinExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "ruby" => {
-            let mut extractor = ruby::RubyExtractor::new(
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "rust" => {
-            let mut extractor = rust::RustExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "typescript" | "tsx" => {
-            let mut extractor = typescript::TypeScriptExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "javascript" | "jsx" => {
-            let mut extractor = javascript::JavaScriptExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "python" => {
-            let mut extractor = python::PythonExtractor::new(
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "java" => {
-            let mut extractor = java::JavaExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "csharp" => {
-            let mut extractor = csharp::CSharpExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "go" => {
-            let mut extractor = go::GoExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "php" => {
-            let mut extractor = php::PhpExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "swift" => {
-            let mut extractor = swift::SwiftExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "razor" => {
-            let mut extractor = razor::RazorExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "vue" => {
-            let mut extractor = vue::VueExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(Some(&tree))
-        }
-        "bash" => {
-            let mut extractor = bash::BashExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "css" => {
-            let mut extractor = css::CSSExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "dart" => {
-            let mut extractor = dart::DartExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "gdscript" => {
-            let mut extractor = gdscript::GDScriptExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "html" => {
-            let mut extractor = html::HTMLExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "powershell" => {
-            let workspace_root = PathBuf::from(REAL_WORLD_TEST_DIR);
-            let mut extractor = powershell::PowerShellExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                &workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "regex" => {
-            let mut extractor = regex::RegexExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "sql" => {
-            let mut extractor = sql::SqlExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "zig" => {
-            let mut extractor = zig::ZigExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "c" => {
-            let mut extractor = crate::extractors::c::CExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "cpp" => {
-            let workspace_root = PathBuf::from(REAL_WORLD_TEST_DIR);
-            let mut extractor = cpp::CppExtractor::new(
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                &workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        "lua" => {
-            let workspace_root = PathBuf::from(REAL_WORLD_TEST_DIR);
-            let mut extractor = lua::LuaExtractor::new(
-                language.to_string(),
-                file_path.to_string_lossy().to_string(),
-                content.clone(),
-                &workspace_root,
-            );
-            extractor.extract_symbols(&tree)
-        }
-        _ => panic!("Unsupported language: {}", language),
-    };
+    let results =
+        julie_extractors::extract_canonical(&file_path.to_string_lossy(), &content, workspace_root)
+            .unwrap_or_else(|e| panic!("Failed to extract {}: {:?}", file_path.display(), e));
+    let symbols = results.symbols;
 
     // Validate meaningful extraction - key requirement
     assert!(

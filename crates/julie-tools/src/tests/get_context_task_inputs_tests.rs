@@ -9,8 +9,9 @@ mod tests {
     use crate::get_context::task_signals::{TaskSignals, hydrate_failing_test_links};
     use crate::spillover::SpilloverFormat;
     use crate::spillover::store::SpilloverStore;
+    use julie_core::Symbol;
     use julie_core::database::{FileInfo, SymbolDatabase};
-    use julie_extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+    use julie_extractors::{Relationship, RelationshipKind, SymbolKind, Visibility};
     use julie_index::search::index::{SearchDocument, SearchIndex, SymbolSearchResult};
     use julie_test_support::db::identifier_builder;
 
@@ -46,29 +47,31 @@ mod tests {
 
     fn make_symbol(id: &str, name: &str, file_path: &str, body: &str) -> Symbol {
         Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: file_path.to_string(),
-            start_line: 1,
-            end_line: 6,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: body.len() as u32,
-            parent_id: None,
-            signature: Some(format!("fn {}()", name)),
-            doc_comment: Some(format!("{} docs", name)),
-            visibility: Some(Visibility::Public),
-            metadata: None,
-            semantic_group: None,
-            confidence: Some(1.0),
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: file_path.to_string(),
+                start_line: 1,
+                end_line: 6,
+                start_column: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: body.len() as u32,
+                parent_id: None,
+                signature: Some(format!("fn {}()", name)),
+                doc_comment: Some(format!("{} docs", name)),
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(1.0),
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: Some(body.to_string()),
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
 

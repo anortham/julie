@@ -7,10 +7,7 @@ impl SmartRefactorTool {
     ///
     /// Delegates to `julie_extractors::language::detect_language_from_extension()`.
     pub fn detect_language(&self, file_path: &str) -> String {
-        std::path::Path::new(file_path)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .and_then(julie_extractors::language::detect_language_from_extension)
+        julie_extractors::detect_language_for_path(std::path::Path::new(file_path), "")
             .unwrap_or("unknown")
             .to_string()
     }

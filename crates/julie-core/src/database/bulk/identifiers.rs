@@ -43,8 +43,8 @@ pub(crate) fn insert_identifiers_tx(
         "INSERT OR REPLACE INTO identifiers
          (id, name, kind, language, file_path, start_line, start_col,
           end_line, end_col, start_byte, end_byte, containing_symbol_id,
-          target_symbol_id, confidence, code_context)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+          target_symbol_id, confidence, code_context, receiver_type)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
     )?;
 
     let mut inserted = 0;
@@ -77,7 +77,8 @@ pub(crate) fn insert_identifiers_tx(
             containing_symbol_id,
             target_symbol_id,
             identifier.confidence,
-            identifier.code_context
+            identifier.code_context,
+            identifier.receiver_type.as_deref()
         ])?;
         inserted += 1;
     }

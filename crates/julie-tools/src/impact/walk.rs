@@ -3,10 +3,11 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 
 use crate::impact::ranking::relationship_priority;
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
 use julie_core::database::WebEdgeKind;
 use julie_core::database::impact_graph::identifier_incoming_edges;
-use julie_extractors::{Relationship, RelationshipKind, Symbol};
+use julie_extractors::{Relationship, RelationshipKind};
 
 #[derive(Debug, Clone)]
 pub struct ImpactCandidate {

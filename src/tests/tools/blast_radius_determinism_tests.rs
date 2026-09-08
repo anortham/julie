@@ -16,7 +16,7 @@ use tempfile::TempDir;
 
 use crate::database::types::FileInfo;
 use crate::extractors::{
-    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
+    Identifier, IdentifierKind, Relationship, RelationshipKind, SymbolKind, Visibility,
 };
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
@@ -29,6 +29,7 @@ use crate::tools::impact::seed::resolve_seed_context;
 use crate::tools::impact::walk::{
     ImpactCandidate, WalkBudget, walk_impacts, walk_impacts_with_budget,
 };
+use julie_core::Symbol;
 
 fn make_file(path: &str, hash: &str) -> FileInfo {
     file_info_builder(path)

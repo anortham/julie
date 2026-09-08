@@ -311,6 +311,7 @@ impl SymbolDatabase {
 
                 -- Context
                 code_context TEXT,
+                receiver_type TEXT,
 
                 -- Infrastructure
                 last_indexed INTEGER DEFAULT 0

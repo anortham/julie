@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::Result;
-use julie_extractors::base::StructuralFact;
+use julie_extractors::StructuralFact;
 use serde::Serialize;
 use serde_json::{Value, json};
 

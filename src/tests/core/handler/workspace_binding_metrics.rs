@@ -212,7 +212,7 @@ async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attribution()
 -> Result<()> {
-    use crate::extractors::{Symbol, SymbolKind};
+    use crate::extractors::SymbolKind;
     use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
     use std::time::Duration;
@@ -286,30 +286,32 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
             .expect("target workspace should have a database")
             .clone();
         let mut target_db = target_db.lock().unwrap();
-        let symbol = Symbol {
-            id: "target-symbol-id".to_string(),
-            name: "target_symbol".to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: file_path.to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 1,
-            end_column: 24,
-            start_byte: 0,
-            end_byte: 24,
-            signature: Some("pub fn target_symbol()".to_string()),
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
+        let symbol = julie_core::Symbol {
+            extracted: julie_extractors::Symbol {
+                id: "target-symbol-id".to_string(),
+                name: "target_symbol".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: file_path.to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 1,
+                end_column: 24,
+                start_byte: 0,
+                end_byte: 24,
+                signature: Some("pub fn target_symbol()".to_string()),
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         };
         target_db.bulk_store_fresh_atomic(
             &[FileInfo {

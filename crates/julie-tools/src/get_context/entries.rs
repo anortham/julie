@@ -4,9 +4,9 @@ use anyhow::Result;
 
 use super::graph::GraphExpansion;
 use super::scoring::Pivot;
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
 use julie_core::shared::NOISE_CALLEE_NAMES;
-use julie_extractors::base::Symbol;
 use julie_index::search::scoring::is_test_path;
 
 /// Pre-fetched data for building pivot entries without N+1 DB queries.
@@ -73,7 +73,7 @@ fn fetch_pivot_batch_data(
         for symbol in db.get_symbols_by_ids(&related_ids)? {
             related_symbols
                 .entry(symbol.id.clone())
-                .or_insert((symbol.name, symbol.file_path));
+                .or_insert((symbol.extracted.name, symbol.extracted.file_path));
         }
     }
 

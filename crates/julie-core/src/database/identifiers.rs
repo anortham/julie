@@ -25,11 +25,11 @@ pub struct IdentifierRef {
     /// fallbacks when collecting likely tests.
     pub target_symbol_id: Option<String>,
     pub confidence: f32,
+    pub receiver_type: Option<String>,
 }
 
 /// Column list for IdentifierRef queries
-const IDENTIFIER_REF_COLUMNS: &str =
-    "name, kind, file_path, start_line, containing_symbol_id, target_symbol_id, confidence";
+const IDENTIFIER_REF_COLUMNS: &str = "name, kind, file_path, start_line, containing_symbol_id, target_symbol_id, confidence, receiver_type";
 
 fn refill_temp_values(
     conn: &rusqlite::Connection,
@@ -125,6 +125,7 @@ impl SymbolDatabase {
             containing_symbol_id: row.get("containing_symbol_id")?,
             target_symbol_id: row.get("target_symbol_id")?,
             confidence: row.get("confidence")?,
+            receiver_type: row.get("receiver_type")?,
         })
     }
 

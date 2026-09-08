@@ -10,7 +10,8 @@ use super::{RenameChange, RenameSymbolTool, SmartRefactorTool, compute_line_chan
 use crate::navigation::FastRefsTool;
 use crate::navigation::resolution::parse_qualified_name;
 use julie_context::ToolContext;
-use julie_extractors::{Relationship, Symbol};
+use julie_core::Symbol;
+use julie_extractors::Relationship;
 
 impl RenameSymbolTool {
     pub fn request_input_bytes(&self) -> u64 {

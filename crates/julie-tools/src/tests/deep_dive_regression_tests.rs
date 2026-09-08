@@ -1,11 +1,9 @@
 use crate::deep_dive::data::{RefEntry, SymbolContext, build_symbol_context, find_symbol};
 use crate::deep_dive::formatting::format_symbol_context;
 use crate::deep_dive::{DeepDiveTool, deep_dive_query};
+use julie_core::Symbol;
 use julie_core::database::{FileInfo, SymbolDatabase};
-use julie_extractors::{
-    IdentifierKind,
-    base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility},
-};
+use julie_extractors::{IdentifierKind, Relationship, RelationshipKind, SymbolKind, Visibility};
 use julie_test_support::db::identifier_builder;
 use tempfile::TempDir;
 
@@ -53,29 +51,31 @@ fn make_symbol(
     code_context: Option<&str>,
 ) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind,
-        language: "rust".to_string(),
-        file_path: file.to_string(),
-        start_line: line,
-        end_line: line + 10,
-        start_column: 0,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 100,
-        parent_id: parent_id.map(|s| s.to_string()),
-        signature: signature.map(|s| s.to_string()),
-        doc_comment: None,
-        visibility,
-        metadata: None,
-        semantic_group: None,
-        confidence: Some(0.9),
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind,
+            language: "rust".to_string(),
+            file_path: file.to_string(),
+            start_line: line,
+            end_line: line + 10,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            parent_id: parent_id.map(|s| s.to_string()),
+            signature: signature.map(|s| s.to_string()),
+            doc_comment: None,
+            visibility,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(0.9),
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: code_context.map(|s| s.to_string()),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 

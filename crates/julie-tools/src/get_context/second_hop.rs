@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use super::pipeline::GraphExpansion;
 use super::task_signals::TaskSignals;
-use julie_extractors::base::Symbol;
+use julie_core::Symbol;
 use julie_index::search::scoring::is_test_path;
 
 /// Decide whether a second-hop expansion should run for this pivot set.

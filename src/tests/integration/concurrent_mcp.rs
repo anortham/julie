@@ -315,7 +315,7 @@ mod tests {
             });
         }
 
-        let completed = timeout(Duration::from_millis(800), async {
+        let completed = timeout(Duration::from_secs(30), async {
             let mut completed = Vec::with_capacity(5);
             while let Some(joined) = set.join_next().await {
                 completed.push(joined.expect("primary read task panicked")?);

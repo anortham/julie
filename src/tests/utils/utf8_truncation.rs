@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::extractors::base::BaseExtractor;
+    use crate::utils::context_truncation::truncate_string;
 
     #[test]
     fn test_truncate_string_with_utf8() {
@@ -9,28 +9,28 @@ mod tests {
             r#"[ "Jan","Feb","Mar","Apr","Maí","Jún","Júl","Ágú","Sep","Okt","Nóv","Des" ]"#;
 
         // Test truncation at 30 characters (where the original error occurred)
-        let truncated = BaseExtractor::truncate_string(test_str, 30);
+        let truncated = truncate_string(test_str, 30);
         assert!(truncated.chars().count() <= 33); // 30 + "..." = 33
         assert!(truncated.is_char_boundary(truncated.len())); // Verify valid UTF-8
 
         // Test truncation at 50 characters
-        let truncated = BaseExtractor::truncate_string(test_str, 50);
+        let truncated = truncate_string(test_str, 50);
         assert!(truncated.chars().count() <= 53); // 50 + "..." = 53
         assert!(truncated.is_char_boundary(truncated.len())); // Verify valid UTF-8
 
         // Test with already short string - should not add "..."
         let short = "short";
-        let truncated = BaseExtractor::truncate_string(short, 30);
+        let truncated = truncate_string(short, 30);
         assert_eq!(truncated, "short");
 
         // Test exact boundary
         let exact = "exactly_30_characters_here";
-        let truncated = BaseExtractor::truncate_string(exact, 30);
+        let truncated = truncate_string(exact, 30);
         assert_eq!(truncated, exact);
 
         // Test Unicode characters at the boundary
         let unicode = "Test 日本語 characters";
-        let truncated = BaseExtractor::truncate_string(unicode, 10);
+        let truncated = truncate_string(unicode, 10);
         assert!(truncated.is_char_boundary(truncated.len())); // Should not panic
     }
 
@@ -38,7 +38,7 @@ mod tests {
     fn test_truncate_string_preserves_multibyte_chars() {
         // String with various multibyte UTF-8 characters
         let multibyte = "Ágú Maí Jún Júl Nóv Des"; // Icelandic months
-        let truncated = BaseExtractor::truncate_string(multibyte, 10);
+        let truncated = truncate_string(multibyte, 10);
 
         // Should not panic and should be valid UTF-8
         assert!(truncated.is_char_boundary(truncated.len()));
@@ -56,7 +56,7 @@ mod tests {
     fn test_truncate_string_with_emoji() {
         // Test with emoji which can be multiple bytes
         let emoji_str = "Hello 👋 World 🌍 Test 🚀";
-        let truncated = BaseExtractor::truncate_string(emoji_str, 10);
+        let truncated = truncate_string(emoji_str, 10);
 
         // Should not panic and should be valid UTF-8
         assert!(truncated.is_char_boundary(truncated.len()));

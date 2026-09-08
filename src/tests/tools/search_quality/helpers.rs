@@ -3,9 +3,9 @@
 //! These helpers call the search engine directly (not through the MCP tool layer)
 //! to get structured Symbol results for quality assertions.
 
-use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use anyhow::{Result, bail};
+use julie_core::Symbol;
 use std::ops::Deref;
 
 #[derive(Debug)]

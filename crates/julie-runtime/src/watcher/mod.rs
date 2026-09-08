@@ -36,7 +36,6 @@ use crate::workspace::mutation_gate::MutationGuard;
 use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 use julie_core::database::SymbolDatabase;
 use julie_core::indexing_state::{IndexingRepairReason, SharedIndexingRuntime};
-use julie_extractors::ExtractorManager;
 
 pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 
@@ -68,7 +67,6 @@ where
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<StdMutex<SymbolDatabase>>,
-    extractor_manager: Arc<ExtractorManager>,
     search_index: Option<Arc<julie_index::search::SearchIndex>>,
 
     /// Embedding provider for incremental semantic updates.
@@ -127,7 +125,6 @@ pub struct IncrementalIndexer {
 pub(super) async fn dispatch_file_event(
     event: FileChangeEvent,
     db: &Arc<StdMutex<SymbolDatabase>>,
-    extractor_manager: &Arc<ExtractorManager>,
     search_index: &Option<Arc<julie_index::search::SearchIndex>>,
     embedding_provider: &Option<Arc<dyn julie_pipeline::embeddings::EmbeddingProvider>>,
     workspace_root: &std::path::Path,
@@ -145,7 +142,6 @@ pub(super) async fn dispatch_file_event(
             match handlers::handle_file_created_or_modified_static(
                 event.path,
                 db,
-                extractor_manager,
                 workspace_root,
                 search_index.as_ref(),
                 _guard,
@@ -251,7 +247,6 @@ pub(super) async fn dispatch_file_event(
                 from,
                 to.clone(),
                 db,
-                extractor_manager,
                 workspace_root,
                 search_index.as_ref(),
                 _guard,
@@ -348,7 +343,6 @@ impl IncrementalIndexer {
     pub fn new(
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
-        extractor_manager: Arc<ExtractorManager>,
         search_index: Option<Arc<julie_index::search::SearchIndex>>,
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
@@ -356,7 +350,6 @@ impl IncrementalIndexer {
         Self::new_with_mutation_gate_registry(
             workspace_root,
             db,
-            extractor_manager,
             search_index,
             embedding_provider,
             indexing_runtime,
@@ -367,7 +360,6 @@ impl IncrementalIndexer {
     pub fn new_with_mutation_gate_registry(
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
-        extractor_manager: Arc<ExtractorManager>,
         search_index: Option<Arc<julie_index::search::SearchIndex>>,
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
@@ -388,7 +380,6 @@ impl IncrementalIndexer {
         Ok(Self {
             watcher: None,
             db,
-            extractor_manager,
             search_index,
             embedding_provider,
             lang_configs,
@@ -503,7 +494,6 @@ impl IncrementalIndexer {
         let cancel_flag_queue = self.cancel_flag.clone();
         let queue_runtime = runtime::QueueRuntime::new(
             Arc::clone(&self.db),
-            Arc::clone(&self.extractor_manager),
             self.search_index.as_ref().map(Arc::clone),
             Arc::clone(&self.embedding_provider),
             Arc::clone(&self.lang_configs),

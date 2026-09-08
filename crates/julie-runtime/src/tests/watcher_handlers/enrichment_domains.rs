@@ -1,6 +1,6 @@
 use super::*;
 use julie_core::database::StructuralFactQuery;
-use julie_extractors::base::SourceRegionKind;
+use julie_extractors::SourceRegionKind;
 
 #[tokio::test]
 async fn watcher_replaces_all_extractor_enrichment_domains() {
@@ -17,13 +17,11 @@ async fn watcher_replaces_all_extractor_enrichment_domains() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("watcher_replaces_extractor_enrichments").await;
 
     handle_file_created_or_modified_static(
         test_file.canonicalize().unwrap(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -69,7 +67,6 @@ async fn watcher_replaces_all_extractor_enrichment_domains() {
     handle_file_created_or_modified_static(
         test_file.canonicalize().unwrap(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,

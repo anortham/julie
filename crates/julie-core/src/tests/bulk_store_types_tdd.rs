@@ -2,9 +2,44 @@
 // This test will fail until we implement the bulk_store_types function
 
 use crate::database::*;
-use julie_extractors::base::TypeInfo;
+use crate::symbol::Symbol;
+use julie_extractors::TypeInfo;
 use std::collections::HashMap;
 use tempfile::TempDir;
+
+fn make_symbol(id: &str, name: &str, file_path: &str, signature: Option<&str>) -> Symbol {
+    Symbol {
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: julie_extractors::SymbolKind::Function,
+            language: if file_path.ends_with(".py") {
+                "python".to_string()
+            } else {
+                "typescript".to_string()
+            },
+            file_path: file_path.to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 10,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            signature: signature.map(str::to_string),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
+        code_context: None,
+    }
+}
 
 #[test]
 fn test_bulk_store_types() {
@@ -14,56 +49,18 @@ fn test_bulk_store_types() {
 
     // First, create and store some symbols (types are linked to symbols)
     let symbols = vec![
-        julie_extractors::Symbol {
-            id: "symbol1".to_string(),
-            name: "getUserData".to_string(),
-            kind: julie_extractors::SymbolKind::Function,
-            language: "python".to_string(),
-            file_path: "test.py".to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 10,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            signature: Some("def getUserData() -> Dict[str, Any]".to_string()),
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
-            code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
-        },
-        julie_extractors::Symbol {
-            id: "symbol2".to_string(),
-            name: "processData".to_string(),
-            kind: julie_extractors::SymbolKind::Function,
-            language: "typescript".to_string(),
-            file_path: "test.ts".to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 10,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            signature: Some("function processData<T>(data: T): Promise<T>".to_string()),
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
-            code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
-        },
+        make_symbol(
+            "symbol1",
+            "getUserData",
+            "test.py",
+            Some("def getUserData() -> Dict[str, Any]"),
+        ),
+        make_symbol(
+            "symbol2",
+            "processData",
+            "test.ts",
+            Some("function processData<T>(data: T): Promise<T>"),
+        ),
     ];
 
     // Store file info first (foreign key dependency)
@@ -189,31 +186,12 @@ fn test_bulk_store_types_performance() {
             });
         }
 
-        symbols.push(julie_extractors::Symbol {
-            id: symbol_id.clone(),
-            name: format!("func_{}", i),
-            kind: julie_extractors::SymbolKind::Function,
-            language: "python".to_string(),
-            file_path: file_path,
-            start_line: 1,
-            start_column: 0,
-            end_line: 10,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            signature: Some(format!("def func_{}() -> str", i)),
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
-            code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
-        });
+        symbols.push(make_symbol(
+            &symbol_id,
+            &format!("func_{}", i),
+            &file_path,
+            Some(&format!("def func_{}() -> str", i)),
+        ));
 
         types.push(TypeInfo {
             symbol_id: symbol_id.clone(),

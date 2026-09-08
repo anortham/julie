@@ -4,7 +4,7 @@
 //! The handler-bound workspace-parameter resolver (`resolve_workspace_filter`)
 //! has moved to `src/handler/workspace_resolution.rs`.
 
-use julie_extractors::Symbol;
+use julie_core::Symbol;
 
 pub use julie_core::workspace_errors::{
     WorkspaceResolutionFailure, WorkspaceResolutionFailureKind, workspace_resolution_failure_kind,

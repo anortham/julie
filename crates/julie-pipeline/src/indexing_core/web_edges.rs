@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use julie_core::database::{SymbolDatabase, WebEdge, WebEdgeKind};
-use julie_extractors::base::StructuralFact;
+use julie_extractors::StructuralFact;
 
 /// Minimum combined confidence to emit a matched (in-workspace) edge.
 /// Below this, a client call degrades to an external-endpoint edge.

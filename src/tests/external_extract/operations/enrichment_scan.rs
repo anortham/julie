@@ -1,6 +1,6 @@
 use super::*;
 use crate::database::StructuralFactQuery;
-use julie_extractors::base::SourceRegionKind;
+use julie_extractors::SourceRegionKind;
 
 #[tokio::test]
 async fn extract_scan_persists_v2_16_enrichment_domains() {

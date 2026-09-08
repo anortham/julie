@@ -38,8 +38,9 @@ use anyhow::Result;
 use tempfile::TempDir;
 
 use crate::search::text_search::definition_search_with_index_for_test;
+use julie_core::Symbol;
 use julie_core::database::{FileInfo, SymbolDatabase};
-use julie_extractors::{Symbol, SymbolKind};
+use julie_extractors::SymbolKind;
 use julie_index::search::expansion::{MAX_ADDED_TERMS, expand_query_terms};
 use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use julie_index::search::scoring::is_nl_like_query;
@@ -50,29 +51,31 @@ use julie_index::search::scoring::is_nl_like_query;
 
 fn make_symbol(id: &str, name: &str, file_path: &str, kind: SymbolKind) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind,
-        language: "swift".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 10,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 200,
-        signature: Some(format!("func {name}()")),
-        doc_comment: Some(format!("Displays a template for {name}.")),
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind,
+            language: "swift".to_string(),
+            file_path: file_path.to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 10,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 200,
+            signature: Some(format!("func {name}()")),
+            doc_comment: Some(format!("Displays a template for {name}.")),
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: Some(format!("func {}() {{\n  // display template\n}}", name)),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 
@@ -280,58 +283,60 @@ fn and_or_fallback_does_not_blow_up_latency() -> Result<()> {
     let mut db = SymbolDatabase::new(&db_path)?;
     let index = SearchIndex::create(index_dir.path())?;
 
-    // Symbol A: contains "alpha" only in its body/name, nothing from "bravo charlie"
     let sym_a = Symbol {
-        id: "sym-alpha".to_string(),
-        name: "alphaProcessor".to_string(),
-        kind: SymbolKind::Function,
-        language: "swift".to_string(),
-        file_path: "Sources/Alpha.swift".to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 5,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 100,
-        signature: Some("func alphaProcessor()".to_string()),
-        doc_comment: Some("Handles alpha events.".to_string()),
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: "sym-alpha".to_string(),
+            name: "alphaProcessor".to_string(),
+            kind: SymbolKind::Function,
+            language: "swift".to_string(),
+            file_path: "Sources/Alpha.swift".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 5,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            signature: Some("func alphaProcessor()".to_string()),
+            doc_comment: Some("Handles alpha events.".to_string()),
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: Some("func alphaProcessor() {}".to_string()),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     };
 
-    // Symbol B: contains "bravo" only
     let sym_b = Symbol {
-        id: "sym-bravo".to_string(),
-        name: "bravoHandler".to_string(),
-        kind: SymbolKind::Function,
-        language: "swift".to_string(),
-        file_path: "Sources/Bravo.swift".to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 5,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 100,
-        signature: Some("func bravoHandler()".to_string()),
-        doc_comment: Some("Handles bravo events.".to_string()),
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: "sym-bravo".to_string(),
+            name: "bravoHandler".to_string(),
+            kind: SymbolKind::Function,
+            language: "swift".to_string(),
+            file_path: "Sources/Bravo.swift".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 5,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            signature: Some("func bravoHandler()".to_string()),
+            doc_comment: Some("Handles bravo events.".to_string()),
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: Some("func bravoHandler() {}".to_string()),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     };
 
     for sym in &[sym_a.clone(), sym_b.clone()] {

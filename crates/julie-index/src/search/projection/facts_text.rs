@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::base::StructuralFact;
+use julie_extractors::StructuralFact;
 
 use crate::search::index::truncate_utf8_bytes;
 

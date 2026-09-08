@@ -225,7 +225,7 @@ impl super::SymbolDatabase {
                 COUNT(*) as total,
                 COALESCE(SUM(CASE WHEN doc_comment IS NOT NULL AND doc_comment != '' THEN 1 ELSE 0 END), 0) as documented
              FROM symbols
-             WHERE visibility = 'public'
+             WHERE visibility IN ('public', 'open')
                AND kind IN ({DOCUMENTABLE_KINDS})
                AND content_type IS NULL
                {TEST_PATH_EXCLUSION}
@@ -247,7 +247,7 @@ impl super::SymbolDatabase {
                     COUNT(*) as total,
                     SUM(CASE WHEN doc_comment IS NOT NULL AND doc_comment != '' THEN 1 ELSE 0 END) as documented
              FROM symbols
-             WHERE visibility = 'public'
+             WHERE visibility IN ('public', 'open')
                AND kind IN ({DOCUMENTABLE_KINDS})
                AND content_type IS NULL
                {TEST_PATH_EXCLUSION}

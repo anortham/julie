@@ -4,15 +4,15 @@
 // etc.) come from julie_extractors and are imported directly.
 
 use crate::database::*;
+use crate::symbol::Symbol;
 use crate::test_support::{
     file_info_builder, identifier_builder, open_test_connection, relationship_builder,
     set_symbol_reference_scores, symbol_builder,
 };
-use julie_extractors::{IdentifierKind, RelationshipKind, Symbol, SymbolKind, Visibility};
+use julie_extractors::{IdentifierKind, RelationshipKind, SymbolKind, Visibility};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
-use tree_sitter::Parser;
 
 mod basic_storage;
 mod concurrency_wal;

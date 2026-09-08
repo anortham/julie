@@ -1,6 +1,7 @@
 use crate::database::SymbolDatabase;
 use crate::database::types::FileInfo;
-use crate::extractors::{Symbol, SymbolKind};
+use crate::extractors::SymbolKind;
+use julie_core::Symbol;
 use tempfile::TempDir;
 
 fn make_file(path: &str, hash: &str) -> FileInfo {
@@ -19,29 +20,31 @@ fn make_file(path: &str, hash: &str) -> FileInfo {
 
 fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        end_line: 3,
-        start_column: 0,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 42,
-        parent_id: None,
-        signature: Some(format!("fn {}()", name)),
-        doc_comment: None,
-        visibility: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: Some(1.0),
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: 1,
+            end_line: 3,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 42,
+            parent_id: None,
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: None,
+            visibility: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(1.0),
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 

@@ -5,39 +5,42 @@
 // sequential per-relationship approach — just much faster.
 
 use crate::resolver;
+use julie_core::Symbol;
 use julie_core::database::{FileInfo, SymbolDatabase};
-use julie_extractors::base::{
+use julie_extractors::{
     Identifier, IdentifierKind, NormalizedSpan, PendingRelationship, RelationshipKind,
-    StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget, Visibility,
+    StructuredPendingRelationship, SymbolKind, UnresolvedTarget, Visibility,
 };
 use tempfile::TempDir;
 
 /// Helper: minimal symbol with just the fields that matter for resolution
 fn sym(id: &str, name: &str, kind: SymbolKind, lang: &str, file_path: &str) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind,
-        language: lang.to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 10,
-        end_column: 1,
-        start_byte: 0,
-        end_byte: 100,
-        signature: None,
-        doc_comment: None,
-        visibility: Some(Visibility::Public),
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind,
+            language: lang.to_string(),
+            file_path: file_path.to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 10,
+            end_column: 1,
+            start_byte: 0,
+            end_byte: 100,
+            signature: None,
+            doc_comment: None,
+            visibility: Some(Visibility::Public),
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 
@@ -497,6 +500,7 @@ fn make_identifier(name: &str, kind: IdentifierKind, file_path: &str, lang: &str
         target_symbol_id: None,
         confidence: 1.0,
         code_context: None,
+        receiver_type: None,
     }
 }
 

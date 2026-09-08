@@ -9,7 +9,7 @@ use tracing::debug;
 
 use crate::navigation::resolution::WorkspaceTarget;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::base::SourceRegion;
+use julie_extractors::SourceRegion;
 use julie_index::search::SearchFilter;
 use julie_index::search::index::SearchIndex;
 use julie_index::search::query_parse::{QueryIntent, parse_query};

@@ -55,29 +55,31 @@ async fn test_debug_foreign_key_constraint() {
     println!("File path in symbol: {}", file_path);
 
     let symbol = Symbol {
-        id: "test-symbol".to_string(),
-        name: "testFunction".to_string(),
-        kind: SymbolKind::Function,
-        language: "typescript".to_string(),
-        file_path: file_path,
-        start_line: 1,
-        start_column: 0,
-        end_line: 1,
-        end_column: 10,
-        start_byte: 0,
-        end_byte: 10,
-        signature: None,
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: "test-symbol".to_string(),
+            name: "testFunction".to_string(),
+            kind: SymbolKind::Function,
+            language: "typescript".to_string(),
+            file_path: file_path,
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 10,
+            start_byte: 0,
+            end_byte: 10,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     };
 
     // This should work without foreign key constraint error
@@ -158,29 +160,31 @@ async fn test_symbol_storage_and_retrieval() {
     let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     let symbol = Symbol {
-        id: "test-symbol-1".to_string(),
-        name: "test_function".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "test.rs".to_string(),
-        start_line: 10,
-        start_column: 0,
-        end_line: 15,
-        end_column: 1,
-        start_byte: 0,
-        end_byte: 0,
-        signature: Some("fn test_function()".to_string()),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: "test-symbol-1".to_string(),
+            name: "test_function".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "test.rs".to_string(),
+            start_line: 10,
+            start_column: 0,
+            end_line: 15,
+            end_column: 1,
+            start_byte: 0,
+            end_byte: 0,
+            signature: Some("fn test_function()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     };
 
     // Following foreign key contract: store file record first
@@ -225,17 +229,17 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
     let file_info = crate::database::create_file_info(&fixture_path, "go", workspace_root).unwrap();
     db.bulk_store_files(&[file_info]).unwrap();
 
-    let mut parser = Parser::new();
-    let go_lang = julie_extractors::get_tree_sitter_language("go").unwrap();
-    parser.set_language(&go_lang).unwrap();
-    let tree = parser.parse(&fixture_content, None).unwrap();
-    let mut extractor = julie_extractors::go::GoExtractor::new(
-        "go".to_string(),
-        fixture_path.to_string_lossy().to_string(),
-        fixture_content,
-        workspace_root,
-    );
-    let symbols = extractor.extract_symbols(&tree);
+    let extraction =
+        julie_extractors::extract_canonical("main.go", &fixture_content, workspace_root)
+            .expect("extract go symbols");
+    let symbols: Vec<Symbol> = extraction
+        .symbols
+        .into_iter()
+        .map(|extracted| Symbol {
+            extracted,
+            code_context: None,
+        })
+        .collect();
 
     assert!(!symbols.is_empty(), "Expected fixture to produce symbols");
 
@@ -266,29 +270,31 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
     );
 
     let symbol = Symbol {
-        id: "test-symbol-complex".to_string(),
-        name: "getUserAsync".to_string(),
-        kind: SymbolKind::Function,
-        language: "typescript".to_string(),
-        file_path: crate::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap(),
-        start_line: 20,
-        start_column: 4,
-        end_line: 30,
-        end_column: 1,
-        start_byte: 500,
-        end_byte: 800,
-        signature: Some("async getUserAsync(id: string): Promise<User>".to_string()),
-        doc_comment: Some("Fetches user data asynchronously".to_string()),
-        visibility: Some(julie_extractors::base::Visibility::Public),
-        parent_id: None, // No parent for this test
-        metadata: Some(metadata.clone()),
-        semantic_group: Some("user-data-access".to_string()),
-        confidence: Some(0.95),
+        extracted: julie_extractors::Symbol {
+            id: "test-symbol-complex".to_string(),
+            name: "getUserAsync".to_string(),
+            kind: SymbolKind::Function,
+            language: "typescript".to_string(),
+            file_path: crate::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap(),
+            start_line: 20,
+            start_column: 4,
+            end_line: 30,
+            end_column: 1,
+            start_byte: 500,
+            end_byte: 800,
+            signature: Some("async getUserAsync(id: string): Promise<User>".to_string()),
+            doc_comment: Some("Fetches user data asynchronously".to_string()),
+            visibility: Some(Visibility::Public),
+            parent_id: None, // No parent for this test
+            metadata: Some(metadata.clone()),
+            semantic_group: Some("user-data-access".to_string()),
+            confidence: Some(0.95),
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     };
 
     // First, store the file record (required due to foreign key constraint)
@@ -312,7 +318,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
     assert_eq!(retrieved.confidence, Some(0.95));
 
     // Verify metadata is properly stored and retrieved
-    let retrieved_metadata = retrieved.metadata.unwrap();
+    let retrieved_metadata = retrieved.metadata.as_ref().unwrap();
     assert_eq!(
         retrieved_metadata
             .get("isAsync")

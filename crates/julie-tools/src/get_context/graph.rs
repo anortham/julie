@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use anyhow::{Result, anyhow};
 
 use super::scoring::Pivot;
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::base::{RelationshipKind, Symbol};
+use julie_extractors::{RelationshipKind, SymbolKind};
 
 /// Direction of a neighbor relative to the pivot symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,37 +34,38 @@ pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpans
     let pivot_symbols: Vec<Symbol> = pivots
         .iter()
         .map(|pivot| {
-            let kind = julie_extractors::base::SymbolKind::try_from_string(&pivot.result.kind)
-                .ok_or_else(|| {
-                    anyhow!(
-                        "unknown pivot symbol kind in get_context graph: {}",
-                        pivot.result.kind
-                    )
-                })?;
+            let kind = SymbolKind::try_from_string(&pivot.result.kind).ok_or_else(|| {
+                anyhow!(
+                    "unknown pivot symbol kind in get_context graph: {}",
+                    pivot.result.kind
+                )
+            })?;
             Ok(Symbol {
-                id: pivot.result.id.clone(),
-                name: pivot.result.name.clone(),
-                kind,
-                language: pivot.result.language.clone(),
-                file_path: pivot.result.file_path.clone(),
-                start_line: pivot.result.start_line,
-                end_line: pivot.result.start_line,
-                start_column: 0,
-                end_column: 0,
-                start_byte: 0,
-                end_byte: 0,
-                parent_id: None,
-                signature: Some(pivot.result.signature.clone()),
-                doc_comment: None,
-                visibility: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
+                extracted: julie_extractors::Symbol {
+                    id: pivot.result.id.clone(),
+                    name: pivot.result.name.clone(),
+                    kind,
+                    language: pivot.result.language.clone(),
+                    file_path: pivot.result.file_path.clone(),
+                    start_line: pivot.result.start_line,
+                    end_line: pivot.result.start_line,
+                    start_column: 0,
+                    end_column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    parent_id: None,
+                    signature: Some(pivot.result.signature.clone()),
+                    doc_comment: None,
+                    visibility: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: None,
+                    content_type: None,
+                    body_span: None,
+                    body_hash: None,
+                    annotations: Vec::new(),
+                },
                 code_context: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
             })
         })
         .collect::<Result<Vec<_>>>()?;

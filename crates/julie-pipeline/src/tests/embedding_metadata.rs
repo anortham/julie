@@ -8,7 +8,8 @@ mod tests {
         format_symbol_metadata, is_embeddable_kind, is_embeddable_language,
         prepare_batch_for_embedding,
     };
-    use julie_extractors::{Symbol, SymbolKind};
+    use julie_core::Symbol;
+    use julie_extractors::SymbolKind;
 
     /// Helper: create a minimal test symbol.
     fn make_symbol(
@@ -19,29 +20,31 @@ mod tests {
         doc_comment: Option<&str>,
     ) -> Symbol {
         Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind,
-            language: "rust".to_string(),
-            file_path: "src/lib.rs".to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 10,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            signature: signature.map(|s| s.to_string()),
-            doc_comment: doc_comment.map(|s| s.to_string()),
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind,
+                language: "rust".to_string(),
+                file_path: "src/lib.rs".to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 10,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 100,
+                signature: signature.map(|s| s.to_string()),
+                doc_comment: doc_comment.map(|s| s.to_string()),
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
 

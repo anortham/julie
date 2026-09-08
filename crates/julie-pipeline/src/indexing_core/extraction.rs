@@ -9,10 +9,11 @@ use tracing::{debug, info, trace, warn};
 use crate::indexing_core::batch::ExtractedBatch;
 use crate::indexing_core::normalized::{NormalizedExtractionData, normalize_extraction_results};
 use crate::indexing_core::paths::relative_path_for_storage;
+use julie_core::Symbol;
 use julie_core::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
 };
-use julie_extractors::{ExtractionResults, Relationship, Symbol};
+use julie_extractors::{ExtractionResults, Relationship};
 
 pub enum ExtractedFileDisposition {
     Parsed,
@@ -65,8 +66,7 @@ pub async fn extract_files_for_indexing_with_records(
         .into_iter()
         .filter(|(_, paths)| !paths.is_empty())
         .flat_map(|(language, file_paths)| {
-            let has_parser =
-                julie_extractors::language::get_tree_sitter_language(&language).is_ok();
+            let has_parser = julie_extractors::supported_languages().contains(&language.as_str());
             per_language_counts
                 .entry(language.clone())
                 .or_insert((file_paths.len(), has_parser));
@@ -374,7 +374,11 @@ where
             language
         );
         return Ok(ParserFileProcessResult {
-            normalized: normalize_extraction_results(ExtractionResults::empty(), &configs),
+            normalized: normalize_extraction_results(
+                ExtractionResults::empty(),
+                &content,
+                &configs,
+            )?,
             file_info,
         });
     }
@@ -402,7 +406,7 @@ where
         );
     }
 
-    let normalized = normalize_extraction_results(results, &configs);
+    let normalized = normalize_extraction_results(results, &content, &configs)?;
     file_info.symbol_count = normalized.symbols.len() as i32;
 
     if normalized.symbols.len() > 10 {

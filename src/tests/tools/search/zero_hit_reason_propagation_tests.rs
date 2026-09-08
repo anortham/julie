@@ -313,14 +313,12 @@ async fn trace_scope_rescue_labels_out_of_scope_hits() {
         .expect("execute_with_trace populates execution for content search");
     let text = extract_text_from_result(&run.result);
 
-    // Unified path emits one symbol row and one file row per matching file.
-    // Both files match, so the raw hits vector carries 2 (files) × 2 (kinds)
-    // = 4 hits.  The optimized response layer dedupes to symbol rows, so the
-    // scope-rescue header (rendered from `optimized.results.len()`) reports
-    // 2 results.
+    // Unified path emits symbol rows and file rows per matching file.
+    // Both files match; with v2.41.0 extracting local variable symbols, each file
+    // yields 2 symbols (function + variable) plus 1 file row = 6 hits total.
     assert_eq!(
         execution.hits.len(),
-        4,
+        6,
         "scope rescue should return symbol+file rows for both matching files",
     );
     let distinct_files: std::collections::HashSet<_> =
@@ -385,8 +383,9 @@ async fn trace_scope_rescue_single_file_hint_mentions_get_symbols() {
         .expect("execute_with_trace populates execution for content search");
     let text = extract_text_from_result(&run.result);
 
-    // Unified path returns symbol + file rows for the single matching file.
-    assert_eq!(execution.hits.len(), 2);
+    // Unified path returns symbol rows + file row for the single matching file
+    // (variable symbol + enclosing function symbol + file row = 3 hits).
+    assert_eq!(execution.hits.len(), 3);
     let distinct_files: std::collections::HashSet<_> =
         execution.hits.iter().map(|hit| hit.file.clone()).collect();
     assert_eq!(distinct_files.len(), 1, "exactly one source file matched");

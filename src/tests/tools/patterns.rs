@@ -4,7 +4,7 @@ use anyhow::Result;
 use julie_context::WorkspaceTarget;
 use julie_core::database::SymbolDatabase;
 use julie_core::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
-use julie_extractors::base::StructuralFact;
+use julie_extractors::StructuralFact;
 use julie_test_support::FakeToolContext;
 use julie_test_support::db::file_info_builder;
 use tempfile::TempDir;

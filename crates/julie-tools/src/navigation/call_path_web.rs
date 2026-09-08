@@ -9,9 +9,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use anyhow::{Result, anyhow};
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
 use julie_core::database::WebEdgeKind;
-use julie_extractors::{RelationshipKind, Symbol};
+use julie_extractors::RelationshipKind;
 
 use super::{CallPathHop, CallPathResponse, ResolvedEndpoints, edge_label, resolve_endpoints};
 

@@ -12,7 +12,8 @@ use std::collections::HashSet;
 use anyhow::Result;
 
 use super::SymbolDatabase;
-use julie_extractors::{RelationshipKind, Symbol};
+use crate::symbol::Symbol;
+use julie_extractors::RelationshipKind;
 
 /// Kinds of identifier references that surface incoming edges for graph walks.
 /// Must match the filter used by callers (previously inlined at

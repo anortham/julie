@@ -16,8 +16,9 @@ use super::formatting::format_lean_refs_results;
 use super::resolution::{WorkspaceTarget, parse_qualified_name};
 use super::target_workspace;
 use julie_context::ToolContext;
+use julie_core::Symbol;
 use julie_core::cross_language_intelligence::generate_naming_variants;
-use julie_extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use julie_extractors::{Relationship, RelationshipKind, SymbolKind};
 use std::collections::{HashMap, HashSet};
 
 fn default_true() -> bool {
@@ -303,7 +304,7 @@ impl FastRefsTool {
                         let matching_parent_ids: HashSet<String> = parents
                             .into_iter()
                             .filter(|p| p.name == *parent_name)
-                            .map(|p| p.id)
+                            .map(|p| p.extracted.id)
                             .collect();
 
                         definitions.retain(|s| {

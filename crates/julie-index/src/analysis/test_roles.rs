@@ -8,7 +8,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use julie_extractors::{Symbol, SymbolKind, TestRole};
+use julie_core::Symbol;
+use julie_extractors::{SymbolKind, TestRole};
 
 /// Config-driven test role classifier built from language TOML annotation classes.
 ///

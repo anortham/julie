@@ -10,8 +10,9 @@ use crate::search::SearchIndex;
 use crate::search::index::{SearchDocument, declaration_role_from_metadata, truncate_utf8_bytes};
 use crate::search::scoring::{classify_role, test_subrole};
 use crate::search::tokenizer::pretokenize_code;
+use julie_core::Symbol;
 use julie_core::database::{FileInfo, SymbolDatabase};
-use julie_extractors::{AnnotationMarker, Symbol};
+use julie_extractors::AnnotationMarker;
 
 /// Maximum byte length for `relationship_text` per symbol.
 pub(super) const RELATIONSHIP_TEXT_MAX_BYTES: usize = 512;

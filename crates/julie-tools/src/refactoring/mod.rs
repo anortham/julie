@@ -336,37 +336,30 @@ impl SmartRefactorTool {
         file_path: &str,
         allowed_lines: Option<&HashSet<u32>>,
     ) -> Result<String> {
-        use tree_sitter::Parser;
-
         if old_name.is_empty() || old_name == new_name {
             return Ok(content.to_string());
         }
 
-        let language = julie_extractors::language::detect_language_for_source(file_path, content)
-            .map(str::to_string)
-            .unwrap_or_else(|| self.detect_language(file_path));
-        let ts_language = match self.get_tree_sitter_language(&language) {
-            Ok(lang) => lang,
-            Err(_) => {
-                // No tree-sitter parser for this language (e.g. .env, .cfg, .ini files that
-                // Julie indexes but has no grammar for). Fall back to plain text replacement.
-                return Ok(replace_text_on_allowed_lines(
-                    content,
-                    old_name,
-                    new_name,
-                    allowed_lines,
-                ));
-            }
-        };
+        let adapter = crate::editing::syntax::SyntaxAdapter::default();
+        let parsed =
+            match adapter.parse_source(std::path::Path::new(file_path), content, None, None) {
+                Ok(parsed) => parsed,
+                Err(crate::editing::syntax::SyntaxAdapterError::UnsupportedLanguage { .. }) => {
+                    // No tree-sitter parser for this language (e.g. .env, .cfg, .ini files that
+                    // Julie indexes but has no grammar for). Fall back to plain text replacement.
+                    return Ok(replace_text_on_allowed_lines(
+                        content,
+                        old_name,
+                        new_name,
+                        allowed_lines,
+                    ));
+                }
+                Err(e) => {
+                    return Err(rename_symbol_error(e.error_kind(), e.to_string()));
+                }
+            };
 
-        let mut parser = Parser::new();
-        parser.set_language(&ts_language)?;
-
-        let tree = parser
-            .parse(content, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {} file", language))?;
-        let parse_diagnostics = julie_extractors::pipeline::parse_diagnostics_for_tree(&tree);
-        if let Some(diagnostic) = parse_diagnostics.first() {
+        if let Some(diagnostic) = parsed.diagnostics.first() {
             return Err(rename_symbol_error(
                 "parse_error",
                 format!(
@@ -379,6 +372,8 @@ impl SmartRefactorTool {
                 ),
             ));
         }
+
+        let tree = parsed.tree;
 
         // AST-AWARE REPLACEMENT: Walk tree to find identifier nodes
         let mut replacements: Vec<(usize, usize, String)> = Vec::new();
@@ -454,10 +449,5 @@ impl SmartRefactorTool {
                 allowed_lines,
             );
         }
-    }
-
-    /// Get tree-sitter language for file type (delegates to shared language module)
-    fn get_tree_sitter_language(&self, language: &str) -> Result<tree_sitter::Language> {
-        julie_extractors::language::get_tree_sitter_language(language)
     }
 }

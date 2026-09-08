@@ -231,14 +231,14 @@ fn extract_contract_version_and_schema_are_at_phase3b_coordinated_values() {
     // `extract` output; `LATEST_SCHEMA_VERSION` is the internal DB schema. Bumping
     // either must be a reviewed edit: change the constant in product code AND the
     // pinned value here in the same commit so the diff records the decision. The
-    // schema advanced 28 -> 30 via internal-only migrations (029 extractor
-    // enrichments, 030 web_edges) that leave the reader-facing contract at v3.
+    // schema advanced 28 -> 30 -> 31 via internal-only migrations (029 extractor
+    // enrichments, 030 web_edges, 031 identifier receiver_type) that leave the reader-facing contract at v3.
     assert_eq!(
         EXTRACT_CONTRACT_VERSION, 3,
         "extract contract is v3 (workspace registry freshness / BLAKE3 hash metadata)"
     );
     assert_eq!(
-        LATEST_SCHEMA_VERSION, 30,
-        "schema is at 30: migration 030 added the web_edges table (internal, contract unchanged)"
+        LATEST_SCHEMA_VERSION, 31,
+        "schema is at 31: migration 031 added receiver_type to identifiers (internal, contract unchanged)"
     );
 }

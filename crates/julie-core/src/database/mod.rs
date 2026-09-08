@@ -12,8 +12,9 @@ use std::sync::Once;
 use tracing::{debug, info, warn};
 
 use crate::connection_pool::PooledConn;
+use crate::symbol::Symbol;
 
-use julie_extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use julie_extractors::{Relationship, RelationshipKind, SymbolKind};
 
 // Module declarations
 pub mod analytics;

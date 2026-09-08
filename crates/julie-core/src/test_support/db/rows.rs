@@ -4,9 +4,10 @@ use anyhow::bail;
 
 use crate::database::SymbolDatabase;
 use crate::database::types::FileInfo;
+use crate::symbol::Symbol;
 use julie_extractors::{
-    AnnotationMarker, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
-    SymbolKind, Visibility,
+    AnnotationMarker, Identifier, IdentifierKind, Relationship, RelationshipKind, SymbolKind,
+    Visibility,
 };
 
 pub fn file_info_builder(path: impl Into<String>) -> FileInfoBuilder {
@@ -259,29 +260,31 @@ impl SymbolBuilder {
 
     pub fn build(self) -> Symbol {
         Symbol {
-            id: self.id,
-            name: self.name,
-            kind: self.kind,
-            language: self.language,
-            file_path: self.file_path,
-            start_line: self.start_line,
-            start_column: self.start_column,
-            end_line: self.end_line,
-            end_column: self.end_column,
-            start_byte: self.start_byte,
-            end_byte: self.end_byte,
-            signature: self.signature,
-            doc_comment: self.doc_comment,
-            visibility: self.visibility,
-            parent_id: self.parent_id,
-            metadata: self.metadata,
-            semantic_group: self.semantic_group,
-            confidence: self.confidence,
+            extracted: julie_extractors::Symbol {
+                id: self.id,
+                name: self.name,
+                kind: self.kind,
+                language: self.language,
+                file_path: self.file_path,
+                start_line: self.start_line,
+                start_column: self.start_column,
+                end_line: self.end_line,
+                end_column: self.end_column,
+                start_byte: self.start_byte,
+                end_byte: self.end_byte,
+                signature: self.signature,
+                doc_comment: self.doc_comment,
+                visibility: self.visibility,
+                parent_id: self.parent_id,
+                metadata: self.metadata,
+                semantic_group: self.semantic_group,
+                confidence: self.confidence,
+                content_type: self.content_type,
+                body_span: None,
+                body_hash: None,
+                annotations: self.annotations,
+            },
             code_context: self.code_context,
-            content_type: self.content_type,
-            body_span: None,
-            body_hash: None,
-            annotations: self.annotations,
         }
     }
 }
@@ -383,6 +386,7 @@ pub struct IdentifierBuilder {
     target_symbol_id: Option<String>,
     confidence: f32,
     code_context: Option<String>,
+    pub receiver_type: Option<String>,
 }
 
 impl IdentifierBuilder {
@@ -409,6 +413,7 @@ impl IdentifierBuilder {
             target_symbol_id: None,
             confidence: 1.0,
             code_context: None,
+            receiver_type: None,
         }
     }
 
@@ -455,6 +460,11 @@ impl IdentifierBuilder {
         self
     }
 
+    pub fn receiver_type(mut self, receiver_type: impl Into<String>) -> Self {
+        self.receiver_type = Some(receiver_type.into());
+        self
+    }
+
     pub fn build(self) -> Identifier {
         Identifier {
             id: self.id,
@@ -472,6 +482,7 @@ impl IdentifierBuilder {
             target_symbol_id: self.target_symbol_id,
             confidence: self.confidence,
             code_context: self.code_context,
+            receiver_type: self.receiver_type,
         }
     }
 }

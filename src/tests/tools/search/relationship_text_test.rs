@@ -31,31 +31,33 @@ mod relationship_text_test {
         SearchIndex::create(&index_dir).expect("create test index")
     }
 
-    fn make_symbol(id: &str, name: &str) -> Symbol {
-        Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: "src/lib.rs".to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 5,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 64,
-            signature: Some(format!("fn {}()", name)),
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
+    fn make_symbol(id: &str, name: &str) -> julie_core::Symbol {
+        julie_core::Symbol {
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/lib.rs".to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 5,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 64,
+                signature: Some(format!("fn {}()", name)),
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: Some(format!("fn {}() {{}}", name)),
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
 
@@ -505,7 +507,6 @@ mod relationship_text_test {
     async fn watcher_reprojects_partners_created_by_pending_resolution() {
         use std::sync::{Arc, Mutex};
 
-        use crate::extractors::ExtractorManager;
         use crate::watcher::handlers::handle_file_created_or_modified_static;
         use crate::workspace::mutation_gate::acquire_gate;
 
@@ -524,14 +525,12 @@ mod relationship_text_test {
             SymbolDatabase::new(&workspace_root.join("watcher.db")).unwrap(),
         ));
         let search_index = Arc::new(make_index(&dir));
-        let extractor_manager = Arc::new(ExtractorManager::new());
 
         {
             let guard = acquire_gate("relationship_text_watcher_callee").await;
             handle_file_created_or_modified_static(
                 callee.canonicalize().unwrap(),
                 &db,
-                &extractor_manager,
                 &workspace_root,
                 Some(&search_index),
                 &guard,
@@ -546,7 +545,6 @@ mod relationship_text_test {
             handle_file_created_or_modified_static(
                 caller.canonicalize().unwrap(),
                 &db,
-                &extractor_manager,
                 &workspace_root,
                 Some(&search_index),
                 &guard,
@@ -570,7 +568,6 @@ mod relationship_text_test {
     async fn dirty_tantivy_retry_reprojects_relationship_partners() {
         use std::sync::{Arc, Mutex, RwLock};
 
-        use crate::extractors::ExtractorManager;
         use crate::tools::workspace::indexing::state::IndexingRuntimeState;
         use crate::watcher::IncrementalIndexer;
 
@@ -619,7 +616,6 @@ mod relationship_text_test {
         let indexer = IncrementalIndexer::new(
             workspace_root,
             Arc::clone(&db),
-            Arc::new(ExtractorManager::new()),
             Some(Arc::clone(&search_index)),
             Arc::new(RwLock::new(None)),
             IndexingRuntimeState::shared(),

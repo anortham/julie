@@ -11,7 +11,8 @@ use crate::database::revision_changes::{
 use crate::database::revisions::record_canonical_revision_tx;
 use crate::database::symbols::annotations::replace_annotations_batch;
 use crate::database::{CanonicalRevisionKind, FileInfo, SymbolDatabase};
-use julie_extractors::{Relationship, Symbol};
+use crate::symbol::Symbol;
+use julie_extractors::Relationship;
 
 use super::cleanup::{
     checkpoint_wal_best_effort, delete_all_indexed_rows_tx, delete_file_rows_tx,
@@ -67,7 +68,7 @@ impl SymbolDatabase {
         new_symbols: &[Symbol],
         new_relationships: &[Relationship],
         new_identifiers: &[julie_extractors::Identifier],
-        new_types: &[julie_extractors::base::TypeInfo],
+        new_types: &[julie_extractors::TypeInfo],
         workspace_id: &str,
     ) -> Result<()> {
         let write_set = CanonicalWriteSet {
@@ -156,7 +157,7 @@ impl SymbolDatabase {
         symbols: &[Symbol],
         relationships: &[Relationship],
         identifiers: &[julie_extractors::Identifier],
-        types: &[julie_extractors::base::TypeInfo],
+        types: &[julie_extractors::TypeInfo],
         workspace_id: &str,
     ) -> Result<()> {
         let write_set = CanonicalWriteSet {

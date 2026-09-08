@@ -4,37 +4,39 @@ use std::sync::Arc;
 use anyhow::Result;
 use tempfile::TempDir;
 
-use crate::extractors::{Symbol, SymbolKind};
+use crate::extractors::SymbolKind;
 use crate::handler::JulieServerHandler;
 use crate::registry::database::DaemonDatabase;
 use crate::tools::deep_dive::{DeepDiveDepth, DeepDiveTool};
 use crate::workspace::registry::generate_workspace_id;
 
-fn rebound_symbol() -> Symbol {
-    Symbol {
-        id: "rebound-primary-symbol-id".to_string(),
-        name: "rebound_primary_symbol".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "src/rebound.rs".to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 1,
-        end_column: 32,
-        start_byte: 0,
-        end_byte: 32,
-        signature: Some("pub fn rebound_primary_symbol()".to_string()),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+fn rebound_symbol() -> julie_core::Symbol {
+    julie_core::Symbol {
+        extracted: julie_extractors::Symbol {
+            id: "rebound-primary-symbol-id".to_string(),
+            name: "rebound_primary_symbol".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/rebound.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 32,
+            start_byte: 0,
+            end_byte: 32,
+            signature: Some("pub fn rebound_primary_symbol()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: Some("pub fn rebound_primary_symbol() {}".to_string()),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 

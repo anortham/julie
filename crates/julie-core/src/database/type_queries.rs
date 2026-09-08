@@ -13,7 +13,7 @@ use tracing::debug;
 use crate::database::SymbolDatabase;
 use crate::database::helpers::SYMBOL_COLUMNS;
 use crate::database::symbols::annotations::hydrate_annotations_for_symbols;
-use julie_extractors::Symbol;
+use crate::symbol::Symbol;
 
 impl SymbolDatabase {
     /// Find all symbols that implement a given interface/trait

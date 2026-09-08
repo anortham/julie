@@ -1,8 +1,6 @@
 use super::{ParentReferenceContext, namespace};
-use julie_extractors::base::{
-    PendingRelationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
-};
-use julie_extractors::language::detect_language_from_extension;
+use julie_core::Symbol;
+use julie_extractors::{PendingRelationship, RelationshipKind, SymbolKind, UnresolvedTarget};
 
 pub(super) fn is_resolvable_target(kind: &SymbolKind) -> bool {
     matches!(
@@ -25,8 +23,7 @@ pub(super) fn is_resolvable_target(kind: &SymbolKind) -> bool {
 }
 
 pub(super) fn language_of(file_path: &str) -> Option<&'static str> {
-    let ext = file_path.rsplit('.').next()?;
-    detect_language_from_extension(ext)
+    julie_extractors::detect_language_for_path(std::path::Path::new(file_path), "")
 }
 
 fn dir_of(path: &str) -> &str {

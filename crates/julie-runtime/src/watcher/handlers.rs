@@ -11,7 +11,6 @@ use julie_core::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
 };
 use julie_core::indexing_state::IndexingRepairReason;
-use julie_extractors::ExtractorManager;
 use julie_index::search::SearchIndex;
 use julie_pipeline::finalize::resolve_pending_relationships;
 use julie_pipeline::indexing_core::normalized::normalize_extraction_results;
@@ -86,7 +85,6 @@ fn persist_repair_state(
 pub async fn handle_file_created_or_modified_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
-    extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
     search_index: Option<&Arc<SearchIndex>>,
     _guard: &MutationGuard<'_>,
@@ -137,9 +135,8 @@ pub async fn handle_file_created_or_modified_static(
             let relative_path_clone = relative_path.clone();
             let content_clone = content_str.clone();
             let workspace_root_clone = workspace_root.to_path_buf();
-            let extractor_manager = Arc::clone(extractor_manager);
             match tokio::task::spawn_blocking(move || {
-                extractor_manager.extract_all(
+                julie_extractors::extract_canonical(
                     &relative_path_clone,
                     &content_clone,
                     &workspace_root_clone,
@@ -189,7 +186,25 @@ pub async fn handle_file_created_or_modified_static(
     );
 
     let configs = julie_index::search::LanguageConfigs::load_embedded();
-    let normalized = normalize_extraction_results(results, &configs);
+    let normalized = match normalize_extraction_results(results, &content_str, &configs) {
+        Ok(norm) => norm,
+        Err(e) => {
+            warn!(
+                "Watcher: symbol normalization/projection failed for {}: {}",
+                relative_path, e
+            );
+            persist_repair_state(
+                db,
+                &relative_path,
+                IndexingRepairReason::ExtractorFailure,
+                Some(&format!("symbol normalization/projection failed: {e}")),
+            );
+            return Ok(FileIndexOutcome::repair_needed(
+                true,
+                IndexingRepairReason::ExtractorFailure,
+            ));
+        }
+    };
     let pending_relationships = normalized.pending_relationships.clone();
     let structured_pending_relationships = normalized.structured_pending_relationships.clone();
     let parse_diagnostics = normalized.parse_diagnostics.clone();
@@ -523,7 +538,6 @@ pub(crate) async fn handle_file_renamed_static(
     from: PathBuf,
     to: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
-    extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
     search_index: Option<&Arc<SearchIndex>>,
     _guard: &MutationGuard<'_>,
@@ -536,15 +550,9 @@ pub(crate) async fn handle_file_renamed_static(
 
     // Create/update the destination first. If that fails, keep the source index
     // in place rather than deleting it and hoping for the best.
-    let outcome = handle_file_created_or_modified_static(
-        to,
-        db,
-        extractor_manager,
-        workspace_root,
-        search_index,
-        _guard,
-    )
-    .await?;
+    let outcome =
+        handle_file_created_or_modified_static(to, db, workspace_root, search_index, _guard)
+            .await?;
 
     if outcome.repair_reason == Some(IndexingRepairReason::ExtractorFailure) {
         return Ok(outcome);

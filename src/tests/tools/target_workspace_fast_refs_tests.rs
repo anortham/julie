@@ -9,7 +9,8 @@
 #[cfg(test)]
 mod tests {
     use crate::database::{FileInfo, SymbolDatabase};
-    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+    use crate::extractors::{Relationship, RelationshipKind, SymbolKind};
+    use julie_core::Symbol;
     use std::collections::HashSet;
     use tempfile::TempDir;
 
@@ -42,29 +43,31 @@ mod tests {
 
     fn make_symbol(id: &str, name: &str, file_path: &str, line: u32) -> Symbol {
         Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: file_path.to_string(),
-            start_line: line,
-            end_line: line + 5,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 0,
-            parent_id: None,
-            signature: Some(format!("pub fn {}()", name)),
-            doc_comment: None,
-            visibility: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: file_path.to_string(),
+                start_line: line,
+                end_line: line + 5,
+                start_column: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 0,
+                parent_id: None,
+                signature: Some(format!("pub fn {}()", name)),
+                doc_comment: None,
+                visibility: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
 
@@ -165,7 +168,7 @@ mod tests {
         limit: u32,
         reference_kind: Option<&str>,
     ) -> (Vec<Symbol>, Vec<Relationship>) {
-        use crate::extractors::base::RelationshipKind;
+        use crate::extractors::RelationshipKind;
         use crate::tools::navigation::resolution::parse_qualified_name;
         use crate::utils::cross_language_intelligence::generate_naming_variants;
 
@@ -209,7 +212,7 @@ mod tests {
                 let matching_parent_ids: std::collections::HashSet<String> = parents
                     .into_iter()
                     .filter(|p| p.name == *parent_name)
-                    .map(|p| p.id)
+                    .map(|p| p.extracted.id)
                     .collect();
 
                 defs.retain(|s| {

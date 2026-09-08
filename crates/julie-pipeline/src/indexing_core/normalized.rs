@@ -1,9 +1,8 @@
-use julie_extractors::base::{
-    ComplexityMetric, ParseDiagnostic, SourceRegion, StructuralFact, StructuredPendingRelationship,
-    TypeInfo,
-};
+use anyhow::Result;
+use julie_core::Symbol;
 use julie_extractors::{
-    ExtractionResults, Identifier, Literal, PendingRelationship, Relationship, Symbol,
+    ComplexityMetric, ExtractionResults, Identifier, Literal, ParseDiagnostic, PendingRelationship,
+    Relationship, SourceRegion, StructuralFact, StructuredPendingRelationship, TypeInfo,
 };
 
 #[derive(Debug)]
@@ -24,8 +23,9 @@ pub struct NormalizedExtractionData {
 
 pub fn normalize_extraction_results(
     mut results: ExtractionResults,
+    source: &str,
     configs: &julie_index::search::LanguageConfigs,
-) -> NormalizedExtractionData {
+) -> Result<NormalizedExtractionData> {
     if !results.literals.is_empty() {
         let carriers = configs.build_literal_carrier_configs();
         julie_index::analysis::literals::classify_literals_by_carrier(
@@ -33,13 +33,19 @@ pub fn normalize_extraction_results(
             &carriers,
         );
     }
-    if !results.symbols.is_empty() {
+    let mut symbols = results
+        .symbols
+        .into_iter()
+        .map(|extracted| Symbol::from_extracted(extracted, source))
+        .collect::<Result<Vec<_>>>()?;
+
+    if !symbols.is_empty() {
         let roles = configs.build_test_role_configs();
-        julie_index::analysis::test_roles::classify_symbols_by_role(&mut results.symbols, &roles);
+        julie_index::analysis::test_roles::classify_symbols_by_role(&mut symbols, &roles);
     }
 
-    NormalizedExtractionData {
-        symbols: results.symbols,
+    Ok(NormalizedExtractionData {
+        symbols,
         relationships: results.relationships,
         pending_relationships: results.pending_relationships,
         structured_pending_relationships: results.structured_pending_relationships,
@@ -54,5 +60,5 @@ pub fn normalize_extraction_results(
         structural_facts: results.structural_facts,
         complexity_metrics: results.complexity_metrics,
         parse_diagnostics: results.parse_diagnostics,
-    }
+    })
 }

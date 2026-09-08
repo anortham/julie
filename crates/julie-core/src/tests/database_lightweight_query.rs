@@ -5,8 +5,9 @@
 // when mode="structure". This avoids wasted serde_json::from_str() calls
 // and large code_context column reads.
 
+use crate::Symbol;
 use crate::database::{FileInfo, SymbolDatabase};
-use julie_extractors::base::{NormalizedSpan, Symbol, SymbolKind};
+use julie_extractors::{NormalizedSpan, SymbolKind, Visibility};
 use tempfile::TempDir;
 
 /// Helper to create a test database with a few symbols including metadata and code_context
@@ -32,103 +33,109 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
     // Store symbols with rich data in expensive columns
     let symbols = vec![
         Symbol {
-            id: "sym-parent-1".to_string(),
-            name: "UserService".to_string(),
-            kind: SymbolKind::Class,
-            language: "rust".to_string(),
-            file_path: "src/main.rs".to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 50,
-            end_column: 1,
-            start_byte: 0,
-            end_byte: 500,
-            signature: Some("pub struct UserService".to_string()),
-            doc_comment: Some("User service for managing users".to_string()),
-            visibility: Some(julie_extractors::base::Visibility::Public),
-            parent_id: None,
-            metadata: Some({
-                let mut m = std::collections::HashMap::new();
-                m.insert("is_async".to_string(), serde_json::Value::Bool(true));
-                m
-            }),
-            semantic_group: Some("service".to_string()),
-            confidence: Some(0.95),
+            extracted: julie_extractors::Symbol {
+                id: "sym-parent-1".to_string(),
+                name: "UserService".to_string(),
+                kind: SymbolKind::Class,
+                language: "rust".to_string(),
+                file_path: "src/main.rs".to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 50,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: 500,
+                signature: Some("pub struct UserService".to_string()),
+                doc_comment: Some("User service for managing users".to_string()),
+                visibility: Some(Visibility::Public),
+                parent_id: None,
+                metadata: Some({
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("is_async".to_string(), serde_json::Value::Bool(true));
+                    m
+                }),
+                semantic_group: Some("service".to_string()),
+                confidence: Some(0.95),
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: Some("pub struct UserService {\n    users: Vec<User>,\n}".to_string()),
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         },
         Symbol {
-            id: "sym-child-1".to_string(),
-            name: "get_user".to_string(),
-            kind: SymbolKind::Method,
-            language: "rust".to_string(),
-            file_path: "src/main.rs".to_string(),
-            start_line: 10,
-            start_column: 4,
-            end_line: 20,
-            end_column: 5,
-            start_byte: 100,
-            end_byte: 300,
-            signature: Some("pub fn get_user(&self, id: u64) -> Option<&User>".to_string()),
-            doc_comment: None,
-            visibility: Some(julie_extractors::base::Visibility::Public),
-            parent_id: Some("sym-parent-1".to_string()),
-            metadata: Some({
-                let mut m = std::collections::HashMap::new();
-                m.insert(
-                    "return_type".to_string(),
-                    serde_json::Value::String("Option<&User>".to_string()),
-                );
-                m
-            }),
-            semantic_group: Some("accessor".to_string()),
-            confidence: Some(0.9),
+            extracted: julie_extractors::Symbol {
+                id: "sym-child-1".to_string(),
+                name: "get_user".to_string(),
+                kind: SymbolKind::Method,
+                language: "rust".to_string(),
+                file_path: "src/main.rs".to_string(),
+                start_line: 10,
+                start_column: 4,
+                end_line: 20,
+                end_column: 5,
+                start_byte: 100,
+                end_byte: 300,
+                signature: Some("pub fn get_user(&self, id: u64) -> Option<&User>".to_string()),
+                doc_comment: None,
+                visibility: Some(Visibility::Public),
+                parent_id: Some("sym-parent-1".to_string()),
+                metadata: Some({
+                    let mut m = std::collections::HashMap::new();
+                    m.insert(
+                        "return_type".to_string(),
+                        serde_json::Value::String("Option<&User>".to_string()),
+                    );
+                    m
+                }),
+                semantic_group: Some("accessor".to_string()),
+                confidence: Some(0.9),
+                content_type: None,
+                body_span: Some(NormalizedSpan {
+                    start_line: 10,
+                    start_column: 52,
+                    end_line: 20,
+                    end_column: 5,
+                    start_byte: 154,
+                    end_byte: 300,
+                }),
+                body_hash: Some("sha256:get-user-body".to_string()),
+                annotations: Vec::new(),
+            },
             code_context: Some(
                 "pub fn get_user(&self, id: u64) -> Option<&User> {\n    self.users.get(&id)\n}"
                     .to_string(),
             ),
-            content_type: None,
-            body_span: Some(NormalizedSpan {
-                start_line: 10,
-                start_column: 52,
-                end_line: 20,
-                end_column: 5,
-                start_byte: 154,
-                end_byte: 300,
-            }),
-            body_hash: Some("sha256:get-user-body".to_string()),
-            annotations: Vec::new(),
         },
         Symbol {
-            id: "sym-child-2".to_string(),
-            name: "add_user".to_string(),
-            kind: SymbolKind::Method,
-            language: "rust".to_string(),
-            file_path: "src/main.rs".to_string(),
-            start_line: 22,
-            start_column: 4,
-            end_line: 30,
-            end_column: 5,
-            start_byte: 310,
-            end_byte: 490,
-            signature: Some("pub fn add_user(&mut self, user: User)".to_string()),
-            doc_comment: Some("Add a user to the service".to_string()),
-            visibility: Some(julie_extractors::base::Visibility::Public),
-            parent_id: Some("sym-parent-1".to_string()),
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
+            extracted: julie_extractors::Symbol {
+                id: "sym-child-2".to_string(),
+                name: "add_user".to_string(),
+                kind: SymbolKind::Method,
+                language: "rust".to_string(),
+                file_path: "src/main.rs".to_string(),
+                start_line: 22,
+                start_column: 4,
+                end_line: 30,
+                end_column: 5,
+                start_byte: 310,
+                end_byte: 490,
+                signature: Some("pub fn add_user(&mut self, user: User)".to_string()),
+                doc_comment: Some("Add a user to the service".to_string()),
+                visibility: Some(Visibility::Public),
+                parent_id: Some("sym-parent-1".to_string()),
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: Some(
                 "pub fn add_user(&mut self, user: User) {\n    self.users.push(user);\n}"
                     .to_string(),
             ),
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         },
     ];
 

@@ -8,9 +8,10 @@ use tracing::debug;
 
 use crate::deep_dive::data::find_symbol;
 use julie_context::ToolContext;
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
 use julie_core::mcp_compat::CallToolResultExt;
-use julie_extractors::{Relationship, RelationshipKind, Symbol};
+use julie_extractors::{Relationship, RelationshipKind};
 
 use super::resolution::{WorkspaceTarget, file_path_matches_suffix};
 
@@ -199,7 +200,10 @@ fn resolve_target_ids(
         ));
     }
 
-    Ok(matches.into_iter().map(|symbol| symbol.id).collect())
+    Ok(matches
+        .into_iter()
+        .map(|symbol| symbol.extracted.id)
+        .collect())
 }
 
 fn resolve_endpoints(

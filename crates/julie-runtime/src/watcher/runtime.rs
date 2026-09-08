@@ -5,7 +5,6 @@ use anyhow::Result;
 use ignore::gitignore::Gitignore;
 use julie_core::database::{ProjectionStatus, SymbolDatabase};
 use julie_core::indexing_state::{IndexingOperation, IndexingRepairReason, SharedIndexingRuntime};
-use julie_extractors::ExtractorManager;
 use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -31,7 +30,6 @@ const MAX_TANTIVY_RETRY_ATTEMPTS: u32 = 10;
 #[derive(Clone)]
 pub(super) struct QueueRuntime {
     db: Arc<StdMutex<SymbolDatabase>>,
-    extractor_manager: Arc<ExtractorManager>,
     search_index: Option<Arc<julie_index::search::SearchIndex>>,
     embedding_provider: SharedEmbeddingProvider,
     lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
@@ -59,7 +57,6 @@ impl QueueRuntime {
     pub(super) fn from_indexer(indexer: &IncrementalIndexer) -> Self {
         Self {
             db: Arc::clone(&indexer.db),
-            extractor_manager: Arc::clone(&indexer.extractor_manager),
             search_index: indexer.search_index.as_ref().map(Arc::clone),
             embedding_provider: Arc::clone(&indexer.embedding_provider),
             lang_configs: Arc::clone(&indexer.lang_configs),
@@ -81,7 +78,6 @@ impl QueueRuntime {
 
     pub(super) fn new(
         db: Arc<StdMutex<SymbolDatabase>>,
-        extractor_manager: Arc<ExtractorManager>,
         search_index: Option<Arc<julie_index::search::SearchIndex>>,
         embedding_provider: SharedEmbeddingProvider,
         lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
@@ -98,7 +94,6 @@ impl QueueRuntime {
     ) -> Self {
         Self {
             db,
-            extractor_manager,
             search_index,
             embedding_provider,
             lang_configs,

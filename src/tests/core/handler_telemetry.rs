@@ -1,7 +1,7 @@
 use std::fs;
 use std::time::Duration;
 
-use crate::extractors::{Symbol, SymbolKind};
+use crate::extractors::SymbolKind;
 use crate::handler::JulieServerHandler;
 use crate::handler::search_telemetry;
 use crate::handler::tool_targets;
@@ -18,33 +18,36 @@ use crate::tools::search::trace::{
 };
 use crate::tools::spillover::SpilloverGetTool;
 use crate::tools::{BlastRadiusTool, DeepDiveDepth, DeepDiveTool, GetContextTool, GetSymbolsTool};
+use julie_core::Symbol;
 use tempfile::TempDir;
 
 fn sample_symbol() -> Symbol {
     Symbol {
-        id: "sym_1".to_string(),
-        name: "search_handler".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "src/dashboard/routes/search.rs".to_string(),
-        start_line: 42,
-        start_column: 0,
-        end_line: 42,
-        end_column: 24,
-        start_byte: 0,
-        end_byte: 24,
-        signature: Some("fn search_handler()".to_string()),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: Some(7.5),
+        extracted: julie_extractors::Symbol {
+            id: "sym_1".to_string(),
+            name: "search_handler".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/dashboard/routes/search.rs".to_string(),
+            start_line: 42,
+            start_column: 0,
+            end_line: 42,
+            end_column: 24,
+            start_byte: 0,
+            end_byte: 24,
+            signature: Some("fn search_handler()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(7.5),
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 

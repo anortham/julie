@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use julie_extractors::Symbol;
+use julie_core::Symbol;
 use julie_index::search::index::{FileSearchResult, UnifiedHit};
 
 use super::types::LineMatch;
@@ -159,37 +159,39 @@ impl SearchHit {
             use julie_extractors::SymbolKind;
             let kind = SymbolKind::try_from_string(&hit.kind).unwrap_or(SymbolKind::Variable);
             SearchHitBacking::Symbol(Symbol {
-                id: hit.id.clone(),
-                name: hit.name.clone(),
-                kind,
-                language: hit.language.clone(),
-                file_path: hit.file_path.clone(),
-                start_line: hit.start_line,
-                start_column: 0,
-                end_line: 0,
-                end_column: 0,
-                start_byte: 0,
-                end_byte: 0,
-                signature: if hit.signature.is_empty() {
-                    None
-                } else {
-                    Some(hit.signature.clone())
+                extracted: julie_extractors::Symbol {
+                    id: hit.id.clone(),
+                    name: hit.name.clone(),
+                    kind,
+                    language: hit.language.clone(),
+                    file_path: hit.file_path.clone(),
+                    start_line: hit.start_line,
+                    start_column: 0,
+                    end_line: 0,
+                    end_column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    signature: if hit.signature.is_empty() {
+                        None
+                    } else {
+                        Some(hit.signature.clone())
+                    },
+                    doc_comment: if hit.doc_comment.is_empty() {
+                        None
+                    } else {
+                        Some(hit.doc_comment.clone())
+                    },
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: Some(hit.tantivy_score),
+                    content_type: None,
+                    body_span: None,
+                    body_hash: None,
+                    annotations: Vec::new(),
                 },
-                doc_comment: if hit.doc_comment.is_empty() {
-                    None
-                } else {
-                    Some(hit.doc_comment.clone())
-                },
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: Some(hit.tantivy_score),
                 code_context: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
             })
         };
 

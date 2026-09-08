@@ -1,5 +1,6 @@
 use super::ParentReferenceContext;
-use julie_extractors::base::{PendingRelationship, Symbol, UnresolvedTarget};
+use julie_core::Symbol;
+use julie_extractors::{PendingRelationship, UnresolvedTarget};
 
 pub(super) fn score(
     candidate: &Symbol,

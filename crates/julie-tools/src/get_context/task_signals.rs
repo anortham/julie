@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::base::Symbol;
 use julie_index::search::index::{SearchFilter, SymbolSearchResult};
 
 #[derive(Debug, Clone, Default)]
@@ -402,17 +402,19 @@ fn signal_symbol_names(signals: &TaskSignals) -> Vec<String> {
 }
 
 fn symbol_to_search_result(symbol: Symbol, score: f32) -> SymbolSearchResult {
-    let role = julie_index::search::scoring::classify_role(&symbol.file_path, &symbol.language);
-    let test_role = julie_index::search::scoring::test_subrole(&symbol.file_path);
+    let extracted = symbol.extracted;
+    let role =
+        julie_index::search::scoring::classify_role(&extracted.file_path, &extracted.language);
+    let test_role = julie_index::search::scoring::test_subrole(&extracted.file_path);
     SymbolSearchResult {
-        id: symbol.id,
-        name: symbol.name,
-        signature: symbol.signature.unwrap_or_default(),
-        doc_comment: symbol.doc_comment.unwrap_or_default(),
-        file_path: symbol.file_path,
-        kind: symbol.kind.to_string(),
-        language: symbol.language,
-        start_line: symbol.start_line,
+        id: extracted.id,
+        name: extracted.name,
+        signature: extracted.signature.unwrap_or_default(),
+        doc_comment: extracted.doc_comment.unwrap_or_default(),
+        file_path: extracted.file_path,
+        kind: extracted.kind.to_string(),
+        language: extracted.language,
+        start_line: extracted.start_line,
         score,
         role: role.to_string(),
         test_role: test_role.to_string(),

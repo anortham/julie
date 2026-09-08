@@ -1,5 +1,5 @@
 use anyhow::Result;
-use julie_extractors::base::ComplexityMetric;
+use julie_extractors::ComplexityMetric;
 use rusqlite::{OptionalExtension, params};
 
 use super::SymbolDatabase;

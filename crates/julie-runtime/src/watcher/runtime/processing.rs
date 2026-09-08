@@ -27,7 +27,6 @@ impl QueueRuntime {
                     crate::watcher::dispatch_file_event(
                         event,
                         &self.db,
-                        &self.extractor_manager,
                         &self.search_index,
                         &provider_snapshot,
                         &self.workspace_root,
@@ -144,7 +143,6 @@ impl QueueRuntime {
             let atomic_delete_path = crate::watcher::dispatch_file_event(
                 event,
                 &self.db,
-                &self.extractor_manager,
                 &self.search_index,
                 &provider_snapshot,
                 &self.workspace_root,

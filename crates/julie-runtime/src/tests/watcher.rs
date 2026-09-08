@@ -2,7 +2,7 @@
 
 use crate::watcher::IncrementalIndexer;
 use crate::watcher::filtering;
-use julie_extractors::language; // Language detection (julie_extractors::language::*)
+use julie_core::language;
 use std::fs;
 
 mod event_queue;
@@ -75,13 +75,7 @@ fn test_language_detection_by_extension() {
     ];
 
     for (filename, expected_lang) in test_files {
-        // Extract extension from filename
-        let ext = std::path::Path::new(filename)
-            .extension()
-            .and_then(|e| e.to_str())
-            .expect("Test file should have extension");
-
-        let detected_lang = language::detect_language_from_extension(ext);
+        let detected_lang = language::detect_language(std::path::Path::new(filename));
         assert_eq!(
             detected_lang,
             Some(expected_lang),
@@ -150,7 +144,6 @@ fn test_watcher_filtering_keeps_text_only_and_extensionless_paths_in_sync() {
 async fn test_real_time_file_watcher_indexing() {
     use julie_core::database::SymbolDatabase;
     use julie_core::test_support::atomic_cleanup_julie_dir;
-    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::time::sleep;
@@ -175,8 +168,6 @@ async fn test_real_time_file_watcher_indexing() {
     let cache_dir = workspace_root.join(".julie/cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
 
-    let extractor_manager = Arc::new(ExtractorManager::new());
-
     // Create initial file to ensure workspace isn't empty
     let initial_file = workspace_root.join("initial.rs");
     fs::write(&initial_file, "fn initial() {}").unwrap();
@@ -186,7 +177,6 @@ async fn test_real_time_file_watcher_indexing() {
     let mut indexer = IncrementalIndexer::new(
         workspace_root.clone(),
         db.clone(),
-        extractor_manager.clone(),
         None,
         shared_provider, // No embedding provider in test
         julie_core::indexing_state::IndexingRuntimeState::shared(),
@@ -254,7 +244,6 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
     use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex, atomic::Ordering};
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_rescan_repair");
@@ -265,13 +254,11 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
 
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let shared_provider = Arc::new(std::sync::RwLock::new(None));
 
     let indexer = IncrementalIndexer::new(
         workspace_root.clone(),
         db.clone(),
-        extractor_manager.clone(),
         None,
         shared_provider,
         julie_core::indexing_state::IndexingRuntimeState::shared(),
@@ -282,7 +269,6 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
     handle_file_created_or_modified_static(
         tracked_file.canonicalize().unwrap(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -335,7 +321,6 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
 #[tokio::test]
 async fn test_process_pending_changes_retries_persisted_extractor_failure() {
     use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_retry_persisted_repair");
@@ -346,7 +331,6 @@ async fn test_process_pending_changes_retries_persisted_extractor_failure() {
 
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let shared_provider = Arc::new(std::sync::RwLock::new(None));
 
     {
@@ -364,7 +348,6 @@ async fn test_process_pending_changes_retries_persisted_extractor_failure() {
     let indexer = IncrementalIndexer::new(
         workspace_root.clone(),
         db.clone(),
-        extractor_manager,
         None,
         shared_provider,
         julie_core::indexing_state::IndexingRuntimeState::shared(),
@@ -401,7 +384,6 @@ async fn test_process_pending_changes_retries_persisted_extractor_failure() {
 async fn test_process_pending_changes_does_not_leave_watcher_repair_active_without_search_index() {
     use julie_core::database::SymbolDatabase;
     use julie_core::indexing_state::{IndexingOperation, IndexingRuntimeState};
-    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_dirty_without_search_index");
@@ -409,14 +391,12 @@ async fn test_process_pending_changes_does_not_leave_watcher_repair_active_witho
 
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let shared_provider = Arc::new(std::sync::RwLock::new(None));
     let indexing_runtime = IndexingRuntimeState::shared();
 
     let indexer = IncrementalIndexer::new(
         workspace_root,
         db,
-        extractor_manager,
         None,
         shared_provider,
         Arc::clone(&indexing_runtime),
@@ -485,29 +465,20 @@ async fn test_blake3_change_detection() {
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::workspace::mutation_gate::acquire_gate;
     use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_blake3_change_detection").await;
 
     // 1. Create a file and index it for the first time
     let test_file = dir.path().join("example.rs");
     fs::write(&test_file, "pub fn hello() -> &'static str { \"hello\" }").unwrap();
 
-    handle_file_created_or_modified_static(
-        test_file.clone(),
-        &db,
-        &extractor_manager,
-        dir.path(),
-        None,
-        &guard,
-    )
-    .await
-    .expect("First index should succeed");
+    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &guard)
+        .await
+        .expect("First index should succeed");
 
     // Verify symbol was indexed
     let count_after_first = {
@@ -534,16 +505,9 @@ async fn test_blake3_change_detection() {
             .unwrap();
     }
 
-    handle_file_created_or_modified_static(
-        test_file.clone(),
-        &db,
-        &extractor_manager,
-        dir.path(),
-        None,
-        &guard,
-    )
-    .await
-    .expect("Second index (same content) should succeed");
+    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &guard)
+        .await
+        .expect("Second index (same content) should succeed");
 
     // Tampered value should survive — handler skipped due to hash match
     let tampered_count = {
@@ -570,16 +534,9 @@ async fn test_blake3_change_detection() {
     )
     .unwrap();
 
-    handle_file_created_or_modified_static(
-        test_file.clone(),
-        &db,
-        &extractor_manager,
-        dir.path(),
-        None,
-        &guard,
-    )
-    .await
-    .expect("Third index (new content) should succeed");
+    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &guard)
+        .await
+        .expect("Third index (new content) should succeed");
 
     // Tampered value should be reset — handler re-indexed due to hash mismatch
     let reset_count = {
@@ -620,7 +577,6 @@ async fn test_blake3_change_detection() {
 #[tokio::test]
 async fn test_repair_retry_clears_unsupported_extension() {
     use julie_core::database::SymbolDatabase;
-    use julie_extractors::ExtractorManager;
     use std::sync::{Arc, Mutex};
 
     let temp_dir = julie_test_support::unique_temp_dir("watcher_repair_unsupported_ext");
@@ -632,7 +588,6 @@ async fn test_repair_retry_clears_unsupported_extension() {
 
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let shared_provider = Arc::new(std::sync::RwLock::new(None));
 
     // Seed a repair entry for the .ogg file (simulates initial indexing failure)
@@ -655,7 +610,6 @@ async fn test_repair_retry_clears_unsupported_extension() {
     let indexer = IncrementalIndexer::new(
         workspace_root.clone(),
         db.clone(),
-        extractor_manager,
         None,
         shared_provider,
         julie_core::indexing_state::IndexingRuntimeState::shared(),

@@ -11,9 +11,9 @@ use tempfile::TempDir;
 
 use crate::database::types::FileInfo;
 use crate::database::{SymbolDatabase, create_file_info};
-use crate::extractors::base::{TypeInfo, Visibility};
 use crate::extractors::{
-    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, TypeInfo,
+    Visibility,
 };
 
 /// Test helper: Create a simple test symbol
@@ -26,29 +26,31 @@ fn create_test_symbol(name: &str, file_path: &str) -> Symbol {
     let id = format!("{:x}", hasher.finalize());
 
     Symbol {
-        id,
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        file_path: file_path.to_string(),
-        start_line: 1,
-        end_line: 5,
-        start_column: 0,
-        end_column: 10,
-        start_byte: 0,
-        end_byte: 50,
-        signature: Some(format!("fn {}()", name)),
-        doc_comment: None,
-        parent_id: None,
-        language: "rust".to_string(),
-        visibility: Some(Visibility::Public),
+        extracted: julie_extractors::Symbol {
+            id,
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            file_path: file_path.to_string(),
+            start_line: 1,
+            end_line: 5,
+            start_column: 0,
+            end_column: 10,
+            start_byte: 0,
+            end_byte: 50,
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: None,
+            parent_id: None,
+            language: "rust".to_string(),
+            visibility: Some(Visibility::Public),
+            content_type: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 
@@ -354,6 +356,7 @@ fn create_test_identifier(name: &str, file_path: &str) -> Identifier {
         target_symbol_id: None,
         confidence: 1.0,
         code_context: None,
+        receiver_type: None,
     }
 }
 

@@ -8,6 +8,7 @@
 
 pub mod edit_file;
 pub mod rewrite_symbol;
+pub mod syntax;
 pub mod validation;
 
 use anyhow::Result;

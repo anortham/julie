@@ -5,7 +5,7 @@
 use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use tracing::debug;
 
-use julie_extractors::base::Symbol;
+use julie_core::Symbol;
 
 /// Format raw code output - just the source code, no metadata wrapper
 ///

@@ -92,7 +92,7 @@ mod weight_profile_wiring_tests {
         .unwrap();
     }
 
-    fn process_data_symbol() -> julie_extractors::Symbol {
+    fn process_data_symbol() -> julie_core::Symbol {
         symbol_builder("sym1", "process_data", "src/lib.rs")
             .kind(SymbolKind::Function)
             .language("rust")

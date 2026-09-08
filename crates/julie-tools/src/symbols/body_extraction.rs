@@ -8,7 +8,7 @@
 use anyhow::Result;
 use tracing::{debug, warn};
 
-use julie_extractors::base::Symbol;
+use julie_core::Symbol;
 
 /// Extract code bodies for symbols based on mode parameter
 pub fn extract_code_bodies(

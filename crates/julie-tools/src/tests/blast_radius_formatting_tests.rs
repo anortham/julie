@@ -3,33 +3,36 @@ use crate::impact::formatting::{BlastRadiusHeader, format_blast_radius, impact_r
 use crate::impact::ranking::RankedImpact;
 use crate::impact::seed::SeedContext;
 use crate::spillover::SpilloverFormat;
-use julie_extractors::{RelationshipKind, Symbol, SymbolKind};
+use julie_core::Symbol;
+use julie_extractors::{RelationshipKind, SymbolKind};
 
 fn make_symbol(name: &str, file_path: &str, line: u32) -> Symbol {
     Symbol {
-        id: format!("{}_id", name),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: line,
-        end_line: line + 1,
-        start_column: 0,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 16,
-        parent_id: None,
-        signature: Some(format!("fn {}()", name)),
-        doc_comment: None,
-        visibility: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: Some(1.0),
+        extracted: julie_extractors::Symbol {
+            id: format!("{}_id", name),
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: line,
+            end_line: line + 1,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 16,
+            parent_id: None,
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: None,
+            visibility: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(1.0),
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 

@@ -3,9 +3,10 @@ use std::collections::HashSet;
 use anyhow::{Result, anyhow};
 
 use super::BlastRadiusTool;
+use julie_core::Symbol;
 use julie_core::database::RevisionChangeKind;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::{Symbol, SymbolKind};
+use julie_extractors::SymbolKind;
 
 #[derive(Debug, Clone)]
 pub struct SeedContext {

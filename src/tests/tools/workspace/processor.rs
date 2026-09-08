@@ -1,6 +1,5 @@
 use crate::database::SymbolDatabase;
-use crate::extractors::ExtractionResults;
-use crate::extractors::base::{ParseDiagnostic, ParseDiagnosticKind};
+use crate::extractors::{ExtractionResults, ParseDiagnostic, ParseDiagnosticKind};
 use crate::indexing_core::extraction::extract_files_for_indexing_with_records;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::state::{

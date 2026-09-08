@@ -1776,8 +1776,8 @@ dependencies = [
 
 [[package]]
 name = "julie-extractors"
-version = "2.34.3"
-source = "git+https://github.com/anortham/julie-extractors?tag=v2.34.3#320b5bab09269b2b86046a434aad82a3ba1b2685"
+version = "2.41.0"
+source = "git+https://github.com/anortham/julie-extractors?tag=v2.41.0#a71e18c1a6fae67b15d2d0aaa20793330fda901f"
 dependencies = [
  "anyhow",
  "md5",
@@ -1795,6 +1795,7 @@ dependencies = [
  "tree-sitter-dart",
  "tree-sitter-elixir",
  "tree-sitter-erlang",
+ "tree-sitter-fsharp",
  "tree-sitter-gdscript",
  "tree-sitter-go",
  "tree-sitter-html",
@@ -1807,6 +1808,7 @@ dependencies = [
  "tree-sitter-php",
  "tree-sitter-powershell",
  "tree-sitter-python",
+ "tree-sitter-qmldir",
  "tree-sitter-qmljs",
  "tree-sitter-r",
  "tree-sitter-razor",
@@ -4191,6 +4193,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-fsharp"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "054fba748f8bf3604fc14191b4e7da66d1b887de0e285e32cf6dbd2a3db3fc42"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-gdscript"
 version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4310,6 +4322,15 @@ name = "tree-sitter-python"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bf85fd39652e740bf60f46f4cda9492c3a9ad75880575bf14960f775cb74a1c"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-qmldir"
+version = "0.1.0"
+source = "git+https://github.com/tree-sitter-grammars/tree-sitter-qmldir?rev=c57e00865a1a6f1cca83340d6dad91f13df55479#c57e00865a1a6f1cca83340d6dad91f13df55479"
 dependencies = [
  "cc",
  "tree-sitter-language",

@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use tracing::info;
 
 use crate::search::SearchIndex;
+use julie_core::Symbol;
 use julie_core::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDatabase};
-use julie_extractors::Symbol;
 
 mod apply;
 mod facts_text;

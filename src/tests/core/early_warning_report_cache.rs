@@ -1,7 +1,8 @@
 use crate::analysis::early_warnings::{EarlyWarningReportOptions, generate_early_warning_report};
 use crate::database::{FileInfo, ProjectionStatus, SymbolDatabase};
-use crate::extractors::{AnnotationMarker, Symbol, SymbolKind};
+use crate::extractors::{AnnotationMarker, SymbolKind};
 use crate::search::language_config::LanguageConfigs;
+use julie_core::Symbol;
 use rusqlite::{Connection, params};
 use tempfile::TempDir;
 
@@ -30,29 +31,31 @@ fn marker(annotation: &str, annotation_key: &str, raw_text: Option<&str>) -> Ann
 
 fn symbol(id: &str, name: &str, file_path: &str, start_line: u32) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Method,
-        language: "csharp".to_string(),
-        file_path: file_path.to_string(),
-        start_line,
-        start_column: 4,
-        end_line: start_line + 3,
-        end_column: 1,
-        start_byte: 20,
-        end_byte: 80,
-        signature: Some(format!("{name}()")),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: Some(1.0),
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Method,
+            language: "csharp".to_string(),
+            file_path: file_path.to_string(),
+            start_line,
+            start_column: 4,
+            end_line: start_line + 3,
+            end_column: 1,
+            start_byte: 20,
+            end_byte: 80,
+            signature: Some(format!("{name}()")),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(1.0),
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: vec![marker("HttpGet", "httpget", Some("[HttpGet]"))],
+        },
         code_context: Some(format!("{name}() {{}}")),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: vec![marker("HttpGet", "httpget", Some("[HttpGet]"))],
     }
 }
 

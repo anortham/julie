@@ -5,10 +5,7 @@ use std::path::Path;
 ///
 /// Delegates to `julie_extractors::language::detect_language_from_extension()`.
 pub fn is_supported_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .and_then(julie_extractors::language::detect_language_from_extension)
-        .is_some()
+    julie_extractors::detect_language_for_path(path, "").is_some()
 }
 
 /// Read file content safely

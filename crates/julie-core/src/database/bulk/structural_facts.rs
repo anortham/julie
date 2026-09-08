@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use julie_extractors::base::StructuralFact;
+use julie_extractors::StructuralFact;
 use rusqlite::{Transaction, params};
 
 pub(crate) fn insert_structural_facts_tx(

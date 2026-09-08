@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use julie_extractors::{Symbol, SymbolKind};
+use julie_core::Symbol;
+use julie_extractors::SymbolKind;
 use julie_index::search::{SearchFilter, SymbolSearchResult};
 use julie_pipeline::embeddings::EmbeddingProvider;
 
@@ -462,37 +463,39 @@ fn symbol_result_to_hit(result: SymbolSearchResult, workspace: String) -> Search
     let kind = SymbolKind::try_from_string(&result.kind).unwrap_or(SymbolKind::Variable);
     SearchHit::from_symbol(
         Symbol {
-            id: result.id,
-            name: result.name,
-            kind,
-            language: result.language,
-            file_path: result.file_path,
-            start_line: result.start_line,
-            start_column: 0,
-            end_line: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 0,
-            signature: if result.signature.is_empty() {
-                None
-            } else {
-                Some(result.signature)
+            extracted: julie_extractors::Symbol {
+                id: result.id,
+                name: result.name,
+                kind,
+                language: result.language,
+                file_path: result.file_path,
+                start_line: result.start_line,
+                start_column: 0,
+                end_line: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 0,
+                signature: if result.signature.is_empty() {
+                    None
+                } else {
+                    Some(result.signature)
+                },
+                doc_comment: if result.doc_comment.is_empty() {
+                    None
+                } else {
+                    Some(result.doc_comment)
+                },
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(result.score),
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
             },
-            doc_comment: if result.doc_comment.is_empty() {
-                None
-            } else {
-                Some(result.doc_comment)
-            },
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: Some(result.score),
             code_context: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         },
         workspace,
     )

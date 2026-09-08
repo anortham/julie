@@ -5,6 +5,7 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     use crate::analysis::test_roles::*;
+    use julie_core::Symbol;
     use julie_extractors::{AnnotationMarker, SymbolKind, TestRole};
 
     /// Build a minimal symbol for testing classification.
@@ -13,7 +14,7 @@ mod tests {
         language: &str,
         annotations: Vec<AnnotationMarker>,
         metadata: Option<HashMap<String, serde_json::Value>>,
-    ) -> julie_extractors::Symbol {
+    ) -> Symbol {
         make_symbol_named("test_fn", kind, language, annotations, metadata)
     }
 
@@ -23,31 +24,33 @@ mod tests {
         language: &str,
         annotations: Vec<AnnotationMarker>,
         metadata: Option<HashMap<String, serde_json::Value>>,
-    ) -> julie_extractors::Symbol {
-        julie_extractors::Symbol {
-            id: "test-id".to_string(),
-            name: name.to_string(),
-            kind,
-            language: language.to_string(),
-            file_path: "test.cs".to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 10,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 100,
-            signature: None,
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata,
-            body_span: None,
-            body_hash: None,
-            annotations,
-            semantic_group: None,
-            confidence: None,
+    ) -> Symbol {
+        Symbol {
+            extracted: julie_extractors::Symbol {
+                id: "test-id".to_string(),
+                name: name.to_string(),
+                kind,
+                language: language.to_string(),
+                file_path: "test.cs".to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 10,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 100,
+                signature: None,
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata,
+                body_span: None,
+                body_hash: None,
+                annotations,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+            },
             code_context: None,
-            content_type: None,
         }
     }
 

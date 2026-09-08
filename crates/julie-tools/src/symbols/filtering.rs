@@ -12,7 +12,7 @@
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
-use julie_extractors::base::Symbol;
+use julie_core::Symbol;
 
 // ============================================================================
 // Shared hierarchy helpers

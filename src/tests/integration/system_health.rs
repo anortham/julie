@@ -9,7 +9,7 @@ mod tests {
 
     use crate::database::ProjectionStatus;
     use crate::database::types::FileInfo;
-    use crate::extractors::{Symbol, SymbolKind};
+    use crate::extractors::SymbolKind;
     use crate::handler::JulieServerHandler;
     use crate::health::{
         HealthChecker, HealthLevel, ProjectionFreshness, ProjectionState, SystemStatus,
@@ -19,6 +19,7 @@ mod tests {
     use crate::tools::search::FastSearchTool;
     use crate::tools::workspace::ManageWorkspaceTool;
     use crate::workspace::registry::generate_workspace_id;
+    use julie_core::Symbol;
 
     struct SkipEmbeddingsGuard;
 
@@ -71,29 +72,31 @@ mod tests {
 
     fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
         Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: file_path.to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 1,
-            end_column: 24,
-            start_byte: 0,
-            end_byte: 24,
-            signature: Some(format!("fn {}()", name)),
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
+            extracted: julie_extractors::Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: file_path.to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 1,
+                end_column: 24,
+                start_byte: 0,
+                end_byte: 24,
+                signature: Some(format!("fn {}()", name)),
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            },
             code_context: Some(format!("fn {}() {{}}", name)),
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
         }
     }
 

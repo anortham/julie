@@ -15,8 +15,9 @@ use crate::embeddings::metadata::{
     GLOBAL_VARIABLE_EMBEDDING_CAP, NON_EMBEDDABLE_LANGUAGES, VariableEmbeddingPolicy,
     prepare_batch_for_embedding, select_budgeted_variables,
 };
+use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
-use julie_extractors::{RelationshipKind, Symbol, SymbolKind};
+use julie_extractors::{RelationshipKind, SymbolKind};
 use julie_index::search::language_config::LanguageConfigs;
 
 /// Batch size for embedding generation (symbols per batch).

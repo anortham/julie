@@ -9,7 +9,7 @@
 use std::fmt::Write;
 
 use julie_core::token_estimation::TokenEstimator;
-use julie_extractors::base::{RelationshipKind, SymbolKind};
+use julie_extractors::{RelationshipKind, SymbolKind, Visibility};
 
 use super::data::{RefEntry, SimilarEntry, SymbolContext};
 
@@ -208,7 +208,7 @@ fn extract_quality_tier(
 /// Format test quality info line when the primary symbol IS a test.
 ///
 /// Shows test role, quality tier, confidence, and stored metrics when available.
-fn format_test_quality_info(out: &mut String, symbol: &julie_extractors::base::Symbol) {
+fn format_test_quality_info(out: &mut String, symbol: &julie_core::Symbol) {
     let metadata = match &symbol.metadata {
         Some(m) => m,
         None => return,
@@ -549,7 +549,7 @@ fn format_module(out: &mut String, ctx: &SymbolContext, depth: &str) {
         .filter(|c| {
             c.visibility
                 .as_ref()
-                .map(|v| matches!(v, julie_extractors::base::Visibility::Public))
+                .map(|v| matches!(v, Visibility::Public))
                 .unwrap_or(false)
         })
         .collect();

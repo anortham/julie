@@ -35,6 +35,7 @@ pub mod editing_transactional_editing_tests;
 pub mod editing_validation_tests;
 
 // Refactoring (T2b.6)
+pub mod extractor_migration_editing;
 pub mod refactoring_ast_aware;
 pub mod refactoring_compute_line_changes_tests;
 pub mod refactoring_import_update_tests;

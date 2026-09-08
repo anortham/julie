@@ -3,8 +3,7 @@ use std::collections::HashSet;
 use tracing::{info, warn};
 
 use crate::resolver;
-use julie_extractors::PendingRelationship;
-use julie_extractors::base::StructuredPendingRelationship;
+use julie_extractors::{PendingRelationship, RelationshipKind, StructuredPendingRelationship};
 
 pub fn resolve_pending_relationships(
     db: &std::sync::Arc<std::sync::Mutex<julie_core::database::SymbolDatabase>>,
@@ -62,15 +61,7 @@ pub fn resolve_pending_relationships(
     );
 }
 
-fn pending_key(
-    pending: &PendingRelationship,
-) -> (
-    &str,
-    &str,
-    &julie_extractors::base::RelationshipKind,
-    &str,
-    u32,
-) {
+fn pending_key(pending: &PendingRelationship) -> (&str, &str, &RelationshipKind, &str, u32) {
     (
         pending.from_symbol_id.as_str(),
         pending.callee_name.as_str(),

@@ -342,6 +342,7 @@ commands = [
   "cargo nextest run -p julie-tools --lib tests::editing_security_tests",
   "cargo nextest run -p julie-tools --lib tests::editing_transactional_editing_tests",
   "cargo nextest run -p julie-tools --lib tests::editing_validation_tests",
+  "cargo nextest run -p julie-tools --lib tests::extractor_migration_editing",
 ]
 
 [buckets.tools-deep-dive]
@@ -527,6 +528,7 @@ commands = [
   "cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract",
   "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
   "cargo nextest run --lib current_parser_release_contracts_parse_without_diagnostics",
+  "cargo nextest run -p julie-pipeline --lib tests::receiver_type_resolution",
 ]
 
 [buckets.projection]

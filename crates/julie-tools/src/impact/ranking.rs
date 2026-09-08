@@ -1,5 +1,6 @@
 use super::walk::ImpactCandidate;
-use julie_extractors::{RelationshipKind, Symbol, Visibility};
+use julie_core::Symbol;
+use julie_extractors::{RelationshipKind, Visibility};
 use julie_index::search::scoring::is_test_path;
 
 #[derive(Debug, Clone)]
@@ -61,8 +62,8 @@ fn ranking_key(
 
 fn visibility_rank(visibility: Option<&Visibility>) -> u8 {
     match visibility {
-        Some(Visibility::Public) => 2,
-        Some(Visibility::Protected) => 1,
+        Some(Visibility::Public | Visibility::Open) => 2,
+        Some(Visibility::Protected | Visibility::Internal) => 1,
         _ => 0,
     }
 }

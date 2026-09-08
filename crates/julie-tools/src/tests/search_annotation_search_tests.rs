@@ -3,8 +3,9 @@ use std::collections::BTreeSet;
 use tempfile::TempDir;
 
 use crate::search::text_search::definition_search_with_index_for_test;
+use julie_core::Symbol;
 use julie_core::database::{FileInfo, SymbolDatabase};
-use julie_extractors::{AnnotationMarker, Symbol, SymbolKind};
+use julie_extractors::{AnnotationMarker, SymbolKind};
 use julie_index::search::{SearchFilter, SearchIndex, SearchProjection};
 
 fn marker(annotation: &str, annotation_key: &str, raw_text: &str) -> AnnotationMarker {
@@ -25,29 +26,31 @@ fn symbol(
     annotations: Vec<AnnotationMarker>,
 ) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 10,
-        start_column: 0,
-        end_line: 12,
-        end_column: 1,
-        start_byte: 100,
-        end_byte: 160,
-        signature: Some(format!("fn {name}()")),
-        doc_comment: None,
-        visibility: None,
-        parent_id: parent_id.map(str::to_string),
-        metadata: None,
-        body_span: None,
-        body_hash: None,
-        annotations,
-        semantic_group: None,
-        confidence: Some(1.0),
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: 10,
+            start_column: 0,
+            end_line: 12,
+            end_column: 1,
+            start_byte: 100,
+            end_byte: 160,
+            signature: Some(format!("fn {name}()")),
+            doc_comment: None,
+            visibility: None,
+            parent_id: parent_id.map(str::to_string),
+            metadata: None,
+            body_span: None,
+            body_hash: None,
+            annotations,
+            semantic_group: None,
+            confidence: Some(1.0),
+            content_type: None,
+        },
         code_context: Some(format!("fn {name}() {{}}")),
-        content_type: None,
     }
 }
 

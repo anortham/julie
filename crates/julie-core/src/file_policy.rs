@@ -17,10 +17,8 @@ pub enum ExtractionMode {
 }
 
 pub fn detect_language_for_indexing(path: &Path) -> String {
-    if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
-        if let Some(lang) = julie_extractors::language::detect_language_from_extension(ext) {
-            return lang.to_string();
-        }
+    if let Some(lang) = julie_extractors::detect_language_for_path(path, "") {
+        return lang.to_string();
     }
 
     let file_name = path
@@ -41,8 +39,7 @@ pub fn detect_language_for_indexing(path: &Path) -> String {
 }
 
 pub fn detect_language_for_indexing_with_content(path: &Path, content: &str) -> String {
-    let path_str = path.to_string_lossy();
-    julie_extractors::language::detect_language_for_source(&path_str, content)
+    julie_extractors::detect_language_for_path(path, content)
         .map(str::to_string)
         .unwrap_or_else(|| detect_language_for_indexing(path))
 }
@@ -50,11 +47,23 @@ pub fn detect_language_for_indexing_with_content(path: &Path, content: &str) -> 
 pub fn supported_extensions_for_indexing() -> &'static HashSet<String> {
     static SUPPORTED_EXTENSIONS: OnceLock<HashSet<String>> = OnceLock::new();
     SUPPORTED_EXTENSIONS.get_or_init(|| {
-        julie_extractors::language::supported_extensions()
-            .iter()
-            .map(|ext| ext.to_lowercase())
+        julie_extractors::capability_snapshot()
+            .languages()
+            .flat_map(|row| row.extensions.iter())
+            .map(|extension| extension.to_lowercase())
             .collect()
     })
+}
+
+pub fn is_parser_supported_language(language: &str) -> bool {
+    static PARSER_LANGS: OnceLock<HashSet<String>> = OnceLock::new();
+    let langs = PARSER_LANGS.get_or_init(|| {
+        julie_extractors::capability_snapshot()
+            .languages()
+            .map(|row| row.language.to_lowercase())
+            .collect()
+    });
+    langs.contains(&language.to_lowercase())
 }
 
 pub fn allows_blacklisted_extension(file_name: &str) -> bool {
@@ -62,9 +71,7 @@ pub fn allows_blacklisted_extension(file_name: &str) -> bool {
 }
 
 pub fn determine_extraction_mode(language: &str, content: &str) -> ExtractionMode {
-    if content.trim().is_empty()
-        || julie_extractors::language::get_tree_sitter_language(language).is_err()
-    {
+    if content.trim().is_empty() || !is_parser_supported_language(language) {
         return ExtractionMode::TextOnly;
     }
 

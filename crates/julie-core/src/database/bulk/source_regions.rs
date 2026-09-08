@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use julie_extractors::base::SourceRegion;
+use julie_extractors::SourceRegion;
 use rusqlite::{Transaction, params};
 
 pub(crate) fn insert_source_regions_tx(

@@ -22,12 +22,13 @@ use tempfile::TempDir;
 
 use crate::database::SymbolDatabase;
 use crate::database::types::FileInfo;
-use crate::extractors::{Symbol, SymbolKind};
+use crate::extractors::SymbolKind;
 use crate::handler::JulieServerHandler;
 use crate::leadership::LeadershipState;
 use crate::registry::discovery::DaemonLockGuard;
 use crate::search::{SearchIndex, SearchProjection};
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
+use julie_core::Symbol;
 
 const WS: &str = "ws_repair_gate";
 
@@ -87,29 +88,31 @@ fn gate_file(path: &str, content: &str) -> FileInfo {
 
 fn gate_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 3,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 32,
-        signature: Some(format!("fn {}()", name)),
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
+        extracted: julie_extractors::Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 3,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 32,
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
         code_context: Some(format!("fn {}() {{}}", name)),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
     }
 }
 

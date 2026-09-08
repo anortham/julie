@@ -211,7 +211,7 @@ mod tests {
 
         // Verify s1 metadata
         let s1 = db.get_symbol_by_id("s1").unwrap().unwrap();
-        let meta = s1.metadata.unwrap();
+        let meta = s1.metadata.as_ref().unwrap();
         let risk = meta.get("change_risk").unwrap();
         let label = risk.get("label").unwrap().as_str().unwrap();
         assert_eq!(label, "HIGH");
@@ -228,7 +228,7 @@ mod tests {
 
         // Verify s2 is LOW risk
         let s2 = db.get_symbol_by_id("s2").unwrap().unwrap();
-        let meta2 = s2.metadata.unwrap();
+        let meta2 = s2.metadata.as_ref().unwrap();
         let risk2 = meta2.get("change_risk").unwrap();
         let label2 = risk2.get("label").unwrap().as_str().unwrap();
         assert_eq!(label2, "LOW");

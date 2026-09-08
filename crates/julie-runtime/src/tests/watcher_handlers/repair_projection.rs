@@ -13,13 +13,11 @@ async fn test_extractor_failure_is_persisted_durably() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_extractor_failure_durable").await;
 
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -33,16 +31,10 @@ async fn test_extractor_failure_is_persisted_durably() {
     )
     .unwrap();
 
-    let outcome = handle_file_created_or_modified_static(
-        absolute_path,
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-        &guard,
-    )
-    .await
-    .expect("Extractor failure should surface as repair-needed, not a hard error");
+    let outcome =
+        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &guard)
+            .await
+            .expect("Extractor failure should surface as repair-needed, not a hard error");
 
     assert_eq!(
         outcome.repair_reason,
@@ -100,14 +92,12 @@ async fn test_delete_handler_always_cleans_up() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_delete_always_cleans_up").await;
 
     // Index the file
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -184,7 +174,6 @@ fn render_rich_text_field() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
 
     // Create Tantivy search index
     let tantivy_dir = workspace_root.join("tantivy");
@@ -232,7 +221,6 @@ fn render_rich_text_field() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         Some(&search_index),
         &guard,
@@ -313,7 +301,6 @@ fn watched_annotation_marker() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
 
     let tantivy_dir = workspace_root.join("tantivy");
     fs::create_dir_all(&tantivy_dir).unwrap();
@@ -324,7 +311,6 @@ fn watched_annotation_marker() {
     handle_file_created_or_modified_static(
         absolute_path,
         &db,
-        &extractor_manager,
         &workspace_root,
         Some(&search_index),
         &guard,
@@ -365,7 +351,6 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
 
     let tantivy_dir = workspace_root.join("tantivy");
     fs::create_dir_all(&tantivy_dir).unwrap();
@@ -381,7 +366,6 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
     let outcome = handle_file_created_or_modified_static(
         absolute_path,
         &db,
-        &extractor_manager,
         &workspace_root,
         Some(&search_index),
         &guard,
@@ -420,14 +404,12 @@ async fn test_hash_match_clears_stale_repair_entry() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let extractor_manager = Arc::new(ExtractorManager::new());
     let guard = acquire_gate("test_hash_match_repair_clear").await;
 
     // First pass: index the file (stores hash + symbols)
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         None,
         &guard,
@@ -444,16 +426,10 @@ async fn test_hash_match_clears_stale_repair_entry() {
     }
 
     // Second pass: same file, unchanged content (hash will match -> early return)
-    let outcome = handle_file_created_or_modified_static(
-        absolute_path,
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-        &guard,
-    )
-    .await
-    .expect("hash-match pass should succeed");
+    let outcome =
+        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &guard)
+            .await
+            .expect("hash-match pass should succeed");
 
     assert_eq!(
         outcome.repair_reason, None,
@@ -495,7 +471,6 @@ async fn test_watcher_does_not_publish_uncommitted_projection_revision() {
 
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
 
     let tantivy_dir = workspace_root.join("tantivy");
     fs::create_dir_all(&tantivy_dir).unwrap();
@@ -506,7 +481,6 @@ async fn test_watcher_does_not_publish_uncommitted_projection_revision() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &extractor_manager,
         &workspace_root,
         Some(&search_index),
         &guard,
@@ -538,7 +512,6 @@ async fn test_watcher_does_not_publish_uncommitted_projection_revision() {
     let indexer = IncrementalIndexer::new(
         workspace_root.clone(),
         Arc::clone(&db),
-        Arc::clone(&extractor_manager),
         Some(Arc::clone(&search_index)),
         Arc::new(std::sync::RwLock::new(None)),
         Arc::clone(&indexing_runtime),
@@ -630,7 +603,6 @@ async fn test_watcher_handler_error_after_commit_marks_projection_stale() {
 
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
 
     let tantivy_dir = workspace_root.join("tantivy");
     fs::create_dir_all(&tantivy_dir).unwrap();
@@ -646,7 +618,6 @@ async fn test_watcher_handler_error_after_commit_marks_projection_stale() {
     let indexer = IncrementalIndexer::new(
         workspace_root.clone(),
         Arc::clone(&db),
-        Arc::clone(&extractor_manager),
         Some(Arc::clone(&search_index)),
         Arc::new(std::sync::RwLock::new(None)),
         Arc::clone(&indexing_runtime),
@@ -712,7 +683,6 @@ async fn test_mid_crash_projection_lag_reconciliation() {
 
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let extractor_manager = Arc::new(ExtractorManager::new());
 
     let guard = acquire_gate("test_mid_crash_projection_lag").await;
 
@@ -722,7 +692,6 @@ async fn test_mid_crash_projection_lag_reconciliation() {
     handle_file_created_or_modified_static(
         absolute_path,
         &db,
-        &extractor_manager,
         &workspace_root,
         None, // no Tantivy — simulates crash before apply
         &guard,

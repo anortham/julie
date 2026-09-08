@@ -9,9 +9,10 @@ use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
 use crate::navigation::resolution::{file_path_matches_suffix, parse_qualified_name};
+use julie_core::Symbol;
 use julie_core::database::{IdentifierRef, SymbolDatabase};
 use julie_core::shared::NOISE_CALLEE_NAMES;
-use julie_extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use julie_extractors::{ComplexityMetric, Relationship, RelationshipKind, SymbolKind};
 use julie_index::search::scoring::is_test_path;
 
 /// Aggregated context for a single symbol, ready for formatting
@@ -20,7 +21,7 @@ pub struct SymbolContext {
     /// The primary symbol being investigated
     pub symbol: Symbol,
     /// Extractor-provided structural complexity metric
-    pub complexity: Option<julie_extractors::base::ComplexityMetric>,
+    pub complexity: Option<ComplexityMetric>,
     /// Incoming references: who calls/uses this symbol
     pub incoming: Vec<RefEntry>,
     /// Total incoming before capping
@@ -535,7 +536,7 @@ fn identifier_names_for_symbol(db: &SymbolDatabase, symbol: &Symbol) -> Result<V
     let mut qualifiers = Vec::new();
     if let Some(parent_id) = &symbol.parent_id {
         if let Some(parent) = db.get_symbol_by_id(parent_id)? {
-            push_unique(&mut qualifiers, parent.name);
+            push_unique(&mut qualifiers, parent.extracted.name);
         }
     }
     if let Some(impl_type) = impl_type_name(symbol) {

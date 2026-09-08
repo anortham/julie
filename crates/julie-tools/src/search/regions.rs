@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use julie_extractors::base::SourceRegionKind;
+use julie_extractors::SourceRegionKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRegionFilter(pub Vec<SourceRegionKind>);
