@@ -309,13 +309,19 @@ pub mod dashboard;
 // ============================================================================
 // DAEMON TESTS - v6 daemon infrastructure (paths, PID, lifecycle)
 // ============================================================================
+pub mod edit_recovery_contract;
 pub mod mcp_protocol_contract;
 pub mod registry;
 pub mod request_engine;
 pub mod request_process_helpers;
 mod request_scenarios;
 mod request_transport_parity;
+pub mod runtime_continuation;
+pub mod runtime_lifecycle;
+pub mod runtime_scheduler;
 pub mod semantic_request_contract;
+pub mod workspace_process_lifecycle;
+pub mod writer_fencing_contract;
 
 // ============================================================================
 // EXTRACTOR TESTS - Live in the external julie-extractors repo

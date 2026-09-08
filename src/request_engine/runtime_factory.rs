@@ -48,7 +48,7 @@ impl RequestRuntime {
     }
 
     pub fn check_access(&self, access: AccessClass) -> Result<(), RequestFailure> {
-        if self.is_follower() && access.is_mutating() {
+        if self.is_follower() && access.is_index_mutation() {
             return Err(RequestFailure::follower_read_only(
                 "another session owns writes for this workspace; this is a read-only follower",
             ));

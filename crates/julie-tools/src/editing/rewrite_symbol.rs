@@ -34,7 +34,7 @@ fn diagnostic_touches_range(diagnostic: &ParseDiagnostic, start: usize, end: usi
         return start <= diagnostic_start && diagnostic_start <= end;
     }
 
-    diagnostic_start < end && diagnostic_end > start
+    diagnostic_start >= start && diagnostic_start < end
 }
 
 fn default_dry_run() -> bool {
@@ -135,6 +135,60 @@ pub struct PreparedRewrite {
     match_count: usize,
     diff: String,
     changed_bytes: usize,
+}
+
+impl PreparedRewrite {
+    pub fn resolved_path(&self) -> &str {
+        &self.resolved_path
+    }
+
+    pub fn original_content(&self) -> &str {
+        &self.original_content
+    }
+
+    pub fn modified_content(&self) -> &str {
+        &self.modified_content
+    }
+
+    pub fn diff(&self) -> &str {
+        &self.diff
+    }
+
+    pub fn indexed_file_path(&self) -> &str {
+        &self.indexed_symbol.file_path
+    }
+
+    pub fn edit_spans(&self) -> Vec<crate::editing::ast_validation::TextEditSpan> {
+        match &self.span_context {
+            SpanContext::Replace {
+                byte_start,
+                byte_end,
+                ..
+            } => {
+                let replaced_len = byte_end - byte_start;
+                let new_len = (self.modified_content.len() as isize
+                    - self.original_content.len() as isize
+                    + replaced_len as isize)
+                    .max(0) as usize;
+                vec![crate::editing::ast_validation::TextEditSpan {
+                    old_start: *byte_start,
+                    old_end: *byte_end,
+                    new_len,
+                }]
+            }
+            SpanContext::Anchor { byte, .. } => {
+                let new_len = self
+                    .modified_content
+                    .len()
+                    .saturating_sub(self.original_content.len());
+                vec![crate::editing::ast_validation::TextEditSpan {
+                    old_start: *byte,
+                    old_end: *byte,
+                    new_len,
+                }]
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -713,6 +767,25 @@ impl RewriteSymbolTool {
         let resolved_path =
             secure_path_resolution(&indexed_symbol.file_path, &target.workspace_root)?;
         let resolved_str = resolved_path.to_string_lossy().to_string();
+
+        let max_source_bytes = std::env::var("JULIE_MAX_EDIT_SOURCE_BYTES")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(16 * 1024 * 1024)
+            .clamp(1, 256 * 1024 * 1024);
+        let meta = std::fs::metadata(&resolved_path).map_err(|error| {
+            anyhow!("Cannot read file '{}': {}", indexed_symbol.file_path, error)
+        })?;
+        if meta.len() > max_source_bytes as u64 {
+            return Err(rewrite_symbol_error(
+                "SOURCE_TOO_LARGE",
+                format!(
+                    "File size ({} bytes) exceeds limit ({} bytes)",
+                    meta.len(),
+                    max_source_bytes
+                ),
+            ));
+        }
 
         let original_content = std::fs::read_to_string(&resolved_path).map_err(|error| {
             anyhow!("Cannot read file '{}': {}", indexed_symbol.file_path, error)

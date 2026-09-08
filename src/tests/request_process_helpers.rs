@@ -236,6 +236,31 @@ impl ProcessFixture {
         fixture
     }
 
+    /// Create a fixture targeting an explicit workspace root and sharing an existing home.
+    pub async fn with_custom_roots(
+        binary_path: PathBuf,
+        workspace_root: PathBuf,
+        temp_home: Arc<TempDir>,
+        temp_repo: Arc<TempDir>,
+    ) -> Self {
+        let mut fixture = Self {
+            binary_path,
+            workspace_root,
+            temp_repo,
+            temp_home,
+            child: None,
+            stdin: None,
+            stdout_lines: None,
+            stderr_task: None,
+            stderr_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
+            unsolicited_messages: Vec::new(),
+            next_request_id: AtomicU64::new(1),
+        };
+
+        fixture.spawn_mcp_server().await;
+        fixture
+    }
+
     /// Spawn `julie-server` in stdio MCP mode.
     async fn spawn_mcp_server(&mut self) {
         let mut cmd = Command::new(&self.binary_path);

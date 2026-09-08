@@ -3,10 +3,10 @@
 //! These tests verify that file creation, modification, deletion, and rename
 //! operations correctly update the database with proper path handling.
 
+use crate::tests::test_writer_permit;
 use crate::watcher::handlers::{
     handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
 };
-use crate::workspace::mutation_gate::acquire_gate;
 use julie_core::database::SymbolDatabase;
 use julie_core::indexing_state::IndexingRepairReason;
 use std::fs;
@@ -46,7 +46,7 @@ fn caller() -> i32 {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_stores_identifiers").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -54,7 +54,7 @@ fn caller() -> i32 {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Indexing should succeed");
@@ -130,9 +130,9 @@ public:
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_watcher_cpp_header_language").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
-    handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &guard)
+    handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &permit)
         .await
         .expect("watcher indexing should succeed");
 
@@ -193,13 +193,13 @@ pub fn should_use_semantic_fallback() {}
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_cross_file_pending").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
-    handle_file_created_or_modified_static(callee_abs, &db, &workspace_root, None, &guard)
+    handle_file_created_or_modified_static(callee_abs, &db, &workspace_root, None, &permit)
         .await
         .expect("callee file indexing should succeed");
 
-    handle_file_created_or_modified_static(caller_abs.clone(), &db, &workspace_root, None, &guard)
+    handle_file_created_or_modified_static(caller_abs.clone(), &db, &workspace_root, None, &permit)
         .await
         .expect("initial caller file indexing should succeed");
 
@@ -213,7 +213,7 @@ fn caller() {
     )
     .unwrap();
 
-    handle_file_created_or_modified_static(caller_abs, &db, &workspace_root, None, &guard)
+    handle_file_created_or_modified_static(caller_abs, &db, &workspace_root, None, &permit)
         .await
         .expect("caller update introducing cross-file call should succeed");
 
@@ -258,14 +258,14 @@ fn original_symbol() {}
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_oversized_text_only").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     let initial_outcome = handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("initial indexing should succeed");
@@ -278,7 +278,7 @@ fn original_symbol() {}
     fs::write(&file_path, oversized).unwrap();
 
     let outcome =
-        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &guard)
+        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &permit)
             .await
             .expect("oversized update should be handled");
 
@@ -338,7 +338,7 @@ fn initial_function() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
 
-    let guard = acquire_gate("test_absolute_path_handling").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     println!("DEBUG: absolute_path = {}", absolute_path.display());
     println!("DEBUG: workspace_root = {}", workspace_root.display());
@@ -349,7 +349,7 @@ fn initial_function() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -396,7 +396,7 @@ fn modified_function() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Incremental indexing should succeed");
@@ -484,7 +484,7 @@ fn third_function() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Second modification should succeed");
@@ -533,7 +533,7 @@ fn third_function() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Re-indexing unchanged file should succeed");
@@ -591,7 +591,7 @@ fn final_function() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Re-indexing with new content should succeed");
@@ -623,7 +623,7 @@ async fn test_file_deletion_absolute_path() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_file_deletion").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -631,7 +631,7 @@ async fn test_file_deletion_absolute_path() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -647,7 +647,7 @@ async fn test_file_deletion_absolute_path() {
     fs::remove_file(&test_file).unwrap();
 
     // Call deletion handler with absolute path
-    handle_file_deleted_static(absolute_path, &db, &workspace_root, None, &guard)
+    handle_file_deleted_static(absolute_path, &db, &workspace_root, None, &permit)
         .await
         .expect("File deletion should succeed");
 
@@ -674,7 +674,7 @@ async fn test_file_rename_absolute_paths() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_file_rename").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     // Index original file
     handle_file_created_or_modified_static(
@@ -682,7 +682,7 @@ async fn test_file_rename_absolute_paths() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -699,7 +699,7 @@ async fn test_file_rename_absolute_paths() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("File rename should succeed");
@@ -732,14 +732,14 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_rename_destination_failure").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         old_absolute.clone(),
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -753,7 +753,7 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Initial destination indexing should succeed");
@@ -773,7 +773,7 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Rename handler should report the destination failure without panicking");
@@ -809,14 +809,14 @@ async fn test_file_rename_persists_repair_when_source_retirement_fails() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_rename_source_retirement").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         old_absolute.clone(),
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -846,7 +846,7 @@ async fn test_file_rename_persists_repair_when_source_retirement_fails() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect_err("source retirement failure should bubble up");

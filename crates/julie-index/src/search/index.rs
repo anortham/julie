@@ -68,6 +68,7 @@ pub struct SearchIndex {
     rebuild_pause_for_test: Mutex<Option<RebuildPauseForTest>>,
     #[cfg(any(test, feature = "test-support"))]
     rebuild_failure_for_test: AtomicBool,
+    path: Option<std::path::PathBuf>,
 }
 
 /// Shared handle for a workspace search index.
@@ -77,3 +78,17 @@ pub struct SearchIndex {
 /// via `Arc` — do **not** wrap it in an outer `Mutex`, which would serialize
 /// readers and block search behind long-running hybrid embedding RPCs.
 pub type SearchIndexHandle = Arc<SearchIndex>;
+
+impl SearchIndex {
+    pub fn reader(&self) -> &IndexReader {
+        &self.reader
+    }
+
+    pub fn index(&self) -> &Index {
+        &self.index
+    }
+
+    pub fn path(&self) -> Option<&std::path::Path> {
+        self.path.as_deref()
+    }
+}

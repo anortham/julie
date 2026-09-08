@@ -100,7 +100,15 @@ impl RequestEngine {
         let runtime = self.runtimes.acquire(binding.as_ref(), &context).await?;
 
         // Step 5: Follower access check
-        runtime.check_access(decoded.access())?;
+        let access = match &decoded {
+            DecodedTool::ManageWorkspace(params)
+                if params.operation == "recover_edit" || params.operation == "recover-edit" =>
+            {
+                crate::request_engine::types::AccessClass::SourceEdit
+            }
+            _ => decoded.access(),
+        };
+        runtime.check_access(access)?;
 
         // Step 6: Semantic readiness check
         let semantic_req = decoded.semantic_requirement();
@@ -167,20 +175,48 @@ impl RequestEngine {
             DecodedTool::BlastRadius(p) => handler.execute_blast_radius(p).await,
             DecodedTool::CallPath(p) => handler.execute_call_path(p).await,
             DecodedTool::DeepDive(p) => handler.execute_deep_dive(p).await,
-            DecodedTool::EditFile(p) => handler.execute_edit_file(p).await,
+            DecodedTool::EditFile(p) => {
+                handler
+                    .execute_edit_file_with_context(
+                        p,
+                        context.to_std_deadline(),
+                        &context.cancellation,
+                    )
+                    .await
+            }
             DecodedTool::FastRefs(p) => handler.execute_fast_refs(p).await,
             DecodedTool::FastSearch(p) => handler.execute_fast_search(p).await,
             DecodedTool::GetContext(p) => handler.execute_get_context(p).await,
             DecodedTool::GetSymbols(p) => handler.execute_get_symbols(p).await,
             DecodedTool::ManageWorkspace(p) => handler.execute_manage_workspace(p).await,
             DecodedTool::Patterns(p) => handler.execute_patterns(p).await,
-            DecodedTool::RenameSymbol(p) => handler.execute_rename_symbol(p).await,
-            DecodedTool::RewriteSymbol(p) => handler.execute_rewrite_symbol(p).await,
+            DecodedTool::RenameSymbol(p) => {
+                handler
+                    .execute_rename_symbol_with_context(
+                        p,
+                        context.to_std_deadline(),
+                        &context.cancellation,
+                    )
+                    .await
+            }
+            DecodedTool::RewriteSymbol(p) => {
+                handler
+                    .execute_rewrite_symbol_with_context(
+                        p,
+                        context.to_std_deadline(),
+                        &context.cancellation,
+                    )
+                    .await
+            }
             DecodedTool::SpilloverGet(p) => handler.execute_spillover_get(p).await,
         };
 
         result.map_err(|e| {
-            RequestFailure::new("TOOL_ERROR", e.to_string(), false, serde_json::json!({}))
+            if let Some(failure) = e.downcast_ref::<RequestFailure>() {
+                failure.clone()
+            } else {
+                RequestFailure::new("TOOL_ERROR", e.to_string(), false, serde_json::json!({}))
+            }
         })
     }
 }

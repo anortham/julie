@@ -9,7 +9,10 @@ use crate::handler::JulieServerHandler;
 mod dashboard;
 pub(crate) mod force_safeguards;
 mod index;
+pub(crate) mod index_resolution;
 pub(crate) mod registry;
+
+pub(crate) mod recover_edit;
 
 //******************//
 // Workspace Management Commands //
@@ -27,6 +30,7 @@ pub(crate) enum ManageWorkspaceOperation {
     Stats,
     Health,
     Dashboard,
+    RecoverEdit,
 }
 
 impl ManageWorkspaceOperation {
@@ -44,6 +48,8 @@ impl ManageWorkspaceOperation {
         ("open", Self::Open),
         ("health", Self::Health),
         ("dashboard", Self::Dashboard),
+        ("recover_edit", Self::RecoverEdit),
+        ("recover-edit", Self::RecoverEdit),
     ];
 
     pub(crate) fn parse(operation: &str) -> Result<Self> {
@@ -145,6 +151,10 @@ pub(crate) enum ManageWorkspaceRequest {
         detailed: bool,
     },
     Dashboard,
+    RecoverEdit {
+        edit_id: String,
+        recovery_action: String,
+    },
 }
 
 impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
@@ -199,6 +209,19 @@ impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
                 detailed: tool.detailed.unwrap_or(false),
             }),
             ManageWorkspaceOperation::Dashboard => Ok(Self::Dashboard),
+            ManageWorkspaceOperation::RecoverEdit => {
+                let edit_id = tool
+                    .edit_id()
+                    .ok_or_else(|| {
+                        anyhow!("'edit_id' parameter required for 'recover_edit' operation")
+                    })?
+                    .to_string();
+                let recovery_action = tool.recovery_action().unwrap_or("resume").to_string();
+                Ok(Self::RecoverEdit {
+                    edit_id,
+                    recovery_action,
+                })
+            }
         }
     }
 }
@@ -234,12 +257,12 @@ pub struct ManageWorkspaceTool {
     )]
     pub force: Option<bool>,
 
-    /// Display name for workspace metadata (used by: register)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Display name for workspace metadata (used by: register) or edit_id (used by: recover_edit)
+    #[serde(skip_serializing_if = "Option::is_none", alias = "edit_id")]
     pub name: Option<String>,
 
-    /// Workspace ID (used by: remove, refresh, open, stats)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Workspace ID (used by: remove, refresh, open, stats) or recovery_action (used by: recover_edit)
+    #[serde(skip_serializing_if = "Option::is_none", alias = "recovery_action")]
     pub workspace_id: Option<String>,
 
     /// Include detailed diagnostics (used by: health)
@@ -252,6 +275,13 @@ pub struct ManageWorkspaceTool {
 }
 
 impl ManageWorkspaceTool {
+    pub fn edit_id(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub fn recovery_action(&self) -> Option<&str> {
+        self.workspace_id.as_deref()
+    }
     /// Call with `skip_embeddings: true` to suppress the embedding pipeline
     /// (used by auto-indexing to avoid expensive sidecar startup on init).
     pub async fn call_tool_with_options(
@@ -311,6 +341,12 @@ impl ManageWorkspaceTool {
                 self.handle_health_command(handler, detailed).await
             }
             ManageWorkspaceRequest::Dashboard => self.handle_dashboard_command().await,
+            ManageWorkspaceRequest::RecoverEdit {
+                edit_id,
+                recovery_action,
+            } => {
+                recover_edit::handle_recover_edit_command(handler, &edit_id, &recovery_action).await
+            }
         }
     }
 }

@@ -169,8 +169,6 @@ pub async fn run_in_process_server(
     startup_hint: crate::workspace::startup_hint::WorkspaceStartupHint,
 ) -> anyhow::Result<()> {
     use crate::handler::JulieServerHandler;
-    use crate::leadership::LeadershipState;
-    use crate::registry::discovery::{AcquireError, DaemonLockGuard};
     use crate::workspace::registry::generate_workspace_id;
     use rmcp::ServiceExt;
 
@@ -185,11 +183,7 @@ pub async fn run_in_process_server(
     //    binding id. Pinning the binding to this hint (no `list_roots` rebind)
     //    is enforced by `JulieServerHandler::request_prefers_client_roots()`
     //    returning false for in-process handlers.
-    let canonical_path = JulieServerHandler::canonicalize_workspace_path(startup_hint.path.clone());
-    let startup_hint = crate::workspace::startup_hint::WorkspaceStartupHint {
-        path: canonical_path.clone(),
-        source: startup_hint.source,
-    };
+    let canonical_path = JulieServerHandler::canonicalize_workspace_path(startup_hint.path);
     let workspace_id = generate_workspace_id(&canonical_path.to_string_lossy())
         .context("Failed to generate workspace ID")?;
 
@@ -203,72 +197,25 @@ pub async fn run_in_process_server(
         )
     })?;
 
-    // 4. Try to acquire the per-workspace leader lock.
-    let lock_path = paths.workspace_leader_lock(&workspace_id);
-    let leadership = match DaemonLockGuard::try_acquire(&lock_path) {
-        Ok(guard) => {
-            info!(
-                workspace_id = %workspace_id,
-                lock_path = %lock_path.display(),
-                "Acquired workspace leader lock — serving as leader"
-            );
-            LeadershipState::leader(guard)
-        }
-        Err(AcquireError::AlreadyHeld(_)) => {
-            // Another process (or in-process holder) owns the lock.
-            // MUST use follower() — not none() — so T7 write-refusal fires.
-            warn!(
-                workspace_id = %workspace_id,
-                lock_path = %lock_path.display(),
-                "Workspace leader lock already held — serving as follower (read-only)"
-            );
-            LeadershipState::follower()
-        }
-        Err(AcquireError::Io { path, source }) => {
-            return Err(anyhow::anyhow!(
-                "Failed to acquire workspace leader lock at {}: {source}",
-                path.display()
-            ));
-        }
+    // 4. Build workspace binding and acquire runtime lease via WorkspaceRuntimeManager.
+    let binding = crate::request_engine::types::WorkspaceBinding {
+        workspace_id: workspace_id.clone(),
+        root: canonical_path.clone(),
+        index_root: index_root.clone(),
     };
 
-    // 5. In-process embedding provider acquisition is deferred to on-demand
-    //    request execution via SemanticRuntime. Zero model warmup occurs at startup.
-    let embedding_provider = None;
+    let manager = Arc::new(crate::workspace_runtime::WorkspaceRuntimeManager::new(
+        paths.clone(),
+    ));
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let lease = manager
+        .acquire(&binding, None, &cancel)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to acquire workspace runtime: {e}"))?;
 
-    // Registry DB powers dashboard/list visibility only — core MCP tools
-    // (search/navigation/edit) do not need it. Degrade gracefully if it cannot
-    // be opened (e.g. a filesystem/permission error on ~/.julie/) rather than
-    // aborting the whole MCP server: pass None and log a warning, matching the
-    // best-effort posture of the per-swap registry upsert.
-    let daemon_db = match crate::registry::database::DaemonDatabase::open(&paths.registry_db()) {
-        Ok(db) => Some(Arc::new(db)),
-        Err(e) => {
-            warn!(
-                error = %e,
-                registry_db = %paths.registry_db().display(),
-                "Failed to open Julie workspace registry — dashboard/list visibility \
-                 degraded for this session; core search/navigation/edit unaffected"
-            );
-            None
-        }
-    };
+    let handler = Arc::clone(&lease.runtime().handler);
 
-    // 6. Build handler.  Passing `Some(index_root)` threads the daemon index
-    //    directory into initialize_workspace_with_force so db/tantivy land
-    //    next to the leader lock — the F2 inode-coupling invariant.
-    let handler = JulieServerHandler::new_in_process_with_daemon_db(
-        startup_hint,
-        embedding_provider,
-        leadership,
-        Some(index_root),
-        daemon_db,
-    )
-    .await
-    .context("Failed to build in-process handler")?;
-
-    // 7. Serve over stdio.  Auto-index is triggered by on_initialized callback.
-    //    No fork, no HTTP, no discovery.json.
+    // 5. Serve over stdio. Auto-index is triggered by on_initialized callback.
     handler
         .serve(rmcp::transport::stdio())
         .await
@@ -276,6 +223,14 @@ pub async fn run_in_process_server(
         .waiting()
         .await
         .map_err(|e| anyhow::anyhow!("In-process server task panicked: {e}"))?;
+
+    // 6. Graceful shutdown sequence
+    crate::workspace_runtime::shutdown::drain_and_shutdown(
+        lease.runtime(),
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    drop(lease);
 
     Ok(())
 }

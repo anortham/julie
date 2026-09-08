@@ -238,6 +238,7 @@ async fn test_blast_radius_ranks_direct_callers_and_uses_spillover() -> Result<(
             spillover_handle,
             limit: Some(5),
             format: Some("readable".to_string()),
+            workspace: None,
         }
         .call_tool(&handler)
         .await?,
@@ -433,6 +434,7 @@ async fn test_blast_radius_likely_test_path_overflow_is_retrievable() -> Result<
             spillover_handle,
             limit: Some(10),
             format: Some("readable".to_string()),
+            workspace: None,
         }
         .call_tool(&handler)
         .await?,
@@ -522,6 +524,7 @@ async fn test_blast_radius_related_test_symbol_overflow_is_retrievable() -> Resu
             spillover_handle,
             limit: Some(10),
             format: Some("readable".to_string()),
+            workspace: None,
         }
         .call_tool(&handler)
         .await?,

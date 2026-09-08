@@ -161,8 +161,13 @@ impl SearchIndex {
             (index, SearchIndexOpenDisposition::Compatible)
         };
 
-        let search_index =
-            Self::build_search_index(index, &expected_schema, tokenizer, language_configs)?;
+        let search_index = Self::build_search_index(
+            index,
+            &expected_schema,
+            tokenizer,
+            language_configs,
+            Some(path),
+        )?;
 
         Ok(SearchIndexOpenOutcome {
             index: search_index,
@@ -179,7 +184,7 @@ impl SearchIndex {
         let expected_marker = Self::expected_compat_marker(&schema, &tokenizer);
         let index = Index::create_in_dir(path, schema.clone())?;
         Self::write_compat_marker(path, &expected_marker)?;
-        Self::build_search_index(index, &schema, tokenizer, language_configs)
+        Self::build_search_index(index, &schema, tokenizer, language_configs, Some(path))
     }
 
     fn open_with_tokenizer(
@@ -223,8 +228,13 @@ impl SearchIndex {
             }
         };
 
-        let search_index =
-            Self::build_search_index(index, &expected_schema, tokenizer, language_configs)?;
+        let search_index = Self::build_search_index(
+            index,
+            &expected_schema,
+            tokenizer,
+            language_configs,
+            Some(path),
+        )?;
         Ok(SearchIndexOpenOutcome {
             index: search_index,
             disposition,
@@ -248,6 +258,7 @@ impl SearchIndex {
         schema: &tantivy::schema::Schema,
         tokenizer: CodeTokenizer,
         language_configs: Option<LanguageConfigs>,
+        path: Option<&Path>,
     ) -> Result<Self> {
         let schema_fields = SchemaFields::new(schema);
         Self::register_tokenizer(&index, tokenizer);
@@ -264,6 +275,7 @@ impl SearchIndex {
             rebuild_pause_for_test: Mutex::new(None),
             #[cfg(any(test, feature = "test-support"))]
             rebuild_failure_for_test: AtomicBool::new(false),
+            path: path.map(Path::to_path_buf),
         })
     }
 }

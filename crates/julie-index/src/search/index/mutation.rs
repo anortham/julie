@@ -82,20 +82,38 @@ impl SearchIndex {
         Ok(())
     }
 
-    /// Commit and release the current writer without shutting down search.
+    /// Commit and release the current writer with an optional metadata payload.
     ///
-    /// This keeps the reader usable and lets future writes recreate the writer,
-    /// while releasing Tantivy's process-wide write lock for path-backed callers.
-    pub fn release_writer(&self) -> Result<()> {
+    /// Releasing the writer releases Tantivy's directory lock while reloading the reader.
+    pub fn release_writer_with_payload(&self, payload: Option<&str>) -> Result<()> {
         let mut guard = self.writer.lock().unwrap_or_else(|e| {
             tracing::warn!("writer mutex was poisoned during writer release; recovering");
             e.into_inner()
         });
         if let Some(mut writer) = guard.take() {
-            writer.commit()?;
+            if let Some(payload_str) = payload {
+                let mut prepared = writer.prepare_commit()?;
+                prepared.set_payload(payload_str);
+                prepared.commit()?;
+            } else {
+                writer.commit()?;
+            }
         }
         self.reader.reload()?;
         Ok(())
+    }
+
+    /// Commit pending changes with a metadata payload (such as TantivyCommitPayload).
+    pub fn commit_with_payload(&self, payload: &str) -> Result<()> {
+        self.release_writer_with_payload(Some(payload))
+    }
+
+    /// Commit and release the current writer without shutting down search.
+    ///
+    /// This keeps the reader usable and lets future writes recreate the writer,
+    /// while releasing Tantivy's process-wide write lock for path-backed callers.
+    pub fn release_writer(&self) -> Result<()> {
+        self.release_writer_with_payload(None)
     }
 
     pub(crate) fn rollback_and_release_writer(&self) -> Result<()> {

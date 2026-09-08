@@ -9,18 +9,20 @@
 //! can perform complex transformations safely across entire codebases.
 
 mod rename;
+pub mod staged;
 mod utils;
+
+pub use staged::{PreparedRename, StagedFileRename};
 
 use anyhow::Result;
 use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// A single line-level change from a rename operation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenameChange {
     pub line_number: usize,
     pub old_line: String,
@@ -47,7 +49,6 @@ pub fn compute_line_changes(old_content: &str, new_content: &str) -> Vec<RenameC
     changes
 }
 
-use crate::editing::EditingTransaction;
 use julie_context::ToolContext;
 
 fn default_dry_run() -> bool {
@@ -255,49 +256,6 @@ impl SmartRefactorTool {
         Ok(CallToolResult::text_content(vec![Content::text(text)]))
     }
 
-    /// Rename symbol occurrences in a single file using tree-sitter AST-aware replacement
-    async fn rename_in_file(
-        &self,
-        workspace_root: &Path,
-        file_path: &str,
-        old_name: &str,
-        new_name: &str,
-        allowed_lines: &[u32],
-    ) -> Result<Vec<RenameChange>> {
-        // Resolve file path relative to workspace root
-        let absolute_path = if Path::new(file_path).is_absolute() {
-            file_path.to_string()
-        } else {
-            workspace_root.join(file_path).to_string_lossy().to_string()
-        };
-
-        // Read file content
-        let content = fs::read_to_string(&absolute_path)?;
-
-        // Tree-sitter AST-aware replacement: only renames identifiers, skips strings/comments
-        let allowed_lines: HashSet<u32> = allowed_lines.iter().copied().collect();
-        let updated_content = self.smart_text_replace_on_lines(
-            &content,
-            old_name,
-            new_name,
-            file_path,
-            false,
-            &allowed_lines,
-        )?;
-
-        if updated_content == content {
-            return Ok(Vec::new()); // No changes
-        }
-
-        // Write back using atomic operations (skip if dry-run)
-        if !self.dry_run {
-            let tx = EditingTransaction::begin(&absolute_path)?;
-            tx.commit_if_unchanged(&updated_content, &content)?;
-        }
-
-        Ok(compute_line_changes(&content, &updated_content))
-    }
-
     /// Uses tree-sitter AST to find ONLY actual code symbols, skipping strings/comments.
     pub fn smart_text_replace(
         &self,
@@ -328,16 +286,16 @@ impl SmartRefactorTool {
         )
     }
 
-    fn smart_text_replace_with_line_filter(
+    pub fn smart_text_replace_spans(
         &self,
         content: &str,
         old_name: &str,
         new_name: &str,
         file_path: &str,
         allowed_lines: Option<&HashSet<u32>>,
-    ) -> Result<String> {
+    ) -> Result<(String, Vec<crate::editing::ast_validation::TextEditSpan>)> {
         if old_name.is_empty() || old_name == new_name {
-            return Ok(content.to_string());
+            return Ok((content.to_string(), Vec::new()));
         }
 
         let adapter = crate::editing::syntax::SyntaxAdapter::default();
@@ -345,14 +303,9 @@ impl SmartRefactorTool {
             match adapter.parse_source(std::path::Path::new(file_path), content, None, None) {
                 Ok(parsed) => parsed,
                 Err(crate::editing::syntax::SyntaxAdapterError::UnsupportedLanguage { .. }) => {
-                    // No tree-sitter parser for this language (e.g. .env, .cfg, .ini files that
-                    // Julie indexes but has no grammar for). Fall back to plain text replacement.
-                    return Ok(replace_text_on_allowed_lines(
-                        content,
-                        old_name,
-                        new_name,
-                        allowed_lines,
-                    ));
+                    let res =
+                        replace_text_on_allowed_lines(content, old_name, new_name, allowed_lines);
+                    return Ok((res, Vec::new()));
                 }
                 Err(e) => {
                     return Err(rename_symbol_error(e.error_kind(), e.to_string()));
@@ -374,8 +327,6 @@ impl SmartRefactorTool {
         }
 
         let tree = parsed.tree;
-
-        // AST-AWARE REPLACEMENT: Walk tree to find identifier nodes
         let mut replacements: Vec<(usize, usize, String)> = Vec::new();
         let content_bytes = content.as_bytes();
 
@@ -388,6 +339,17 @@ impl SmartRefactorTool {
             allowed_lines,
         );
 
+        let edit_spans = replacements
+            .iter()
+            .map(
+                |(start, end, rep)| crate::editing::ast_validation::TextEditSpan {
+                    old_start: *start,
+                    old_end: *end,
+                    new_len: rep.len(),
+                },
+            )
+            .collect();
+
         // Apply replacements in reverse order (end to start) to preserve byte positions
         replacements.sort_by(|a, b| b.0.cmp(&a.0));
 
@@ -396,7 +358,19 @@ impl SmartRefactorTool {
             result.replace_range(start..end, &replacement);
         }
 
-        Ok(result)
+        Ok((result, edit_spans))
+    }
+
+    fn smart_text_replace_with_line_filter(
+        &self,
+        content: &str,
+        old_name: &str,
+        new_name: &str,
+        file_path: &str,
+        allowed_lines: Option<&HashSet<u32>>,
+    ) -> Result<String> {
+        self.smart_text_replace_spans(content, old_name, new_name, file_path, allowed_lines)
+            .map(|(res, _)| res)
     }
 
     /// Recursively walk tree and collect identifier nodes to replace

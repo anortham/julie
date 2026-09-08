@@ -758,6 +758,7 @@ fn test_spillover_get_metadata_carries_handle_and_limit() {
         spillover_handle: "br_123".to_string(),
         limit: Some(5),
         format: Some("compact".to_string()),
+        workspace: None,
     };
 
     let metadata = tool_targets::spillover_get_metadata(&params);

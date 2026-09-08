@@ -42,8 +42,17 @@ impl ManageWorkspaceTool {
             Ok(Some(ws_row)) => {
                 let workspace_path = std::path::PathBuf::from(&ws_row.path);
 
-                // Acquire the shared mutation gate before touching workspace state.
-                let mutation_guard = handler.acquire_mutation_gate(workspace_id).await;
+                // Acquire the authentic writer permit before touching workspace state.
+                let writer_permit = match handler.acquire_writer_permit(workspace_id).await {
+                    Ok(permit) => permit,
+                    Err(julie_core::workspace::ownership::OwnershipError::NotOwner) => {
+                        return Ok(RefreshWorkspaceOutcome::Failure(format!(
+                            "Cannot refresh workspace '{}': this process is not the index owner.",
+                            workspace_id
+                        )));
+                    }
+                    Err(e) => return Err(anyhow::anyhow!("Failed to acquire writer permit: {e}")),
+                };
                 info!("Starting re-indexing of workspace: {}", workspace_id);
 
                 let semantic_engine_refresh_needed = self
@@ -67,7 +76,7 @@ impl ManageWorkspaceTool {
 
                 let index_result = self
                     .index_workspace_inner(
-                        &mutation_guard,
+                        &writer_permit,
                         handler,
                         &workspace_path,
                         effective_force_reindex,

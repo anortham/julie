@@ -132,22 +132,22 @@ async fn test_rename_any_existing_path_emits_modified() {
 /// indexed symbols — should clean up regardless (trust the caller's decision).
 #[tokio::test]
 async fn test_delete_handler_trusts_caller_no_toctou() {
+    use crate::tests::test_writer_permit;
     use crate::watcher::handlers::{
         handle_file_created_or_modified_static, handle_file_deleted_static,
     };
-    use crate::workspace::mutation_gate::acquire_gate;
     use julie_core::database::SymbolDatabase;
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let guard = acquire_gate("test_delete_toctou").await;
+    let permit = test_writer_permit(dir.path()).await;
 
     // Index a real file first
     let test_file = dir.path().join("toctou.rs");
     fs::write(&test_file, "pub fn will_be_deleted() {}").unwrap();
-    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &guard)
+    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &permit)
         .await
         .unwrap();
 
@@ -163,7 +163,7 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
         test_file.exists(),
         "File must still exist to test TOCTOU fix"
     );
-    handle_file_deleted_static(test_file.clone(), &db, dir.path(), None, &guard)
+    handle_file_deleted_static(test_file.clone(), &db, dir.path(), None, &permit)
         .await
         .unwrap();
 

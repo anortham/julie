@@ -15,6 +15,7 @@ pub mod commands;
 pub mod generic;
 pub mod input;
 pub mod output;
+pub mod recover_edit;
 pub mod replay;
 pub mod signals_output;
 pub mod subcommands;
@@ -126,7 +127,7 @@ pub trait CliToolCommand: Send + Sync {
 pub async fn run_cli_tool(
     command: &dyn CliToolCommand,
     cli_workspace: Option<PathBuf>,
-    _standalone: bool,
+    standalone: bool,
 ) -> Result<CliToolOutput, RequestFailure> {
     command
         .validate_standalone()
@@ -136,7 +137,7 @@ pub async fn run_cli_tool(
     let workspace_root = resolve_workspace_root(cli_workspace.clone());
 
     if !workspace_root.exists() {
-        return Err(RequestFailure::invalid_arguments(format!(
+        return Err(RequestFailure::workspace_missing(format!(
             "Workspace path does not exist: {}",
             workspace_root.display()
         )));
@@ -155,7 +156,7 @@ pub async fn run_cli_tool(
     let registry_paths = crate::paths::RegistryPaths::default();
     let binding_resolver = crate::request_engine::BindingResolver::new(
         Some(workspace_root.clone()),
-        true,
+        standalone,
         registry_paths.clone(),
     );
     let runtime_factory =

@@ -52,50 +52,84 @@ impl BindingResolver {
         argument_workspace: Option<PathBuf>,
         is_unbound: bool,
     ) -> Result<Option<WorkspaceBinding>, RequestFailure> {
-        let candidate_path = match (envelope_workspace, argument_workspace) {
+        let argument_workspace = match argument_workspace {
+            Some(ref p) if p.to_string_lossy() == "resume" || p.to_string_lossy() == "rollback" => {
+                None
+            }
+            other => other,
+        };
+
+        let (root_path, known_id) = match (envelope_workspace, argument_workspace) {
             (Some(env), Some(arg)) => {
+                let env_str = env.to_string_lossy();
                 let arg_str = arg.to_string_lossy();
                 if arg_str == "primary" || arg_str == "default" {
-                    Some(env)
-                } else if arg.is_absolute() || arg.exists() {
-                    let env_canon = self.canonicalize_or_verbatim(&env);
-                    let arg_canon = self.canonicalize_or_verbatim(&arg);
-                    if env_canon != arg_canon {
+                    let target = if env_str == "primary" || env_str == "default" {
+                        self.process_workspace.as_ref().ok_or_else(|| {
+                            RequestFailure::workspace_required(
+                                "Missing required workspace parameter",
+                            )
+                        })?
+                    } else {
+                        &env
+                    };
+                    self.resolve_target_path(target)?
+                } else if env_str == "primary" || env_str == "default" {
+                    self.resolve_target_path(&arg)?
+                } else if env == arg {
+                    self.resolve_target_path(&arg)?
+                } else if (arg.is_absolute() || arg.exists()) && (env.is_absolute() || env.exists())
+                {
+                    let (env_root, env_id) = self.resolve_target_path(&env)?;
+                    let (arg_root, arg_id) = self.resolve_target_path(&arg)?;
+                    if env_root != arg_root {
                         return Err(RequestFailure::workspace_conflict(format!(
                             "Conflicting workspace selectors: envelope specifies '{}', but arguments specify '{}'",
                             env.display(),
                             arg.display()
                         )));
                     }
-                    Some(env_canon)
+                    (arg_root, arg_id.or(env_id))
                 } else {
-                    Some(env)
+                    self.resolve_target_path(&env)?
                 }
             }
-            (Some(env), None) => Some(env),
+            (Some(env), None) => {
+                let env_str = env.to_string_lossy();
+                if env_str == "primary" || env_str == "default" {
+                    let p = self.process_workspace.as_ref().ok_or_else(|| {
+                        RequestFailure::workspace_required("Missing required workspace parameter")
+                    })?;
+                    self.resolve_target_path(p)?
+                } else {
+                    self.resolve_target_path(&env)?
+                }
+            }
             (None, Some(arg)) => {
                 let arg_str = arg.to_string_lossy();
                 if arg_str == "primary" || arg_str == "default" {
-                    self.process_workspace.clone()
+                    let p = self.process_workspace.as_ref().ok_or_else(|| {
+                        RequestFailure::workspace_required("Missing required workspace parameter")
+                    })?;
+                    self.resolve_target_path(p)?
                 } else {
-                    Some(arg)
+                    self.resolve_target_path(&arg)?
                 }
             }
-            (None, None) => self.process_workspace.clone(),
-        };
-
-        let candidate_path = match candidate_path {
-            Some(p) if p.to_string_lossy() == "primary" || p.to_string_lossy() == "default" => {
-                self.process_workspace.clone()
-            }
-            other => other,
-        };
-
-        // 2. Unbound or missing handling
-        let root_path = match candidate_path {
-            Some(path) => path,
-            None => {
-                if is_unbound {
+            (None, None) => {
+                if let Some(ref p) = self.process_workspace {
+                    let p_str = p.to_string_lossy();
+                    if p_str == "primary" || p_str == "default" {
+                        if is_unbound {
+                            return Ok(None);
+                        } else {
+                            return Err(RequestFailure::workspace_required(
+                                "Missing required workspace parameter",
+                            ));
+                        }
+                    }
+                    self.resolve_target_path(p)?
+                } else if is_unbound {
                     return Ok(None);
                 } else {
                     return Err(RequestFailure::workspace_required(
@@ -103,30 +137,6 @@ impl BindingResolver {
                     ));
                 }
             }
-        };
-
-        // 3. Validation before ANY directory creation
-        let (root_path, known_id) = if !root_path.exists() {
-            let candidate_str = root_path.to_string_lossy();
-            let from_db = if let Some(ref db) = self.daemon_db {
-                db.get_workspace(&candidate_str).ok().flatten()
-            } else if let Ok(db) =
-                crate::registry::database::DaemonDatabase::open(&self.registry_paths.registry_db())
-            {
-                db.get_workspace(&candidate_str).ok().flatten()
-            } else {
-                None
-            };
-            if let Some(row) = from_db {
-                (PathBuf::from(row.path), Some(row.workspace_id))
-            } else {
-                return Err(RequestFailure::invalid_arguments(format!(
-                    "Workspace path does not exist: {}",
-                    root_path.display()
-                )));
-            }
-        } else {
-            (root_path, None)
         };
 
         if !root_path.is_dir() {
@@ -172,6 +182,48 @@ impl BindingResolver {
             root: canonical_root,
             index_root,
         }))
+    }
+
+    fn resolve_target_path(
+        &self,
+        candidate: &Path,
+    ) -> Result<(PathBuf, Option<String>), RequestFailure> {
+        let candidate_str = candidate.to_string_lossy();
+        let from_db = if let Some(ref db) = self.daemon_db {
+            db.get_workspace(&candidate_str)
+                .ok()
+                .flatten()
+                .or_else(|| db.get_workspace_by_path(&candidate_str).ok().flatten())
+        } else if let Ok(db) =
+            crate::registry::database::DaemonDatabase::open(&self.registry_paths.registry_db())
+        {
+            db.get_workspace(&candidate_str)
+                .ok()
+                .flatten()
+                .or_else(|| db.get_workspace_by_path(&candidate_str).ok().flatten())
+        } else {
+            None
+        };
+
+        if let Some(row) = from_db {
+            let p = PathBuf::from(row.path);
+            if !p.exists() {
+                return Err(RequestFailure::workspace_missing(format!(
+                    "Workspace path does not exist: {}",
+                    p.display()
+                )));
+            }
+            let canon = self.canonicalize_or_verbatim(&p);
+            Ok((canon, Some(row.workspace_id)))
+        } else if candidate.exists() {
+            let canon = self.canonicalize_or_verbatim(candidate);
+            Ok((canon, None))
+        } else {
+            Err(RequestFailure::workspace_missing(format!(
+                "Workspace path does not exist: {}",
+                candidate.display()
+            )))
+        }
     }
 
     fn canonicalize_or_verbatim(&self, path: &Path) -> PathBuf {

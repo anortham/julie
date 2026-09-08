@@ -13,6 +13,9 @@
 //! - `none()`        — not participating in any election (all pre-3c constructors).
 
 use julie_core::workspace::leader_lock::DaemonLockGuard;
+use julie_core::workspace::ownership::OwnerEpoch;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// In-process leadership state for a `JulieServerHandler`.
 ///
@@ -21,11 +24,16 @@ use julie_core::workspace::leader_lock::DaemonLockGuard;
 /// [`LeadershipState::none`] for handlers that are not in the in-process model
 /// (all existing pre-3c constructors use `none()`).
 pub struct LeadershipState {
-    lock: Option<DaemonLockGuard>,
+    pub(crate) lock: tokio::sync::Mutex<Option<DaemonLockGuard>>,
+    pub(crate) owner_epoch: Arc<tokio::sync::RwLock<Option<Arc<OwnerEpoch>>>>,
+    pub(crate) target_epochs:
+        Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<OwnerEpoch>>>>,
+    is_leader: AtomicBool,
     /// `true` when this handler is participating in an in-process election
     /// (either as leader or as follower). `false` for regular non-in-process
     /// constructors that are not subject to write-refusal gating.
     in_process: bool,
+    phase_rx: Option<tokio::sync::watch::Receiver<crate::workspace_runtime::RuntimePhase>>,
 }
 
 impl LeadershipState {
@@ -35,8 +43,36 @@ impl LeadershipState {
     /// of it). Released automatically on drop.
     pub fn leader(guard: DaemonLockGuard) -> Self {
         Self {
-            lock: Some(guard),
+            lock: tokio::sync::Mutex::new(Some(guard)),
+            owner_epoch: Arc::new(tokio::sync::RwLock::new(None)),
+            target_epochs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            is_leader: AtomicBool::new(true),
             in_process: true,
+            phase_rx: None,
+        }
+    }
+
+    /// Construct a leader state directly initialized with an authentic `OwnerEpoch`.
+    pub fn leader_with_epoch(epoch: Arc<OwnerEpoch>) -> Self {
+        Self {
+            lock: tokio::sync::Mutex::new(None),
+            owner_epoch: Arc::new(tokio::sync::RwLock::new(Some(epoch))),
+            target_epochs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            is_leader: AtomicBool::new(true),
+            in_process: true,
+            phase_rx: None,
+        }
+    }
+
+    /// Construct an in-process leader whose lock is held externally by the runtime manager.
+    pub fn leader_in_process() -> Self {
+        Self {
+            lock: tokio::sync::Mutex::new(None),
+            owner_epoch: Arc::new(tokio::sync::RwLock::new(None)),
+            target_epochs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            is_leader: AtomicBool::new(true),
+            in_process: true,
+            phase_rx: None,
         }
     }
 
@@ -46,8 +82,26 @@ impl LeadershipState {
     /// refused to prevent cross-process SQLite/Tantivy data races (T7/Risk #2).
     pub fn follower() -> Self {
         Self {
-            lock: None,
+            lock: tokio::sync::Mutex::new(None),
+            owner_epoch: Arc::new(tokio::sync::RwLock::new(None)),
+            target_epochs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            is_leader: AtomicBool::new(false),
             in_process: true,
+            phase_rx: None,
+        }
+    }
+
+    /// Construct a dynamic leadership state linked to a runtime phase receiver.
+    pub fn dynamic(
+        phase_rx: tokio::sync::watch::Receiver<crate::workspace_runtime::RuntimePhase>,
+    ) -> Self {
+        Self {
+            lock: tokio::sync::Mutex::new(None),
+            owner_epoch: Arc::new(tokio::sync::RwLock::new(None)),
+            target_epochs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            is_leader: AtomicBool::new(false),
+            in_process: true,
+            phase_rx: Some(phase_rx),
         }
     }
 
@@ -58,20 +112,32 @@ impl LeadershipState {
     /// the follower write-refusal gate.
     pub fn none() -> Self {
         Self {
-            lock: None,
+            lock: tokio::sync::Mutex::new(None),
+            owner_epoch: Arc::new(tokio::sync::RwLock::new(None)),
+            target_epochs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            is_leader: AtomicBool::new(false),
             in_process: false,
+            phase_rx: None,
         }
     }
 
     /// Returns `true` when this process holds the workspace leader lock.
     pub fn is_leader(&self) -> bool {
-        self.lock.is_some()
+        if let Some(ref rx) = self.phase_rx {
+            rx.borrow().is_owner()
+        } else {
+            self.is_leader.load(Ordering::SeqCst)
+        }
     }
 
     /// Returns `true` when this is an in-process participant that did NOT win
     /// the election. Write-mutating operations must be refused on followers.
     pub fn is_follower(&self) -> bool {
-        self.in_process && self.lock.is_none()
+        if let Some(ref rx) = self.phase_rx {
+            rx.borrow().is_follower()
+        } else {
+            self.in_process && !self.is_leader.load(Ordering::SeqCst)
+        }
     }
 
     /// Returns `true` when this handler is participating in an in-process
@@ -82,6 +148,6 @@ impl LeadershipState {
     /// handlers get the bounded envelope; daemon/stdio take the existing path
     /// byte-for-byte unchanged.
     pub fn is_in_process(&self) -> bool {
-        self.in_process
+        self.in_process || self.phase_rx.is_some()
     }
 }

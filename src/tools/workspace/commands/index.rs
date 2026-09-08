@@ -1,19 +1,18 @@
 use super::ManageWorkspaceTool;
-use super::force_safeguards::{cancel_embedding_tasks, workspace_ids_for_force_reindex};
+use super::force_safeguards::cancel_embedding_tasks;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::workspace::mutation_gate::MutationGuard;
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use julie_core::workspace::ownership::WriterPermit;
+use std::path::Path;
 use tracing::{debug, error, info, warn};
 
 impl ManageWorkspaceTool {
     /// Handle index command - index primary workspace.
     ///
-    /// Acquires the per-workspace mutation gate internally. If the caller
-    /// already holds the gate (e.g. catch-up indexer), use
-    /// `handle_index_command_with_guard` instead — `tokio::sync::Mutex` is
-    /// non-reentrant and re-acquisition deadlocks.
+    /// Acquires the per-workspace writer permit internally. If the caller
+    /// already holds the permit (e.g. startup repair / catch-up), use
+    /// `handle_index_command_with_permit` instead.
     pub(crate) async fn handle_index_command(
         &self,
         handler: &JulieServerHandler,
@@ -22,8 +21,6 @@ impl ManageWorkspaceTool {
         skip_embeddings: bool,
     ) -> Result<CallToolResult> {
         // T7 (Risk #2): refuse index writes on in-process followers.
-        // handle_index_command_internal also acquires the mutation gate, but
-        // that gate is per-process and gives no cross-process serialization.
         if handler.is_in_process_follower() {
             return Ok(CallToolResult::error(vec![Content::text(
                 "another session owns writes for this workspace; this is a read-only follower",
@@ -33,25 +30,17 @@ impl ManageWorkspaceTool {
             .await
     }
 
-    /// Variant for callers that already hold the workspace mutation gate.
-    /// Skips internal mutation-gate acquisition (which would deadlock) and
-    /// uses the caller's guard as the proof token.
-    pub(crate) async fn handle_index_command_with_guard(
+    /// Variant for callers that already hold the authentic `WriterPermit`.
+    pub(crate) async fn handle_index_command_with_permit(
         &self,
         handler: &JulieServerHandler,
         path: Option<String>,
         force: bool,
         skip_embeddings: bool,
-        existing_guard: &MutationGuard<'_>,
+        permit: &WriterPermit<'_>,
     ) -> Result<CallToolResult> {
-        self.handle_index_command_internal(
-            handler,
-            path,
-            force,
-            skip_embeddings,
-            Some(existing_guard),
-        )
-        .await
+        self.handle_index_command_internal(handler, path, force, skip_embeddings, Some(permit))
+            .await
     }
 
     async fn handle_index_command_internal(
@@ -60,7 +49,7 @@ impl ManageWorkspaceTool {
         path: Option<String>,
         force: bool,
         skip_embeddings: bool,
-        existing_guard: Option<&MutationGuard<'_>>,
+        existing_permit: Option<&WriterPermit<'_>>,
     ) -> Result<CallToolResult> {
         info!("📚 Starting workspace indexing...");
         let explicit_path_requested = path.is_some();
@@ -71,136 +60,43 @@ impl ManageWorkspaceTool {
             ));
         }
 
-        let loaded_workspace = handler.get_workspace().await?;
-        let current_primary_root = if explicit_path_requested || loaded_workspace.is_none() {
-            handler.current_workspace_root()
-        } else {
-            handler.require_primary_workspace_root()?
-        };
-        let current_primary_id = handler.current_workspace_id().or_else(|| {
-            crate::workspace::registry::generate_workspace_id(
-                &current_primary_root.to_string_lossy(),
-            )
-            .ok()
-        });
-        let bound_primary_id = handler.current_workspace_id();
+        let target = self.resolve_index_target(handler, path, force).await?;
+        let canonical_path = target.canonical_path;
+        let gate_workspace_id = target.gate_workspace_id;
+        let _current_primary_root = target.current_primary_root;
+        let _current_primary_id = target.current_primary_id;
+        let is_non_primary_target = target.is_non_primary_target;
+        let effective_force_reindex = target.effective_force_reindex;
+        let force_reindex_workspace_ids = target.force_reindex_workspace_ids;
 
-        // Get the original path before deciding whether this targets a non-primary workspace.
-        // Uses the session-owned current primary root as the authoritative fallback.
-        // resolved in main.rs from CLI --workspace > JULIE_WORKSPACE env > current_dir.
-        let original_path = match path {
-            Some(ref p) => {
-                let expanded = shellexpand::tilde(p).to_string();
-                PathBuf::from(expanded)
+        let _local_permit;
+        let _permit: &WriterPermit<'_> = match existing_permit {
+            Some(p) => {
+                if p.workspace_id() != gate_workspace_id {
+                    return Err(anyhow::anyhow!(
+                        "Writer permit workspace mismatch: expected {}, held {}",
+                        gate_workspace_id,
+                        p.workspace_id()
+                    ));
+                }
+                p
             }
-            None => current_primary_root.clone(),
-        };
-
-        // 🔥 CRITICAL FIX: Check if this targets a non-primary workspace FIRST before calling find_workspace_root.
-        // Those workspaces do not have .julie/ directories, so find_workspace_root will walk up
-        // to the primary workspace and return the wrong path!
-        let original_workspace_candidate = if original_path.is_file() {
-            original_path
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("Cannot determine parent directory"))?
-                .to_path_buf()
-        } else {
-            original_path.clone()
-        };
-        let primary_canonical = current_primary_root
-            .canonicalize()
-            .unwrap_or_else(|_| current_primary_root.clone());
-        let request_canonical = original_workspace_candidate
-            .canonicalize()
-            .unwrap_or_else(|_| original_workspace_candidate.clone());
-        let explicit_path_outside_primary = explicit_path_requested
-            && request_canonical != primary_canonical
-            && !request_canonical.starts_with(&primary_canonical);
-
-        let registered_secondary = if let Some(ref db) = handler.daemon_db {
-            // Daemon mode: registered but not the primary workspace.
-            if let Some(ref primary_id) = bound_primary_id {
-                db.get_workspace_by_path(request_canonical.to_string_lossy().as_ref())
-                    .ok()
-                    .flatten()
-                    .map(|row| row.workspace_id != *primary_id)
-                    .unwrap_or(false)
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        let is_non_primary_target =
-            registered_secondary || (handler.daemon_db.is_none() && explicit_path_outside_primary);
-        let explicit_current_root_requested =
-            explicit_path_requested && request_canonical == primary_canonical;
-        let use_requested_root_directly = explicit_current_root_requested
-            || explicit_path_outside_primary
-            || is_non_primary_target;
-
-        // For an explicit current root, explicit paths outside the current root, and
-        // registered non-primary targets, use the requested root directly. The IMPLICIT
-        // case (path=None) deliberately does NOT short-circuit here: it must fall through
-        // to `resolve_workspace_path` -> `find_workspace_root` so a daemon/handler rooted at
-        // a project SUBDIR resolves up to the marked project root via workspace markers
-        // instead of indexing the subdir. Over-walking is bounded by the VCS_ROOT_MARKERS
-        // boundary stop, so marker discovery no longer climbs into a parent checkout or the
-        // Windows user profile (see `find_workspace_root`).
-        let workspace_path = if use_requested_root_directly {
-            debug!(
-                "Using requested/current workspace root directly without ancestor marker discovery"
-            );
-            original_workspace_candidate.clone()
-        } else {
-            self.resolve_workspace_path(path, Some(&current_primary_root))?
-        };
-
-        let canonical_path = workspace_path
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_path.clone());
-        crate::workspace::root_safety::reject_sensitive_workspace_root(&canonical_path)?;
-
-        // Derive workspace_id for the gate — same logic used later when registering stats.
-        let gate_workspace_id = if explicit_path_requested || is_non_primary_target {
-            crate::workspace::registry::generate_workspace_id(&canonical_path.to_string_lossy())
-                .unwrap_or_else(|_| canonical_path.to_string_lossy().to_string())
-        } else {
-            current_primary_id
-                .clone()
-                .unwrap_or_else(|| canonical_path.to_string_lossy().to_string())
-        };
-        // Use the caller's guard if supplied; otherwise acquire our own.
-        // `_local_guard` keeps the freshly-acquired guard alive for the rest
-        // of this function when no existing_guard was passed.
-        let _local_guard;
-        let _mutation_guard: &MutationGuard<'_> = match existing_guard {
-            Some(g) => g,
             None => {
-                _local_guard = handler.acquire_mutation_gate(&gate_workspace_id).await;
-                &_local_guard
+                _local_permit = match handler.acquire_writer_permit(&gate_workspace_id).await {
+                    Ok(p) => p,
+                    Err(julie_core::workspace::ownership::OwnershipError::NotOwner) => {
+                        return Ok(CallToolResult::error(vec![Content::text(
+                            "another session owns writes for this workspace; this is a read-only follower",
+                        )]));
+                    }
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to acquire writer permit for indexing: {e}"
+                        ));
+                    }
+                };
+                &_local_permit
             }
-        };
-        let semantic_engine_refresh_needed = self
-            .semantic_index_engine_refresh_needed_for_path(handler, &canonical_path)
-            .await?;
-        let effective_force_reindex = force || semantic_engine_refresh_needed;
-
-        info!("🎯 Resolved workspace path: {}", canonical_path.display());
-        if semantic_engine_refresh_needed {
-            info!(
-                "Index semantic version changed or missing; treating index request as an effective full re-index"
-            );
-        }
-        let force_reindex_workspace_ids = if effective_force_reindex {
-            workspace_ids_for_force_reindex(
-                &canonical_path,
-                current_primary_id.as_deref(),
-                is_non_primary_target,
-            )?
-        } else {
-            Vec::new()
         };
 
         // Clear existing state if force reindexing
@@ -212,6 +108,8 @@ impl ManageWorkspaceTool {
             *handler.is_indexed.write().await = false;
             // Database will be cleared by initialize_workspace_with_force
         }
+
+        let loaded_workspace = handler.get_workspace().await?;
 
         // 🔥 CRITICAL FIX: Only initialize the handler when indexing the primary workspace.
         // Non-primary workspace targets should never reinitialize handler.workspace.
@@ -313,14 +211,9 @@ impl ManageWorkspaceTool {
             }
         }
 
-        // Perform indexing — gate is held via _mutation_guard for the duration.
+        // Perform indexing — permit is held for the duration.
         let index_result = self
-            .index_workspace_inner(
-                _mutation_guard,
-                handler,
-                &canonical_path,
-                effective_force_reindex,
-            )
+            .index_workspace_inner(_permit, handler, &canonical_path, effective_force_reindex)
             .await;
 
         match index_result {
@@ -535,66 +428,19 @@ impl ManageWorkspaceTool {
         }
     }
 
-    /// Perform workspace indexing while holding the mutation gate.
+    /// Perform workspace indexing while holding the authentic writer permit.
     ///
-    /// The caller must pass the resulting [`MutationGuard`] here as a proof
-    /// token.  This makes it
-    /// impossible (at compile time) to call this function without holding
-    /// the shared workspace mutex.
+    /// The caller must pass the resulting [`WriterPermit`] here as a proof
+    /// token. This makes it impossible (at compile time) to call this function
+    /// without holding an authentic OS owner permit.
     pub(crate) async fn index_workspace_inner(
         &self,
-        _guard: &MutationGuard<'_>,
+        _permit: &WriterPermit<'_>,
         handler: &JulieServerHandler,
         workspace_path: &Path,
         force_reindex: bool,
     ) -> Result<crate::tools::workspace::indexing::index::IndexResult> {
         self.index_workspace_files(handler, workspace_path, force_reindex)
             .await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::workspace::mutation_gate::Registry;
-    use std::time::Duration;
-    use tokio::time::timeout;
-
-    /// Two `acquire` calls with the same workspace_id serialize through
-    /// the same underlying mutex.  After the first guard is dropped, a second
-    /// `acquire` must succeed promptly, proving the lock was released.
-    ///
-    /// This replaces the old path-keyed `test_shared_index_lock_reuses_lock_for_same_path`
-    /// test, which tested a local per-path cache that no longer exists.
-    #[tokio::test]
-    async fn test_shared_gate_serializes_same_workspace_id() {
-        let reg = Registry::new();
-        let workspace_id = "ws_index_test_aabb1122";
-
-        {
-            let _guard = reg.acquire(workspace_id).await;
-            // Guard is held here; a concurrent acquire would block.
-        }
-        // Guard dropped — a second acquire must complete without deadlock.
-        let result = timeout(Duration::from_millis(200), reg.acquire(workspace_id)).await;
-        assert!(
-            result.is_ok(),
-            "second acquire for same workspace_id must succeed after first guard is dropped"
-        );
-    }
-
-    /// Two different workspace IDs acquire their gates independently — one does
-    /// not block the other.
-    #[tokio::test]
-    async fn test_different_workspace_ids_do_not_block_each_other() {
-        let reg = Registry::new();
-
-        let _guard_a = reg.acquire("ws_index_alpha").await;
-
-        // Acquiring a completely different workspace_id must not block.
-        let result = timeout(Duration::from_millis(200), reg.acquire("ws_index_beta")).await;
-        assert!(
-            result.is_ok(),
-            "different workspace IDs must acquire their gates independently"
-        );
     }
 }

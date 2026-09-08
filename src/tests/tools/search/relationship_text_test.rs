@@ -505,11 +505,8 @@ mod relationship_text_test {
     }
 
     async fn watcher_reprojects_partners_created_by_pending_resolution() {
-        use std::sync::{Arc, Mutex};
-
         use crate::watcher::handlers::handle_file_created_or_modified_static;
-        use crate::workspace::mutation_gate::acquire_gate;
-
+        use std::sync::{Arc, Mutex};
         let dir = TempDir::new().unwrap();
         let workspace_root = dir.path().canonicalize().unwrap();
         let caller = workspace_root.join("watcher_caller.rs");
@@ -526,14 +523,23 @@ mod relationship_text_test {
         ));
         let search_index = Arc::new(make_index(&dir));
 
+        let tmp_lock = TempDir::new().unwrap();
+        let lock_guard = julie_core::workspace::leader_lock::DaemonLockGuard::try_acquire(
+            &tmp_lock.path().join("leader.lock"),
+        )
+        .unwrap();
+        let epoch =
+            julie_core::workspace::ownership::OwnerEpoch::new(1, "test_ws".to_string(), lock_guard);
+        let registry = crate::workspace::mutation_gate::Registry::new();
+
         {
-            let guard = acquire_gate("relationship_text_watcher_callee").await;
+            let permit = epoch.acquire_writer(&registry).await.unwrap();
             handle_file_created_or_modified_static(
                 callee.canonicalize().unwrap(),
                 &db,
                 &workspace_root,
                 Some(&search_index),
-                &guard,
+                &permit,
             )
             .await
             .unwrap();
@@ -541,13 +547,13 @@ mod relationship_text_test {
         search_index.commit().unwrap();
 
         {
-            let guard = acquire_gate("relationship_text_watcher_caller").await;
+            let permit = epoch.acquire_writer(&registry).await.unwrap();
             handle_file_created_or_modified_static(
                 caller.canonicalize().unwrap(),
                 &db,
                 &workspace_root,
                 Some(&search_index),
-                &guard,
+                &permit,
             )
             .await
             .unwrap();

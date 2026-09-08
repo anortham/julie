@@ -19,6 +19,7 @@ pub mod logging;
 pub mod mcp_compat;
 pub use julie_index::search;
 pub mod startup;
+pub(crate) mod startup_repair_plan;
 pub mod tools;
 pub mod utils;
 pub use julie_runtime::watcher;
@@ -30,6 +31,7 @@ pub mod paths;
 pub mod registry;
 pub mod request_engine;
 pub mod server_in_process;
+pub mod workspace_runtime;
 
 #[cfg(test)]
 pub mod tests;

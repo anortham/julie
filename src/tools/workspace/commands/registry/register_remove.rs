@@ -86,12 +86,22 @@ impl ManageWorkspaceTool {
             "Registering workspace and building index"
         );
 
-        // Acquire the shared mutation gate before writing to this workspace's index.
-        // Previously this call bypassed all writer coordination — this gate brings
-        // register into the same serialization contract as index and refresh.
-        let mutation_guard = handler.acquire_mutation_gate(&workspace_id).await;
+        // Acquire the authentic writer permit before writing to this workspace's index.
+        let writer_permit = match handler.acquire_writer_permit(&workspace_id).await {
+            Ok(p) => p,
+            Err(julie_core::workspace::ownership::OwnershipError::NotOwner) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    "another session owns writes for this workspace; this is a read-only follower",
+                )]));
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to acquire writer permit for registration: {e}"
+                ));
+            }
+        };
         match self
-            .index_workspace_inner(&mutation_guard, handler, &canonical_path, force)
+            .index_workspace_inner(&writer_permit, handler, &canonical_path, force)
             .await
         {
             Ok(result) => {

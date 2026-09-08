@@ -69,6 +69,7 @@ pub fn to_mcp_error(failure: RequestFailure) -> McpError {
         | "UNKNOWN_TOOL"
         | "WORKSPACE_REQUIRED"
         | "WORKSPACE_CONFLICT"
+        | "WORKSPACE_MISSING"
         | "SENSITIVE_ROOT"
         | "FOREGROUND_REQUIRED" => ErrorCode::INVALID_PARAMS,
         _ => ErrorCode::INTERNAL_ERROR,

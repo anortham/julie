@@ -1809,6 +1809,7 @@ dependencies = [
  "sqlite-vec",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
  "tree-sitter",
  "zerocopy 0.7.35",
@@ -1816,8 +1817,8 @@ dependencies = [
 
 [[package]]
 name = "julie-extractors"
-version = "2.41.0"
-source = "git+https://github.com/anortham/julie-extractors?tag=v2.41.0#a71e18c1a6fae67b15d2d0aaa20793330fda901f"
+version = "2.42.0"
+source = "git+https://github.com/anortham/julie-extractors?tag=v2.42.0#3868ed8c4acdcc3ea583665bbe4a9c878427e085"
 dependencies = [
  "anyhow",
  "md5",

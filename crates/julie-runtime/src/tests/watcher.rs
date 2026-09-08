@@ -241,8 +241,8 @@ async fn test_real_time_file_watcher_indexing() {
 
 #[tokio::test]
 async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files() {
+    use crate::tests::test_writer_permit;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
-    use crate::workspace::mutation_gate::acquire_gate;
     use julie_core::database::SymbolDatabase;
     use std::sync::{Arc, Mutex, atomic::Ordering};
 
@@ -265,17 +265,17 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
     )
     .unwrap();
 
-    let guard = acquire_gate("test_rescan_repair").await;
+    let permit = test_writer_permit(&workspace_root).await;
     handle_file_created_or_modified_static(
         tracked_file.canonicalize().unwrap(),
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("initial indexing should succeed");
-    drop(guard); // release gate before process_pending_changes acquires its own
+    drop(permit); // release permit and gate before process_pending_changes acquires its own
 
     fs::write(&tracked_file, "fn after_rescan() {}\n").unwrap();
     let new_file = workspace_root.join("fresh.rs");
@@ -462,21 +462,21 @@ async fn test_run_guarded_task_step_returns_true_after_success() {
 /// content does change.
 #[tokio::test]
 async fn test_blake3_change_detection() {
+    use crate::tests::test_writer_permit;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
-    use crate::workspace::mutation_gate::acquire_gate;
     use julie_core::database::SymbolDatabase;
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let guard = acquire_gate("test_blake3_change_detection").await;
+    let permit = test_writer_permit(dir.path()).await;
 
     // 1. Create a file and index it for the first time
     let test_file = dir.path().join("example.rs");
     fs::write(&test_file, "pub fn hello() -> &'static str { \"hello\" }").unwrap();
 
-    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &guard)
+    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &permit)
         .await
         .expect("First index should succeed");
 
@@ -505,7 +505,7 @@ async fn test_blake3_change_detection() {
             .unwrap();
     }
 
-    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &guard)
+    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &permit)
         .await
         .expect("Second index (same content) should succeed");
 
@@ -534,7 +534,7 @@ async fn test_blake3_change_detection() {
     )
     .unwrap();
 
-    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &guard)
+    handle_file_created_or_modified_static(test_file.clone(), &db, dir.path(), None, &permit)
         .await
         .expect("Third index (new content) should succeed");
 

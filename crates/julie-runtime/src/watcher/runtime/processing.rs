@@ -8,11 +8,14 @@ impl QueueRuntime {
                 "Queue processor shutting down, draining {} remaining events",
                 remaining
             );
-            // Acquire the gate for the dispatch loop, then drop it before
-            // calling retry_dirty_tantivy (which acquires its own gate).
+            // Acquire the writer permit for the dispatch loop, then drop it before
+            // calling retry_dirty_tantivy (which acquires its own permit).
             // Holding both simultaneously would deadlock on the same workspace_id.
             {
-                let Some(guard) = self.acquire_gate_or_mark_rescan("shutdown drain").await else {
+                let Some(permit) = self
+                    .acquire_writer_permit_or_mark_rescan("shutdown drain")
+                    .await
+                else {
                     return;
                 };
                 let mut drained_any = false;
@@ -33,7 +36,7 @@ impl QueueRuntime {
                         &self.lang_configs,
                         &self.tantivy_dirty,
                         &self.indexing_runtime,
-                        &guard,
+                        &permit,
                     )
                     .await;
                     drained_any = true;
@@ -60,10 +63,13 @@ impl QueueRuntime {
 
         debug!("Processing {} queued file events", queue_size);
 
-        // Acquire the mutation gate for the duration of the batch.  Held until
+        // Acquire the writer permit for the duration of the batch. Held until
         // all events in this tick are dispatched so catch-up indexing cannot
         // interleave writes mid-batch.
-        let Some(guard) = self.acquire_gate_or_mark_rescan("queue batch").await else {
+        let Some(permit) = self
+            .acquire_writer_permit_or_mark_rescan("queue batch")
+            .await
+        else {
             return 0;
         };
 
@@ -149,7 +155,7 @@ impl QueueRuntime {
                 &self.lang_configs,
                 &self.tantivy_dirty,
                 &self.indexing_runtime,
-                &guard,
+                &permit,
             )
             .await;
 

@@ -5,6 +5,7 @@ mod database_init_race;
 mod database_lightweight_query;
 mod database_row_mapping;
 pub mod extractor_projection;
+pub mod host_slots;
 mod memory_vectors;
 mod paths;
 pub mod receiver_type_storage;

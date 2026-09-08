@@ -77,6 +77,42 @@ impl ExtractedBatch {
             files_processed: 0,
         }
     }
+
+    /// Retain only items belonging to paths in `keep_paths`.
+    pub fn retain_files(&mut self, keep_paths: &std::collections::HashSet<String>) {
+        self.all_file_infos
+            .retain(|fi| keep_paths.contains(&fi.path));
+        self.all_symbols
+            .retain(|s| keep_paths.contains(&s.file_path));
+        let retained_symbol_ids: std::collections::HashSet<String> =
+            self.all_symbols.iter().map(|s| s.id.clone()).collect();
+        self.all_relationships
+            .retain(|r| keep_paths.contains(&r.file_path));
+        self.all_pending_relationships
+            .retain(|pr| keep_paths.contains(&pr.file_path));
+        self.all_structured_pending_relationships
+            .retain(|spr| keep_paths.contains(&spr.pending.file_path));
+        self.all_identifiers
+            .retain(|id| keep_paths.contains(&id.file_path));
+        self.all_types
+            .retain(|t| retained_symbol_ids.contains(&t.symbol_id));
+        self.all_type_argument_rows
+            .retain(|ta| keep_paths.contains(&ta.file_path));
+        self.all_literals
+            .retain(|lit| keep_paths.contains(&lit.file_path));
+        self.all_source_regions
+            .retain(|sr| keep_paths.contains(&sr.file_path));
+        self.all_structural_facts
+            .retain(|sf| keep_paths.contains(&sf.file_path));
+        self.all_complexity_metrics
+            .retain(|cm| keep_paths.contains(&cm.file_path));
+        self.parse_diagnostics_by_file
+            .retain(|(path, _)| keep_paths.contains(path));
+        self.repair_entries
+            .retain(|(path, _)| keep_paths.contains(path));
+        self.files_to_clean.retain(|path| keep_paths.contains(path));
+        self.files_processed = self.all_file_infos.len();
+    }
 }
 
 impl Default for ExtractedBatch {

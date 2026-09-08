@@ -195,6 +195,7 @@ async fn test_spillover_get_tool_formats_page_and_more_marker() -> Result<()> {
         spillover_handle: handle,
         limit: Some(1),
         format: Some("readable".to_string()),
+        workspace: None,
     }
     .call_tool(&handler)
     .await?;
@@ -234,6 +235,7 @@ async fn test_spillover_get_preserves_stored_format_by_default() -> Result<()> {
         spillover_handle: handle,
         limit: None,
         format: None,
+        workspace: None,
     }
     .call_tool(&handler)
     .await?;
@@ -271,6 +273,7 @@ async fn test_spillover_get_rejects_unknown_format() -> Result<()> {
         spillover_handle: handle,
         limit: None,
         format: Some("readible".to_string()),
+        workspace: None,
     }
     .call_tool(&handler)
     .await

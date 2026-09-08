@@ -6,6 +6,7 @@
 //!
 //! These primitives ensure file safety across all editing tools in Julie.
 
+pub mod ast_validation;
 pub mod edit_file;
 pub mod rewrite_symbol;
 pub mod syntax;

@@ -200,10 +200,10 @@ These are new orchestration methods. `begin_recovery` retains the lock through f
 **Step 5: Handoff.** Report runtime states, transition errors, exact ownership drop order, and process-test proof. No worker commit.
 
 **Acceptance criteria:**
-- [ ] Request cancellation/disconnect cannot terminate an active owner commit or release its lock.
-- [ ] A follower can become owner after OS lock release without restarting its MCP session.
-- [ ] Exactly one watcher starts after recovery, and failed startup leaves no hidden writer.
-- [ ] Idle runtime eviction is bounded and does not evict active work.
+- [x] Request cancellation/disconnect cannot terminate an active owner commit or release its lock.
+- [x] A follower can become owner after OS lock release without restarting its MCP session.
+- [x] Exactly one watcher starts after recovery, and failed startup leaves no hidden writer.
+- [x] Idle runtime eviction is bounded and does not evict active work.
 
 ### Task 2: Bound indexing across processes and worktrees
 
@@ -256,10 +256,10 @@ Add `host_slots_limit_two_processes` under julie-core tests using three child co
 **Step 5: Handoff.** Include queue limits, permit acquisition order, configurable host limits and fault behavior.
 
 **Acceptance criteria:**
-- [ ] At most the configured number of index jobs runs across OS processes.
-- [ ] Queue overflow, rename and deletion remain recoverable without unbounded memory.
-- [ ] No host permit is held during embedding initialization/inference or while idle.
-- [ ] Cancelled waiters leave no leaked lock slot or stale queue entry.
+- [x] At most the configured number of index jobs runs across OS processes.
+- [x] Queue overflow, rename and deletion remain recoverable without unbounded memory.
+- [x] No host permit is held during embedding initialization/inference or while idle.
+- [x] Cancelled waiters leave no leaked lock slot or stale queue entry.
 
 ### Task 3: Let followers preview and safely apply source edits
 
@@ -368,12 +368,12 @@ Add exact process regression `shared_and_standalone_edits_share_source_precondit
 **Step 5: Handoff.** Give the lead lock-order evidence, journal recovery policy, changed schemas and all edited tool paths. Update the prerequisite follower-refusal test to assert index-write refusal and source-edit acceptance only after this real replacement passes.
 
 **Acceptance criteria:**
-- [ ] Follower dry-run works and writes no source/index bytes.
-- [ ] Follower apply uses the same lock and hash preconditions as owner apply.
-- [ ] Two Julie writers cannot both apply stale previews to the same file.
-- [ ] Follower source edits never write canonical SQLite or Tantivy; freshness is reported honestly.
-- [ ] Partial multi-file application is recoverable without overwriting later external edits.
-- [ ] Explicit named CLI and generic `recover_edit` commands resume/rollback under source-root hash guards, report conflicts and support idempotent retries.
+- [x] Follower dry-run works and writes no source/index bytes.
+- [x] Follower apply uses the same lock and hash preconditions as owner apply.
+- [x] Two Julie writers cannot both apply stale previews to the same file.
+- [x] Follower source edits never write canonical SQLite or Tantivy; freshness is reported honestly.
+- [x] Partial multi-file application is recoverable without overwriting later external edits.
+- [x] Explicit named CLI and generic `recover_edit` commands resume/rollback under source-root hash guards, report conflicts and support idempotent retries.
 
 ### Task 4: Fence every index writer and make publication recoverable
 
@@ -429,10 +429,10 @@ Before canonical commit, re-read each extracted source file hash. A removed/chan
 **Step 5: Handoff.** Include all eight writer paths, proof-token coverage, crash boundary table, and the canonical/projection revisions observed for every process test.
 
 **Acceptance criteria:**
-- [ ] Every canonical/derived writer requires live owner proof and process-local serialization.
-- [ ] All crash windows recover idempotently; source-unchanged projection lag is repaired on promotion.
-- [ ] Readers never claim a mixed canonical/search generation is coherent or current.
-- [ ] Source changes during extraction cannot be stamped as indexed.
+- [x] Every canonical/derived writer requires live owner proof and process-local serialization.
+- [x] All crash windows recover idempotently; source-unchanged projection lag is repaired on promotion.
+- [x] Readers never claim a mixed canonical/search generation is coherent or current.
+- [x] Source changes during extraction cannot be stamped as indexed.
 
 ### Task 5: Make continuations explicit and usable across connections
 
@@ -490,10 +490,10 @@ SQLite continuation writes are metadata-only and use their own short transaction
 **Step 5: Handoff.** Supply retention limits, schemas, conflict codes, and byte-identical cross-process page evidence.
 
 **Acceptance criteria:**
-- [ ] New CLI/MCP connections can continue an existing result using explicit workspace and handle.
-- [ ] Wrong workspace/tool/arguments, expired handles and changed source revisions fail distinctly.
-- [ ] Snapshot storage and result pages are bounded and deterministic.
-- [ ] Handles cannot become paths, arbitrary SQL or edit authorization.
+- [x] New CLI/MCP connections can continue an existing result using explicit workspace and handle.
+- [x] Wrong workspace/tool/arguments, expired handles and changed source revisions fail distinctly.
+- [x] Snapshot storage and result pages are bounded and deterministic.
+- [x] Handles cannot become paths, arbitrary SQL or edit authorization.
 
 ### Task 6: Run multi-process, multi-worktree, and shutdown acceptance
 
@@ -550,15 +550,24 @@ Implement the transition table as the manager's actual state guard; this unit te
 **Step 5: Handoff and review.** Root Codex reviews all source-edit conflict behavior, writer proofs, generation publication and shutdown ordering. Report root/branch/HEAD/dirty state for every task checkout, ledger, process transcripts, exact platform evidence, resource configuration and remaining unverified cases. Do not call cross-platform behavior complete from Linux-only results. No push/release is part of this plan.
 
 **Acceptance criteria:**
-- [ ] Concurrent agents and two real worktrees retain distinct bindings, data and owner locks.
-- [ ] Owner turnover and every fault boundary preserve canonical state and user edits.
-- [ ] No request cancellation, queue overflow or shutdown loses accepted work silently.
-- [ ] Modern MCP and CLI remain usable without a global daemon or fake initialization.
-- [ ] Root Codex review, docs and required verification ledger are complete.
+- [x] Concurrent agents and two real worktrees retain distinct bindings, data and owner locks.
+- [x] Owner turnover and every fault boundary preserve canonical state and user edits.
+- [x] No request cancellation, queue overflow or shutdown loses accepted work silently.
+- [x] Modern MCP and CLI remain usable without a global daemon or fake initialization.
+- [x] Root Codex review, docs and required verification ledger are complete.
 
 ## Verification Ledger
 
-Leave empty until actual implementation verification; source inspection is not a passing gate.
-
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| Runtime lifetime independent of client connection (active suite) | `CI=1 cargo nextest run -p julie --lib tests::runtime_lifecycle::` | `m1-contract` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T17:08:42Z | no |
+| Host indexing admission slots bounded to configured limit across OS processes | `CI=1 cargo nextest run -p julie-core --lib host_slots_` | `m2-host-slots` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T17:09:06Z | no |
+| Follower source edits, atomic journaling, and recoverable partial application | `CI=1 cargo nextest run -p julie --lib tests::edit_recovery_contract::` | `m3-contract` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T18:00:41Z | no |
+| Writer fencing with authentic OwnerEpoch and recoverable revision publication | `CI=1 cargo nextest run -p julie --lib tests::writer_fencing_contract::` | `m4-contract` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T17:11:56Z | no |
+| Durable continuation snapshots bounded by TTL and capacity across processes | `CI=1 cargo nextest run -p julie --lib tests::runtime_continuation::` | `m5-continuations` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T17:12:03Z | no |
+| Multi-process concurrent worktree isolation, failover, and fault matrix acceptance | `CI=1 cargo nextest run -p julie --lib tests::workspace_process_lifecycle::` | `m5-lifecycle` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T17:12:25Z | no |
+| Workspace type checking and compilation across all targets with zero errors | `CI=1 cargo check --workspace --all-targets` | `static-check` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T17:08:20Z | no |
+| Rustfmt code style compliance across all workspace crates | `cargo fmt --all -- --check` | `static-fmt` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T17:08:23Z | no |
+| Agent instruction and guideline parity between CLAUDE.md and AGENTS.md | `diff -u CLAUDE.md AGENTS.md` | `static-doc-sync` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T17:08:24Z | no |
+| Batch regression tier across core, tools, and CLI commands | `cargo xtask test dev` | `lead-dev-gate` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T18:39:30Z | no |
+| Integration regression tier across workspace runtime, projection, and system health | `cargo xtask test system` | `lead-system-gate` | `98c23c82366d1ea601ab55898444b69a6b4829e7` | pass | 2026-09-08T18:41:08Z | no |

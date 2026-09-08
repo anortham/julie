@@ -14,8 +14,14 @@ pub struct SyntaxConfig {
 
 impl Default for SyntaxConfig {
     fn default() -> Self {
+        let max_source_bytes = std::env::var("JULIE_MAX_EDIT_SOURCE_BYTES")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(16 * 1024 * 1024)
+            .clamp(1, 256 * 1024 * 1024);
+
         Self {
-            max_source_bytes: 10 * 1024 * 1024,
+            max_source_bytes,
             default_timeout: Duration::from_secs(10),
             max_concurrent_parses: 4,
         }

@@ -485,6 +485,11 @@ impl JulieWorkspace {
             .unwrap_or_else(|| self.julie_dir.join("indexes"))
     }
 
+    /// Alias for `indexes_root_path`.
+    pub fn index_root(&self) -> PathBuf {
+        self.indexes_root_path()
+    }
+
     /// Override the indexes root directory.
     /// Used by the daemon's WorkspacePool to redirect database/search index
     /// storage to a shared location (e.g. `~/.julie/indexes/{workspace_id}`).
@@ -769,11 +774,20 @@ impl JulieWorkspace {
     /// the in-process leader, false for an in-process follower (a read-only
     /// process that must never start a watcher and race the leader).
     pub async fn start_file_watching(&mut self, should_watch: bool) -> Result<()> {
+        self.start_file_watching_with_epoch(should_watch, None)
+            .await
+    }
+
+    pub async fn start_file_watching_with_epoch(
+        &mut self,
+        should_watch: bool,
+        owner_epoch: Option<Arc<julie_core::workspace::ownership::OwnerEpoch>>,
+    ) -> Result<()> {
         if !should_watch {
             return Ok(());
         }
         if let Some(ref mut watcher) = self.watcher {
-            watcher.start_watching().await?;
+            watcher.start_watching_with_epoch(owner_epoch).await?;
             info!("File watching started");
         }
         Ok(())

@@ -298,6 +298,7 @@ impl CliToolCommand for WorkspaceArgs {
         if self.foreground {
             map.insert("foreground".into(), Value::Bool(true));
         }
+        crate::cli_tools::recover_edit::populate_workspace_recover_args(self, &mut map);
         Ok(map)
     }
 

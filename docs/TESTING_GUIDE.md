@@ -187,3 +187,67 @@ cargo tarpaulin
 # Generate detailed HTML report
 cargo tarpaulin --output-dir target/tarpaulin --output-format Html
 ```
+
+## Multi-Process Acceptance and Test Fixture Ownership
+
+Julie verifies cross-process workspace lifecycle, single-writer fencing, follower edit coordination, and dynamic promotion using real OS subprocesses.
+
+### Running Process Lifecycle Tests
+
+Multi-process tests spawn actual `julie-server` subprocesses communicating over stdio JSON-RPC. To run them, point `JULIE_TEST_BIN` to the compiled binary:
+
+```bash
+# Build the test binary first
+cargo build -p julie --bin julie-server
+
+# Run the full process lifecycle test suite
+JULIE_TEST_BIN=$(pwd)/target/debug/julie-server cargo nextest run -p julie --lib tests::workspace_process_lifecycle::
+
+# Run continuation process tests
+JULIE_TEST_BIN=$(pwd)/target/debug/julie-server cargo nextest run -p julie --lib tests::runtime_continuation::
+
+# Run writer fencing and recovery tests
+JULIE_TEST_BIN=$(pwd)/target/debug/julie-server cargo nextest run -p julie --lib tests::writer_fencing_contract::
+
+# Run source-edit recovery contract tests
+cargo nextest run -p julie --lib tests::edit_recovery_contract::
+```
+
+### Test Fixtures and Ownership
+
+1. **`WorktreeProcessFixture` (`src/tests/workspace_process_lifecycle.rs`)**:
+   - Manages a temporary git repository with two detached git worktrees (`git worktree add --detach`).
+   - Spawns three concurrent `julie-server` subprocesses (Left Owner, Left Follower, Right Owner) sharing an isolated `JULIE_HOME`.
+   - Verifies worktree isolation (distinct workspace IDs, databases, and Tantivy indexes), follower source edits, dynamic follower promotion upon owner exit, competing edit conflicts, and graceful shutdown.
+   - Automatically kills all child processes and cleans up detached worktrees and temporary directories on `Drop`.
+
+2. **`ContinuationProcessFixture` (`src/tests/runtime_continuation.rs`)**:
+   - Manages multi-process pagination continuation token validation across multiple worktrees.
+   - Verifies that continuation tokens are durable across process restarts, bounded by memory/TTL limits (15m TTL, 64 MiB total limit), and strictly rejected when passed to a different worktree (`CONTINUATION_INVALID`) or after source changes (`CONTINUATION_STALE`).
+
+3. **`RecoveryProcessFixture` (`src/tests/writer_fencing_contract.rs`)**:
+   - Injects faults by stopping child owner processes after canonical SQLite commit but before Tantivy publication.
+   - Tests that newly promoted owners automatically detect the projection gap and reconcile Tantivy without requiring source file changes.
+   - Enforces writer fencing: only the authentic holder of `WriterPermit` can publish revisions.
+
+4. **`EditRecoveryFixture` (`src/tests/edit_recovery_contract.rs`)**:
+   - Simulates interrupted multi-file source edits by writing durable old/new payloads to `<workspace_root>/.julie/edit-journals/`.
+   - Tests `recover-edit` (`resume` and `rollback`) across processes under source hash guards, confirming idempotency and conflict preservation (`EDIT_RECOVERY_CONFLICT`).
+
+### Detached Worktree Management
+
+When testing multi-worktree scenarios:
+- Tests use `git worktree add --detach` under a dedicated temporary directory.
+- Detached HEAD worktrees prevent git branch locking collisions across test runners.
+- Each worktree directory is resolved to a canonical path and assigned a unique workspace ID hash, ensuring complete index, SQLite, and lock isolation even when worktrees share the underlying git object database.
+- Cleanup hooks remove worktrees and temporary trees only after all client processes have completely terminated and closed their file descriptors.
+
+### Platform Results & Locking Semantics
+
+- **Linux**:
+  - Fully verified with real OS processes, Unix domain locks (`fcntl` / `flock`), and POSIX signals.
+  - Multi-process failover, concurrent worktree isolation, slot admission scheduling, and graceful/abrupt termination scenarios pass cleanly.
+- **Windows Advisory Locking Semantics**:
+  - Windows file locking operates via `LockFileEx`. Unlike Unix advisory locks, Windows file locks can impose mandatory locking semantics on standard I/O reads/writes if handles are opened with conflicting sharing modes.
+  - Julie configures file sharing flags (`FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE`) and explicitly separates lock control files (`leader.lock`, `publication.lock`, `source-edit.lock`, `index-{n}.lock`) from payload data files (`symbols.db`, Tantivy segments, source files).
+  - This preserves non-blocking read snapshots and advisory fencing across platforms without causing spurious access violation errors (OS error 5) on Windows.

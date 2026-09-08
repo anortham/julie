@@ -148,6 +148,8 @@ fn test_workspace_args_tool_name() {
         force: false,
         name: None,
         foreground: false,
+        edit_id: None,
+        action: None,
     };
     assert_eq!(args.tool_name(), "manage_workspace");
 }
@@ -364,6 +366,8 @@ fn test_workspace_to_tool_args_with_force() {
         force: true,
         name: Some("My Project".into()),
         foreground: false,
+        edit_id: None,
+        action: None,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["operation"], "index");
@@ -588,6 +592,8 @@ async fn test_run_cli_tool_standalone_workspace_stats_not_available_via_cli() {
         force: false,
         name: None,
         foreground: false,
+        edit_id: None,
+        action: None,
     };
 
     let result = run_cli_tool(&args, Some(temp.path().to_path_buf()), true).await;
@@ -609,6 +615,8 @@ fn test_workspace_dashboard_is_not_available_from_one_shot_cli_wrapper() {
         force: false,
         name: None,
         foreground: false,
+        edit_id: None,
+        action: None,
     };
 
     let err = args

@@ -273,6 +273,12 @@ pub struct WorkspaceArgs {
     /// Run in foreground mode (required for interactive dashboard)
     #[arg(long)]
     pub foreground: bool,
+    /// Edit ID for recover_edit operation
+    #[arg(long)]
+    pub edit_id: Option<String>,
+    /// Recovery action for recover_edit operation (resume or rollback)
+    #[arg(long, value_name = "ACTION")]
+    pub action: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

@@ -15,18 +15,23 @@ use crate::indexing_core::extraction::{
     ExtractedFileDisposition, ExtractedFileRecord, extract_files_for_indexing_with_records,
 };
 use crate::tools::workspace::commands::ManageWorkspaceTool;
-use julie_core::Symbol;
-use julie_pipeline::indexing_core::web_edges::rebuild_web_edges_for_workspace;
+
+#[allow(unused_imports)]
+pub(crate) use super::source_check::{
+    filter_mismatched_batch_files, verify_and_partition_batch, verify_source_hashes_before_commit,
+};
 
 pub(crate) struct IndexingPipelineResult {
     pub state: IndexingBatchState,
     pub files_processed: usize,
     pub canonical_revision: Option<i64>,
+    #[allow(dead_code)]
+    pub source_check_state: julie_core::workspace::ownership::SourceCheckState,
 }
 
-struct PersistBatchResult {
-    canonical_revision: Option<i64>,
-}
+pub(crate) use super::pipeline_persistence::persist_batch;
+#[cfg(test)]
+pub(crate) use super::pipeline_persistence::persist_batch_for_test;
 
 pub(crate) async fn run_indexing_pipeline(
     tool: &ManageWorkspaceTool,
@@ -46,7 +51,6 @@ pub(crate) async fn run_indexing_pipeline(
     let (batch, extracted_records) =
         extract_files_for_indexing_with_records(files_by_language, &route.workspace_root).await?;
     record_extracted_file_records(&mut state, extracted_records);
-    let files_processed = batch.files_processed;
 
     // Test-role classification (and literal carrier gating) now happens inside
     // the shared chokepoint `extract_files_for_indexing_with_records` above, so
@@ -61,8 +65,64 @@ pub(crate) async fn run_indexing_pipeline(
             state,
             files_processed: batch.files_processed,
             canonical_revision: None,
+            source_check_state: julie_core::workspace::ownership::SourceCheckState::Verified {
+                files_checked: 0,
+            },
         });
     };
+
+    // 1. Pre-commit verify and partition batch
+    let partition_result = verify_and_partition_batch(&route.workspace_root, batch);
+    let batch = partition_result.intact_batch;
+    let requeue_paths = partition_result.requeue_paths;
+    let source_check_state = partition_result.state;
+
+    // 2. Requeue dirty paths if any
+    if !requeue_paths.is_empty() {
+        warn!(
+            workspace_id = %route.workspace_id,
+            requeued_count = requeue_paths.len(),
+            "Pre-commit source check detected modified or deleted files; excluding and requeueing"
+        );
+        for path in &requeue_paths {
+            state.mark_repair_needed(format!(
+                "file modified or deleted during extraction requeued: {}",
+                path.display()
+            ));
+        }
+        requeue_dirty_paths(handler, route, &requeue_paths).await;
+    }
+
+    // 3. Clean empty commit check
+    if batch.all_file_infos.is_empty() && batch.files_to_clean.is_empty() {
+        info!(
+            workspace_id = %route.workspace_id,
+            "Batch is empty after pre-commit partitioning; skipping commit without advancing canonical revision"
+        );
+        let current_canonical = {
+            let db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
+            db_lock
+                .get_current_canonical_revision(&route.workspace_id)
+                .ok()
+                .flatten()
+        };
+        transition_stage(&mut state, route, IndexingStage::Completed);
+        update_runtime_finish(route, &state);
+        return Ok(IndexingPipelineResult {
+            state,
+            files_processed: 0,
+            canonical_revision: current_canonical,
+            source_check_state,
+        });
+    }
+
+    // 4. Acquire exclusive publication lock
+    let publication_lock_path = route.publication_lock_path();
+    let _publication_guard =
+        julie_core::workspace::publication_lock::PublicationLock::acquire_exclusive_path(
+            &publication_lock_path,
+        )
+        .context("acquiring exclusive publication lock for pipeline commit")?;
 
     transition_stage(&mut state, route, IndexingStage::Persisting);
     let persist_result = persist_batch(&db, route, operation, &batch)?;
@@ -74,6 +134,19 @@ pub(crate) async fn run_indexing_pipeline(
         &batch.all_structured_pending_relationships,
     );
 
+    if let Ok(barrier_dir) = std::env::var("JULIE_IPC_BARRIER_DIR") {
+        if std::env::var("JULIE_FAULT_INJECTION").as_deref() == Ok("pause_after_canonical_commit") {
+            let barrier_path = std::path::PathBuf::from(&barrier_dir);
+            let reached = barrier_path.join("reached_canonical_commit");
+            let release = barrier_path.join("release_canonical_commit");
+            let _ = std::fs::write(&reached, "1");
+            while !release.exists() {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+        }
+    }
+
+    let files_processed = batch.files_processed;
     transition_stage(&mut state, route, IndexingStage::Projecting);
     project_batch(
         &db,
@@ -83,6 +156,8 @@ pub(crate) async fn run_indexing_pipeline(
         persist_result.canonical_revision,
     )
     .await?;
+
+    drop(_publication_guard);
 
     transition_stage(&mut state, route, IndexingStage::Analyzing);
     analyze_batch(handler, route, &db)?;
@@ -120,6 +195,7 @@ pub(crate) async fn run_indexing_pipeline(
         state,
         files_processed,
         canonical_revision: persist_result.canonical_revision,
+        source_check_state,
     })
 }
 
@@ -209,141 +285,24 @@ fn update_runtime_finish(route: &IndexRoute, state: &IndexingBatchState) {
     }
 }
 
-fn persist_batch(
-    db: &std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
-    route: &IndexRoute,
-    operation: IndexingOperation,
-    batch: &ExtractedBatch,
-) -> Result<PersistBatchResult> {
-    let bulk_start = std::time::Instant::now();
-    let mut db_lock = match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            warn!(
-                "Database mutex poisoned during canonical persistence, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
+async fn requeue_dirty_paths(handler: &JulieServerHandler, _route: &IndexRoute, paths: &[PathBuf]) {
+    if let Some(ws) = handler.workspace.read().await.as_ref() {
+        if let Some(watcher) = &ws.watcher {
+            let mut q = watcher.index_queue.lock().await;
+            for path in paths {
+                let change_type = if path.exists() {
+                    crate::watcher::FileChangeType::Modified
+                } else {
+                    crate::watcher::FileChangeType::Deleted
+                };
+                q.push_back(crate::watcher::FileChangeEvent {
+                    path: path.clone(),
+                    change_type,
+                    timestamp: std::time::SystemTime::now(),
+                });
+            }
         }
-    };
-
-    let stats = db_lock.get_stats().unwrap_or_default();
-    let database_empty =
-        stats.total_files == 0 && stats.total_symbols == 0 && stats.total_relationships == 0;
-    let use_fresh_storage = matches!(operation, IndexingOperation::Full)
-        || batch.files_to_clean.is_empty()
-        || database_empty;
-
-    let canonical_revision = if !use_fresh_storage {
-        info!(
-            "🔐 Starting ATOMIC incremental update: {} files to clean, {} symbols, {} relationships, {} files",
-            batch.files_to_clean.len(),
-            batch.all_symbols.len(),
-            batch.all_relationships.len(),
-            batch.all_file_infos.len()
-        );
-
-        // Live indexing path (Rule 2: this is the PRIMARY persistence entry
-        // point). Route through the write-set struct so any future canonical
-        // collection is compile-forced onto this path, not silently dropped.
-        db_lock.incremental_update_atomic_with_metadata(
-            &batch.files_to_clean,
-            &batch.canonical_write_set(),
-            &route.workspace_id,
-            crate::database::bulk::atomic::AtomicPersistenceMetadata::default(),
-        )?;
-        let canonical_revision = db_lock.get_current_canonical_revision(&route.workspace_id)?;
-        let successful_paths: Vec<String> = batch
-            .all_file_infos
-            .iter()
-            .map(|file_info| file_info.path.clone())
-            .collect();
-        db_lock.clear_indexing_repairs(&successful_paths)?;
-        store_parse_diagnostics(&db_lock, batch)?;
-        for (path, detail) in &batch.repair_entries {
-            db_lock.record_indexing_repair(
-                path,
-                crate::tools::workspace::indexing::state::IndexingRepairReason::ExtractorFailure
-                    .as_str(),
-                Some(detail),
-            )?;
-        }
-        log_documentation_symbol_count(&batch.all_symbols);
-
-        info!(
-            workspace_id = %route.workspace_id,
-            canonical_revision = canonical_revision,
-            "Canonical persistence committed"
-        );
-        canonical_revision
-    } else {
-        if matches!(operation, IndexingOperation::Full) && !database_empty {
-            let cleanup = db_lock.delete_workspace_data()?;
-            info!(
-                workspace_id = %route.workspace_id,
-                symbols_deleted = cleanup.symbols_deleted,
-                relationships_deleted = cleanup.relationships_deleted,
-                files_deleted = cleanup.files_deleted,
-                "Cleared canonical database state for full indexing"
-            );
-        }
-
-        info!(
-            "🔐 Starting ATOMIC fresh bulk storage of {} files, {} symbols, {} relationships...",
-            batch.all_file_infos.len(),
-            batch.all_symbols.len(),
-            batch.all_relationships.len(),
-        );
-
-        db_lock.bulk_store_fresh_atomic_with_metadata(
-            &batch.canonical_write_set(),
-            &route.workspace_id,
-            crate::database::bulk::atomic::AtomicPersistenceMetadata::default(),
-        )?;
-        let canonical_revision = db_lock.get_current_canonical_revision(&route.workspace_id)?;
-        let successful_paths: Vec<String> = batch
-            .all_file_infos
-            .iter()
-            .map(|file_info| file_info.path.clone())
-            .collect();
-        db_lock.clear_indexing_repairs(&successful_paths)?;
-        store_parse_diagnostics(&db_lock, batch)?;
-        for (path, detail) in &batch.repair_entries {
-            db_lock.record_indexing_repair(
-                path,
-                crate::tools::workspace::indexing::state::IndexingRepairReason::ExtractorFailure
-                    .as_str(),
-                Some(detail),
-            )?;
-        }
-        log_documentation_symbol_count(&batch.all_symbols);
-
-        info!(
-            workspace_id = %route.workspace_id,
-            canonical_revision = canonical_revision,
-            "Canonical persistence committed"
-        );
-        canonical_revision
-    };
-
-    rebuild_web_edges_for_workspace(&mut db_lock, &route.workspace_id)?;
-
-    info!(
-        "✅ Bulk storage complete in {:.2}s - data now persisted in SQLite!",
-        bulk_start.elapsed().as_secs_f64()
-    );
-
-    Ok(PersistBatchResult { canonical_revision })
-}
-
-fn store_parse_diagnostics(
-    db: &crate::database::SymbolDatabase,
-    batch: &ExtractedBatch,
-) -> Result<()> {
-    for (path, diagnostics) in &batch.parse_diagnostics_by_file {
-        db.store_file_parse_diagnostics(path, diagnostics)?;
     }
-    Ok(())
 }
 
 async fn project_batch(
@@ -433,17 +392,4 @@ async fn project_batch(
     }
 
     Ok(())
-}
-
-fn log_documentation_symbol_count(symbols: &[Symbol]) {
-    let doc_count = symbols
-        .iter()
-        .filter(|symbol| symbol.language == "markdown")
-        .count();
-    if doc_count > 0 {
-        debug!(
-            "📚 Stored {} documentation symbols in symbols table",
-            doc_count
-        );
-    }
 }

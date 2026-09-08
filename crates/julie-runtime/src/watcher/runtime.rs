@@ -1,10 +1,10 @@
 use super::{FileChangeEvent, FileChangeType, IncrementalIndexer, SharedEmbeddingProvider};
-use crate::watcher::observability::timed_acquire_gate_with_registry_or_cancelled;
-use crate::workspace::mutation_gate::{MutationGuard, Registry as MutationGateRegistry};
+use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 use anyhow::Result;
 use ignore::gitignore::Gitignore;
 use julie_core::database::{ProjectionStatus, SymbolDatabase};
 use julie_core::indexing_state::{IndexingOperation, IndexingRepairReason, SharedIndexingRuntime};
+use julie_core::workspace::ownership::{OwnerEpoch, WriterPermit};
 use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -49,13 +49,33 @@ pub(super) struct QueueRuntime {
     tantivy_failure_attempts: Arc<StdMutex<HashMap<String, u32>>>,
     indexing_runtime: SharedIndexingRuntime,
     mutation_gate_registry: Arc<MutationGateRegistry>,
+    pub(super) owner_epoch: Arc<OwnerEpoch>,
     #[cfg(test)]
     fail_commit_for_test: bool,
 }
 
 impl QueueRuntime {
-    pub(super) fn from_indexer(indexer: &IncrementalIndexer) -> Self {
-        Self {
+    pub(super) fn try_from_indexer(indexer: &IncrementalIndexer) -> anyhow::Result<Self> {
+        let owner_epoch = match &indexer.owner_epoch {
+            Some(e) => Arc::clone(e),
+            None => {
+                let lock_path = indexer.workspace_root.join(".julie").join("leader.lock");
+                if let Some(p) = lock_path.parent() {
+                    let _ = std::fs::create_dir_all(p);
+                }
+                let guard = julie_core::workspace::leader_lock::DaemonLockGuard::try_acquire(
+                    &lock_path,
+                )
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "Cannot run indexer queue without ownership: leader lock unavailable: {e}"
+                    )
+                })?;
+                Arc::new(OwnerEpoch::new(1, indexer.workspace_id.clone(), guard))
+            }
+        };
+
+        Ok(Self {
             db: Arc::clone(&indexer.db),
             search_index: indexer.search_index.as_ref().map(Arc::clone),
             embedding_provider: Arc::clone(&indexer.embedding_provider),
@@ -71,9 +91,10 @@ impl QueueRuntime {
             tantivy_failure_attempts: Arc::new(StdMutex::new(HashMap::new())),
             indexing_runtime: Arc::clone(&indexer.indexing_runtime),
             mutation_gate_registry: Arc::clone(&indexer.mutation_gate_registry),
+            owner_epoch,
             #[cfg(test)]
             fail_commit_for_test: false,
-        }
+        })
     }
 
     pub(super) fn new(
@@ -91,6 +112,7 @@ impl QueueRuntime {
         tantivy_dirty: Arc<StdMutex<HashSet<String>>>,
         indexing_runtime: SharedIndexingRuntime,
         mutation_gate_registry: Arc<MutationGateRegistry>,
+        owner_epoch: Arc<OwnerEpoch>,
     ) -> Self {
         Self {
             db,
@@ -108,25 +130,32 @@ impl QueueRuntime {
             tantivy_failure_attempts: Arc::new(StdMutex::new(HashMap::new())),
             indexing_runtime,
             mutation_gate_registry,
+            owner_epoch,
             #[cfg(test)]
             fail_commit_for_test: false,
         }
     }
 
-    async fn acquire_gate_or_mark_rescan(&self, context: &str) -> Option<MutationGuard<'static>> {
-        let guard = timed_acquire_gate_with_registry_or_cancelled(
-            &self.mutation_gate_registry,
-            &self.workspace_id,
-            Duration::from_millis(100),
-            &self.cancel_flag,
-        )
-        .await;
-
-        if guard.is_none() {
+    async fn acquire_writer_permit_or_mark_rescan<'a>(
+        &'a self,
+        context: &str,
+    ) -> Option<WriterPermit<'a>> {
+        if self.cancel_flag.load(Ordering::Acquire) {
             self.mark_rescan_pending_due_to_cancelled_gate(context);
+            return None;
         }
 
-        guard
+        match self
+            .owner_epoch
+            .acquire_writer_shared(&self.mutation_gate_registry)
+            .await
+        {
+            Ok(permit) => Some(permit),
+            Err(_) => {
+                self.mark_rescan_pending_due_to_cancelled_gate(context);
+                None
+            }
+        }
     }
 
     fn mark_rescan_pending_due_to_cancelled_gate(&self, context: &str) {
@@ -172,7 +201,7 @@ impl QueueRuntime {
 #[cfg(test)]
 impl IncrementalIndexer {
     pub(crate) async fn process_pending_changes_with_commit_failure_for_test(&self) -> Result<()> {
-        let mut runtime = QueueRuntime::from_indexer(self);
+        let mut runtime = QueueRuntime::try_from_indexer(self)?;
         runtime.fail_commit_for_test = true;
         runtime.process_pending_changes().await
     }

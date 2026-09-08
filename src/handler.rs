@@ -187,6 +187,7 @@ impl Default for IndexingStatus {
 }
 
 use crate::leadership::LeadershipState;
+use julie_core::workspace::ownership::{OwnershipError, WriterPermit};
 
 // ---------------------------------------------------------------------------
 // JulieServerHandler
@@ -276,7 +277,7 @@ pub struct JulieServerHandler {
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     /// Mutation-gate registry used by workspace writer paths in this handler.
-    mutation_gate_registry: Arc<MutationGateRegistry>,
+    pub(crate) mutation_gate_registry: Arc<MutationGateRegistry>,
     /// In-process leadership state. Holds the OS-level advisory lock when this
     /// handler is the elected workspace leader (see `new_in_process`). Wrapped
     /// in `Arc` so the `Clone` derive works across sessions.
@@ -1268,11 +1269,104 @@ impl JulieServerHandler {
             .current_workspace_id()
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn acquire_mutation_gate<'a>(
         &'a self,
         workspace_id: &'a str,
     ) -> MutationGuard<'a> {
         self.mutation_gate_registry.acquire(workspace_id).await
+    }
+
+    pub(crate) async fn acquire_writer_permit<'a>(
+        &'a self,
+        workspace_id: &'a str,
+    ) -> std::result::Result<WriterPermit<'a>, OwnershipError> {
+        if self.is_in_process_follower() {
+            return Err(OwnershipError::NotOwner);
+        }
+
+        // 1. Check if owner_epoch is already held in LeadershipState for this workspace
+        {
+            let epoch_read = self.leadership.owner_epoch.read().await;
+            if let Some(ref epoch) = *epoch_read {
+                if epoch.workspace_id() == "*" || epoch.workspace_id() == workspace_id {
+                    if epoch.is_draining() {
+                        return Err(OwnershipError::Draining);
+                    }
+                    return epoch
+                        .acquire_writer_shared(&self.mutation_gate_registry)
+                        .await;
+                }
+            }
+        }
+
+        // 1b. Check if target_epochs has an active owner epoch for this workspace
+        {
+            let targets_read = self.leadership.target_epochs.read().await;
+            if let Some(epoch) = targets_read.get(workspace_id) {
+                if epoch.is_draining() {
+                    return Err(OwnershipError::Draining);
+                }
+                return epoch
+                    .acquire_writer_shared(&self.mutation_gate_registry)
+                    .await;
+            }
+        }
+
+        // 2. If leadership carries a DaemonLockGuard, initialize OwnerEpoch from it
+        {
+            let mut lock_opt = self.leadership.lock.lock().await;
+            if let Some(guard) = lock_opt.take() {
+                let epoch = Arc::new(julie_core::workspace::ownership::OwnerEpoch::new(
+                    1,
+                    workspace_id.to_string(),
+                    guard,
+                ));
+                let mut epoch_write = self.leadership.owner_epoch.write().await;
+                *epoch_write = Some(Arc::clone(&epoch));
+                return epoch
+                    .acquire_writer_shared(&self.mutation_gate_registry)
+                    .await;
+            }
+        }
+
+        // 3. Standalone / test fallback / target workspace: attempt to acquire OS lock for workspace
+        if !self.leadership.is_in_process() {
+            let lock_path = if let Ok(dir) = self.workspace_index_dir_for(workspace_id).await {
+                dir.join("leader.lock")
+            } else if let Ok(Some(ws)) = self.get_workspace().await {
+                ws.index_root().join("leader.lock")
+            } else {
+                let tmp = tempfile::Builder::new()
+                    .prefix("test_julie_leader_")
+                    .tempdir()
+                    .ok();
+                match tmp {
+                    Some(dir) => dir.path().join("leader.lock"),
+                    None => return Err(OwnershipError::NotOwner),
+                }
+            };
+
+            if let Some(parent) = lock_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+
+            match julie_core::workspace::leader_lock::DaemonLockGuard::try_acquire(&lock_path) {
+                Ok(guard) => {
+                    let epoch = Arc::new(julie_core::workspace::ownership::OwnerEpoch::new(
+                        1,
+                        workspace_id.to_string(),
+                        guard,
+                    ));
+                    return epoch
+                        .acquire_writer_shared(&self.mutation_gate_registry)
+                        .await;
+                }
+                Err(_) => return Err(OwnershipError::NotOwner),
+            }
+        }
+
+        Err(OwnershipError::NotOwner)
     }
 
     pub fn is_primary_workspace_swap_in_progress(&self) -> bool {

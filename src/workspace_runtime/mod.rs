@@ -1,0 +1,228 @@
+//! src/workspace_runtime/mod.rs
+//! Workspace runtime lifecycle management, phases, leases, and errors.
+
+pub mod builder;
+pub mod continuation;
+pub mod continuation_store;
+pub mod dirty_queue;
+pub mod edit_journal;
+pub mod manager;
+pub mod owner;
+pub mod publication;
+pub mod recovery;
+pub mod scheduler;
+pub mod shutdown;
+pub mod source_edit;
+pub mod source_edit_ops;
+
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use thiserror::Error;
+
+pub use builder::WorkspaceRuntimeManagerBuilder;
+pub use continuation::{
+    ContinuationBinding, ContinuationError, ContinuationFailure, DEFAULT_CONTINUATION_TTL_SECS,
+    MAX_SNAPSHOT_SIZE_BYTES, MAX_WORKSPACE_CONTINUATION_BUDGET_BYTES, is_valid_continuation_token,
+    validate_handle_binding,
+};
+pub use continuation_store::ContinuationStore;
+pub use dirty_queue::{
+    DEFAULT_DIRTY_QUEUE_CAPACITY, DirtyChunk, DirtyEntry, DirtyOp, DirtyQueue,
+    normalize_relative_path,
+};
+pub use edit_journal::{
+    EditDisposition, EditJournal, JournalFileEntry, JournalFileState, JournalState, RecoveryAction,
+};
+pub use julie_core::workspace::ownership::{RuntimePhaseKind, allowed_transition};
+pub use manager::{RuntimeKey, WorkspaceRuntimeManager};
+pub use owner::WorkspaceRuntime;
+pub use publication::{SnapshotError, WorkspaceReadSnapshot};
+pub use recovery::ProjectionRecoveryCoordinator;
+pub use scheduler::{
+    DEFAULT_ADMISSION_TIMEOUT, DEFAULT_MAX_SOURCE_SIZE_BYTES, DEFAULT_SCHEDULING_QUANTUM,
+    FileCommitter, ProcessFairScheduler, QuantumReport, SchedulerConfig, SchedulerError,
+    WorkspaceScheduler,
+};
+pub use source_edit::{
+    DEFAULT_MAX_EDIT_SOURCE_BYTES, ENV_MAX_EDIT_SOURCE_BYTES, MAX_MAX_EDIT_SOURCE_BYTES,
+    MIN_MAX_EDIT_SOURCE_BYTES, PreparedSourceChange, SourceEditConfig, SourceEditCoordinator,
+    SourceEditError, acquire_source_edit_lock, read_bounded_source,
+};
+
+/// Lifecycle phases of a workspace runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RuntimePhase {
+    /// Initial phase while acquiring resources and inspecting locks.
+    Opening,
+    /// Follower role: index reads allowed, source edits allowed, index mutations refused.
+    Follower,
+    /// Recovery role: holding owner lock, reconciling projection lag and starting watcher.
+    Recovering { epoch: u64 },
+    /// Active index owner: exclusive writer for SQLite and Tantivy.
+    Owner { epoch: u64 },
+    /// Graceful shutdown: draining queued commits, stopping watcher, closing handles.
+    Draining,
+    /// Unrecoverable error state.
+    Failed { code: String },
+}
+
+#[derive(Debug, Error)]
+pub enum TransitionError {
+    #[error("Invalid state transition from {from:?} to {to:?}")]
+    InvalidTransition {
+        from: RuntimePhase,
+        to: RuntimePhase,
+    },
+    #[error("Follower cannot become Owner directly; must enter Recovering first")]
+    FollowerToOwnerForbidden,
+    #[error("Opening cannot become Owner directly; must enter Recovering first")]
+    OpeningToOwnerForbidden,
+    #[error("Draining cannot become Owner; runtime is draining")]
+    DrainingToOwnerForbidden,
+    #[error("Failed cannot become Owner; runtime is in failed state")]
+    FailedToOwnerForbidden,
+    #[error("Epoch mismatch during recovery transition: recovering {recovering}, owner {owner}")]
+    EpochMismatch { recovering: u64, owner: u64 },
+    #[error("Owner epoch cannot decrement: current {current}, next {next}")]
+    EpochDecrementForbidden { current: u64, next: u64 },
+}
+
+impl RuntimePhase {
+    /// Pure discriminant kind for state machine transition evaluation.
+    pub fn kind(&self) -> RuntimePhaseKind {
+        match self {
+            Self::Opening => RuntimePhaseKind::Opening,
+            Self::Follower => RuntimePhaseKind::Follower,
+            Self::Recovering { .. } => RuntimePhaseKind::Recovering,
+            Self::Owner { .. } => RuntimePhaseKind::Owner,
+            Self::Draining => RuntimePhaseKind::Draining,
+            Self::Failed { .. } => RuntimePhaseKind::Failed,
+        }
+    }
+
+    /// Validate state machine transitions.
+    pub fn validate_transition(&self, next: &RuntimePhase) -> Result<(), TransitionError> {
+        let from_kind = self.kind();
+        let to_kind = next.kind();
+
+        if !allowed_transition(from_kind, to_kind) {
+            return match (from_kind, to_kind) {
+                (RuntimePhaseKind::Follower, RuntimePhaseKind::Owner) => {
+                    Err(TransitionError::FollowerToOwnerForbidden)
+                }
+                (RuntimePhaseKind::Opening, RuntimePhaseKind::Owner) => {
+                    Err(TransitionError::OpeningToOwnerForbidden)
+                }
+                (RuntimePhaseKind::Draining, RuntimePhaseKind::Owner) => {
+                    Err(TransitionError::DrainingToOwnerForbidden)
+                }
+                (RuntimePhaseKind::Failed, RuntimePhaseKind::Owner) => {
+                    Err(TransitionError::FailedToOwnerForbidden)
+                }
+                _ => Err(TransitionError::InvalidTransition {
+                    from: self.clone(),
+                    to: next.clone(),
+                }),
+            };
+        }
+
+        // Validate value-level epoch invariants
+        match (self, next) {
+            (
+                RuntimePhase::Recovering { epoch: r_epoch },
+                RuntimePhase::Owner { epoch: o_epoch },
+            ) => {
+                if r_epoch != o_epoch {
+                    return Err(TransitionError::EpochMismatch {
+                        recovering: *r_epoch,
+                        owner: *o_epoch,
+                    });
+                }
+            }
+            (RuntimePhase::Owner { epoch: cur }, RuntimePhase::Owner { epoch: next }) => {
+                if next <= cur {
+                    return Err(TransitionError::EpochDecrementForbidden {
+                        current: *cur,
+                        next: *next,
+                    });
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    pub fn can_transition_to(&self, next: &RuntimePhase) -> bool {
+        self.validate_transition(next).is_ok()
+    }
+
+    pub fn is_owner(&self) -> bool {
+        matches!(self, RuntimePhase::Owner { .. })
+    }
+
+    pub fn is_follower(&self) -> bool {
+        matches!(self, RuntimePhase::Follower)
+    }
+
+    pub fn is_recovering(&self) -> bool {
+        matches!(self, RuntimePhase::Recovering { .. })
+    }
+
+    pub fn is_draining(&self) -> bool {
+        matches!(self, RuntimePhase::Draining)
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, RuntimePhase::Failed { .. })
+    }
+}
+
+/// RAII lease granted to incoming requests.
+/// Decrements request use count on Drop without affecting runtime lifetime.
+pub struct RuntimeLease {
+    pub(crate) runtime: Arc<WorkspaceRuntime>,
+}
+
+impl RuntimeLease {
+    pub fn runtime(&self) -> &Arc<WorkspaceRuntime> {
+        &self.runtime
+    }
+
+    pub fn phase(&self) -> RuntimePhase {
+        self.runtime.phase.borrow().clone()
+    }
+}
+
+impl std::ops::Deref for RuntimeLease {
+    type Target = WorkspaceRuntime;
+    fn deref(&self) -> &Self::Target {
+        &self.runtime
+    }
+}
+
+impl Drop for RuntimeLease {
+    fn drop(&mut self) {
+        self.runtime.active_requests.fetch_sub(1, Ordering::SeqCst);
+        self.runtime.touch();
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum RuntimeError {
+    #[error("Failed to acquire leader lock: {0}")]
+    LockAcquire(String),
+    #[error("Runtime is draining; admission refused")]
+    Draining,
+    #[error("Runtime failed: {0}")]
+    Failed(String),
+    #[error("Transition error: {0}")]
+    Transition(#[from] TransitionError),
+    #[error("Timeout waiting for runtime readiness")]
+    Timeout,
+    #[error("Cancelled by caller")]
+    Cancelled,
+    #[error("Internal error: {0}")]
+    Internal(String),
+}

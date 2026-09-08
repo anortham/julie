@@ -1,4 +1,5 @@
 use super::*;
+use crate::tests::test_writer_permit;
 
 #[tokio::test]
 async fn test_extractor_failure_is_persisted_durably() {
@@ -13,14 +14,14 @@ async fn test_extractor_failure_is_persisted_durably() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_extractor_failure_durable").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("initial parser-backed indexing should succeed");
@@ -32,7 +33,7 @@ async fn test_extractor_failure_is_persisted_durably() {
     .unwrap();
 
     let outcome =
-        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &guard)
+        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &permit)
             .await
             .expect("Extractor failure should surface as repair-needed, not a hard error");
 
@@ -92,7 +93,7 @@ async fn test_delete_handler_always_cleans_up() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_delete_always_cleans_up").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -100,7 +101,7 @@ async fn test_delete_handler_always_cleans_up() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -120,7 +121,7 @@ async fn test_delete_handler_always_cleans_up() {
         "File still exists — handler must clean up regardless (trust caller)"
     );
 
-    handle_file_deleted_static(absolute_path, &db, &workspace_root, None, &guard)
+    handle_file_deleted_static(absolute_path, &db, &workspace_root, None, &permit)
         .await
         .expect("Delete handler should succeed");
 
@@ -215,7 +216,7 @@ fn render_rich_text_field() {
 }
 "#;
     fs::write(&test_file, modified_content).unwrap();
-    let guard = acquire_gate("test_tantivy_file_content").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     // Call the watcher handler WITH the search index (this is the code path that has the bug)
     handle_file_created_or_modified_static(
@@ -223,7 +224,7 @@ fn render_rich_text_field() {
         &db,
         &workspace_root,
         Some(&search_index),
-        &guard,
+        &permit,
     )
     .await
     .expect("Incremental indexing should succeed");
@@ -306,14 +307,14 @@ fn watched_annotation_marker() {
     fs::create_dir_all(&tantivy_dir).unwrap();
     let search_index =
         Arc::new(SearchIndex::create(&tantivy_dir).expect("Failed to create search index"));
-    let guard = acquire_gate("test_annotation_fields").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         absolute_path,
         &db,
         &workspace_root,
         Some(&search_index),
-        &guard,
+        &permit,
     )
     .await
     .expect("incremental indexing should succeed");
@@ -361,14 +362,14 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
         idx.shutdown()
             .expect("search index should shut down cleanly");
     }
-    let guard = acquire_gate("test_projection_failure").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     let outcome = handle_file_created_or_modified_static(
         absolute_path,
         &db,
         &workspace_root,
         Some(&search_index),
-        &guard,
+        &permit,
     )
     .await
     .expect("SQLite update should still succeed when projection fails");
@@ -404,7 +405,7 @@ async fn test_hash_match_clears_stale_repair_entry() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let guard = acquire_gate("test_hash_match_repair_clear").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     // First pass: index the file (stores hash + symbols)
     handle_file_created_or_modified_static(
@@ -412,7 +413,7 @@ async fn test_hash_match_clears_stale_repair_entry() {
         &db,
         &workspace_root,
         None,
-        &guard,
+        &permit,
     )
     .await
     .expect("initial indexing should succeed");
@@ -427,7 +428,7 @@ async fn test_hash_match_clears_stale_repair_entry() {
 
     // Second pass: same file, unchanged content (hash will match -> early return)
     let outcome =
-        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &guard)
+        handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &permit)
             .await
             .expect("hash-match pass should succeed");
 
@@ -476,14 +477,14 @@ async fn test_watcher_does_not_publish_uncommitted_projection_revision() {
     fs::create_dir_all(&tantivy_dir).unwrap();
     let search_index = Arc::new(SearchIndex::create(&tantivy_dir).unwrap());
 
-    let guard = acquire_gate("test_watcher_does_not_publish_uncommitted_projection_revision").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
         &workspace_root,
         Some(&search_index),
-        &guard,
+        &permit,
     )
     .await
     .expect("watcher indexing should succeed");
@@ -506,7 +507,7 @@ async fn test_watcher_does_not_publish_uncommitted_projection_revision() {
         "uncommitted Tantivy writes must not publish durable projection readiness"
     );
     drop(db_lock);
-    drop(guard);
+    drop(permit);
 
     let indexing_runtime = IndexingRuntimeState::shared();
     let indexer = IncrementalIndexer::new(
@@ -684,7 +685,7 @@ async fn test_mid_crash_projection_lag_reconciliation() {
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
 
-    let guard = acquire_gate("test_mid_crash_projection_lag").await;
+    let permit = test_writer_permit(&workspace_root).await;
 
     // Phase 1: Index via watcher WITHOUT a search_index.
     // This advances canonical_revision in SQLite but leaves Tantivy untouched —
@@ -694,7 +695,7 @@ async fn test_mid_crash_projection_lag_reconciliation() {
         &db,
         &workspace_root,
         None, // no Tantivy — simulates crash before apply
-        &guard,
+        &permit,
     )
     .await
     .expect("SQLite-only watcher index should succeed");

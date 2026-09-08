@@ -22,6 +22,9 @@ pub struct SpilloverGetTool {
     /// Optional output format. Omit to keep the format captured in the handle.
     #[serde(default)]
     pub format: Option<String>,
+    /// Optional workspace path or identifier.
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 impl SpilloverGetTool {
@@ -51,7 +54,16 @@ pub fn more_available_marker(handle: &str) -> String {
     )
 }
 
-fn format_page(page: &SpilloverPage) -> String {
+pub fn more_available_marker_with_workspace(handle: &str, workspace: Option<&str>) -> String {
+    match workspace {
+        Some(ws) => format!(
+            "More available: spillover_handle={handle}\nNext page: spillover_get(spillover_handle=\"{handle}\", workspace=\"{ws}\")"
+        ),
+        None => more_available_marker(handle),
+    }
+}
+
+pub fn format_page(page: &SpilloverPage) -> String {
     let mut output = String::new();
     output.push_str(&page.title);
 

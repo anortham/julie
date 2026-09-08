@@ -87,6 +87,14 @@ impl AccessClass {
         matches!(self, Self::SourceEdit | Self::IndexMutation)
     }
 
+    pub fn is_index_mutation(&self) -> bool {
+        matches!(self, Self::IndexMutation)
+    }
+
+    pub fn is_source_edit(&self) -> bool {
+        matches!(self, Self::SourceEdit)
+    }
+
     pub fn is_read_only(&self) -> bool {
         !self.is_mutating()
     }
@@ -199,6 +207,8 @@ impl ToolReply {
     }
 }
 
+pub const WORKSPACE_MISSING: &str = "WORKSPACE_MISSING";
+
 /// Structured application failure mapped to CLI exit codes and MCP errors.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestFailure {
@@ -209,6 +219,8 @@ pub struct RequestFailure {
 }
 
 impl RequestFailure {
+    pub const WORKSPACE_MISSING: &str = WORKSPACE_MISSING;
+
     pub fn new(
         code: impl Into<String>,
         message: impl Into<String>,
@@ -252,6 +264,10 @@ impl RequestFailure {
         Self::new("WORKSPACE_CONFLICT", message, false, json!({}))
     }
 
+    pub fn workspace_missing(message: impl Into<String>) -> Self {
+        Self::new(WORKSPACE_MISSING, message, false, json!({}))
+    }
+
     pub fn sensitive_root(message: impl Into<String>) -> Self {
         Self::new("SENSITIVE_ROOT", message, false, json!({}))
     }
@@ -290,11 +306,17 @@ impl RequestFailure {
             | "UNKNOWN_TOOL"
             | "WORKSPACE_REQUIRED"
             | "WORKSPACE_CONFLICT"
+            | "WORKSPACE_MISSING"
             | "FOREGROUND_REQUIRED"
             | "SENSITIVE_ROOT" => 2,
             "TOOL_ERROR" => 3,
-            "FOLLOWER_READ_ONLY" | "SEMANTICS_NOT_READY" | "UNAVAILABLE" | "BUSY" => 4,
-            "STALE_EDIT" => 5,
+            "FOLLOWER_READ_ONLY"
+            | "SEMANTICS_NOT_READY"
+            | "UNAVAILABLE"
+            | "BUSY"
+            | "EDIT_BUSY"
+            | "SOURCE_EDIT_UNAVAILABLE" => 4,
+            "STALE_EDIT" | "EDIT_CONFLICT" | "EDIT_RECOVERY_CONFLICT" => 5,
             "DEADLINE_EXCEEDED" => 124,
             "CANCELLED" => 130,
             _ => 1,
@@ -303,9 +325,8 @@ impl RequestFailure {
 
     pub fn to_mcp_error(&self) -> rmcp::ErrorData {
         let code = match self.code.as_str() {
-            "INVALID_ARGUMENTS" | "UNKNOWN_TOOL" | "WORKSPACE_REQUIRED" | "WORKSPACE_CONFLICT" => {
-                -32602
-            }
+            "INVALID_ARGUMENTS" | "UNKNOWN_TOOL" | "WORKSPACE_REQUIRED" | "WORKSPACE_CONFLICT"
+            | "WORKSPACE_MISSING" => -32602,
             _ => -32603,
         };
         rmcp::ErrorData::new(
