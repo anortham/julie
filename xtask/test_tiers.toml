@@ -5,16 +5,16 @@
 nano = ["core-database", "core-fast"]
 # Fast: local confidence tier (≤60s declared). Membership mirrors nano.
 # Task 6 (2026-07-21): expected_seconds recalibrated from warm p50/p95 evidence.
-fast = ["core-database", "core-fast"]
+fast = ["core-database", "core-fast", "service"]
 # Smoke: keep this tiny for frequent local runs.
-smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
+smoke = ["cli", "core-database", "core-embeddings", "service", "tools-get-context-pipeline"]
 # Dev: fast branch-level gate. Keep under 10 minutes expected; full keeps broad coverage.
-dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-zero-hit", "tools-search-promotion", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-get-symbols", "tools-deep-dive", "tools-fast-refs", "tools-blast-spillover", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard"]
+dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-zero-hit", "tools-search-promotion", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-get-symbols", "tools-deep-dive", "tools-fast-refs", "tools-blast-spillover", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "service", "service-process"]
 # System coverage kept separate from fast local buckets.
 system = ["projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "xtask-eval", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
+full = ["cli", "xtask-runner", "xtask-eval", "core-database", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "service", "service-process", "projection", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-dep-integration"]
 
 [blocked_tiers]
 
@@ -512,6 +512,32 @@ timeout_seconds = 60
 scope_label = "dashboard"
 notes = "dashboard route coverage"
 commands = ["cargo nextest run --lib tests::dashboard -- --skip search_quality"]
+
+[buckets.service]
+# In-process machine service: discovery, token, JSON API, MCP over HTTP, shim forwarding.
+expected_seconds = 15
+timeout_seconds = 60
+scope_label = "service"
+notes = "Machine service bindings, in process on ephemeral ports"
+commands = [
+  "cargo nextest run --lib tests::service::http_api",
+  "cargo nextest run --lib tests::service::mcp_http",
+  "cargo nextest run --lib tests::service::client",
+  "cargo nextest run --lib tests::service::shim",
+  "cargo nextest run --lib tests::service::control",
+  "cargo nextest run --lib tests::service::budget",
+]
+
+[buckets.service-process]
+# Real subprocesses: shim starts service, stale record recovery, idle exit, version mismatch, stop.
+expected_seconds = 15
+timeout_seconds = 90
+scope_label = "service-process"
+notes = "The one multi-process bucket. Design section 12 caps it at 20 s."
+commands = [
+  "cargo build --bin julie-server",
+  "cargo nextest run --lib tests::service::process --test-threads 1",
+]
 
 [buckets.extractor-dep-integration]
 # Julie-owned gate that fires when the external julie-extractors dependency is

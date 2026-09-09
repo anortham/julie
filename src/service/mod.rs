@@ -11,26 +11,17 @@ use julie_core::paths::RegistryPaths;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub struct ServiceConfig {
-    pub idle: Option<Duration>,
-    pub registry_paths: RegistryPaths,
-}
+pub struct ServiceConfig { pub idle: Option<Duration>, pub registry_paths: RegistryPaths }
 
 impl ServiceConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         let registry_paths = RegistryPaths::try_new().context("resolve Julie home")?;
-        let idle = match std::env::var("JULIE_SERVICE_IDLE_SECS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-        {
+        let idle = match std::env::var("JULIE_SERVICE_IDLE_SECS").ok().and_then(|v| v.parse::<u64>().ok()) {
             Some(0) => None,
             Some(secs) => Some(Duration::from_secs(secs)),
             None => Some(Duration::from_secs(1800)),
         };
-        Ok(Self {
-            idle,
-            registry_paths,
-        })
+        Ok(Self { idle, registry_paths })
     }
 }
 
@@ -56,29 +47,17 @@ impl ServiceApp {
         };
         let dashboard = crate::dashboard::dashboard_router(&paths)?;
         let router = http::router(state.clone(), dashboard);
-        Ok(Self {
-            config,
-            state,
-            router,
-        })
+        Ok(Self { config, state, router })
     }
 
-    pub fn state(&self) -> &http::AppState {
-        &self.state
-    }
+    pub fn state(&self) -> &http::AppState { &self.state }
 
     pub async fn serve(self, listener: tokio::net::TcpListener) -> anyhow::Result<()> {
         let port = listener.local_addr()?.port();
-        self.state.engine.set_service_url(format!(
-            "http://127.0.0.1:{port}/?token={}",
-            self.state.token
-        ));
+        self.state.engine.set_service_url(format!("http://127.0.0.1:{port}/?token={}", self.state.token));
         let record = discovery::ServiceRecord {
-            port,
-            token: self.state.token.to_string(),
-            pid: std::process::id(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            started_at: status::now_rfc3339(),
+            port, token: self.state.token.to_string(), pid: std::process::id(),
+            version: env!("CARGO_PKG_VERSION").to_string(), started_at: status::now_rfc3339(),
         };
         discovery::write_record(&self.config.registry_paths, &record)?;
 
@@ -88,10 +67,7 @@ impl ServiceApp {
             let shutdown = shutdown.clone();
             let idle = self.config.idle;
             async move {
-                let Some(idle) = idle else {
-                    std::future::pending::<()>().await;
-                    return;
-                };
+                let Some(idle) = idle else { std::future::pending::<()>().await; return; };
                 loop {
                     tokio::time::sleep(idle.min(Duration::from_millis(250))).await;
                     if status.idle_for().is_some_and(|d| d >= idle) {
@@ -105,18 +81,13 @@ impl ServiceApp {
             let shutdown = shutdown.clone();
             async move { shutdown.cancelled().await }
         });
-        let result = tokio::select! {
-            r = server => r.map_err(anyhow::Error::from),
-            _ = idle_watch => Ok(()),
-        };
+        let result = tokio::select! { r = server => r.map_err(anyhow::Error::from), _ = idle_watch => Ok(()) };
         discovery::remove_record(&self.config.registry_paths)?;
         result
     }
 }
 
 pub async fn run_service(config: ServiceConfig) -> anyhow::Result<()> {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .context("bind 127.0.0.1:0")?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.context("bind 127.0.0.1:0")?;
     ServiceApp::new(config)?.serve(listener).await
 }
