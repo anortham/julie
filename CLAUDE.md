@@ -12,7 +12,7 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 - **Language**: Rust (native performance, cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: Tantivy full-text search + SQLite structured storage + KNN vector search (embeddings)
-- **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout). The no-args `julie-server` serves **in-process** over rmcp stdio, leader-locked per workspace. There is no forked daemon, stdio adapter, HTTP MCP bridge, or `julie daemon` runtime.
+- **Mode**: Machine service (Streamable HTTP MCP + JSON API + dashboard) with stdio shim. The no-args `julie-server` serves as a lightweight stdio shim, auto-starting the background service if missing. Service control: `julie-server service status|stop|restart`.
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 36 tree-sitter extractors with comprehensive test suites, now maintained in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo and consumed here as a pinned git dependency
 
@@ -44,7 +44,9 @@ cargo xtask test dev           # Batch gate before handoff — not per edit
 cargo xtask-eval search-matrix|eval  # Product-linked harnesses (Cargo alias → xtask-eval)
 cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)
 cargo xtask dev-link           # (maintainer-only) Symlink installed plugin binaries → target/release (`--dry-run` to preview)
-cargo xtask dev-restart        # (maintainer-only) Advisory — prints how to load a new binary (in-process server is per-session; no daemon to restart)
+julie-server service status    # Check running service status JSON
+julie-server service restart   # Restart machine service with fresh binary
+julie-server service stop      # Stop running machine service
 cargo fmt                      # Format code
 cargo clippy                  # Lint
 ```
@@ -331,7 +333,7 @@ builds after `cargo clean`.
    - Test features in live MCP session
 4. **Maintainer dev loop (`dev-link` + `dev-restart`)**: One-time and per-iteration commands that make the dev loop survive plugin installs:
    - **One-time setup**: `cargo build --release && cargo xtask dev-link` — replaces the bundled `julie-server` inside `~/.claude/plugins/cache/julie-plugin/julie/<v>/bin/<arch>/` with a symlink to `target/release/julie-server`. After this, every harness that points at the plugin (Claude Code) and every harness configured to point at `target/release/julie-server` directly (Codex CLI, OpenCode per their `~/.codex/config.toml` / `~/.config/opencode/opencode.json`) all run the same dev binary.
-   - **Per-edit loop**: `cargo build --release`, then restart your MCP client (or start a new session) to load the new binary. Post Phase 3c.3 there is no shared daemon: each MCP session runs its own in-process `julie-server`, leader-locked per workspace, so a new binary is picked up when a fresh session re-acquires the leader lock. `cargo xtask dev-restart` is now advisory — it prints this guidance and performs no process control (the legacy `--force` SIGTERM path was removed with the daemon in Phase 3d.2b).
+   - **Per-edit loop**: `cargo build --release`, then `target/release/julie-server service restart`. The machine service restarts detached with the new binary and stale discovery files are cleaned up. Running stdio shims reconnect automatically on their next request.
    - **Idempotent**: re-run `dev-link` after any plugin update; it'll relink in place. Reports `already-linked` for entries that are still pointing at the dev binary.
    - **Maintainer-only**: regular users install the plugin and never run these. Codex CLI and OpenCode users typically point their MCP `command` at a chosen path themselves; this just means dev-link mostly affects the Claude Code plugin cache. (`xtask/src/dev_workflow.rs`)
 5. **🔴 Windows Binary Lock**: On Windows, the running `julie-server.exe` process (spawned by the MCP client) holds an exclusive file lock on the release binary. **Do NOT attempt `cargo build --release` while a session is active** — it will fail with "Access is denied" (os error 5). Only `cargo build` (debug) works while the release binary is running. The user must exit their MCP client (Claude Code, VS Code, etc.) before rebuilding release. On Windows, `dev-restart` is advisory and cannot help (and the file lock prevents the rebuild itself anyway); close the MCP client, rebuild, then reopen it to load the new binary.
@@ -397,11 +399,11 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
 ### Core Design Decisions
 1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
 2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
-3. **Per-Workspace Isolation**: Each workspace gets its own db/tantivy in `indexes/{workspace_id}/`. No-args MCP sessions share `$JULIE_HOME/indexes/` and `$JULIE_HOME/registry.db`; standalone CLI runs use project-local `.julie/indexes/`.
-   - The no-args `julie-server` serves in-process over rmcp stdio.
+3. **Per-Workspace Isolation**: Each workspace gets its own db/tantivy in `indexes/{workspace_id}/`. MCP sessions share `$JULIE_HOME/indexes/` and `$JULIE_HOME/registry.db`; standalone CLI runs use project-local `.julie/indexes/`.
+   - The machine service serves Streamable HTTP at `/mcp`, JSON API at `/api/<tool>`, and dashboard at `/`.
+   - The no-args `julie-server` runs the stdio shim, forwarding JSON-RPC to the service over localhost.
    - Per-workspace `leader.lock` elects the single writer. The leader owns the watcher, catch-up work, and Tantivy writes; followers are read-only over SQLite WAL and Tantivy mmap.
    - `registry.db` tracks known workspaces, cleanup events, codehealth snapshots, tool calls, and lightweight process/session state.
-   - Removed surfaces: no daemon process, stdio adapter, HTTP MCP runtime, `julie daemon` command, PID file, discovery file, port file, token file, or daemon HTTP dashboard host.
 4. **Native Rust Core**: No FFI, no CGO — core indexing/search has zero external dependencies
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
 6. **SQLite Storage**: Symbols, identifiers, relationships, types, files

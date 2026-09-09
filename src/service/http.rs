@@ -37,19 +37,25 @@ async fn default_mcp_headers(request: axum::extract::Request, next: axum::middle
     let path = request.uri().path();
     if !(path == "/mcp" || path.starts_with("/mcp/")) { return next.run(request).await; }
     let (mut parts, body) = request.into_parts();
-    if !parts.headers.contains_key("mcp-protocol-version") {
-        parts.headers.insert(axum::http::HeaderName::from_static("mcp-protocol-version"), axum::http::HeaderValue::from_static("2026-07-28"));
-    }
     let bytes = match axum::body::to_bytes(body, 16 * 1024 * 1024).await {
         Ok(b) => b,
         Err(_) => return StatusCode::BAD_REQUEST.into_response(),
     };
+    let json_val = serde_json::from_slice::<Value>(&bytes).ok();
+    if !parts.headers.contains_key("mcp-protocol-version") {
+        let version = json_val.as_ref()
+            .and_then(|v| v.get("params"))
+            .and_then(|p| p.get("protocolVersion").or_else(|| p.get("_meta").and_then(|m| m.get("io.modelcontextprotocol/protocolVersion"))))
+            .and_then(|pv| pv.as_str())
+            .unwrap_or("2026-07-28");
+        if let Ok(hv) = axum::http::HeaderValue::from_str(version) {
+            parts.headers.insert(axum::http::HeaderName::from_static("mcp-protocol-version"), hv);
+        }
+    }
     if !parts.headers.contains_key("mcp-name") {
-        if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
-            if let Some(name) = val.get("params").and_then(|p| p.get("name")).and_then(|n| n.as_str()) {
-                if let Ok(hv) = axum::http::HeaderValue::from_str(name) {
-                    parts.headers.insert(axum::http::HeaderName::from_static("mcp-name"), hv);
-                }
+        if let Some(name) = json_val.as_ref().and_then(|v| v.get("params")).and_then(|p| p.get("name")).and_then(|n| n.as_str()) {
+            if let Ok(hv) = axum::http::HeaderValue::from_str(name) {
+                parts.headers.insert(axum::http::HeaderName::from_static("mcp-name"), hv);
             }
         }
     }

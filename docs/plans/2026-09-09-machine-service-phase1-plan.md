@@ -1308,11 +1308,11 @@ cargo build
 **Step 5: Commit** (`serial-worker-commit`): `feat(service): add shutdown, service control verbs, and dashboard mount; delete standalone dashboard spawn`.
 
 **Acceptance criteria:**
-- [ ] `POST /shutdown` returns 202 and the service exits and removes its record.
-- [ ] `GET /` renders the existing dashboard HTML behind the token.
-- [ ] `manage_workspace dashboard` returns the tokenized service URL through the API; `julie-server dashboard` prints it.
-- [ ] `julie-server service status|stop|restart` work against a live service; version mismatch exits 3 with the exact message.
-- [ ] The background dashboard spawn path is deleted.
+- [x] `POST /shutdown` returns 202 and the service exits and removes its record.
+- [x] `GET /` renders the existing dashboard HTML behind the token.
+- [x] `manage_workspace dashboard` returns the tokenized service URL through the API; `julie-server dashboard` prints it.
+- [x] `julie-server service status|stop|restart` work against a live service; version mismatch exits 3 with the exact message.
+- [x] The background dashboard spawn path is deleted.
 
 ---
 
@@ -1510,11 +1510,11 @@ Expected: both green, each under its `expected_seconds`.
 **Step 5: Commit** (`serial-worker-commit`): `test(service): add service buckets, process tests, and the 600-line budget gate`.
 
 **Acceptance criteria:**
-- [ ] `src/service/` is at most 600 lines and contains no banned word beyond the one allowlisted `lock()` call.
-- [ ] A real shim subprocess starts a real service, gets a `server/discover` answer, and the service exits when idle.
-- [ ] A stale record is replaced by a fresh service in a subprocess run.
-- [ ] Version mismatch exits 3 with the exact message; `service stop` exits the service.
-- [ ] Both buckets exist, are in their tiers, and finish under budget.
+- [x] `src/service/` is at most 600 lines and contains no banned word beyond the one allowlisted `lock()` call.
+- [x] A real shim subprocess starts a real service, gets a `server/discover` answer, and the service exits when idle.
+- [x] A stale record is replaced by a fresh service in a subprocess run.
+- [x] Version mismatch exits 3 with the exact message; `service stop` exits the service.
+- [x] Both buckets exist, are in their tiers, and finish under budget.
 
 ---
 
@@ -1550,10 +1550,10 @@ cargo build --release
 **Step 5: Ledger and commit.** Run `cargo xtask test dev`, record it in the ledger, commit: `docs(service): record phase 1 three-host gate and update architecture docs`.
 
 **Acceptance criteria:**
-- [ ] Finding records six runs (three hosts, two transports) with the same three calls each and verbatim errors.
-- [ ] Gate verdict is stated at the top of the finding.
-- [ ] `docs/WORKSPACE_ARCHITECTURE.md`, `AGENTS.md`, and `README.md` describe the service and shim and no longer describe the in-process stdio server.
-- [ ] `cargo xtask test dev` is green at the final commit and recorded in the ledger.
+- [x] Finding records six runs (three hosts, two transports) with the same three calls each and verbatim errors.
+- [x] Gate verdict is stated at the top of the finding.
+- [x] `docs/WORKSPACE_ARCHITECTURE.md`, `AGENTS.md`, and `README.md` describe the service and shim and no longer describe the in-process stdio server.
+- [x] `cargo xtask test dev` is green at the final commit and recorded in the ledger.
 
 ---
 

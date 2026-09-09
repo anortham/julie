@@ -1,18 +1,27 @@
 # Workspace Architecture
 
-**Last Updated:** 2026-06-06
-**Status:** Production, in-process stdio runtime
+**Last Updated:** 2026-09-09
+**Status:** Production, machine service + stdio shim runtime
 
 This document describes Julie's workspace storage, routing, and liveness model.
 
 ## Runtime Model
 
-The no-args `julie-server` serves MCP in-process over rmcp stdio. Each MCP
-session is its own process. Processes coordinate through shared files under
-`$JULIE_HOME`, host admission locks, and per-workspace OS locks:
+The machine service runs as a single background process per user machine,
+serving Streamable HTTP MCP at `/mcp`, JSON API at `/api/<tool>`, status at
+`/status`, and the dashboard at `/`. The service records its port, process ID,
+and bearer token in `~/.julie/service.json`.
+
+The no-args `julie-server` serves as a lightweight stdio shim, forwarding
+newline-delimited JSON-RPC messages between stdin/stdout and the service over
+HTTP localhost. If no service is running, the shim auto-spawns a detached service
+process. MCP clients that support Streamable HTTP (Claude Code, Codex, Cursor)
+can register directly against `http://127.0.0.1:<port>/mcp` with the bearer
+token, bypassing process spawning completely.
 
 ```text
 $JULIE_HOME/                     # Default: ~/.julie
++-- service.json                 # Discovery file: port, pid, token, version
 +-- registry.db                  # Workspaces, cleanup events, snapshots, tool calls
 +-- scheduler/                   # Host admission slots limiting concurrent indexing (1..=8 slots)
 |   +-- config.json
@@ -40,8 +49,9 @@ $JULIE_HOME/                     # Default: ~/.julie
 +-- logs/                        # Project-local diagnostics
 ```
 
-There is no background daemon, stdio adapter, or HTTP MCP bridge. MCP clients
-start `julie-server`; that process handles stdio directly.
+There is a single long-running service per machine (or user account), with a
+lightweight stdio shim for clients that speak stdio MCP. All MCP sessions share
+the service's memory, caches, and runtime pipelines.
 
 `JULIE_HOME` overrides the shared home directory directly. The path is used
 as-is; `.julie` is not appended. All Julie processes must see the same value,
@@ -257,7 +267,7 @@ delete uses the same liveness checks and refuses to remove an active workspace.
 
 | Runtime path | Workspace data | Registry | Source coordination |
 | --- | --- | --- | --- |
-| In-process MCP | `$JULIE_HOME/indexes/<workspace_id>/` (`leader.lock`, `publication.lock`, `continuations.db`, `db/`, `tantivy/`) | `$JULIE_HOME/registry.db` | `<source_root>/.julie/locks/source-edit.lock`<br>`<source_root>/.julie/edit-journals/` |
+| Machine service (HTTP / stdio shim) | `$JULIE_HOME/indexes/<workspace_id>/` (`leader.lock`, `publication.lock`, `continuations.db`, `db/`, `tantivy/`) | `$JULIE_HOME/registry.db` | `<source_root>/.julie/locks/source-edit.lock`<br>`<source_root>/.julie/edit-journals/` |
 | Standalone CLI | `<project>/.julie/indexes/<workspace_id>/` | None | `<source_root>/.julie/locks/source-edit.lock`<br>`<source_root>/.julie/edit-journals/` |
 | Host Scheduler | `$JULIE_HOME/scheduler/index-{0..7}.lock` | None | N/A |
 

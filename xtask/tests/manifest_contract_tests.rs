@@ -187,6 +187,8 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "core-handler-telemetry".to_string(),
                 "registry".to_string(),
                 "dashboard".to_string(),
+                "service".to_string(),
+                "service-process".to_string(),
             ],
         ),
         (
@@ -198,7 +200,11 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
         ),
         (
             "fast".to_string(),
-            vec!["core-database".to_string(), "core-fast".to_string()],
+            vec![
+                "core-database".to_string(),
+                "core-fast".to_string(),
+                "service".to_string(),
+            ],
         ),
         (
             "full".to_string(),
@@ -244,6 +250,8 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "core-handler-telemetry".to_string(),
                 "registry".to_string(),
                 "dashboard".to_string(),
+                "service".to_string(),
+                "service-process".to_string(),
                 "projection".to_string(),
                 "workspace-runtime".to_string(),
                 "workspace-init".to_string(),
@@ -264,6 +272,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "cli".to_string(),
                 "core-database".to_string(),
                 "core-embeddings".to_string(),
+                "service".to_string(),
                 "tools-get-context-pipeline".to_string(),
             ],
         ),

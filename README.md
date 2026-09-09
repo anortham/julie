@@ -44,7 +44,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
-- **In-process stdio MCP server** — single binary, zero configuration, works with any MCP client
+- **Machine service + stdio shim** — single background service per machine serving Streamable HTTP at `/mcp`, JSON API at `/api/<tool>`, and dashboard at `/`, with a zero-config stdio shim
 - **Multi-session coordination** — per-workspace leader locks allow one writer and read-only followers over shared indexes
 - **Shared registry and indexes** — `$JULIE_HOME/registry.db` plus `$JULIE_HOME/indexes/` keep related workspaces available across sessions
 - **Unified RequestEngine & Complete CLI** — All 13 tools operate as first-class CLI subcommands and via generic `tool <name>` with identical access classification, workspace binding, and safety checks as MCP. Includes zero-warmup discovery (`tools list`, `tools schema`) and serial batch replay (`tools replay`).
@@ -200,11 +200,34 @@ This is optional. All other Julie features work without it.
 
 Use this path when you are not using the Claude Code plugin or the Codex/OpenCode helper installers.
 
-Download a release archive for your platform from [GitHub releases](https://github.com/anortham/julie/releases), extract `julie-server`, and use its absolute path in your MCP config. Supported release targets are macOS Apple Silicon, macOS Intel, Linux x86_64, and Windows x86_64.
+Download a release archive for your platform from [GitHub releases](https://github.com/anortham/julie/releases), extract `julie-server`. Supported release targets are macOS Apple Silicon, macOS Intel, Linux x86_64, and Windows x86_64.
 
-**Upgrading from an older split-daemon install?** `julie-adapter` and `julie-daemon` are gone from the current MCP runtime. Every MCP client config must launch `julie-server` directly. If an old config still points at `julie-adapter`, change the command to the `julie-server` path, then restart the MCP client. Plugin users should update or reinstall the Julie plugin so its launcher also starts `julie-server`.
+#### Streamable HTTP Registration (Recommended)
 
-Stale adapter configs usually show up as old processes named `julie-adapter` or `julie-daemon`, or config files whose command path still ends in one of those names. Stop those old processes after updating the config; a fresh session should only start `julie-server`.
+Start the service or run any command to initialize it (`julie-server service status`). Read the port and bearer token from `~/.julie/service.json`:
+
+```bash
+# Claude Code:
+claude mcp add --transport http julie "http://127.0.0.1:<port>/mcp?token=<token>"
+
+# Codex CLI:
+codex mcp add julie --url "http://127.0.0.1:<port>/mcp?token=<token>"
+
+# Cursor (~/.cursor/mcp.json):
+# "julie": { "url": "http://127.0.0.1:<port>/mcp?token=<token>" }
+```
+
+#### Stdio Shim Fallback
+
+For MCP clients that launch servers as subprocesses via stdio, configure `julie-server` with no arguments. It acts as a lightweight byte-forwarding shim that automatically starts the machine service if not already running:
+
+```bash
+# Claude Code:
+claude mcp add julie /absolute/path/to/julie-server
+
+# Codex CLI:
+codex mcp add julie -- /absolute/path/to/julie-server
+```
 
 **Client workspace-resolution support:**
 

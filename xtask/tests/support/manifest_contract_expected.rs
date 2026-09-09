@@ -152,6 +152,32 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "service",
+            ExpectedBucket {
+                expected_seconds: 15,
+                timeout_seconds: 60,
+                commands: &[
+                    "cargo nextest run --lib tests::service::http_api",
+                    "cargo nextest run --lib tests::service::mcp_http",
+                    "cargo nextest run --lib tests::service::client",
+                    "cargo nextest run --lib tests::service::shim",
+                    "cargo nextest run --lib tests::service::control",
+                    "cargo nextest run --lib tests::service::budget",
+                ],
+            },
+        ),
+        (
+            "service-process",
+            ExpectedBucket {
+                expected_seconds: 15,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo build --bin julie-server",
+                    "cargo nextest run --lib tests::service::process --test-threads 1",
+                ],
+            },
+        ),
+        (
             "integration",
             ExpectedBucket {
                 expected_seconds: 130,
@@ -699,6 +725,24 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("dashboard route coverage"),
+            },
+        ),
+        (
+            "service",
+            ExpectedBucketMetadata {
+                scope_label: "service",
+                owner: "lead",
+                expensive: false,
+                notes: Some("Machine service bindings, in process on ephemeral ports"),
+            },
+        ),
+        (
+            "service-process",
+            ExpectedBucketMetadata {
+                scope_label: "service-process",
+                owner: "lead",
+                expensive: false,
+                notes: Some("The one multi-process bucket. Design section 12 caps it at 20 s."),
             },
         ),
         (
