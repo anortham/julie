@@ -679,12 +679,12 @@ Expected: 8 tests pass, build green.
 **Step 5: Commit** (`serial-worker-commit`): `feat(service): add machine service skeleton with discovery, token, status, and JSON API`.
 
 **Acceptance criteria:**
-- [ ] `service.json` is written only after bind, names the bound port, carries a 64-hex token, pid, version, and start time, and is mode 0600 on Unix.
-- [ ] Every route returns 401 with the exact body on a missing or wrong token; header and query token both work.
-- [ ] `POST /api/<tool>` runs `RequestEngine::execute` and returns the `ToolReply` envelope on success and the `RequestFailure` as JSON with 400 or 500 on failure.
-- [ ] `/status` reports version, pid, uptime, in-flight count, RSS on Linux, the last fifty requests newest first, and the last twenty errors.
-- [ ] The service exits and removes `service.json` after the idle period with nothing in flight.
-- [ ] No new crate other than a direct `reqwest` at the version already in `Cargo.lock`.
+- [x] `service.json` is written only after bind, names the bound port, carries a 64-hex token, pid, version, and start time, and is mode 0600 on Unix.
+- [x] Every route returns 401 with the exact body on a missing or wrong token; header and query token both work.
+- [x] `POST /api/<tool>` runs `RequestEngine::execute` and returns the `ToolReply` envelope on success and the `RequestFailure` as JSON with 400 or 500 on failure.
+- [x] `/status` reports version, pid, uptime, in-flight count, RSS on Linux, the last fifty requests newest first, and the last twenty errors.
+- [x] The service exits and removes `service.json` after the idle period with nothing in flight.
+- [x] No new crate other than a direct `reqwest` at the version already in `Cargo.lock`.
 
 ---
 
@@ -829,10 +829,10 @@ cargo build
 **Step 5: Hand the diff to the lead** (`parallel-lead-commit`).
 
 **Acceptance criteria:**
-- [ ] `/mcp` requires the token like every other route.
-- [ ] `server/discover` answers with 2026-07-28 among its versions and no `Mcp-Session-Id` header.
-- [ ] `tools/list` over HTTP returns the same names in the same order as the adapter catalog, on repeated calls.
-- [ ] `tools/call` for `manage_workspace list` returns a `complete` result.
+- [x] `/mcp` requires the token like every other route.
+- [x] `server/discover` answers with 2026-07-28 among its versions and no `Mcp-Session-Id` header.
+- [x] `tools/list` over HTTP returns the same names in the same order as the adapter catalog, on repeated calls.
+- [x] `tools/call` for `manage_workspace list` returns a `complete` result.
 
 ---
 
@@ -1200,11 +1200,11 @@ Expected: all service tests pass, build green, grep prints `clean`.
 **Step 5: Hand the diff to the lead** (`parallel-lead-commit`).
 
 **Acceptance criteria:**
-- [ ] A client connects to a live service without spawning.
-- [ ] A stale record is removed, the spawn hook runs exactly once, and a service that never appears yields `Unavailable`.
-- [ ] A version mismatch produces the exact message from Global Constraints.
-- [ ] The shim writes one line per request, nothing for notifications, and its result equals the direct HTTP result.
-- [ ] `julie-server` with no arguments runs the shim. `src/server_in_process.rs` is gone.
+- [x] A client connects to a live service without spawning.
+- [x] A stale record is removed, the spawn hook runs exactly once, and a service that never appears yields `Unavailable`.
+- [x] A version mismatch produces the exact message from Global Constraints.
+- [x] The shim writes one line per request, nothing for notifications, and its result equals the direct HTTP result.
+- [x] `julie-server` with no arguments runs the shim. `src/server_in_process.rs` is gone.
 
 ---
 

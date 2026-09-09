@@ -51,23 +51,20 @@ impl StatusLog {
         let now = Instant::now();
         Self {
             started: now,
-            inner: Mutex::new(Inner {
-                requests: VecDeque::new(),
-                errors: VecDeque::new(),
-                last_activity: now,
-                in_flight: 0,
-            }),
+            inner: Mutex::new(Inner { requests: VecDeque::new(), errors: VecDeque::new(), last_activity: now, in_flight: 0 }),
         }
     }
 
+    fn guard(&self) -> std::sync::MutexGuard<'_, Inner> { self.inner.lock().unwrap() }
+
     pub fn begin(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.guard();
         inner.in_flight += 1;
         inner.last_activity = Instant::now();
     }
 
     pub fn end(&self, record: RequestRecord, error: Option<ErrorRecord>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.guard();
         inner.in_flight = inner.in_flight.saturating_sub(1);
         inner.last_activity = Instant::now();
         inner.requests.push_front(record);
@@ -79,12 +76,12 @@ impl StatusLog {
     }
 
     pub fn idle_for(&self) -> Option<Duration> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.guard();
         (inner.in_flight == 0).then(|| inner.last_activity.elapsed())
     }
 
     pub fn document(&self) -> StatusDocument {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.guard();
         StatusDocument {
             version: env!("CARGO_PKG_VERSION"),
             pid: std::process::id(),
@@ -98,9 +95,7 @@ impl StatusLog {
 }
 
 impl Default for StatusLog {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 #[cfg(target_os = "linux")]
@@ -111,9 +106,7 @@ fn rss_bytes() -> Option<u64> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn rss_bytes() -> Option<u64> {
-    None
-}
+fn rss_bytes() -> Option<u64> { None }
 
 pub fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()

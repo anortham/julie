@@ -1,6 +1,6 @@
-use crate::request_engine::types::{RequestContext, RequestFailure, RequestOrigin, ToolRequest};
 use crate::request_engine::RequestEngine;
-use crate::service::status::{now_rfc3339, ErrorRecord, RequestRecord, StatusLog};
+use crate::request_engine::types::{RequestContext, RequestFailure, RequestOrigin, ToolRequest};
+use crate::service::status::{ErrorRecord, RequestRecord, StatusLog, now_rfc3339};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -23,8 +23,44 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/status", get(status))
         .route("/api/{tool}", post(api_call))
-        .layer(axum::middleware::from_fn_with_state(state.clone(), require_token))
+        .nest_service("/mcp", crate::service::mcp::mcp_service(Arc::clone(&state.engine)))
+        .layer(axum::middleware::from_fn(default_mcp_headers))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_token,
+        ))
         .with_state(state)
+}
+
+async fn default_mcp_headers(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let path = request.uri().path();
+    if !(path == "/mcp" || path.starts_with("/mcp/")) {
+        return next.run(request).await;
+    }
+    let (mut parts, body) = request.into_parts();
+    if !parts.headers.contains_key("mcp-protocol-version") {
+        parts.headers.insert(
+            axum::http::HeaderName::from_static("mcp-protocol-version"),
+            axum::http::HeaderValue::from_static("2026-07-28"),
+        );
+    }
+    let bytes = match axum::body::to_bytes(body, 16 * 1024 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+    if !parts.headers.contains_key("mcp-name") {
+        if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
+            if let Some(name) = val.get("params").and_then(|p| p.get("name")).and_then(|n| n.as_str()) {
+                if let Ok(hv) = axum::http::HeaderValue::from_str(name) {
+                    parts.headers.insert(axum::http::HeaderName::from_static("mcp-name"), hv);
+                }
+            }
+        }
+    }
+    next.run(axum::extract::Request::from_parts(parts, axum::body::Body::from(bytes))).await
 }
 
 async fn require_token(

@@ -83,6 +83,11 @@ pub enum Command {
     // -- Service command -----------------------------------------------------
     /// Run the machine service in the foreground (started automatically by clients).
     Service(ServiceArgs),
+
+    // -- MCP Stdio shim ------------------------------------------------------
+    /// Forward MCP stdio to the machine service.
+    #[command(name = "mcp-stdio")]
+    McpStdio,
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -152,6 +157,7 @@ pub fn resolve_workspace_root(cli_workspace: Option<PathBuf>) -> PathBuf {
 pub fn cli_command_needs_workspace_startup_hint(command: &Option<Command>) -> bool {
     match command {
         None => true,
+        Some(Command::McpStdio) => false,
         Some(Command::Service(_)) => false,
         Some(_) => false,
     }

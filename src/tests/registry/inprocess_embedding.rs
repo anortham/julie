@@ -1,4 +1,4 @@
-//! Tests for `server_in_process::acquire_in_process_embedding_provider`.
+//! Tests for `embeddings::acquire_in_process_embedding_provider`.
 //!
 //! ## Gate invariant
 //!
@@ -89,7 +89,7 @@ mod tests {
         let (_dir, paths) = temp_paths();
         let _guard = EnvGuard::set("JULIE_EMBEDDING_PROVIDER", "none");
 
-        let result = crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
+        let result = crate::embeddings::acquire_in_process_embedding_provider(&paths).await;
 
         assert!(
             result.is_none(),
@@ -163,7 +163,7 @@ mod tests {
             conn.write_line(&resp).await.expect("write health response");
         });
 
-        let result = crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
+        let result = crate::embeddings::acquire_in_process_embedding_provider(&paths).await;
 
         assert!(
             result.is_none(),
@@ -230,7 +230,7 @@ mod tests {
             conn.write_line(&resp).await.expect("write health response");
         });
 
-        let result = crate::server_in_process::acquire_in_process_embedding_provider(&paths).await;
+        let result = crate::embeddings::acquire_in_process_embedding_provider(&paths).await;
 
         assert!(
             result.is_some(),

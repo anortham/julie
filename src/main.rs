@@ -5,9 +5,7 @@
 use clap::Parser;
 use std::sync::Arc;
 
-use julie::cli::{
-    Cli, Command, cli_command_needs_workspace_startup_hint, resolve_workspace_startup_hint,
-};
+use julie::cli::{Cli, Command};
 use julie::cli_tools::output::{
     format_failure_envelope, format_success_envelope, write_stdout_safe,
 };
@@ -20,7 +18,6 @@ use julie::request_engine::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let needs_workspace_startup_hint = cli_command_needs_workspace_startup_hint(&cli.command);
 
     match cli.command {
         Some(Command::Dashboard) => {
@@ -82,17 +79,8 @@ async fn main() -> anyhow::Result<()> {
             Some(_) => anyhow::bail!("service status/stop/restart arrive in Task 4"),
         },
 
-        None => {
-            debug_assert!(needs_workspace_startup_hint);
-            let startup_hint = resolve_workspace_startup_hint(cli.workspace);
-            let log_dir = startup_hint.path.join(".julie").join("logs");
-            let _ = std::fs::create_dir_all(&log_dir);
-            if let Err(e) =
-                julie::logging::install_file_tracing(&log_dir, "julie.log", "julie=info")
-            {
-                eprintln!("Julie in-process server: failed to install file tracing: {e}");
-            }
-            julie::server_in_process::run_in_process_server(startup_hint).await?;
+        Some(Command::McpStdio) | None => {
+            julie::service::shim::run_stdio_shim().await?;
         }
     }
 

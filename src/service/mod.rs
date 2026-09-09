@@ -1,5 +1,8 @@
+pub mod client;
 pub mod discovery;
 pub mod http;
+pub mod mcp;
+pub mod shim;
 pub mod status;
 
 use crate::request_engine::{BindingResolver, RequestEngine, RuntimeFactory};
@@ -16,18 +19,12 @@ pub struct ServiceConfig {
 impl ServiceConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         let registry_paths = RegistryPaths::try_new().context("resolve Julie home")?;
-        let idle = match std::env::var("JULIE_SERVICE_IDLE_SECS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-        {
+        let idle = match std::env::var("JULIE_SERVICE_IDLE_SECS").ok().and_then(|v| v.parse::<u64>().ok()) {
             Some(0) => None,
             Some(secs) => Some(Duration::from_secs(secs)),
             None => Some(Duration::from_secs(1800)),
         };
-        Ok(Self {
-            idle,
-            registry_paths,
-        })
+        Ok(Self { idle, registry_paths })
     }
 }
 
