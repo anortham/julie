@@ -832,7 +832,6 @@ async fn coordinator_multi_file_second_file_invalid_syntax_leaves_all_untouched(
         .apply(
             &edit_id,
             &changes,
-            false,
             std::time::Instant::now() + std::time::Duration::from_secs(10),
             &tokio_util::sync::CancellationToken::new(),
         )

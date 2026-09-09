@@ -50,19 +50,11 @@ pub use source_edit::{
     SourceEditError, acquire_source_edit_lock, read_bounded_source,
 };
 
-/// Lifecycle phases of a workspace runtime.
+/// Lifecycle phases of a workspace runtime: the runtime is the writer until it fails.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimePhase {
-    /// Initial phase while acquiring resources and inspecting locks.
-    Opening,
-    /// Follower role: index reads allowed, source edits allowed, index mutations refused.
-    Follower,
-    /// Recovery role: holding owner lock, reconciling projection lag and starting watcher.
-    Recovering { epoch: u64 },
     /// Active index owner: exclusive writer for SQLite and Tantivy.
     Owner { epoch: u64 },
-    /// Graceful shutdown: draining queued commits, stopping watcher, closing handles.
-    Draining,
     /// Unrecoverable error state.
     Failed { code: String },
 }
@@ -74,16 +66,8 @@ pub enum TransitionError {
         from: RuntimePhase,
         to: RuntimePhase,
     },
-    #[error("Follower cannot become Owner directly; must enter Recovering first")]
-    FollowerToOwnerForbidden,
-    #[error("Opening cannot become Owner directly; must enter Recovering first")]
-    OpeningToOwnerForbidden,
-    #[error("Draining cannot become Owner; runtime is draining")]
-    DrainingToOwnerForbidden,
     #[error("Failed cannot become Owner; runtime is in failed state")]
     FailedToOwnerForbidden,
-    #[error("Epoch mismatch during recovery transition: recovering {recovering}, owner {owner}")]
-    EpochMismatch { recovering: u64, owner: u64 },
     #[error("Owner epoch cannot decrement: current {current}, next {next}")]
     EpochDecrementForbidden { current: u64, next: u64 },
 }
@@ -92,11 +76,7 @@ impl RuntimePhase {
     /// Pure discriminant kind for state machine transition evaluation.
     pub fn kind(&self) -> RuntimePhaseKind {
         match self {
-            Self::Opening => RuntimePhaseKind::Opening,
-            Self::Follower => RuntimePhaseKind::Follower,
-            Self::Recovering { .. } => RuntimePhaseKind::Recovering,
             Self::Owner { .. } => RuntimePhaseKind::Owner,
-            Self::Draining => RuntimePhaseKind::Draining,
             Self::Failed { .. } => RuntimePhaseKind::Failed,
         }
     }
@@ -108,15 +88,6 @@ impl RuntimePhase {
 
         if !allowed_transition(from_kind, to_kind) {
             return match (from_kind, to_kind) {
-                (RuntimePhaseKind::Follower, RuntimePhaseKind::Owner) => {
-                    Err(TransitionError::FollowerToOwnerForbidden)
-                }
-                (RuntimePhaseKind::Opening, RuntimePhaseKind::Owner) => {
-                    Err(TransitionError::OpeningToOwnerForbidden)
-                }
-                (RuntimePhaseKind::Draining, RuntimePhaseKind::Owner) => {
-                    Err(TransitionError::DrainingToOwnerForbidden)
-                }
                 (RuntimePhaseKind::Failed, RuntimePhaseKind::Owner) => {
                     Err(TransitionError::FailedToOwnerForbidden)
                 }
@@ -127,28 +98,14 @@ impl RuntimePhase {
             };
         }
 
-        // Validate value-level epoch invariants
-        match (self, next) {
-            (
-                RuntimePhase::Recovering { epoch: r_epoch },
-                RuntimePhase::Owner { epoch: o_epoch },
-            ) => {
-                if r_epoch != o_epoch {
-                    return Err(TransitionError::EpochMismatch {
-                        recovering: *r_epoch,
-                        owner: *o_epoch,
-                    });
-                }
-            }
-            (RuntimePhase::Owner { epoch: cur }, RuntimePhase::Owner { epoch: next }) => {
-                if next <= cur {
-                    return Err(TransitionError::EpochDecrementForbidden {
-                        current: *cur,
-                        next: *next,
-                    });
-                }
-            }
-            _ => {}
+        if let (RuntimePhase::Owner { epoch: cur }, RuntimePhase::Owner { epoch: next }) =
+            (self, next)
+            && next <= cur
+        {
+            return Err(TransitionError::EpochDecrementForbidden {
+                current: *cur,
+                next: *next,
+            });
         }
 
         Ok(())
@@ -160,18 +117,6 @@ impl RuntimePhase {
 
     pub fn is_owner(&self) -> bool {
         matches!(self, RuntimePhase::Owner { .. })
-    }
-
-    pub fn is_follower(&self) -> bool {
-        matches!(self, RuntimePhase::Follower)
-    }
-
-    pub fn is_recovering(&self) -> bool {
-        matches!(self, RuntimePhase::Recovering { .. })
-    }
-
-    pub fn is_draining(&self) -> bool {
-        matches!(self, RuntimePhase::Draining)
     }
 
     pub fn is_terminal(&self) -> bool {
@@ -213,8 +158,6 @@ impl Drop for RuntimeLease {
 pub enum RuntimeError {
     #[error("Failed to acquire leader lock: {0}")]
     LockAcquire(String),
-    #[error("Runtime is draining; admission refused")]
-    Draining,
     #[error("Runtime failed: {0}")]
     Failed(String),
     #[error("Transition error: {0}")]

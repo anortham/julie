@@ -1,4 +1,4 @@
-//! Runtime factory managing workspace-bound handlers with leader election and access gates.
+//! Runtime factory managing workspace-bound handlers; every handler is the writer for its workspace.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use crate::leadership::LeadershipState;
 use crate::paths::RegistryPaths;
 use crate::registry::database::DaemonDatabase;
 use crate::request_engine::types::{
-    AccessClass, RequestContext, RequestFailure, RequestReadiness, SemanticMode, WorkspaceBinding,
+    RequestContext, RequestFailure, RequestReadiness, SemanticMode, WorkspaceBinding,
 };
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 use julie_core::workspace::leader_lock::{AcquireError, DaemonLockGuard};
@@ -37,23 +37,6 @@ impl RequestRuntime {
 
     pub fn binding(&self) -> Option<&WorkspaceBinding> {
         self.binding.as_ref()
-    }
-
-    pub fn is_leader(&self) -> bool {
-        self.handler.leadership.is_leader()
-    }
-
-    pub fn is_follower(&self) -> bool {
-        self.handler.leadership.is_follower()
-    }
-
-    pub fn check_access(&self, access: AccessClass) -> Result<(), RequestFailure> {
-        if self.is_follower() && access.is_index_mutation() {
-            return Err(RequestFailure::follower_read_only(
-                "another session owns writes for this workspace; this is a read-only follower",
-            ));
-        }
-        Ok(())
     }
 
     pub fn readiness(&self) -> RequestReadiness {
@@ -156,9 +139,7 @@ impl RuntimeFactory {
                             RequestFailure::internal(format!("Failed to initialize workspace: {e}"))
                         })?;
                 }
-                if runtime.handler().leadership.is_leader()
-                    && !*runtime.handler().is_indexed.read().await
-                {
+                if !*runtime.handler().is_indexed.read().await {
                     crate::startup::run_primary_workspace_repair(runtime.handler())
                         .await
                         .ok();
@@ -202,11 +183,15 @@ impl RuntimeFactory {
             ))
         })?;
 
-        // Leader lock acquisition
         let lock_path = binding.index_root.join("leader.lock");
         let leadership = match DaemonLockGuard::try_acquire(&lock_path) {
             Ok(guard) => LeadershipState::leader(guard),
-            Err(AcquireError::AlreadyHeld(_)) => LeadershipState::follower(),
+            Err(AcquireError::AlreadyHeld(_)) => {
+                return Err(RequestFailure::internal(format!(
+                    "another process holds the workspace index at {}",
+                    binding.index_root.display()
+                )));
+            }
             Err(AcquireError::Io { path, source }) => {
                 return Err(RequestFailure::internal(format!(
                     "Failed to acquire workspace leader lock at {}: {source}",
@@ -251,11 +236,9 @@ impl RuntimeFactory {
                 RequestFailure::internal(format!("Failed to initialize workspace: {e}"))
             })?;
 
-        if handler.leadership.is_leader() {
-            crate::startup::run_primary_workspace_repair(&handler)
-                .await
-                .ok();
-        }
+        crate::startup::run_primary_workspace_repair(&handler)
+            .await
+            .ok();
 
         Ok(Arc::new(RequestRuntime::new(
             Arc::new(handler),

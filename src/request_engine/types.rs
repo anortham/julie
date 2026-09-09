@@ -252,10 +252,6 @@ impl RequestFailure {
         )
     }
 
-    pub fn follower_read_only(message: impl Into<String>) -> Self {
-        Self::new("FOLLOWER_READ_ONLY", message, true, json!({}))
-    }
-
     pub fn workspace_required(message: impl Into<String>) -> Self {
         Self::new("WORKSPACE_REQUIRED", message, false, json!({}))
     }
@@ -310,8 +306,7 @@ impl RequestFailure {
             | "FOREGROUND_REQUIRED"
             | "SENSITIVE_ROOT" => 2,
             "TOOL_ERROR" => 3,
-            "FOLLOWER_READ_ONLY"
-            | "SEMANTICS_NOT_READY"
+            "SEMANTICS_NOT_READY"
             | "UNAVAILABLE"
             | "BUSY"
             | "EDIT_BUSY"

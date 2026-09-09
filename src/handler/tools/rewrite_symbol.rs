@@ -202,10 +202,9 @@ impl JulieServerHandler {
             is_ast_aware: true,
         };
         let edit_id = uuid::Uuid::new_v4().to_string();
-        let is_follower = self.leadership.is_follower();
 
         match coordinator
-            .apply(&edit_id, &[change], is_follower, deadline, cancellation)
+            .apply(&edit_id, &[change], deadline, cancellation)
             .await
         {
             Ok(_disposition) => {

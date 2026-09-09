@@ -97,11 +97,7 @@ impl PrimarySwapRollback {
             None => self.workspace,
         };
 
-        // Gate the watcher on `!is_in_process_follower()`, NOT `is_leader()`:
-        // stdio/daemon handlers use `LeadershipState::none()` (is_leader()==false)
-        // but ARE the sole writer and must restore their watcher. Only an
-        // in-process FOLLOWER must skip it (the leader owns writes).
-        if handler.daemon_db.is_none() && !handler.is_in_process_follower() {
+        if handler.daemon_db.is_none() {
             if let Some(workspace) = restored_workspace.as_mut() {
                 if workspace.config.incremental_updates {
                     workspace.initialize_file_watcher()?;
@@ -278,9 +274,9 @@ pub struct JulieServerHandler {
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     /// Mutation-gate registry used by workspace writer paths in this handler.
     pub(crate) mutation_gate_registry: Arc<MutationGateRegistry>,
-    /// In-process leadership state. Holds the OS-level advisory lock when this
-    /// handler is the elected workspace leader (see `new_in_process`). Wrapped
-    /// in `Arc` so the `Clone` derive works across sessions.
+    /// In-process leadership state. Holds the OS-level advisory lock for the
+    /// workspace this handler writes (see `new_in_process`). Wrapped in `Arc`
+    /// so the `Clone` derive works across sessions.
     pub(crate) leadership: Arc<LeadershipState>,
     /// Embedding provider injected by `new_in_process`. When `Some`, takes
     /// priority over `embedding_service` and the per-workspace provider.
@@ -483,15 +479,6 @@ impl JulieServerHandler {
 
     async fn complete_deferred_auto_index_if_needed(&self) -> Result<()> {
         use std::sync::atomic::Ordering;
-
-        // In-process FOLLOWER: skip all writing recovery. The leader owns
-        // SQLite/Tantivy writes; followers are pure readers. Running repair
-        // here would race the leader (Risk #2, T9/Part A). Daemon/stdio
-        // handlers use `LeadershipState::none()` so is_in_process_follower()
-        // is false — they take the full repair path below unchanged.
-        if self.is_in_process_follower() {
-            return Ok(());
-        }
 
         let _deferred_guard = self.deferred_auto_index_gate.lock().await;
         if !self
@@ -1052,9 +1039,8 @@ impl JulieServerHandler {
     ///   `embedding_provider()` returns it directly, bypassing both the daemon
     ///   embedding-service and the per-workspace sidecar path. Do **not** call
     ///   `mark_standalone_embedding_skipped` when passing a provider here.
-    /// * `leader` — result of the workspace leader election (T2 primitive).
-    ///   Pass `LeadershipState::leader(guard)` when this process won the lock;
-    ///   pass `LeadershipState::follower()` when another process won (write-refusing reader);
+    /// * `leader` — the workspace leadership state. Pass `LeadershipState::leader(guard)`
+    ///   or `LeadershipState::leader_in_process()` for in-process handlers;
     ///   pass `LeadershipState::none()` for handlers not in the in-process model.
     /// * `index_root` — when `Some`, `initialize_workspace_with_force` routes
     ///   db/tantivy to this directory so the leader lock and storage share one
@@ -1180,48 +1166,8 @@ impl JulieServerHandler {
         self.update_session_workspace(|state| state.mark_closing());
     }
 
-    /// Returns `true` when this handler holds the OS-level workspace leader lock.
-    ///
-    /// The lock is acquired during `new_in_process` via the T2 leader-election
-    /// primitive (`DaemonLockGuard::try_acquire`). All existing constructors
-    /// (`new`, `new_with_shared_workspace_startup_hint`, etc.) return `false`.
-    pub fn is_leader(&self) -> bool {
-        self.leadership.is_leader()
-    }
-
-    /// Returns `true` when this handler is a read-only follower in an in-process
-    /// leader election (created via `new_in_process` with `LeadershipState::follower()`).
-    ///
-    /// D1 write-mutating operations (index, register, remove, refresh, editing
-    /// tools) MUST be refused on followers to prevent cross-process
-    /// SQLite/Tantivy data races (T7, Risk #2).
-    ///
-    /// Unlike `!is_leader()`, this gate does NOT fire for regular pre-3c
-    /// constructors (daemon mode, stdio mode) — those use `LeadershipState::none()`
-    /// and are not subject to write-refusal gating.
-    pub fn is_in_process_follower(&self) -> bool {
-        self.leadership.is_follower()
-    }
-
-    /// Whether this handler may rebuild a recreated-empty Tantivy projection on
-    /// the search-index OPEN/read path (`repair_recreated_open_if_needed`, which
-    /// runs `clear_all` + `apply_documents` — a Tantivy WRITE).
-    ///
-    /// In-process followers (losers) MUST NOT — that would make a non-leader a
-    /// Tantivy writer, violating the single-writer invariant (T7, Risk #2) that
-    /// the cutover establishes. A follower instead serves the (possibly empty)
-    /// opened index read-only and relies on the leader's rebuild becoming visible
-    /// via the Tantivy poll-reload (~500ms; the part-(d) freshness-only degrade).
-    ///
-    /// Leaders and daemon/stdio handlers (`LeadershipState::none()`) repair as
-    /// before — `none()` returns `true` here, so the pre-3c paths are unchanged.
-    pub(crate) fn may_repair_recreated_projection(&self) -> bool {
-        !self.is_in_process_follower()
-    }
-
-    /// Returns `true` when this handler is participating in an in-process
-    /// leader election (either leader or follower). `false` for all pre-3c
-    /// constructors (daemon mode, stdio mode — `LeadershipState::none()`).
+    /// Returns `true` when this handler was built by an in-process constructor.
+    /// `false` for all pre-3c constructors (daemon mode, stdio mode — `LeadershipState::none()`).
     ///
     /// Gates the F1 bounded read envelope in `call_tool`: only in-process
     /// handlers get the bounded envelope; daemon/stdio take the existing
@@ -1286,10 +1232,6 @@ impl JulieServerHandler {
         &'a self,
         workspace_id: &'a str,
     ) -> std::result::Result<WriterPermit<'a>, OwnershipError> {
-        if self.is_in_process_follower() {
-            return Err(OwnershipError::NotOwner);
-        }
-
         // 1. Check if owner_epoch is already held in LeadershipState for this workspace
         {
             let epoch_read = self.leadership.owner_epoch.read().await;
@@ -1879,13 +1821,7 @@ impl JulieServerHandler {
         };
 
         // Start file watching BEFORE storing workspace (to avoid clone issue).
-        // Gate on `!is_in_process_follower()`: stdio/daemon (none()) and the
-        // in-process leader watch; only an in-process follower skips (it is a
-        // read-only process and must not race the leader's writes).
-        if let Err(e) = workspace
-            .start_file_watching(!self.is_in_process_follower())
-            .await
-        {
+        if let Err(e) = workspace.start_file_watching(true).await {
             warn!("Failed to start file watching: {}", e);
         }
 
@@ -2161,10 +2097,6 @@ impl JulieServerHandler {
             let workspace_id = binding.workspace_id.clone();
             let database_for_projection = Arc::clone(&database);
             let indexing_status = Arc::clone(&self.indexing_status);
-            // T7 single-writer gate (codex 3c.3 pre-merge): recreated-open repair
-            // is a Tantivy WRITE. In-process followers must skip it — the leader
-            // owns the rebuild; the follower picks it up via the poll-reload.
-            let may_repair = self.may_repair_recreated_projection();
             Some(
                 tokio::task::spawn_blocking(move || {
                     let configs = crate::search::LanguageConfigs::load_embedded();
@@ -2173,7 +2105,7 @@ impl JulieServerHandler {
                     let repair_required = open_outcome.repair_required();
                     let index = open_outcome.into_index();
 
-                    if repair_required && may_repair {
+                    if repair_required {
                         warn!(
                             "Tantivy index for workspace '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
                             workspace_id,
@@ -2190,12 +2122,6 @@ impl JulieServerHandler {
                             repair_required,
                             Some(&indexing_status.search_ready),
                         )?;
-                    } else if repair_required {
-                        debug!(
-                            "Tantivy index for workspace '{}' at {} was recreated empty during open; in-process follower skipping projection repair (leader owns the rebuild)",
-                            workspace_id,
-                            tantivy_path.display()
-                        );
                     }
 
                     Ok::<_, anyhow::Error>(Arc::new(index))
@@ -2560,11 +2486,6 @@ impl JulieServerHandler {
 
         let db_path = self.workspace_db_file_path_for(workspace_id).await?;
 
-        // T7 single-writer gate (codex 3c.3 pre-merge): recreated-open repair is a
-        // Tantivy WRITE. In-process followers must skip it — the leader owns the
-        // rebuild; the follower serves the (empty) opened index read-only and picks
-        // up the leader's rebuild via the poll-reload.
-        let may_repair = self.may_repair_recreated_projection();
         let workspace_id = workspace_id.to_string();
         tokio::task::spawn_blocking(move || {
             let configs = crate::search::LanguageConfigs::load_embedded();
@@ -2573,7 +2494,7 @@ impl JulieServerHandler {
             let repair_required = open_outcome.repair_required();
             let index = open_outcome.into_index();
 
-            if repair_required && may_repair {
+            if repair_required {
                 warn!(
                     "Tantivy index for workspace '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
                     workspace_id,
@@ -2583,12 +2504,6 @@ impl JulieServerHandler {
                 let mut db = SymbolDatabase::new(&db_path)?;
                 let projection = SearchProjection::tantivy(workspace_id.clone());
                 projection.repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
-            } else if repair_required {
-                debug!(
-                    "Tantivy index for workspace '{}' at {} was recreated empty during open; in-process follower skipping projection repair (leader owns the rebuild)",
-                    workspace_id,
-                    tantivy_path.display()
-                );
             }
 
             Ok(Some(Arc::new(index)))
@@ -2831,17 +2746,15 @@ impl ServerHandler for JulieServerHandler {
                 && Self::manage_workspace_primary_index_request(request.arguments.as_ref()));
 
             if self.is_in_process() && !exempt {
-                if self.is_leader() {
-                    use std::sync::atomic::Ordering;
-                    if self.deferred_auto_index_pending.load(Ordering::Acquire)
-                        && self.try_claim_deferred_repair_slot()
-                    {
-                        let h = self.clone();
-                        tokio::spawn(async move {
-                            let _ = h.complete_deferred_auto_index_if_needed().await;
-                            h.release_deferred_repair_slot();
-                        });
-                    }
+                use std::sync::atomic::Ordering;
+                if self.deferred_auto_index_pending.load(Ordering::Acquire)
+                    && self.try_claim_deferred_repair_slot()
+                {
+                    let h = self.clone();
+                    tokio::spawn(async move {
+                        let _ = h.complete_deferred_auto_index_if_needed().await;
+                        h.release_deferred_repair_slot();
+                    });
                 }
 
                 let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());

@@ -122,18 +122,7 @@ impl RequestEngine {
         // Step 4: Runtime acquisition
         let runtime = self.runtimes.acquire(binding.as_ref(), &context).await?;
 
-        // Step 5: Follower access check
-        let access = match &decoded {
-            DecodedTool::ManageWorkspace(params)
-                if params.operation == "recover_edit" || params.operation == "recover-edit" =>
-            {
-                crate::request_engine::types::AccessClass::SourceEdit
-            }
-            _ => decoded.access(),
-        };
-        runtime.check_access(access)?;
-
-        // Step 6: Semantic readiness check
+        // Step 5: Semantic readiness check
         let semantic_req = decoded.semantic_requirement();
         let semantic_readiness = match binding.as_ref() {
             Some(b) if !semantic_req.is_none() => {
@@ -173,12 +162,12 @@ impl RequestEngine {
                 .store(false, Ordering::Release);
         }
 
-        // Step 7: Dispatch tool execution
+        // Step 6: Dispatch tool execution
         let result = self
             .dispatch(decoded, &runtime, &context, request.semantics)
             .await?;
 
-        // Step 8: Envelope construction and normalization
+        // Step 7: Envelope construction and normalization
         let readiness = semantic_readiness.to_request_readiness(request.semantics);
         let workspace_id = binding.map(|b| b.workspace_id);
         let value = serde_json::to_value(&result)

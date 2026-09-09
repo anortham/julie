@@ -192,10 +192,9 @@ impl JulieServerHandler {
             .collect();
 
         let edit_id = uuid::Uuid::new_v4().to_string();
-        let is_follower = self.leadership.is_follower();
 
         match coordinator
-            .apply(&edit_id, &changes, is_follower, deadline, cancellation)
+            .apply(&edit_id, &changes, deadline, cancellation)
             .await
         {
             Ok(disposition) => {

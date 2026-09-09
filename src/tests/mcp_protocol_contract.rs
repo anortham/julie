@@ -139,17 +139,6 @@ fn error_mapping_cancelled_to_32603() {
 }
 
 #[test]
-fn error_mapping_follower_read_only_to_32603_retryable() {
-    let failure = RequestFailure::follower_read_only("Cannot mutate on follower");
-    let error = to_mcp_error(failure);
-
-    assert_eq!(error.code, ErrorCode::INTERNAL_ERROR);
-    let data = error.data.expect("error data should be present");
-    assert_eq!(data["code"], "FOLLOWER_READ_ONLY");
-    assert_eq!(data["retryable"], true);
-}
-
-#[test]
 fn error_mapping_semantics_not_ready_to_32603_with_coverage() {
     let failure = RequestFailure::semantics_not_ready(
         "Embeddings missing",

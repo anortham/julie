@@ -1,4 +1,4 @@
-//! Tests for shared RequestEngine application dispatch, access control, and cancellation.
+//! Tests for shared RequestEngine application dispatch and cancellation.
 
 use crate::paths::RegistryPaths;
 use crate::request_engine::{
@@ -6,7 +6,6 @@ use crate::request_engine::{
     SemanticMode, ToolReply, ToolRequest,
 };
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
-use julie_core::workspace::leader_lock::DaemonLockGuard;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -16,7 +15,6 @@ pub struct RequestFixture {
     pub database_path: PathBuf,
     pub temp_home: Arc<tempfile::TempDir>,
     pub temp_repo: Arc<tempfile::TempDir>,
-    pub held_leader_guard: Option<DaemonLockGuard>,
 }
 
 impl RequestFixture {
@@ -58,34 +56,6 @@ impl RequestFixture {
             database_path,
             temp_home: Arc::new(temp_home),
             temp_repo: Arc::new(temp_repo),
-            held_leader_guard: None,
-        }
-    }
-
-    pub async fn as_follower(&self) -> Self {
-        let registry_paths = RegistryPaths::with_home(self.temp_home.path().to_path_buf());
-        let workspace_id =
-            julie_core::workspace::registry::generate_workspace_id(&self.root.to_string_lossy())
-                .expect("generate workspace_id");
-        let lock_path = registry_paths.workspace_leader_lock(&workspace_id);
-        std::fs::create_dir_all(lock_path.parent().unwrap()).unwrap();
-
-        // If the leader lock is not already held, acquire it to force follower state
-        let held_guard = DaemonLockGuard::try_acquire(&lock_path).ok();
-
-        // Construct a new engine pointing to the same workspace & index storage
-        let binding_resolver =
-            BindingResolver::new(Some(self.root.clone()), false, registry_paths.clone());
-        let runtime_factory = Arc::new(RuntimeFactory::new(registry_paths));
-        let engine = RequestEngine::new(binding_resolver, runtime_factory);
-
-        Self {
-            engine,
-            root: self.root.clone(),
-            database_path: self.database_path.clone(),
-            temp_home: Arc::clone(&self.temp_home),
-            temp_repo: Arc::clone(&self.temp_repo),
-            held_leader_guard: held_guard,
         }
     }
 
@@ -132,32 +102,10 @@ impl RequestFixture {
 }
 
 #[tokio::test]
-async fn request_engine_does_not_bypass_follower_edit_gate() {
+async fn preview_dry_run_leaves_disk_untouched() {
     let fixture = RequestFixture::indexed().await;
-    let follower = fixture.as_follower().await;
     let before = std::fs::read(fixture.root.join("src/lib.rs")).unwrap();
-    let response = follower
-        .execute(
-            "edit_file",
-            serde_json::json!({
-                "file_path":"src/lib.rs", "old_text":"request_probe",
-                "new_text":"renamed_probe", "dry_run":false
-            }),
-        )
-        .await;
-    assert_eq!(response.unwrap_err().code, "FOLLOWER_READ_ONLY");
-    assert_eq!(
-        std::fs::read(fixture.root.join("src/lib.rs")).unwrap(),
-        before
-    );
-}
-
-#[tokio::test]
-async fn follower_allows_preview_dry_run() {
-    let fixture = RequestFixture::indexed().await;
-    let follower = fixture.as_follower().await;
-    let before = std::fs::read(fixture.root.join("src/lib.rs")).unwrap();
-    let response = follower
+    let response = fixture
         .execute(
             "edit_file",
             serde_json::json!({
@@ -166,29 +114,11 @@ async fn follower_allows_preview_dry_run() {
             }),
         )
         .await;
-    assert!(
-        response.is_ok(),
-        "Expected dry_run preview to succeed on follower"
-    );
+    assert!(response.is_ok(), "Expected dry_run preview to succeed");
     assert_eq!(
         std::fs::read(fixture.root.join("src/lib.rs")).unwrap(),
         before
     );
-}
-
-#[tokio::test]
-async fn follower_rejects_manage_workspace_mutation() {
-    let fixture = RequestFixture::indexed().await;
-    let follower = fixture.as_follower().await;
-    let response = follower
-        .execute(
-            "manage_workspace",
-            serde_json::json!({
-                "operation": "clean"
-            }),
-        )
-        .await;
-    assert_eq!(response.unwrap_err().code, "FOLLOWER_READ_ONLY");
 }
 
 #[tokio::test]
@@ -562,7 +492,7 @@ async fn failed_edit_leaves_no_partial_edits_or_corrupted_files() {
 
     assert!(response.is_err(), "Expected error for non-matching edit");
     let err = response.unwrap_err();
-    assert_eq!(err.code, "TOOL_ERROR");
+    assert_eq!(err.code, "EDIT_CONFLICT");
 
     // Verify source file is byte-for-byte unmodified
     let current = std::fs::read_to_string(&file_path).unwrap();
@@ -626,36 +556,10 @@ async fn five_concurrent_requests_execute_without_deadlock_or_corruption() {
 }
 
 #[tokio::test]
-async fn follower_rejects_rewrite_symbol_mutating_edit_and_preserves_disk() {
+async fn rewrite_symbol_preview_dry_run_leaves_disk_untouched() {
     let fixture = RequestFixture::indexed().await;
-    let follower = fixture.as_follower().await;
     let before = std::fs::read(fixture.root.join("src/lib.rs")).unwrap();
-    let response = follower
-        .execute(
-            "rewrite_symbol",
-            serde_json::json!({
-                "symbol": "request_probe",
-                "operation": "replace_body",
-                "content": "{\n    let _mutated = 42;\n}\n",
-                "dry_run": false
-            }),
-        )
-        .await;
-    let err = response.expect_err("rewrite_symbol with dry_run=false must fail on follower");
-    assert_eq!(err.code, "FOLLOWER_READ_ONLY");
-    assert_eq!(
-        std::fs::read(fixture.root.join("src/lib.rs")).unwrap(),
-        before,
-        "Disk bytes must remain 100% untouched on follower rewrite rejection"
-    );
-}
-
-#[tokio::test]
-async fn follower_allows_rewrite_symbol_preview_dry_run() {
-    let fixture = RequestFixture::indexed().await;
-    let follower = fixture.as_follower().await;
-    let before = std::fs::read(fixture.root.join("src/lib.rs")).unwrap();
-    let response = follower
+    let response = fixture
         .execute(
             "rewrite_symbol",
             serde_json::json!({
@@ -668,7 +572,7 @@ async fn follower_allows_rewrite_symbol_preview_dry_run() {
         .await;
     assert!(
         response.is_ok(),
-        "rewrite_symbol with dry_run=true must be permitted on follower: {:?}",
+        "rewrite_symbol with dry_run=true must succeed: {:?}",
         response.err()
     );
     assert_eq!(
@@ -679,35 +583,10 @@ async fn follower_allows_rewrite_symbol_preview_dry_run() {
 }
 
 #[tokio::test]
-async fn follower_rejects_rename_symbol_mutating_edit_and_preserves_disk() {
+async fn rename_symbol_preview_dry_run_leaves_disk_untouched() {
     let fixture = RequestFixture::indexed().await;
-    let follower = fixture.as_follower().await;
     let before = std::fs::read(fixture.root.join("src/lib.rs")).unwrap();
-    let response = follower
-        .execute(
-            "rename_symbol",
-            serde_json::json!({
-                "old_name": "request_probe",
-                "new_name": "renamed_request_probe",
-                "dry_run": false
-            }),
-        )
-        .await;
-    let err = response.expect_err("rename_symbol with dry_run=false must fail on follower");
-    assert_eq!(err.code, "FOLLOWER_READ_ONLY");
-    assert_eq!(
-        std::fs::read(fixture.root.join("src/lib.rs")).unwrap(),
-        before,
-        "Disk bytes must remain 100% untouched on follower rename rejection"
-    );
-}
-
-#[tokio::test]
-async fn follower_allows_rename_symbol_preview_dry_run() {
-    let fixture = RequestFixture::indexed().await;
-    let follower = fixture.as_follower().await;
-    let before = std::fs::read(fixture.root.join("src/lib.rs")).unwrap();
-    let response = follower
+    let response = fixture
         .execute(
             "rename_symbol",
             serde_json::json!({
@@ -719,7 +598,7 @@ async fn follower_allows_rename_symbol_preview_dry_run() {
         .await;
     assert!(
         response.is_ok(),
-        "rename_symbol with dry_run=true must be permitted on follower: {:?}",
+        "rename_symbol with dry_run=true must succeed: {:?}",
         response.err()
     );
     assert_eq!(

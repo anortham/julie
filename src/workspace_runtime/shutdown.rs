@@ -1,32 +1,24 @@
 //! src/workspace_runtime/shutdown.rs
 //! Strict graceful shutdown sequence for workspace runtimes.
 
-use super::{RuntimePhase, WorkspaceRuntime};
+use super::WorkspaceRuntime;
 use std::time::Duration;
 use tracing::{info, warn};
 
 /// Execute strict graceful shutdown sequence:
-/// 1. Stop admission (transition to Draining)
-/// 2. Drain commits (await active requests and pending transactions)
-/// 3. Stop file watcher
-/// 4. Close writable handles
-/// 5. Release owner lock guard
+/// 1. Drain commits (await active requests and pending transactions)
+/// 2. Stop file watcher
+/// 3. Close writable handles
+/// 4. Release owner lock guard
 pub async fn drain_and_shutdown(runtime: &WorkspaceRuntime, drain_timeout: Duration) {
     info!(
         workspace_id = %runtime.binding.workspace_id,
         "Initiating graceful shutdown sequence for workspace runtime"
     );
 
-    // Step 1: Stop admission
-    let _ = runtime.set_phase(RuntimePhase::Draining);
     runtime.shutdown_token.cancel();
 
-    // Cancel follower probe loop if running
-    if let Some(cancel) = runtime.probe_cancel.lock().unwrap().take() {
-        cancel.cancel();
-    }
-
-    // Step 2: Drain active requests / in-flight commits
+    // Step 1: Drain active requests / in-flight commits
     let deadline = tokio::time::Instant::now() + drain_timeout;
     while runtime
         .active_requests
@@ -65,7 +57,7 @@ pub async fn drain_and_shutdown(runtime: &WorkspaceRuntime, drain_timeout: Durat
         }
     }
 
-    // Step 3: Stop file watcher
+    // Step 2: Stop file watcher
     {
         let mut ws_guard = runtime.handler.workspace.write().await;
         if let Some(ref mut ws) = *ws_guard {
@@ -79,7 +71,7 @@ pub async fn drain_and_shutdown(runtime: &WorkspaceRuntime, drain_timeout: Durat
         }
     }
 
-    // Step 4: Close writable handles
+    // Step 3: Close writable handles
     // Flush SQLite WAL and close search writers
     {
         let mut ws_guard = runtime.handler.workspace.write().await;
@@ -93,7 +85,7 @@ pub async fn drain_and_shutdown(runtime: &WorkspaceRuntime, drain_timeout: Durat
         }
     }
 
-    // Step 5: Release owner lock guard
+    // Step 4: Release owner lock guard
     {
         let mut owner_guard = runtime.owner_state.lock().await;
         if let Some(owner) = owner_guard.take() {

@@ -172,8 +172,6 @@ pub mod integration {
     pub mod sidecar_test_helpers; // Shared fake-sidecar helpers for integration tests
     pub mod stale_index_detection; // Stale index detection tests
     pub mod system_health;
-    pub mod t11_kill_writer; // T11: kill-the-writer HARD GATE (lock kernel-release + crash-gap recovery)
-    pub mod t9_handoff_recovery; // T9: leader handoff recovery + follower structural gate
     pub mod target_workspace; // Target-workspace tests
     // watcher, watcher_filtering, watcher_handlers, watcher_mutation_gate,
     // watcher_observability, watcher_queue — relocated to julie-runtime (T2c.3)

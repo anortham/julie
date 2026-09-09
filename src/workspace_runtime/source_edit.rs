@@ -8,7 +8,7 @@ use super::edit_journal::{EditJournal, JournalFileEntry, JournalFileState, Journ
 pub use super::source_edit_ops::*;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 pub struct SourceEditCoordinator {
@@ -45,10 +45,6 @@ impl SourceEditCoordinator {
 
     pub fn journals_dir(&self) -> PathBuf {
         self.canonical_root.join(".julie").join("edit-journals")
-    }
-
-    pub fn refresh_hints_dir(&self) -> PathBuf {
-        self.canonical_root.join(".julie").join("refresh-hints")
     }
 
     pub fn resolve_path(&self, rel_path: &Path) -> Result<PathBuf, SourceEditError> {
@@ -118,31 +114,10 @@ impl SourceEditCoordinator {
         )
     }
 
-    pub fn enqueue_refresh_hint(
-        &self,
-        edit_id: &str,
-        changed_paths: &[PathBuf],
-    ) -> Result<(), SourceEditError> {
-        let hints_dir = self.refresh_hints_dir();
-        fs::create_dir_all(&hints_dir)?;
-        let hint_file = hints_dir.join(format!("{edit_id}.json"));
-        let hint_data = serde_json::json!({
-            "edit_id": edit_id,
-            "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis(),
-            "paths": changed_paths,
-        });
-        fs::write(
-            hint_file,
-            serde_json::to_string_pretty(&hint_data).unwrap().as_bytes(),
-        )?;
-        Ok(())
-    }
-
     pub async fn apply(
         &self,
         edit_id: &str,
         changes: &[PreparedSourceChange],
-        is_follower: bool,
         deadline: Instant,
         cancellation: &CancellationToken,
     ) -> Result<EditDisposition, SourceEditError> {
@@ -258,17 +233,13 @@ impl SourceEditCoordinator {
         journal.state = JournalState::Applied;
         let _ = journal.save(&journal_path);
 
-        if is_follower {
-            let _ = self.enqueue_refresh_hint(edit_id, &applied_paths);
-        }
-
         Ok(EditDisposition {
             edit_id: edit_id.to_string(),
             recovery_action: None,
             applied_paths,
             pending_paths: Vec::new(),
             conflicted_paths: Vec::new(),
-            index_refresh_pending: is_follower,
+            index_refresh_pending: false,
         })
     }
 

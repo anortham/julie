@@ -409,7 +409,10 @@ mod tests {
             3
         );
         assert_eq!(
-            resolve_exit_code(&Err(RequestFailure::follower_read_only("ro"))),
+            resolve_exit_code(&Err(RequestFailure::semantics_not_ready(
+                "vectors",
+                serde_json::json!({})
+            ))),
             4
         );
         assert_eq!(

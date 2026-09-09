@@ -1,19 +1,18 @@
 //! src/workspace_runtime/owner.rs
-//! WorkspaceRuntime representation, dynamic follower probe loop, and owner recovery.
+//! WorkspaceRuntime representation and owner startup.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
-use std::time::Duration;
 
 use tokio::sync::{Mutex, watch};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use super::{RuntimeError, RuntimePhase};
 use crate::handler::JulieServerHandler;
 use crate::request_engine::types::WorkspaceBinding;
-use julie_core::workspace::leader_lock::{AcquireError, DaemonLockGuard};
+use julie_core::workspace::leader_lock::DaemonLockGuard;
 use julie_core::workspace::ownership::OwnerEpoch;
 
 pub struct OwnerState {
@@ -30,7 +29,6 @@ pub struct WorkspaceRuntime {
     pub in_flight_commits: AtomicUsize,
     pub current_epoch: AtomicU64,
     pub(crate) owner_state: Mutex<Option<OwnerState>>,
-    pub(crate) probe_cancel: std::sync::Mutex<Option<CancellationToken>>,
     pub(crate) shutdown_token: CancellationToken,
     pub(crate) last_activity: AtomicI64,
     pub(crate) fault_flag: Mutex<Option<String>>,
@@ -66,7 +64,6 @@ impl WorkspaceRuntime {
             in_flight_commits: AtomicUsize::new(0),
             current_epoch: AtomicU64::new(0),
             owner_state: Mutex::new(None),
-            probe_cancel: std::sync::Mutex::new(None),
             shutdown_token: CancellationToken::new(),
             last_activity: AtomicI64::new(now_millis),
             fault_flag: Mutex::new(None),
@@ -102,91 +99,12 @@ impl WorkspaceRuntime {
         Ok(())
     }
 
-    /// Spawns the background dynamic follower probe loop (500ms + 0–100ms jitter).
-    pub fn start_follower_probe_loop(self: &Arc<Self>, probe_interval: Duration) {
-        let cancel = CancellationToken::new();
-        {
-            let mut guard = self.probe_cancel.lock().unwrap();
-            *guard = Some(cancel.clone());
-        }
-
-        let runtime = Arc::clone(self);
-        tokio::spawn(async move {
-            info!(
-                workspace_id = %runtime.binding.workspace_id,
-                "Started follower dynamic leader election probe loop"
-            );
-
-            loop {
-                if cancel.is_cancelled() || runtime.shutdown_token.is_cancelled() {
-                    break;
-                }
-
-                let nanos = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.subsec_nanos())
-                    .unwrap_or(0);
-                let jitter = (nanos % 101) as u64;
-                let sleep_dur = probe_interval + Duration::from_millis(jitter);
-                tokio::select! {
-                    _ = tokio::time::sleep(sleep_dur) => {}
-                    _ = cancel.cancelled() => break,
-                    _ = runtime.shutdown_token.cancelled() => break,
-                }
-
-                if !runtime.phase.borrow().is_follower() {
-                    break;
-                }
-
-                match DaemonLockGuard::try_acquire(&runtime.leader_lock_path()) {
-                    Ok(guard) => {
-                        info!(
-                            workspace_id = %runtime.binding.workspace_id,
-                            "Follower acquired workspace leader lock — promoting to Owner"
-                        );
-                        if let Err(e) = runtime.promote_to_owner(guard).await {
-                            error!(
-                                workspace_id = %runtime.binding.workspace_id,
-                                error = %e,
-                                "Failed owner promotion sequence"
-                            );
-                            let _ = runtime.set_phase(RuntimePhase::Failed {
-                                code: format!("PROMOTION_FAILED: {e}"),
-                            });
-                        }
-                        break;
-                    }
-                    Err(AcquireError::AlreadyHeld(_)) => {
-                        continue;
-                    }
-                    Err(AcquireError::Io { path, source }) => {
-                        error!(
-                            workspace_id = %runtime.binding.workspace_id,
-                            path = %path.display(),
-                            error = %source,
-                            "Fatal I/O error during follower leader probe"
-                        );
-                        let _ = runtime.set_phase(RuntimePhase::Failed {
-                            code: format!("LOCK_IO_ERROR: {source}"),
-                        });
-                        break;
-                    }
-                }
-            }
-        });
-    }
-
-    /// Complete owner promotion sequence:
-    /// Follower -> Recovering { epoch } -> Reconcile -> Start Watcher -> Owner { epoch }
+    /// Owner startup sequence: Reconcile -> Start Watcher -> Owner { epoch }
     pub async fn promote_to_owner(
         self: &Arc<Self>,
         guard: DaemonLockGuard,
     ) -> Result<(), RuntimeError> {
         let epoch_num = self.current_epoch.fetch_add(1, Ordering::SeqCst) + 1;
-
-        // Step 1: Transition to Recovering
-        self.set_phase(RuntimePhase::Recovering { epoch: epoch_num })?;
-        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
 
         let owner_epoch = Arc::new(OwnerEpoch::new(
             epoch_num,
@@ -194,7 +112,7 @@ impl WorkspaceRuntime {
             guard,
         ));
 
-        // Step 2: Reconcile canonical SQLite vs Tantivy projection lag
+        // Step 1: Reconcile canonical SQLite vs Tantivy projection lag
         if let Err(err) = self.reconcile_projection_lag(&owner_epoch).await {
             warn!(
                 workspace_id = %self.binding.workspace_id,
@@ -203,7 +121,7 @@ impl WorkspaceRuntime {
             );
         }
 
-        // Step 3: Check fault flag before starting watcher
+        // Step 2: Check fault flag before starting watcher
         {
             let fault_guard = self.fault_flag.lock().await;
             if let Some(ref fault) = *fault_guard {
@@ -218,7 +136,7 @@ impl WorkspaceRuntime {
             }
         }
 
-        // Step 4: Start single file watcher
+        // Step 3: Start single file watcher
         {
             let mut ws_guard = self.handler.workspace.write().await;
             if let Some(ref mut ws) = *ws_guard {
@@ -258,7 +176,7 @@ impl WorkspaceRuntime {
             *handler_epoch = Some(Arc::clone(&owner_epoch));
         }
 
-        // Step 5: Publish Owner
+        // Step 4: Publish Owner
         self.set_phase(RuntimePhase::Owner { epoch: epoch_num })?;
         info!(
             workspace_id = %self.binding.workspace_id,

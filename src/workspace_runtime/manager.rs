@@ -20,7 +20,6 @@ use julie_core::workspace::leader_lock::{AcquireError, DaemonLockGuard};
 
 pub const DEFAULT_MAX_IDLE_RUNTIMES: usize = 8;
 pub const DEFAULT_IDLE_EXPIRY_DURATION: Duration = Duration::from_secs(60);
-pub const DEFAULT_PROBE_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RuntimeKey {
@@ -64,7 +63,6 @@ pub struct WorkspaceRuntimeManager {
     pub(crate) registry_paths: RegistryPaths,
     pub(crate) slots: Arc<RwLock<HashMap<RuntimeKey, SlotState>>>,
     pub(crate) template_handler: Option<Arc<JulieServerHandler>>,
-    pub(crate) probe_interval: Duration,
     pub(crate) idle_timeout: Duration,
     pub(crate) max_idle_runtimes: usize,
     pub(crate) test_barriers: Option<ManagerTestBarriers>,
@@ -112,8 +110,7 @@ impl WorkspaceRuntimeManager {
                 if let Some(slot) = read_guard.get(&key) {
                     match slot {
                         SlotState::Ready(rt) => {
-                            if !rt.phase.borrow().is_draining() && !rt.phase.borrow().is_terminal()
-                            {
+                            if !rt.phase.borrow().is_terminal() {
                                 break Arc::clone(rt);
                             }
                         }
@@ -135,11 +132,10 @@ impl WorkspaceRuntimeManager {
             if let Some(slot) = write_guard.get(&key) {
                 match slot {
                     SlotState::Ready(rt) => {
-                        if !rt.phase.borrow().is_draining() && !rt.phase.borrow().is_terminal() {
+                        if !rt.phase.borrow().is_terminal() {
                             break Arc::clone(rt);
-                        } else if rt.phase.borrow().is_terminal() {
-                            write_guard.remove(&key);
                         }
+                        write_guard.remove(&key);
                     }
                     SlotState::Initializing(tx) => {
                         let mut rx = tx.subscribe();
@@ -211,9 +207,17 @@ impl WorkspaceRuntimeManager {
         })?;
 
         let lock_path = binding.index_root.join("leader.lock");
-        let (initial_phase, guard_opt) = match DaemonLockGuard::try_acquire(&lock_path) {
-            Ok(guard) => (RuntimePhase::Opening, Some(guard)),
-            Err(AcquireError::AlreadyHeld(_)) => (RuntimePhase::Follower, None),
+        let guard = match DaemonLockGuard::try_acquire(&lock_path) {
+            Ok(guard) => guard,
+            Err(AcquireError::AlreadyHeld(_)) => {
+                return Err((
+                    None,
+                    RuntimeError::LockAcquire(format!(
+                        "another process holds the workspace index at {}",
+                        binding.index_root.display()
+                    )),
+                ));
+            }
             Err(AcquireError::Io { path, source }) => {
                 return Err((
                     None,
@@ -241,8 +245,8 @@ impl WorkspaceRuntimeManager {
                     .map(Arc::new)
             });
 
-        let (phase_tx, phase_rx) = tokio::sync::watch::channel(initial_phase);
-        let leadership = crate::leadership::LeadershipState::dynamic(phase_rx.clone());
+        let (phase_tx, phase_rx) = tokio::sync::watch::channel(RuntimePhase::Owner { epoch: 0 });
+        let leadership = crate::leadership::LeadershipState::leader_in_process();
 
         let mut handler = JulieServerHandler::new_in_process_with_daemon_db(
             startup_hint,
@@ -284,15 +288,8 @@ impl WorkspaceRuntimeManager {
             runtime.inject_fault(fault).await;
         }
 
-        match guard_opt {
-            Some(guard) => {
-                if let Err(e) = runtime.promote_to_owner(guard).await {
-                    return Err((Some(runtime), e));
-                }
-            }
-            None => {
-                runtime.start_follower_probe_loop(self.probe_interval);
-            }
+        if let Err(e) = runtime.promote_to_owner(guard).await {
+            return Err((Some(runtime), e));
         }
 
         Ok(runtime)
@@ -327,9 +324,7 @@ impl WorkspaceRuntimeManager {
             .await
             .get(&key)
             .map_or(false, |slot| match slot {
-                SlotState::Ready(rt) => {
-                    !rt.phase.borrow().is_draining() && !rt.phase.borrow().is_terminal()
-                }
+                SlotState::Ready(rt) => !rt.phase.borrow().is_terminal(),
                 _ => false,
             })
     }

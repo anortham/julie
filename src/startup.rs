@@ -63,15 +63,10 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 /// This is the public entry point. It serializes concurrent catch-up scans by
 use julie_core::workspace::ownership::WriterPermit;
 
-/// Perform primary workspace repair at startup or on leader promotion while
-/// holding an authentic `WriterPermit`.
+/// Perform primary workspace repair at startup while holding an authentic `WriterPermit`.
 pub(crate) async fn run_primary_workspace_repair(
     handler: &JulieServerHandler,
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
-    if handler.is_in_process_follower() {
-        return Ok(None);
-    }
-
     let Ok(workspace_id) = handler.require_primary_workspace_identity() else {
         return Ok(None);
     };

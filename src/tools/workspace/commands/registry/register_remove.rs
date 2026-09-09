@@ -19,12 +19,6 @@ impl ManageWorkspaceTool {
         name: Option<String>,
         force: bool,
     ) -> Result<CallToolResult> {
-        // T7 (Risk #2): refuse writes on in-process followers.
-        if handler.is_in_process_follower() {
-            return Ok(CallToolResult::error(vec![Content::text(
-                "another session owns writes for this workspace; this is a read-only follower",
-            )]));
-        }
         let Some(registry_store) = registry_store_for_handler(handler)? else {
             let message = "Workspace registration requires the workspace registry, which is not available in the in-process server.";
             return Ok(CallToolResult::error(vec![Content::text(message)]));
@@ -176,12 +170,6 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         workspace_id: &str,
     ) -> Result<CallToolResult> {
-        // T7 (Risk #2): refuse writes on in-process followers.
-        if handler.is_in_process_follower() {
-            return Ok(CallToolResult::error(vec![Content::text(
-                "another session owns writes for this workspace; this is a read-only follower",
-            )]));
-        }
         info!("Removing workspace: {}", workspace_id);
 
         if let Some(registry_store) = registry_store_for_handler(handler)? {

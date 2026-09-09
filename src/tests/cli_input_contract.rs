@@ -268,7 +268,6 @@ fn cli_request_failure_exit_code_contract() {
         RequestFailure::new("TOOL_ERROR", "", false, serde_json::json!({})).exit_code(),
         3
     );
-    assert_eq!(RequestFailure::follower_read_only("").exit_code(), 4);
     assert_eq!(
         RequestFailure::semantics_not_ready("", serde_json::json!({})).exit_code(),
         4
@@ -597,7 +596,6 @@ async fn cli_run_tool_preserves_typed_request_failure_and_exit_code() {
     // Assert exit code mapping contracts for critical codes
     assert_eq!(failure.exit_code(), 2);
     assert_eq!(RequestFailure::tool_error("").exit_code(), 3);
-    assert_eq!(RequestFailure::follower_read_only("").exit_code(), 4);
     assert_eq!(
         RequestFailure::new("STALE_EDIT", "", false, serde_json::json!({})).exit_code(),
         5
