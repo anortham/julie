@@ -425,6 +425,28 @@ Each phase becomes one implementation plan after this design is approved.
 - **Extraction in process.** An abort or native fault in a parser crashes the service. The client
   starts a new one and the offending file is not retried until it changes.
 
+## 16. The June 2026 daemon, and why this is not a repeat
+
+Julie already ran a resident HTTP daemon with a stdio adapter from May to June 2026. The rescue program
+of 2026-06-03 measured it at 10,126 lines in `src/daemon/` plus 1,343 in `src/adapter/`, with twelve
+test markers, and named it "the home of the unsolved hang and disconnect bugs". Phase 3d deleted it and
+moved to the in-process leader-locked server that runs today. The rescue design also said the long-game
+shape is a resident Rust process. This design is that shape. It must not grow the same way. What was
+different then, and what is different now:
+
+| June 2026 daemon | This service |
+|---|---|
+| Stateful MCP: sessions, `initialize`, roots, per-connection state bridged by the adapter | Stateless MCP: one POST per call, no session, the shim forwards bytes |
+| Four-file lifecycle: `daemon.pid`, `daemon.state`, `daemon.lock`, `daemon.singleton`, then a kernel lock plus discovery plus token file, plus legacy migration | One file, `service.json`, written after bind. No singleton lock. A second service that loses the port bind exits |
+| Stale-binary detection, restart-pending state, version handoff | None. Version mismatch is an error message and a manual restart |
+| Per-workspace SQLite connection pool, mutation gate, eight background writers taking the gate directly | One writer per checkout, immutable fact rows, no read transactions held, no pool |
+| Tests spawned dozens of daemon subprocesses | Tests bind an ephemeral port in process; one small multi-process bucket |
+| Hangs never root-caused | Every request has a deadline and appears on the status page with its outcome |
+
+Budget: the process model in `julie-service` (start, `service.json`, token, idle exit, shim spawn and
+forward) is at most 600 lines excluding tests. The June daemon's equivalent was over 4,000. If the
+600-line budget does not hold, the design is wrong, not the budget.
+
 ## Architecture Quality
 
 **Affected modules:** every Julie crate; the root `src` tree; Miller's guidance, hooks, and benchmark
