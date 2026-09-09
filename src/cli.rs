@@ -154,15 +154,6 @@ pub fn resolve_workspace_root(cli_workspace: Option<PathBuf>) -> PathBuf {
     resolve_workspace_startup_hint(cli_workspace).path
 }
 
-pub fn cli_command_needs_workspace_startup_hint(command: &Option<Command>) -> bool {
-    match command {
-        None => true,
-        Some(Command::McpStdio) => false,
-        Some(Command::Service(_)) => false,
-        Some(_) => false,
-    }
-}
-
 fn resolve_explicit_workspace_candidate(
     raw_path: Option<PathBuf>,
     source_label: &str,

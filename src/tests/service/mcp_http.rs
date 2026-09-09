@@ -107,3 +107,36 @@ async fn tools_call_manage_workspace_list_returns_a_complete_result() {
     assert_eq!(body["result"]["resultType"], "complete");
     assert!(body["result"]["content"].is_array());
 }
+
+#[tokio::test]
+async fn mcp_traffic_counts_as_activity_for_idle_exit_and_the_status_log() {
+    let running = Running::start(Some(std::time::Duration::from_millis(400))).await;
+    for id in 0..12 {
+        let (status, _) = rpc(
+            &running,
+            json!({
+                "jsonrpc":"2.0","id":id,"method":"tools/call",
+                "params":{"name":"manage_workspace","arguments":{"operation":"list"},"_meta": meta()}
+            }),
+        )
+        .await;
+        assert_eq!(status, 200);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let record = crate::service::discovery::read_record(&running.paths).unwrap();
+    assert!(record.is_some(), "service exited while MCP calls were arriving");
+    let doc: Value = running
+        .client()
+        .get(format!("{}/status", running.base))
+        .bearer_auth(&running.token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let requests = doc["requests"].as_array().unwrap();
+    assert!(!requests.is_empty(), "MCP calls must appear on the status page");
+    assert_eq!(requests[0]["tool"], "manage_workspace");
+    assert_eq!(requests[0]["outcome"], "ok");
+}

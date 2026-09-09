@@ -58,11 +58,6 @@ impl RequestEngine {
         self.service_url.read().ok().and_then(|g| g.clone())
     }
 
-    pub fn with_service_url(self, url: String) -> Self {
-        self.set_service_url(url);
-        self
-    }
-
     pub async fn execute(
         &self,
         request: ToolRequest,

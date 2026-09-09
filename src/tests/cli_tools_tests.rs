@@ -350,7 +350,7 @@ fn test_call_path_global_workspace_and_target_workspace_parse() {
 
 #[test]
 fn test_cli_extract_command_parses_and_validates_without_workspace_startup() {
-    use crate::cli::{Cli, Command, cli_command_needs_workspace_startup_hint};
+    use crate::cli::{Cli, Command};
 
     let cli = Cli::try_parse_from([
         "julie-server",
@@ -368,7 +368,6 @@ fn test_cli_extract_command_parses_and_validates_without_workspace_startup() {
     .expect("extract command parses");
 
     assert_eq!(cli.tool_flags.effective_format(), OutputFormat::Json);
-    assert!(!cli_command_needs_workspace_startup_hint(&cli.command));
 
     let Command::Extract(raw) = cli.command.expect("expected extract command") else {
         panic!("expected extract command");

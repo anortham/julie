@@ -112,7 +112,7 @@ include_dir = "0.7"  # Embed Python sidecar source into binary at compile time
 
 # HTTP server for the standalone dashboard reader and machine service
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "form", "json"] }
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
 
 # Dashboard rendering
 tera = "1"

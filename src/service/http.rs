@@ -23,6 +23,7 @@ pub fn router(state: AppState, dashboard: Router) -> Router {
         .nest_service("/mcp", crate::service::mcp::mcp_service(Arc::clone(&state.engine)))
         .with_state(state.clone())
         .merge(dashboard)
+        .layer(axum::middleware::from_fn_with_state(state.clone(), track_mcp_activity))
         .layer(axum::middleware::from_fn(default_mcp_headers))
         .layer(axum::middleware::from_fn_with_state(state, require_token))
 }
@@ -52,14 +53,28 @@ async fn default_mcp_headers(request: axum::extract::Request, next: axum::middle
             parts.headers.insert(axum::http::HeaderName::from_static("mcp-protocol-version"), hv);
         }
     }
-    if !parts.headers.contains_key("mcp-name") {
-        if let Some(name) = json_val.as_ref().and_then(|v| v.get("params")).and_then(|p| p.get("name")).and_then(|n| n.as_str()) {
-            if let Ok(hv) = axum::http::HeaderValue::from_str(name) {
-                parts.headers.insert(axum::http::HeaderName::from_static("mcp-name"), hv);
-            }
+    let body_field = |path: &[&str]| json_val.as_ref().and_then(|v| path.iter().try_fold(v, |v, k| v.get(k))).and_then(|n| n.as_str()).map(str::to_owned);
+    for (header, value) in [("mcp-name", body_field(&["params", "name"])), ("mcp-method", body_field(&["method"]))] {
+        if parts.headers.contains_key(header) { continue; }
+        if let Some(hv) = value.and_then(|v| axum::http::HeaderValue::from_str(&v).ok()) {
+            parts.headers.insert(axum::http::HeaderName::from_static(header), hv);
         }
     }
     next.run(axum::extract::Request::from_parts(parts, axum::body::Body::from(bytes))).await
+}
+
+async fn track_mcp_activity(State(state): State<AppState>, request: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    if !request.uri().path().starts_with("/mcp") { return next.run(request).await; }
+    let tool = ["mcp-name", "mcp-method"].iter()
+        .find_map(|name| request.headers().get(*name).and_then(|v| v.to_str().ok()))
+        .unwrap_or("mcp")
+        .to_owned();
+    let started = Instant::now();
+    state.status.begin();
+    let response = next.run(request).await;
+    let outcome = if response.status().is_success() { "ok" } else { "error" };
+    state.status.end(RequestRecord { tool, workspace_id: None, latency_ms: started.elapsed().as_millis(), outcome, at: now_rfc3339() }, None);
+    response
 }
 
 async fn require_token(State(state): State<AppState>, headers: HeaderMap, Query(query): Query<HashMap<String, String>>, request: axum::extract::Request, next: axum::middleware::Next) -> Response {

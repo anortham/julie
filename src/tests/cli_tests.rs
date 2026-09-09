@@ -1,7 +1,7 @@
 //! Tests for CLI argument parsing (clap) and workspace resolution.
 
 use crate::cli::{
-    Cli, Command, cli_command_needs_workspace_startup_hint, resolve_workspace_root,
+    Cli, Command, resolve_workspace_root,
     resolve_workspace_startup_hint,
 };
 use crate::workspace::startup_hint::WorkspaceStartupSource;
@@ -81,15 +81,11 @@ fn test_workspace_flag_parsed() {
 // ============================================================================
 
 #[test]
-fn test_workspace_startup_hint_is_in_process_only() {
-    let in_process = Cli::parse_from(["julie-server"]);
+fn test_no_subcommand_runs_the_stdio_shim() {
+    let shim = Cli::parse_from(["julie-server"]);
     let tool = Cli::parse_from(["julie-server", "--workspace", "/tmp/ignored", "dashboard"]);
 
-    assert!(cli_command_needs_workspace_startup_hint(
-        &in_process.command
-    ));
-    assert!(!cli_command_needs_workspace_startup_hint(&tool.command));
-
+    assert!(shim.command.is_none());
     assert!(matches!(tool.command, Some(Command::Dashboard)));
 }
 

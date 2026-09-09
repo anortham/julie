@@ -3,7 +3,7 @@ use anyhow::Context;
 use julie_core::paths::RegistryPaths;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
-pub async fn forward<R, W>(client: &ServiceClient, mut input: R, mut output: W) -> anyhow::Result<()>
+pub async fn forward<R, W>(paths: &RegistryPaths, spawn: &(impl Fn() -> std::io::Result<()>), mut client: ServiceClient, mut input: R, mut output: W) -> anyhow::Result<()>
 where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -24,7 +24,13 @@ where
         };
         let method = message["method"].as_str().unwrap_or("").to_string();
         let is_request = !message["id"].is_null();
-        let response = client.post_mcp(trimmed.as_bytes(), &method).await.context("POST /mcp")?;
+        let response = match client.post_mcp(trimmed.as_bytes(), &method).await {
+            Ok(r) => r,
+            Err(_) => {
+                client = connect_or_start(paths, spawn).await?;
+                client.post_mcp(trimmed.as_bytes(), &method).await.context("POST /mcp after reconnect")?
+            }
+        };
         if !is_request { continue; }
         let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
         let body = response.text().await?;
@@ -53,5 +59,5 @@ pub async fn run_stdio_shim() -> anyhow::Result<()> {
     let client = connect_or_start(&paths, spawn_detached_service).await?;
     let stdin = tokio::io::BufReader::new(tokio::io::stdin());
     let stdout = tokio::io::stdout();
-    forward(&client, stdin, stdout).await
+    forward(&paths, &spawn_detached_service, client, stdin, stdout).await
 }
