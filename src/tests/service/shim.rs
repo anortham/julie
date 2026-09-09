@@ -77,13 +77,21 @@ async fn shim_reconnects_when_the_service_goes_away_mid_session() {
     let first = connect_or_start(&paths, || Ok(())).await.unwrap();
     first.post_shutdown().await.unwrap();
     running.finished().await.unwrap();
-    assert!(crate::service::discovery::read_record(&paths).unwrap().is_none());
+    assert!(
+        crate::service::discovery::read_record(&paths)
+            .unwrap()
+            .is_none()
+    );
 
     let respawn_paths = paths.clone();
     let spawn = move || {
         let paths = respawn_paths.clone();
         tokio::spawn(async move {
-            let app = crate::service::ServiceApp::new(crate::service::ServiceConfig { idle: None, registry_paths: paths }).unwrap();
+            let app = crate::service::ServiceApp::new(crate::service::ServiceConfig {
+                idle: None,
+                registry_paths: paths,
+            })
+            .unwrap();
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             app.serve(listener).await.unwrap();
         });
@@ -91,10 +99,17 @@ async fn shim_reconnects_when_the_service_goes_away_mid_session() {
     };
     let call = json!({"jsonrpc":"2.0","id":9,"method":"tools/list","params":{"_meta": meta()}});
     let mut output = Vec::new();
-    forward(&paths, &spawn, first, tokio::io::BufReader::new(format!("{call}\n").as_bytes()), &mut output)
-        .await
-        .unwrap();
-    let reply: Value = serde_json::from_str(String::from_utf8(output).unwrap().lines().next().unwrap()).unwrap();
+    forward(
+        &paths,
+        &spawn,
+        first,
+        tokio::io::BufReader::new(format!("{call}\n").as_bytes()),
+        &mut output,
+    )
+    .await
+    .unwrap();
+    let reply: Value =
+        serde_json::from_str(String::from_utf8(output).unwrap().lines().next().unwrap()).unwrap();
     assert_eq!(reply["id"], 9);
     assert!(reply["result"]["tools"].is_array(), "got {reply}");
 }

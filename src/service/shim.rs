@@ -3,7 +3,13 @@ use anyhow::Context;
 use julie_core::paths::RegistryPaths;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
-pub async fn forward<R, W>(paths: &RegistryPaths, spawn: &(impl Fn() -> std::io::Result<()>), mut client: ServiceClient, mut input: R, mut output: W) -> anyhow::Result<()>
+pub async fn forward<R, W>(
+    paths: &RegistryPaths,
+    spawn: &(impl Fn() -> std::io::Result<()>),
+    mut client: ServiceClient,
+    mut input: R,
+    mut output: W,
+) -> anyhow::Result<()>
 where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -11,9 +17,13 @@ where
     let mut line = String::new();
     loop {
         line.clear();
-        if input.read_line(&mut line).await? == 0 { return Ok(()); }
+        if input.read_line(&mut line).await? == 0 {
+            return Ok(());
+        }
         let trimmed = line.trim();
-        if trimmed.is_empty() { continue; }
+        if trimmed.is_empty() {
+            continue;
+        }
         let message: serde_json::Value = match serde_json::from_str(trimmed) {
             Ok(v) => v,
             Err(e) => {
@@ -28,11 +38,21 @@ where
             Ok(r) => r,
             Err(_) => {
                 client = connect_or_start(paths, spawn).await?;
-                client.post_mcp(trimmed.as_bytes(), &method).await.context("POST /mcp after reconnect")?
+                client
+                    .post_mcp(trimmed.as_bytes(), &method)
+                    .await
+                    .context("POST /mcp after reconnect")?
             }
         };
-        if !is_request { continue; }
-        let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+        if !is_request {
+            continue;
+        }
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
         let body = response.text().await?;
         let reply = if content_type.starts_with("text/event-stream") {
             last_json_event(&body).unwrap_or_else(|| body.clone())
@@ -49,7 +69,11 @@ fn last_json_event(sse: &str) -> Option<String> {
     sse.lines()
         .filter_map(|l| l.strip_prefix("data:"))
         .map(str::trim)
-        .filter(|d| serde_json::from_str::<serde_json::Value>(d).map(|v| v.get("id").is_some()).unwrap_or(false))
+        .filter(|d| {
+            serde_json::from_str::<serde_json::Value>(d)
+                .map(|v| v.get("id").is_some())
+                .unwrap_or(false)
+        })
         .last()
         .map(str::to_owned)
 }

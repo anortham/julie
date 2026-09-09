@@ -373,8 +373,7 @@ impl DefaultSemanticRuntime {
 
                 tokio::spawn(async move {
                     let provider =
-                        crate::embeddings::acquire_in_process_embedding_provider(&paths)
-                            .await;
+                        crate::embeddings::acquire_in_process_embedding_provider(&paths).await;
                     {
                         let mut cache = cache_clone.write().await;
                         let mut st = state_clone.write().await;

@@ -444,8 +444,10 @@ different then, and what is different now:
 | Hangs never root-caused | Every request has a deadline and appears on the status page with its outcome |
 
 Budget: the process model in `julie-service` (start, `service.json`, token, idle exit, shim spawn and
-forward) is at most 600 lines excluding tests. The June daemon's equivalent was over 4,000. If the
-600-line budget does not hold, the design is wrong, not the budget.
+forward) follows the project's 500-line per-file rule and is reported per release. The June daemon's
+equivalent was over 4,000 lines; phase 1 landed at about 740 formatted lines. The user removed the
+earlier 600-line total on 2026-09-09: the file limit exists so agents read files through the tools, not
+to cap a subsystem, and a total gamed with `#[rustfmt::skip]` proved nothing.
 
 ## Architecture Quality
 

@@ -79,11 +79,19 @@ fn stale_service_json_is_replaced_by_a_fresh_service() {
         .stderr(Stdio::piped())
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let record: serde_json::Value =
         serde_json::from_slice(&std::fs::read(service_json(&home)).unwrap()).unwrap();
     assert_ne!(record["port"], dead_port);
-    assert!(wait_for(&service_json(&home), false, Duration::from_secs(10)));
+    assert!(wait_for(
+        &service_json(&home),
+        false,
+        Duration::from_secs(10)
+    ));
 }
 
 #[test]
@@ -136,7 +144,11 @@ fn service_stop_exits_the_service() {
         .output()
         .unwrap();
     assert!(out.status.success());
-    assert!(wait_for(&service_json(&home), false, Duration::from_secs(5)));
+    assert!(wait_for(
+        &service_json(&home),
+        false,
+        Duration::from_secs(5)
+    ));
     let status = svc.wait().unwrap();
     assert!(status.success());
 }

@@ -1,4 +1,4 @@
-use crate::service::{discovery, ServiceApp, ServiceConfig};
+use crate::service::{ServiceApp, ServiceConfig, discovery};
 use julie_core::paths::RegistryPaths;
 use std::time::Duration;
 

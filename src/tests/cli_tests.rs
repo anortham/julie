@@ -1,9 +1,6 @@
 //! Tests for CLI argument parsing (clap) and workspace resolution.
 
-use crate::cli::{
-    Cli, Command, resolve_workspace_root,
-    resolve_workspace_startup_hint,
-};
+use crate::cli::{Cli, Command, resolve_workspace_root, resolve_workspace_startup_hint};
 use crate::workspace::startup_hint::WorkspaceStartupSource;
 use clap::Parser;
 use std::path::PathBuf;
