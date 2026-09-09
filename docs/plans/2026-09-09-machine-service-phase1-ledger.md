@@ -20,6 +20,8 @@ empty until a command has actually run or evidence has actually been reused.
 | Machine service Task 5 worker ceiling suite and xtask buckets | `cargo xtask test bucket service && cargo xtask test bucket service-process` | worker-ceiling | 7922e1b1cd97a99ef1c26a5affdb45906af3ed75 | pass | 2026-09-09T21:58:39Z | no |
 | Three-host gate across Claude Code, Codex, and Cursor on HTTP and stdio | `claude mcp`, `codex exec`, `agent --print` (see findings doc) | lead-gate | facb50d9 | pass | 2026-09-09T22:20:00Z | no |
 | Final dev tier regression gate with service buckets | `cargo xtask test dev` | dev-tier | facb50d9 | pass | 2026-09-09T22:28:16Z | no |
+| Lead review fixes: MCP idle activity, shim reconnect, reqwest json-only | `cargo nextest run --lib tests::service::` | lead-changed | 3e2a6505 | pass | 2026-09-09T22:41:00Z | no |
+| Dev tier at the review-fix commit (facb50d9 above is not on the branch; it was rewritten) | `cargo xtask test dev` | dev-tier | 3e2a6505 | pass | 2026-09-09T22:50:06Z | no |
 
 ## Example Rows
 
