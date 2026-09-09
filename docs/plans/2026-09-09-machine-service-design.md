@@ -236,8 +236,9 @@ across a tool call.
 
 ## 7. Worktrees
 
-The brainstorm agreed on shared per-family storage with a manifest per view. The Codex review argued
-for one store per checkout, and this revision adopts that. The reasons:
+The brainstorm first agreed on shared per-family storage with a manifest per view. The Codex review
+argued for one store per checkout, and the user accepted that change on 2026-09-09 for its simplicity.
+The reasons:
 
 - Family identity is fragile. Linked worktrees are easy, but bare repos, submodules, and alternate
   object stores are not, and the code to tell them apart is exactly the kind Miller drowned in.
