@@ -6,22 +6,13 @@ use std::time::{Duration, Instant};
 const KEEP_REQUESTS: usize = 50;
 const KEEP_ERRORS: usize = 20;
 
+#[rustfmt::skip]
 #[derive(Serialize, Clone)]
-pub struct RequestRecord {
-    pub tool: String,
-    pub workspace_id: Option<String>,
-    pub latency_ms: u128,
-    pub outcome: &'static str,
-    pub at: String,
-}
+pub struct RequestRecord { pub tool: String, pub workspace_id: Option<String>, pub latency_ms: u128, pub outcome: &'static str, pub at: String }
 
+#[rustfmt::skip]
 #[derive(Serialize, Clone)]
-pub struct ErrorRecord {
-    pub tool: String,
-    pub code: String,
-    pub message: String,
-    pub at: String,
-}
+pub struct ErrorRecord { pub tool: String, pub code: String, pub message: String, pub at: String }
 
 pub struct StatusLog {
     started: Instant,
@@ -51,11 +42,18 @@ impl StatusLog {
         let now = Instant::now();
         Self {
             started: now,
-            inner: Mutex::new(Inner { requests: VecDeque::new(), errors: VecDeque::new(), last_activity: now, in_flight: 0 }),
+            inner: Mutex::new(Inner {
+                requests: VecDeque::new(),
+                errors: VecDeque::new(),
+                last_activity: now,
+                in_flight: 0,
+            }),
         }
     }
 
-    fn guard(&self) -> std::sync::MutexGuard<'_, Inner> { self.inner.lock().unwrap() }
+    fn guard(&self) -> std::sync::MutexGuard<'_, Inner> {
+        self.inner.lock().unwrap()
+    }
 
     pub fn begin(&self) {
         let mut inner = self.guard();
@@ -95,7 +93,9 @@ impl StatusLog {
 }
 
 impl Default for StatusLog {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -106,7 +106,9 @@ fn rss_bytes() -> Option<u64> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn rss_bytes() -> Option<u64> { None }
+fn rss_bytes() -> Option<u64> {
+    None
+}
 
 pub fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()

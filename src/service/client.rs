@@ -22,6 +22,13 @@ impl std::fmt::Display for ConnectError {
 
 impl std::error::Error for ConnectError {}
 
+pub fn exit_code(e: &ConnectError) -> i32 {
+    match e {
+        ConnectError::VersionMismatch { .. } => 3,
+        ConnectError::Unavailable(_) => 1,
+    }
+}
+
 pub struct ServiceClient {
     pub base: String,
     pub token: String,
@@ -30,7 +37,7 @@ pub struct ServiceClient {
 }
 
 impl ServiceClient {
-    fn from_record(record: &ServiceRecord) -> Self {
+    pub fn from_record(record: &ServiceRecord) -> Self {
         Self {
             base: format!("http://127.0.0.1:{}", record.port),
             token: record.token.clone(),
@@ -43,21 +50,34 @@ impl ServiceClient {
     }
 
     pub async fn status(&self) -> reqwest::Result<serde_json::Value> {
-        self.http.get(format!("{}/status", self.base)).bearer_auth(&self.token).send().await?.error_for_status()?.json().await
+        self.http
+            .get(format!("{}/status", self.base))
+            .bearer_auth(&self.token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await
     }
 
     pub async fn post_mcp(&self, body: &[u8], method: &str) -> reqwest::Result<reqwest::Response> {
-        self.http.post(format!("{}/mcp", self.base))
+        self.http
+            .post(format!("{}/mcp", self.base))
             .bearer_auth(&self.token)
             .header("Accept", "application/json, text/event-stream")
             .header("Content-Type", "application/json")
             .header("Mcp-Method", method)
             .body(body.to_vec())
-            .send().await
+            .send()
+            .await
     }
 
     pub async fn post_shutdown(&self) -> reqwest::Result<reqwest::Response> {
-        self.http.post(format!("{}/shutdown", self.base)).bearer_auth(&self.token).send().await
+        self.http
+            .post(format!("{}/shutdown", self.base))
+            .bearer_auth(&self.token)
+            .send()
+            .await
     }
 }
 

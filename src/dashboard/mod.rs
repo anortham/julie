@@ -119,6 +119,27 @@ pub fn init_tera(config: &DashboardConfig) -> Result<Tera, tera::Error> {
 // Public factory
 // ---------------------------------------------------------------------------
 
+/// Build the dashboard Axum router mounted under `/`.
+pub fn dashboard_router(paths: &julie_core::paths::RegistryPaths) -> anyhow::Result<Router> {
+    paths.ensure_dirs()?;
+    let registry = Arc::new(crate::registry::database::DaemonDatabase::open(
+        &paths.registry_db(),
+    )?);
+    let recovery_markers = Arc::new(crate::registry::shutdown::read_recovery_markers(paths));
+    let state = DashboardState::new(
+        Arc::new(crate::registry::session::SessionTracker::new()),
+        Some(registry),
+        Arc::new(std::sync::RwLock::new(
+            crate::registry::lifecycle::LifecyclePhase::Ready,
+        )),
+        std::time::Instant::now(),
+        None,
+        50,
+    )
+    .with_recovery_markers(recovery_markers);
+    create_router(state, DashboardConfig::default()).map_err(|e| anyhow::anyhow!("{e}"))
+}
+
 /// Build the Axum router for the dashboard.
 pub fn create_router(
     dashboard: DashboardState,

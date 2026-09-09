@@ -19,33 +19,48 @@ pub struct ServiceConfig {
 impl ServiceConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         let registry_paths = RegistryPaths::try_new().context("resolve Julie home")?;
-        let idle = match std::env::var("JULIE_SERVICE_IDLE_SECS").ok().and_then(|v| v.parse::<u64>().ok()) {
+        let idle = match std::env::var("JULIE_SERVICE_IDLE_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
             Some(0) => None,
             Some(secs) => Some(Duration::from_secs(secs)),
             None => Some(Duration::from_secs(1800)),
         };
-        Ok(Self { idle, registry_paths })
+        Ok(Self {
+            idle,
+            registry_paths,
+        })
     }
 }
 
 pub struct ServiceApp {
     config: ServiceConfig,
     state: http::AppState,
+    router: axum::Router,
 }
 
 impl ServiceApp {
     pub fn new(config: ServiceConfig) -> anyhow::Result<Self> {
         let paths = config.registry_paths.clone();
         let resolver = BindingResolver::new(None, false, paths.clone());
-        let runtimes = Arc::new(RuntimeFactory::new(paths));
+        let runtimes = Arc::new(RuntimeFactory::new(paths.clone()));
         let engine = Arc::new(RequestEngine::new(resolver, runtimes));
+        let shutdown = tokio_util::sync::CancellationToken::new();
         let state = http::AppState {
             engine,
             status: Arc::new(status::StatusLog::new()),
             token: Arc::from(discovery::new_token()),
             request_timeout: Duration::from_secs(120),
+            shutdown,
         };
-        Ok(Self { config, state })
+        let dashboard = crate::dashboard::dashboard_router(&paths)?;
+        let router = http::router(state.clone(), dashboard);
+        Ok(Self {
+            config,
+            state,
+            router,
+        })
     }
 
     pub fn state(&self) -> &http::AppState {
@@ -54,6 +69,10 @@ impl ServiceApp {
 
     pub async fn serve(self, listener: tokio::net::TcpListener) -> anyhow::Result<()> {
         let port = listener.local_addr()?.port();
+        self.state.engine.set_service_url(format!(
+            "http://127.0.0.1:{port}/?token={}",
+            self.state.token
+        ));
         let record = discovery::ServiceRecord {
             port,
             token: self.state.token.to_string(),
@@ -63,7 +82,7 @@ impl ServiceApp {
         };
         discovery::write_record(&self.config.registry_paths, &record)?;
 
-        let shutdown = tokio_util::sync::CancellationToken::new();
+        let shutdown = self.state.shutdown.clone();
         let idle_watch = {
             let status = Arc::clone(&self.state.status);
             let shutdown = shutdown.clone();
@@ -82,8 +101,7 @@ impl ServiceApp {
                 }
             }
         };
-        let router = http::router(self.state.clone());
-        let server = axum::serve(listener, router).with_graceful_shutdown({
+        let server = axum::serve(listener, self.router).with_graceful_shutdown({
             let shutdown = shutdown.clone();
             async move { shutdown.cancelled().await }
         });

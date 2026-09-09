@@ -13,7 +13,11 @@ pub struct ServiceRecord {
 }
 
 pub fn new_token() -> String {
-    format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
+    format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
 }
 
 pub fn write_record(paths: &RegistryPaths, record: &ServiceRecord) -> std::io::Result<()> {

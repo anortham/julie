@@ -7,16 +7,19 @@ use crate::request_engine::runtime_factory::{RequestRuntime, RuntimeFactory};
 use crate::request_engine::semantic::{
     DefaultSemanticRuntime, NoopSemanticRuntime, SemanticMode, SemanticReadiness, SemanticRuntime,
 };
-use crate::request_engine::types::{RequestContext, RequestFailure, ToolReply, ToolRequest};
+use crate::request_engine::types::{
+    RequestContext, RequestFailure, RequestReadiness, ToolReply, ToolRequest,
+};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
 
 pub struct RequestEngine {
     pub catalog: ToolCatalog,
     pub bindings: BindingResolver,
     pub runtimes: Arc<RuntimeFactory>,
     pub semantic_runtime: Arc<dyn SemanticRuntime>,
+    pub service_url: RwLock<Option<String>>,
 }
 
 impl RequestEngine {
@@ -37,11 +40,27 @@ impl RequestEngine {
             bindings,
             runtimes,
             semantic_runtime,
+            service_url: RwLock::new(None),
         }
     }
 
     pub fn with_noop_semantics(bindings: BindingResolver, runtimes: Arc<RuntimeFactory>) -> Self {
         Self::with_semantic_runtime(bindings, runtimes, Arc::new(NoopSemanticRuntime))
+    }
+
+    pub fn set_service_url(&self, url: String) {
+        if let Ok(mut guard) = self.service_url.write() {
+            *guard = Some(url);
+        }
+    }
+
+    pub fn service_url(&self) -> Option<String> {
+        self.service_url.read().ok().and_then(|g| g.clone())
+    }
+
+    pub fn with_service_url(self, url: String) -> Self {
+        self.set_service_url(url);
+        self
     }
 
     pub async fn execute(
@@ -56,9 +75,18 @@ impl RequestEngine {
         let raw_arguments = request.arguments.clone();
         let decoded = ToolCatalog::decode(&request.name, request.arguments)?;
 
-        // Special check: dashboard requires --foreground
+        // Special check: dashboard requires service URL or foreground
         if let DecodedTool::ManageWorkspace(ref p) = decoded {
             if p.operation == "dashboard" {
+                if let Some(url) = self.service_url() {
+                    let readiness = RequestReadiness::ready(request.semantics);
+                    return Ok(ToolReply::from_result(
+                        "manage_workspace",
+                        None,
+                        serde_json::json!({ "url": url }),
+                        readiness,
+                    ));
+                }
                 return Err(RequestFailure::foreground_required(
                     "Interactive dashboard requires foreground mode. Run with --foreground flag.",
                 ));

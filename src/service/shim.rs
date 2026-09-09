@@ -1,9 +1,13 @@
-use crate::service::client::{connect_or_start, spawn_detached_service, ServiceClient};
+use crate::service::client::{ServiceClient, connect_or_start, spawn_detached_service};
 use anyhow::Context;
 use julie_core::paths::RegistryPaths;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
-pub async fn forward<R, W>(client: &ServiceClient, mut input: R, mut output: W) -> anyhow::Result<()>
+pub async fn forward<R, W>(
+    client: &ServiceClient,
+    mut input: R,
+    mut output: W,
+) -> anyhow::Result<()>
 where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -21,14 +25,7 @@ where
         let message: serde_json::Value = match serde_json::from_str(trimmed) {
             Ok(v) => v,
             Err(e) => {
-                let err = serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": null,
-                    "error": {
-                        "code": -32700,
-                        "message": format!("parse error: {e}")
-                    }
-                });
+                let err = serde_json::json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("parse error: {e}") } });
                 output.write_all(format!("{err}\n").as_bytes()).await?;
                 continue;
             }
@@ -75,9 +72,7 @@ fn last_json_event(sse: &str) -> Option<String> {
 
 pub async fn run_stdio_shim() -> anyhow::Result<()> {
     let paths = RegistryPaths::try_new().context("resolve Julie home")?;
-    let client = connect_or_start(&paths, spawn_detached_service)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let client = connect_or_start(&paths, spawn_detached_service).await?;
     let stdin = tokio::io::BufReader::new(tokio::io::stdin());
     let stdout = tokio::io::stdout();
     forward(&client, stdin, stdout).await

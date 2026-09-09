@@ -18,10 +18,20 @@ use julie::request_engine::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    if let Err(e) = run_main(cli).await {
+        if let Some(ce) = e.downcast_ref::<julie::service::client::ConnectError>() {
+            eprintln!("{ce}");
+            std::process::exit(julie::service::client::exit_code(ce));
+        }
+        return Err(e);
+    }
+    Ok(())
+}
 
+async fn run_main(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         Some(Command::Dashboard) => {
-            julie::dashboard::standalone::serve_dashboard_forever().await?;
+            julie::dashboard::standalone::open_dashboard().await?;
         }
         Some(Command::Tools(tools_args)) => {
             run_tools_command(&tools_args, &cli.tool_flags, cli.workspace).await?;
@@ -74,16 +84,60 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Extract(raw_args)) => {
             run_extract_command(raw_args, &cli.tool_flags).await?;
         }
-        Some(Command::Service(args)) => match args.action {
-            None => julie::service::run_service(julie::service::ServiceConfig::from_env()?).await?,
-            Some(_) => anyhow::bail!("service status/stop/restart arrive in Task 4"),
-        },
+        Some(Command::Service(args)) => {
+            run_service_command(&args).await?;
+        }
 
         Some(Command::McpStdio) | None => {
             julie::service::shim::run_stdio_shim().await?;
         }
     }
 
+    Ok(())
+}
+
+async fn run_service_command(args: &julie::cli::ServiceArgs) -> anyhow::Result<()> {
+    match &args.action {
+        None => julie::service::run_service(julie::service::ServiceConfig::from_env()?).await?,
+        Some(julie::cli::ServiceAction::Status) => {
+            let paths = julie_core::paths::RegistryPaths::try_new()?;
+            let client = julie::service::client::connect_or_start(
+                &paths,
+                julie::service::client::spawn_detached_service,
+            )
+            .await?;
+            let status = client.status().await?;
+            println!("{}", serde_json::to_string_pretty(&status)?);
+        }
+        Some(julie::cli::ServiceAction::Stop) => {
+            let paths = julie_core::paths::RegistryPaths::try_new()?;
+            if let Ok(Some(record)) = julie::service::discovery::read_record(&paths) {
+                let client = julie::service::client::ServiceClient::from_record(&record);
+                let _ = client.post_shutdown().await;
+            }
+            println!("stopped");
+        }
+        Some(julie::cli::ServiceAction::Restart) => {
+            let paths = julie_core::paths::RegistryPaths::try_new()?;
+            if let Ok(Some(record)) = julie::service::discovery::read_record(&paths) {
+                let client = julie::service::client::ServiceClient::from_record(&record);
+                let _ = client.post_shutdown().await;
+                for _ in 0..50 {
+                    if julie::service::discovery::read_record(&paths)?.is_none() {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            }
+            let client = julie::service::client::connect_or_start(
+                &paths,
+                julie::service::client::spawn_detached_service,
+            )
+            .await?;
+            let status = client.status().await?;
+            println!("{}", serde_json::to_string_pretty(&status)?);
+        }
+    }
     Ok(())
 }
 
@@ -207,7 +261,7 @@ async fn run_tool_command(
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         if is_foreground {
-            return julie::dashboard::standalone::serve_dashboard_forever().await;
+            return julie::dashboard::standalone::open_dashboard().await;
         } else {
             let failure = RequestFailure::foreground_required(
                 "Interactive dashboard requires foreground mode. Run with --foreground flag (e.g., `julie-server workspace dashboard --foreground` or `julie-server dashboard`).",

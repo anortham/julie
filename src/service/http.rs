@@ -17,19 +17,31 @@ pub struct AppState {
     pub status: Arc<StatusLog>,
     pub token: Arc<str>,
     pub request_timeout: Duration,
+    pub shutdown: tokio_util::sync::CancellationToken,
 }
 
-pub fn router(state: AppState) -> Router {
+pub fn router(state: AppState, dashboard: Router) -> Router {
     Router::new()
         .route("/status", get(status))
+        .route("/shutdown", post(shutdown))
         .route("/api/{tool}", post(api_call))
-        .nest_service("/mcp", crate::service::mcp::mcp_service(Arc::clone(&state.engine)))
+        .nest_service(
+            "/mcp",
+            crate::service::mcp::mcp_service(Arc::clone(&state.engine)),
+        )
+        .with_state(state.clone())
+        .merge(dashboard)
         .layer(axum::middleware::from_fn(default_mcp_headers))
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            require_token,
-        ))
-        .with_state(state)
+        .layer(axum::middleware::from_fn_with_state(state, require_token))
+}
+
+async fn shutdown(State(state): State<AppState>) -> Response {
+    let token = state.shutdown.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        token.cancel();
+    });
+    (StatusCode::ACCEPTED, r#"{"stopping":true}"#).into_response()
 }
 
 async fn default_mcp_headers(
@@ -53,14 +65,24 @@ async fn default_mcp_headers(
     };
     if !parts.headers.contains_key("mcp-name") {
         if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
-            if let Some(name) = val.get("params").and_then(|p| p.get("name")).and_then(|n| n.as_str()) {
+            if let Some(name) = val
+                .get("params")
+                .and_then(|p| p.get("name"))
+                .and_then(|n| n.as_str())
+            {
                 if let Ok(hv) = axum::http::HeaderValue::from_str(name) {
-                    parts.headers.insert(axum::http::HeaderName::from_static("mcp-name"), hv);
+                    parts
+                        .headers
+                        .insert(axum::http::HeaderName::from_static("mcp-name"), hv);
                 }
             }
         }
     }
-    next.run(axum::extract::Request::from_parts(parts, axum::body::Body::from(bytes))).await
+    next.run(axum::extract::Request::from_parts(
+        parts,
+        axum::body::Body::from(bytes),
+    ))
+    .await
 }
 
 async fn require_token(
@@ -138,8 +160,7 @@ async fn api_call(
 }
 
 pub fn failure_response(failure: RequestFailure) -> Response {
-    let internal = RequestFailure::internal("").code;
-    let code = if failure.code == internal {
+    let code = if failure.code == RequestFailure::internal("").code {
         StatusCode::INTERNAL_SERVER_ERROR
     } else {
         StatusCode::BAD_REQUEST
