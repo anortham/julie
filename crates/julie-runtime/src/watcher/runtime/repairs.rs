@@ -30,9 +30,9 @@ impl QueueRuntime {
             return 0;
         }
 
-        // Acquire the writer permit before dispatching repair events.
-        let Some(permit) = self
-            .acquire_writer_permit_or_mark_rescan("persisted repair retry")
+        // Acquire the mutation gate before dispatching repair events.
+        let Some(guard) = self
+            .acquire_gate_or_mark_rescan("persisted repair retry")
             .await
         else {
             return 0;
@@ -116,7 +116,7 @@ impl QueueRuntime {
                 &self.lang_configs,
                 &self.tantivy_dirty,
                 &self.indexing_runtime,
-                &permit,
+                &guard,
             )
             .await;
             affected_paths.insert(repair_path);
@@ -195,11 +195,8 @@ impl QueueRuntime {
             return;
         }
 
-        // Acquire the writer permit after early-return checks pass.
-        let Some(permit) = self
-            .acquire_writer_permit_or_mark_rescan("repair scan")
-            .await
-        else {
+        // Acquire the mutation gate after early-return checks pass.
+        let Some(guard) = self.acquire_gate_or_mark_rescan("repair scan").await else {
             return;
         };
 
@@ -302,7 +299,7 @@ impl QueueRuntime {
                     &self.lang_configs,
                     &self.tantivy_dirty,
                     &self.indexing_runtime,
-                    &permit,
+                    &guard,
                 )
                 .await;
                 affected_paths.insert(rel_path.clone());
@@ -326,7 +323,7 @@ impl QueueRuntime {
                         &self.lang_configs,
                         &self.tantivy_dirty,
                         &self.indexing_runtime,
-                        &permit,
+                        &guard,
                     )
                     .await;
                     affected_paths.insert(rel_path.clone());
@@ -371,7 +368,7 @@ impl QueueRuntime {
                 &self.lang_configs,
                 &self.tantivy_dirty,
                 &self.indexing_runtime,
-                &permit,
+                &guard,
             )
             .await;
             affected_paths.insert(rel_path.clone());

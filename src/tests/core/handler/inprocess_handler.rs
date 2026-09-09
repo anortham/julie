@@ -4,7 +4,6 @@
 //! canonicalization.
 
 use crate::handler::JulieServerHandler;
-use crate::leadership::LeadershipState;
 use crate::paths::RegistryPaths;
 use crate::registry::database::DaemonDatabase;
 use crate::workspace::registry::generate_workspace_id;
@@ -56,14 +55,9 @@ fn hint(path: &std::path::Path, source: WorkspaceStartupSource) -> WorkspaceStar
 async fn test_new_in_process_preserves_startup_hint_source() {
     for source in [WorkspaceStartupSource::Cwd, WorkspaceStartupSource::Cli] {
         let dir = tempfile::tempdir().unwrap();
-        let handler = JulieServerHandler::new_in_process(
-            hint(dir.path(), source),
-            None,
-            LeadershipState::leader_in_process(),
-            None,
-        )
-        .await
-        .unwrap();
+        let handler = JulieServerHandler::new_in_process(hint(dir.path(), source), None, None)
+            .await
+            .unwrap();
         assert_eq!(handler.workspace_startup_hint().source, Some(source));
     }
 }
@@ -83,7 +77,6 @@ async fn test_new_in_process_with_daemon_db_registers_loaded_primary() {
     let handler = JulieServerHandler::new_in_process_with_daemon_db(
         hint(&primary_path, WorkspaceStartupSource::Cli),
         None,
-        LeadershipState::leader_in_process(),
         None,
         Some(Arc::clone(&daemon_db)),
     )
@@ -106,7 +99,6 @@ async fn test_new_in_process_injected_provider_returned() {
     let handler = JulieServerHandler::new_in_process(
         hint(dir.path(), WorkspaceStartupSource::Cli),
         Some(Arc::clone(&provider)),
-        LeadershipState::leader_in_process(),
         None,
     )
     .await
@@ -131,7 +123,6 @@ async fn test_inprocess_handler_f2_storage_under_index_root() {
     let handler = JulieServerHandler::new_in_process(
         hint(project_dir.path(), WorkspaceStartupSource::Cli),
         None,
-        LeadershipState::leader_in_process(),
         Some(index_root.clone()),
     )
     .await

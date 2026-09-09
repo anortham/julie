@@ -768,26 +768,14 @@ impl JulieWorkspace {
 
     /// Start file watching if initialized.
     ///
-    /// `should_watch` is a defense-in-depth gate: only the sole writer for this
-    /// workspace may run the OS notify watcher. Callers pass
-    /// `!handler.is_in_process_follower()` — true for stdio/daemon handlers and
-    /// the in-process leader, false for an in-process follower (a read-only
-    /// process that must never start a watcher and race the leader).
+    /// `should_watch` lets callers skip the OS notify watcher (for example,
+    /// when incremental updates are disabled).
     pub async fn start_file_watching(&mut self, should_watch: bool) -> Result<()> {
-        self.start_file_watching_with_epoch(should_watch, None)
-            .await
-    }
-
-    pub async fn start_file_watching_with_epoch(
-        &mut self,
-        should_watch: bool,
-        owner_epoch: Option<Arc<julie_core::workspace::ownership::OwnerEpoch>>,
-    ) -> Result<()> {
         if !should_watch {
             return Ok(());
         }
         if let Some(ref mut watcher) = self.watcher {
-            watcher.start_watching_with_epoch(owner_epoch).await?;
+            watcher.start_watching().await?;
             info!("File watching started");
         }
         Ok(())

@@ -124,13 +124,7 @@ impl SourceEditCoordinator {
         if cancellation.is_cancelled() {
             return Err(SourceEditError::Cancelled);
         }
-        let _guard = acquire_source_edit_lock(
-            &self.lock_path(),
-            deadline,
-            cancellation,
-            self.config.poll_interval,
-        )
-        .await?;
+        let _guard = acquire_source_edit_lock(&self.lock_path(), deadline, cancellation).await?;
 
         for change in changes {
             let full_path = self.resolve_path(&change.path)?;
@@ -253,13 +247,7 @@ impl SourceEditCoordinator {
         if cancellation.is_cancelled() {
             return Err(SourceEditError::Cancelled);
         }
-        let _guard = acquire_source_edit_lock(
-            &self.lock_path(),
-            deadline,
-            cancellation,
-            self.config.poll_interval,
-        )
-        .await?;
+        let _guard = acquire_source_edit_lock(&self.lock_path(), deadline, cancellation).await?;
         let journal_path = self.journals_dir().join(format!("{edit_id}.json"));
         if !journal_path.exists() {
             return Err(SourceEditError::InvalidArguments(format!(

@@ -523,23 +523,16 @@ mod relationship_text_test {
         ));
         let search_index = Arc::new(make_index(&dir));
 
-        let tmp_lock = TempDir::new().unwrap();
-        let lock_guard = julie_core::workspace::leader_lock::DaemonLockGuard::try_acquire(
-            &tmp_lock.path().join("leader.lock"),
-        )
-        .unwrap();
-        let epoch =
-            julie_core::workspace::ownership::OwnerEpoch::new(1, "test_ws".to_string(), lock_guard);
         let registry = crate::workspace::mutation_gate::Registry::new();
 
         {
-            let permit = epoch.acquire_writer(&registry).await.unwrap();
+            let guard = registry.acquire("test_ws").await;
             handle_file_created_or_modified_static(
                 callee.canonicalize().unwrap(),
                 &db,
                 &workspace_root,
                 Some(&search_index),
-                &permit,
+                &guard,
             )
             .await
             .unwrap();
@@ -547,13 +540,13 @@ mod relationship_text_test {
         search_index.commit().unwrap();
 
         {
-            let permit = epoch.acquire_writer(&registry).await.unwrap();
+            let guard = registry.acquire("test_ws").await;
             handle_file_created_or_modified_static(
                 caller.canonicalize().unwrap(),
                 &db,
                 &workspace_root,
                 Some(&search_index),
-                &permit,
+                &guard,
             )
             .await
             .unwrap();

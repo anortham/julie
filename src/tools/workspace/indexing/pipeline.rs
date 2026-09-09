@@ -26,12 +26,10 @@ pub(crate) struct IndexingPipelineResult {
     pub files_processed: usize,
     pub canonical_revision: Option<i64>,
     #[allow(dead_code)]
-    pub source_check_state: julie_core::workspace::ownership::SourceCheckState,
+    pub source_check_state: julie_core::workspace::projection_stamp::SourceCheckState,
 }
 
 pub(crate) use super::pipeline_persistence::persist_batch;
-#[cfg(test)]
-pub(crate) use super::pipeline_persistence::persist_batch_for_test;
 
 pub(crate) async fn run_indexing_pipeline(
     tool: &ManageWorkspaceTool,
@@ -65,9 +63,10 @@ pub(crate) async fn run_indexing_pipeline(
             state,
             files_processed: batch.files_processed,
             canonical_revision: None,
-            source_check_state: julie_core::workspace::ownership::SourceCheckState::Verified {
-                files_checked: 0,
-            },
+            source_check_state:
+                julie_core::workspace::projection_stamp::SourceCheckState::Verified {
+                    files_checked: 0,
+                },
         });
     };
 
@@ -116,14 +115,6 @@ pub(crate) async fn run_indexing_pipeline(
         });
     }
 
-    // 4. Acquire exclusive publication lock
-    let publication_lock_path = route.publication_lock_path();
-    let _publication_guard =
-        julie_core::workspace::publication_lock::PublicationLock::acquire_exclusive_path(
-            &publication_lock_path,
-        )
-        .context("acquiring exclusive publication lock for pipeline commit")?;
-
     transition_stage(&mut state, route, IndexingStage::Persisting);
     let persist_result = persist_batch(&db, route, operation, &batch)?;
 
@@ -156,8 +147,6 @@ pub(crate) async fn run_indexing_pipeline(
         persist_result.canonical_revision,
     )
     .await?;
-
-    drop(_publication_guard);
 
     transition_stage(&mut state, route, IndexingStage::Analyzing);
     analyze_batch(handler, route, &db)?;

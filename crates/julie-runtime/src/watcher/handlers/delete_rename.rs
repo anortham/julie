@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use julie_core::database::SymbolDatabase;
 use julie_core::indexing_state::IndexingRepairReason;
-use julie_core::workspace::ownership::WriterPermit;
+use julie_core::workspace::mutation_gate::MutationGuard;
 use julie_index::search::SearchIndex;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -17,7 +17,7 @@ pub async fn handle_file_deleted_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
     search_index: Option<&Arc<SearchIndex>>,
-    _permit: &WriterPermit<'_>,
+    _guard: &MutationGuard<'_>,
 ) -> Result<()> {
     info!("Processing file deletion: {}", path.display());
 
@@ -78,7 +78,7 @@ pub(crate) async fn handle_file_renamed_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
     search_index: Option<&Arc<SearchIndex>>,
-    permit: &WriterPermit<'_>,
+    guard: &MutationGuard<'_>,
 ) -> Result<FileIndexOutcome> {
     info!(
         "Handling file rename: {} -> {}",
@@ -87,8 +87,7 @@ pub(crate) async fn handle_file_renamed_static(
     );
 
     let outcome =
-        handle_file_created_or_modified_static(to, db, workspace_root, search_index, permit)
-            .await?;
+        handle_file_created_or_modified_static(to, db, workspace_root, search_index, guard).await?;
 
     if outcome.repair_reason == Some(IndexingRepairReason::ExtractorFailure) {
         return Ok(outcome);
@@ -97,7 +96,7 @@ pub(crate) async fn handle_file_renamed_static(
     let relative_from = julie_core::paths::to_relative_unix_style(&from, workspace_root)
         .unwrap_or_else(|_| from.to_string_lossy().replace('\\', "/"));
     if let Err(err) =
-        handle_file_deleted_static(from, db, workspace_root, search_index, permit).await
+        handle_file_deleted_static(from, db, workspace_root, search_index, guard).await
     {
         persist_repair_state(
             db,

@@ -3,16 +3,16 @@ use super::force_safeguards::cancel_embedding_tasks;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
-use julie_core::workspace::ownership::WriterPermit;
+use julie_core::workspace::mutation_gate::MutationGuard;
 use std::path::Path;
 use tracing::{debug, error, info, warn};
 
 impl ManageWorkspaceTool {
     /// Handle index command - index primary workspace.
     ///
-    /// Acquires the per-workspace writer permit internally. If the caller
-    /// already holds the permit (e.g. startup repair / catch-up), use
-    /// `handle_index_command_with_permit` instead.
+    /// Acquires the per-workspace mutation gate internally. If the caller
+    /// already holds the gate (e.g. startup repair / catch-up), use
+    /// `handle_index_command_with_guard` instead.
     pub(crate) async fn handle_index_command(
         &self,
         handler: &JulieServerHandler,
@@ -24,16 +24,16 @@ impl ManageWorkspaceTool {
             .await
     }
 
-    /// Variant for callers that already hold the authentic `WriterPermit`.
-    pub(crate) async fn handle_index_command_with_permit(
+    /// Variant for callers that already hold the workspace `MutationGuard`.
+    pub(crate) async fn handle_index_command_with_guard(
         &self,
         handler: &JulieServerHandler,
         path: Option<String>,
         force: bool,
         skip_embeddings: bool,
-        permit: &WriterPermit<'_>,
+        guard: &MutationGuard<'_>,
     ) -> Result<CallToolResult> {
-        self.handle_index_command_internal(handler, path, force, skip_embeddings, Some(permit))
+        self.handle_index_command_internal(handler, path, force, skip_embeddings, Some(guard))
             .await
     }
 
@@ -43,7 +43,7 @@ impl ManageWorkspaceTool {
         path: Option<String>,
         force: bool,
         skip_embeddings: bool,
-        existing_permit: Option<&WriterPermit<'_>>,
+        existing_guard: Option<&MutationGuard<'_>>,
     ) -> Result<CallToolResult> {
         info!("📚 Starting workspace indexing...");
         let explicit_path_requested = path.is_some();
@@ -63,33 +63,12 @@ impl ManageWorkspaceTool {
         let effective_force_reindex = target.effective_force_reindex;
         let force_reindex_workspace_ids = target.force_reindex_workspace_ids;
 
-        let _local_permit;
-        let _permit: &WriterPermit<'_> = match existing_permit {
-            Some(p) => {
-                if p.workspace_id() != gate_workspace_id {
-                    return Err(anyhow::anyhow!(
-                        "Writer permit workspace mismatch: expected {}, held {}",
-                        gate_workspace_id,
-                        p.workspace_id()
-                    ));
-                }
-                p
-            }
+        let _local_guard;
+        let _guard: &MutationGuard<'_> = match existing_guard {
+            Some(guard) => guard,
             None => {
-                _local_permit = match handler.acquire_writer_permit(&gate_workspace_id).await {
-                    Ok(p) => p,
-                    Err(julie_core::workspace::ownership::OwnershipError::NotOwner) => {
-                        return Ok(CallToolResult::error(vec![Content::text(
-                            "another session owns writes for this workspace; this is a read-only follower",
-                        )]));
-                    }
-                    Err(e) => {
-                        return Err(anyhow::anyhow!(
-                            "Failed to acquire writer permit for indexing: {e}"
-                        ));
-                    }
-                };
-                &_local_permit
+                _local_guard = handler.acquire_mutation_guard(&gate_workspace_id).await;
+                &_local_guard
             }
         };
 
@@ -207,7 +186,7 @@ impl ManageWorkspaceTool {
 
         // Perform indexing — permit is held for the duration.
         let index_result = self
-            .index_workspace_inner(_permit, handler, &canonical_path, effective_force_reindex)
+            .index_workspace_inner(_guard, handler, &canonical_path, effective_force_reindex)
             .await;
 
         match index_result {
@@ -422,14 +401,13 @@ impl ManageWorkspaceTool {
         }
     }
 
-    /// Perform workspace indexing while holding the authentic writer permit.
+    /// Perform workspace indexing while holding the workspace mutation gate.
     ///
-    /// The caller must pass the resulting [`WriterPermit`] here as a proof
-    /// token. This makes it impossible (at compile time) to call this function
-    /// without holding an authentic OS owner permit.
+    /// The caller must pass the [`MutationGuard`] here as a proof token, so
+    /// this function cannot run without the gate.
     pub(crate) async fn index_workspace_inner(
         &self,
-        _permit: &WriterPermit<'_>,
+        _guard: &MutationGuard<'_>,
         handler: &JulieServerHandler,
         workspace_path: &Path,
         force_reindex: bool,

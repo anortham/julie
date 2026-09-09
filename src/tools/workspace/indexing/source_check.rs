@@ -7,7 +7,7 @@ use tracing::warn;
 
 use crate::indexing_core::batch::ExtractedBatch;
 use julie_core::database::FileInfo;
-use julie_core::workspace::ownership::SourceCheckState;
+use julie_core::workspace::projection_stamp::SourceCheckState;
 
 /// Result of pre-commit source verification and batch partitioning.
 pub(crate) struct SourcePartitionResult {

@@ -7,7 +7,7 @@ use julie_core::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
 };
 use julie_core::indexing_state::IndexingRepairReason;
-use julie_core::workspace::ownership::WriterPermit;
+use julie_core::workspace::mutation_gate::MutationGuard;
 use julie_index::search::SearchIndex;
 use julie_pipeline::finalize::resolve_pending_relationships;
 use julie_pipeline::indexing_core::normalized::normalize_extraction_results;
@@ -31,7 +31,7 @@ pub async fn handle_file_created_or_modified_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
     search_index: Option<&Arc<SearchIndex>>,
-    _permit: &WriterPermit<'_>,
+    _guard: &MutationGuard<'_>,
 ) -> Result<FileIndexOutcome> {
     debug!("Processing file: {}", path.display());
 

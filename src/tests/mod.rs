@@ -318,13 +318,9 @@ pub mod request_process_helpers;
 mod request_scenarios;
 mod request_transport_parity;
 pub mod runtime_continuation;
-pub mod runtime_lifecycle;
-pub mod runtime_scheduler;
 pub mod semantic_m1_challenges;
 pub mod semantic_request_contract;
 pub mod service;
-pub mod workspace_process_lifecycle;
-pub mod writer_fencing_contract;
 
 // ============================================================================
 // EXTRACTOR TESTS - Live in the external julie-extractors repo

@@ -6,14 +6,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::handler::JulieServerHandler;
-use crate::leadership::LeadershipState;
 use crate::paths::RegistryPaths;
 use crate::registry::database::DaemonDatabase;
 use crate::request_engine::types::{
     RequestContext, RequestFailure, RequestReadiness, SemanticMode, WorkspaceBinding,
 };
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
-use julie_core::workspace::leader_lock::{AcquireError, DaemonLockGuard};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RuntimeKey {
@@ -175,30 +173,12 @@ impl RuntimeFactory {
     ) -> Result<Arc<RequestRuntime>, RequestFailure> {
         context.check_cancelled()?;
 
-        // Ensure index root directory exists before lock acquisition
         std::fs::create_dir_all(&binding.index_root).map_err(|e| {
             RequestFailure::internal(format!(
                 "Failed to create workspace index directory {}: {e}",
                 binding.index_root.display()
             ))
         })?;
-
-        let lock_path = binding.index_root.join("leader.lock");
-        let leadership = match DaemonLockGuard::try_acquire(&lock_path) {
-            Ok(guard) => LeadershipState::leader(guard),
-            Err(AcquireError::AlreadyHeld(_)) => {
-                return Err(RequestFailure::internal(format!(
-                    "another process holds the workspace index at {}",
-                    binding.index_root.display()
-                )));
-            }
-            Err(AcquireError::Io { path, source }) => {
-                return Err(RequestFailure::internal(format!(
-                    "Failed to acquire workspace leader lock at {}: {source}",
-                    path.display()
-                )));
-            }
-        };
 
         let startup_hint = WorkspaceStartupHint {
             path: binding.root.clone(),
@@ -218,7 +198,6 @@ impl RuntimeFactory {
         let mut handler = JulieServerHandler::new_in_process_with_daemon_db(
             startup_hint,
             None,
-            leadership,
             Some(binding.index_root.clone()),
             daemon_db,
         )
@@ -260,15 +239,12 @@ impl RuntimeFactory {
         let daemon_db = DaemonDatabase::open(&self.registry_paths.registry_db())
             .ok()
             .map(Arc::new);
-        let handler = JulieServerHandler::new_in_process_with_daemon_db(
-            startup_hint,
-            None,
-            LeadershipState::none(),
-            None,
-            daemon_db,
-        )
-        .await
-        .map_err(|e| RequestFailure::internal(format!("Failed to build unbound handler: {e}")))?;
+        let handler =
+            JulieServerHandler::new_in_process_with_daemon_db(startup_hint, None, None, daemon_db)
+                .await
+                .map_err(|e| {
+                    RequestFailure::internal(format!("Failed to build unbound handler: {e}"))
+                })?;
 
         Ok(Arc::new(RequestRuntime::new(Arc::new(handler), None)))
     }

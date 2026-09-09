@@ -99,20 +99,7 @@ impl SearchIndex {
         }
     }
 
-    /// Rebuild the Tantivy index at `path` under a cross-process advisory lock.
-    ///
-    /// # Why the lock lives in the PARENT directory
-    ///
-    /// The previous unlocked recreate path placed the sentinel file inside `path` itself.
-    /// Rebuilding starts with `remove_dir_all(path)`, which would delete the sentinel,
-    /// so a concurrent opener that had already seen `AlreadyExists` on the sentinel
-    /// would then race against the directory teardown — opening a half-deleted tree
-    /// or missing the lock entirely.
-    ///
-    /// The lock file (`<parent>/<dirname>.julie-rebuild.lock`) is a stable sibling
-    /// that survives `remove_dir_all`.  `fs2::FileExt::lock_exclusive` blocks the
-    /// second caller until the first has finished and released the lock; the loser
-    /// then re-checks compatibility and returns the already-rebuilt index early.
+    /// Rebuild the Tantivy index at `path`.
     ///
     /// # Atomic rename
     ///
@@ -120,63 +107,17 @@ impl SearchIndex {
     /// Only after a successful `write_compat_marker` is the old directory removed
     /// and the temp directory renamed into place.  If the process crashes mid-way,
     /// the next caller cleans up the orphaned `.tmp-rebuild` before proceeding.
-    pub(super) fn recreate_index_with_lock(
+    pub(super) fn recreate_index(
         path: &Path,
         schema: &tantivy::schema::Schema,
         marker: &SearchCompatMarker,
     ) -> Result<Index> {
-        use fs2::FileExt;
-
-        // Derive stable sibling names in the PARENT directory.
         let dir_name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "tantivy".to_string());
         let parent = path.parent().unwrap_or(path);
-
-        let lock_path = parent.join(format!("{dir_name}.julie-rebuild.lock"));
         let tmp_path = parent.join(format!("{dir_name}.tmp-rebuild"));
-
-        // Open (creating if needed) the advisory lock file.  Never truncate —
-        // fs2 flocks are bound to the file's inode; truncating would not break
-        // existing holders but is unnecessary.
-        let lock_file = std::fs::OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .open(&lock_path)
-            .map_err(|err| {
-                SearchError::IndexError(format!(
-                    "failed to open rebuild lock at {}: {err}",
-                    lock_path.display()
-                ))
-            })?;
-
-        // Block until we hold the exclusive lock.  When a concurrent caller
-        // finishes and drops its lock, we wake and re-check compatibility below.
-        lock_file.lock_exclusive().map_err(|err| {
-            SearchError::IndexError(format!(
-                "failed to acquire rebuild lock at {}: {err}",
-                lock_path.display()
-            ))
-        })?;
-        // Lock is released when `lock_file` is dropped at end of scope.
-
-        // Re-check: the process that held the lock before us may have already
-        // rebuilt a compatible index.  If so, open and return it immediately.
-        if path.exists() {
-            if let Ok(existing) = Index::open_in_dir(path) {
-                if Self::index_is_compatible(path, schema, &existing.schema(), marker) {
-                    tracing::debug!(
-                        "Index at {} was rebuilt by a concurrent opener; reusing",
-                        path.display()
-                    );
-                    return Ok(existing);
-                }
-                drop(existing);
-            }
-        }
 
         // Clean up any orphaned temp directory from a previous crashed rebuild.
         if tmp_path.exists() {

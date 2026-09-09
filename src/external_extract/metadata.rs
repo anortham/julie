@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
-use crate::external_extract::lock::ExternalExtractOperationLock;
 
 /// Version of the `julie-server extract` output contract consumed by the Miller
 /// bridge (`~/source/codesearch`), which gates ingestion with an exact-equality
@@ -62,7 +61,6 @@ pub fn open_external_extract_database<P: AsRef<Path>>(
 
 pub struct ExternalExtractDatabaseOperation {
     db: SymbolDatabase,
-    _lock: ExternalExtractOperationLock,
 }
 
 impl ExternalExtractDatabaseOperation {
@@ -79,10 +77,9 @@ pub fn open_external_extract_database_for_operation<P: AsRef<Path>>(
     db_path: P,
     strict_schema: bool,
 ) -> Result<ExternalExtractDatabaseOperation> {
-    let lock = ExternalExtractOperationLock::acquire(db_path.as_ref())?;
     validate_external_extract_schema_policy(db_path.as_ref(), strict_schema)?;
     let db = SymbolDatabase::new(db_path)?;
-    Ok(ExternalExtractDatabaseOperation { db, _lock: lock })
+    Ok(ExternalExtractDatabaseOperation { db })
 }
 
 pub fn validate_external_extract_schema_policy(db_path: &Path, strict_schema: bool) -> Result<()> {

@@ -16,7 +16,6 @@ use crate::paths::RegistryPaths;
 use crate::registry::database::DaemonDatabase;
 use crate::request_engine::types::WorkspaceBinding;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
-use julie_core::workspace::leader_lock::{AcquireError, DaemonLockGuard};
 
 pub const DEFAULT_MAX_IDLE_RUNTIMES: usize = 8;
 pub const DEFAULT_IDLE_EXPIRY_DURATION: Duration = Duration::from_secs(60);
@@ -206,30 +205,6 @@ impl WorkspaceRuntimeManager {
             )
         })?;
 
-        let lock_path = binding.index_root.join("leader.lock");
-        let guard = match DaemonLockGuard::try_acquire(&lock_path) {
-            Ok(guard) => guard,
-            Err(AcquireError::AlreadyHeld(_)) => {
-                return Err((
-                    None,
-                    RuntimeError::LockAcquire(format!(
-                        "another process holds the workspace index at {}",
-                        binding.index_root.display()
-                    )),
-                ));
-            }
-            Err(AcquireError::Io { path, source }) => {
-                return Err((
-                    None,
-                    RuntimeError::LockAcquire(format!(
-                        "Lock IO error at {}: {}",
-                        path.display(),
-                        source
-                    )),
-                ));
-            }
-        };
-
         let startup_hint = WorkspaceStartupHint {
             path: binding.root.clone(),
             source: Some(WorkspaceStartupSource::Cli),
@@ -245,13 +220,11 @@ impl WorkspaceRuntimeManager {
                     .map(Arc::new)
             });
 
-        let (phase_tx, phase_rx) = tokio::sync::watch::channel(RuntimePhase::Owner { epoch: 0 });
-        let leadership = crate::leadership::LeadershipState::leader_in_process();
+        let (phase_tx, phase_rx) = tokio::sync::watch::channel(RuntimePhase::Owner);
 
         let mut handler = JulieServerHandler::new_in_process_with_daemon_db(
             startup_hint,
             None,
-            leadership,
             Some(binding.index_root.clone()),
             daemon_db,
         )
@@ -288,7 +261,7 @@ impl WorkspaceRuntimeManager {
             runtime.inject_fault(fault).await;
         }
 
-        if let Err(e) = runtime.promote_to_owner(guard).await {
+        if let Err(e) = runtime.promote_to_owner().await {
             return Err((Some(runtime), e));
         }
 

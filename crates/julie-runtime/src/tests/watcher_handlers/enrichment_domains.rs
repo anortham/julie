@@ -1,5 +1,5 @@
 use super::*;
-use crate::tests::test_writer_permit;
+use crate::tests::test_mutation_guard;
 use julie_core::database::StructuralFactQuery;
 use julie_extractors::SourceRegionKind;
 
@@ -18,7 +18,7 @@ async fn watcher_replaces_all_extractor_enrichment_domains() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         test_file.canonicalize().unwrap(),

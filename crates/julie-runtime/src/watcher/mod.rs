@@ -111,7 +111,6 @@ pub struct IncrementalIndexer {
     /// Shared indexing runtime snapshot for health and dashboard reporting.
     indexing_runtime: SharedIndexingRuntime,
     mutation_gate_registry: Arc<MutationGateRegistry>,
-    pub(crate) owner_epoch: Option<Arc<julie_core::workspace::ownership::OwnerEpoch>>,
 
     /// Join handles for the event detector and queue processor tasks.
     /// Stored so stop() can join them for a clean, non-aborting shutdown (Fix D).
@@ -175,15 +174,9 @@ impl IncrementalIndexer {
             tantivy_dirty: Arc::new(StdMutex::new(std::collections::HashSet::new())),
             indexing_runtime,
             mutation_gate_registry,
-            owner_epoch: None,
             event_task: None,
             queue_task: None,
         })
-    }
-
-    /// Set an authentic OwnerEpoch on this watcher.
-    pub fn set_owner_epoch(&mut self, epoch: Arc<julie_core::workspace::ownership::OwnerEpoch>) {
-        self.owner_epoch = Some(epoch);
     }
 
     /// Update the shared embedding provider after lazy initialization.
@@ -209,44 +202,12 @@ impl IncrementalIndexer {
             .insert(rel_path.to_string());
     }
 
-    /// Start watching the workspace for file changes using existing or fallback epoch
+    /// Start watching the workspace for file changes.
     pub async fn start_watching(&mut self) -> Result<()> {
-        self.start_watching_with_epoch(None).await
-    }
-
-    /// Start watching the workspace for file changes with an explicit OwnerEpoch
-    pub async fn start_watching_with_epoch(
-        &mut self,
-        owner_epoch: Option<Arc<julie_core::workspace::ownership::OwnerEpoch>>,
-    ) -> Result<()> {
         info!(
             "Starting file watcher for workspace: {}",
             self.workspace_root.display()
         );
-
-        let owner_epoch = match owner_epoch.or_else(|| self.owner_epoch.clone()) {
-            Some(e) => e,
-            None => {
-                let lock_path = self.workspace_root.join(".julie").join("leader.lock");
-                if let Some(p) = lock_path.parent() {
-                    let _ = std::fs::create_dir_all(p);
-                }
-                let guard = julie_core::workspace::leader_lock::DaemonLockGuard::try_acquire(
-                    &lock_path,
-                )
-                .map_err(|e| {
-                    anyhow::anyhow!(
-                        "Cannot start watcher without ownership: leader lock unavailable: {e}"
-                    )
-                })?;
-                Arc::new(julie_core::workspace::ownership::OwnerEpoch::new(
-                    1,
-                    self.workspace_id.clone(),
-                    guard,
-                ))
-            }
-        };
-        self.owner_epoch = Some(Arc::clone(&owner_epoch));
 
         let (tx, mut rx) = mpsc::unbounded_channel::<notify::Result<notify::Event>>();
 
@@ -326,7 +287,6 @@ impl IncrementalIndexer {
             Arc::clone(&self.tantivy_dirty),
             Arc::clone(&self.indexing_runtime),
             Arc::clone(&self.mutation_gate_registry),
-            owner_epoch,
         );
 
         let queue_handle = tokio::spawn(async move {
@@ -361,7 +321,7 @@ impl IncrementalIndexer {
 
     /// Process any pending file changes from the queue
     pub async fn process_pending_changes(&self) -> Result<()> {
-        runtime::QueueRuntime::try_from_indexer(self)?
+        runtime::QueueRuntime::from_indexer(self)
             .process_pending_changes()
             .await
     }

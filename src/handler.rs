@@ -42,7 +42,7 @@ use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
 use crate::database::SymbolDatabase;
 use crate::search::{SearchIndex, SearchProjection};
 use crate::workspace::JulieWorkspace;
-use crate::workspace::mutation_gate::{MutationGuard, Registry as MutationGateRegistry};
+use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
 use tokio::sync::RwLock;
@@ -182,9 +182,6 @@ impl Default for IndexingStatus {
     }
 }
 
-use crate::leadership::LeadershipState;
-use julie_core::workspace::ownership::{OwnershipError, WriterPermit};
-
 // ---------------------------------------------------------------------------
 // JulieServerHandler
 // ---------------------------------------------------------------------------
@@ -272,12 +269,9 @@ pub struct JulieServerHandler {
     ref_db_cache: Arc<RwLock<HashMap<String, (PathBuf, Arc<std::sync::Mutex<SymbolDatabase>>)>>>,
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
-    /// Mutation-gate registry used by workspace writer paths in this handler.
-    pub(crate) mutation_gate_registry: Arc<MutationGateRegistry>,
-    /// In-process leadership state. Holds the OS-level advisory lock for the
-    /// workspace this handler writes (see `new_in_process`). Wrapped in `Arc`
-    /// so the `Clone` derive works across sessions.
-    pub(crate) leadership: Arc<LeadershipState>,
+    /// True when this handler was built by an in-process constructor; gates the
+    /// bounded read envelope in `call_tool`.
+    pub(crate) in_process: bool,
     /// Embedding provider injected by `new_in_process`. When `Some`, takes
     /// priority over `embedding_service` and the per-workspace provider.
     injected_embedding_provider:
@@ -285,10 +279,9 @@ pub struct JulieServerHandler {
     /// When true, semantics are explicitly disabled for the current request context.
     pub(crate) semantics_disabled: Arc<std::sync::atomic::AtomicBool>,
 
-    /// Index root override for in-process sessions (T8/F2).  When `Some`, the
+    /// Index root override for in-process sessions.  When `Some`, the
     /// non-pool branch of `initialize_workspace_with_force` routes db/tantivy
-    /// to the daemon shared directory (`~/.julie/indexes/{ws}/`) so storage
-    /// and the leader lock share one inode tree.
+    /// to the shared directory (`~/.julie/indexes/{ws}/`).
     pub(crate) in_process_index_root: Option<PathBuf>,
     /// Keeps isolated temp roots alive for test-only handlers.
     #[cfg(test)]
@@ -805,8 +798,7 @@ impl JulieServerHandler {
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx: None,
-            mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
-            leadership: Arc::new(LeadershipState::none()),
+            in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             in_process_index_root: None,
@@ -917,8 +909,7 @@ impl JulieServerHandler {
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
-            mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
-            leadership: Arc::new(LeadershipState::none()),
+            in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             in_process_index_root: None,
@@ -1015,8 +1006,7 @@ impl JulieServerHandler {
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
-            mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
-            leadership: Arc::new(LeadershipState::none()),
+            in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             in_process_index_root: None,
@@ -1039,32 +1029,21 @@ impl JulieServerHandler {
     ///   `embedding_provider()` returns it directly, bypassing both the daemon
     ///   embedding-service and the per-workspace sidecar path. Do **not** call
     ///   `mark_standalone_embedding_skipped` when passing a provider here.
-    /// * `leader` — the workspace leadership state. Pass `LeadershipState::leader(guard)`
-    ///   or `LeadershipState::leader_in_process()` for in-process handlers;
-    ///   pass `LeadershipState::none()` for handlers not in the in-process model.
     /// * `index_root` — when `Some`, `initialize_workspace_with_force` routes
-    ///   db/tantivy to this directory so the leader lock and storage share one
-    ///   inode tree (T8/F2).  Pass `None` for the traditional project-local path.
+    ///   db/tantivy to this directory.  Pass `None` for the traditional
+    ///   project-local path.
     pub async fn new_in_process(
         startup_hint: WorkspaceStartupHint,
         embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
-        leader: LeadershipState,
         index_root: Option<PathBuf>,
     ) -> Result<Self> {
-        Self::new_in_process_with_daemon_db(
-            startup_hint,
-            embedding_provider,
-            leader,
-            index_root,
-            None,
-        )
-        .await
+        Self::new_in_process_with_daemon_db(startup_hint, embedding_provider, index_root, None)
+            .await
     }
 
     pub async fn new_in_process_with_daemon_db(
         startup_hint: WorkspaceStartupHint,
         embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
-        leader: LeadershipState,
         index_root: Option<PathBuf>,
         daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
     ) -> Result<Self> {
@@ -1079,8 +1058,7 @@ impl JulieServerHandler {
         )
         .await?;
 
-        // Override the leadership, injected-provider, and index-root fields.
-        handler.leadership = Arc::new(leader);
+        handler.in_process = true;
         handler.injected_embedding_provider = Arc::new(std::sync::RwLock::new(embedding_provider));
         handler.in_process_index_root = index_root;
 
@@ -1167,30 +1145,24 @@ impl JulieServerHandler {
     }
 
     /// Returns `true` when this handler was built by an in-process constructor.
-    /// `false` for all pre-3c constructors (daemon mode, stdio mode — `LeadershipState::none()`).
     ///
     /// Gates the F1 bounded read envelope in `call_tool`: only in-process
     /// handlers get the bounded envelope; daemon/stdio take the existing
     /// path byte-for-byte unchanged.
     pub fn is_in_process(&self) -> bool {
-        self.leadership.is_in_process()
+        self.in_process
     }
 
     /// Whether a request-time primary resolution should prefer the client's
     /// `list_roots` over the startup hint.
     ///
-    /// **In-process handlers always return `false`** (codex 3c.2 F-A): the
-    /// leader lock + index storage are acquired at STARTUP from the
-    /// hint-derived `workspace_id`, before any client roots are known. If the
-    /// binding then rebound to a different `list_roots` root, the lock/storage
-    /// (hint-keyed) and the binding (client-root-keyed) would diverge — two
-    /// processes launched from different cwds but reporting the same client
-    /// root would each win a *different* lock and maintain divergent index
-    /// trees for one logical workspace. Pinning the binding to the canonical
-    /// startup hint keeps lock id == storage id == binding id.
+    /// **In-process handlers always return `false`**: index storage is bound
+    /// at STARTUP from the hint-derived `workspace_id`, before any client
+    /// roots are known. Pinning the binding to the canonical startup hint
+    /// keeps storage id == binding id.
     ///
-    /// Daemon/stdio (`LeadershipState::none()`) keep the source-driven
-    /// behavior unchanged, so multi-root clients still rebind there.
+    /// Daemon/stdio handlers keep the source-driven behavior unchanged, so
+    /// multi-root clients still rebind there.
     pub(crate) fn request_prefers_client_roots(&self) -> bool {
         !self.is_in_process()
             && crate::startup::startup_source_prefers_request_roots(
@@ -1220,100 +1192,12 @@ impl JulieServerHandler {
             .current_workspace_id()
     }
 
-    #[allow(dead_code)]
-    pub(crate) async fn acquire_mutation_gate<'a>(
-        &'a self,
-        workspace_id: &'a str,
-    ) -> MutationGuard<'a> {
-        self.mutation_gate_registry.acquire(workspace_id).await
-    }
-
-    pub(crate) async fn acquire_writer_permit<'a>(
-        &'a self,
-        workspace_id: &'a str,
-    ) -> std::result::Result<WriterPermit<'a>, OwnershipError> {
-        // 1. Check if owner_epoch is already held in LeadershipState for this workspace
-        {
-            let epoch_read = self.leadership.owner_epoch.read().await;
-            if let Some(ref epoch) = *epoch_read {
-                if epoch.workspace_id() == "*" || epoch.workspace_id() == workspace_id {
-                    if epoch.is_draining() {
-                        return Err(OwnershipError::Draining);
-                    }
-                    return epoch
-                        .acquire_writer_shared(&self.mutation_gate_registry)
-                        .await;
-                }
-            }
-        }
-
-        // 1b. Check if target_epochs has an active owner epoch for this workspace
-        {
-            let targets_read = self.leadership.target_epochs.read().await;
-            if let Some(epoch) = targets_read.get(workspace_id) {
-                if epoch.is_draining() {
-                    return Err(OwnershipError::Draining);
-                }
-                return epoch
-                    .acquire_writer_shared(&self.mutation_gate_registry)
-                    .await;
-            }
-        }
-
-        // 2. If leadership carries a DaemonLockGuard, initialize OwnerEpoch from it
-        {
-            let mut lock_opt = self.leadership.lock.lock().await;
-            if let Some(guard) = lock_opt.take() {
-                let epoch = Arc::new(julie_core::workspace::ownership::OwnerEpoch::new(
-                    1,
-                    workspace_id.to_string(),
-                    guard,
-                ));
-                let mut epoch_write = self.leadership.owner_epoch.write().await;
-                *epoch_write = Some(Arc::clone(&epoch));
-                return epoch
-                    .acquire_writer_shared(&self.mutation_gate_registry)
-                    .await;
-            }
-        }
-
-        // 3. Standalone / test fallback / target workspace: attempt to acquire OS lock for workspace
-        if !self.leadership.is_in_process() {
-            let lock_path = if let Ok(dir) = self.workspace_index_dir_for(workspace_id).await {
-                dir.join("leader.lock")
-            } else if let Ok(Some(ws)) = self.get_workspace().await {
-                ws.index_root().join("leader.lock")
-            } else {
-                let tmp = tempfile::Builder::new()
-                    .prefix("test_julie_leader_")
-                    .tempdir()
-                    .ok();
-                match tmp {
-                    Some(dir) => dir.path().join("leader.lock"),
-                    None => return Err(OwnershipError::NotOwner),
-                }
-            };
-
-            if let Some(parent) = lock_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-
-            match julie_core::workspace::leader_lock::DaemonLockGuard::try_acquire(&lock_path) {
-                Ok(guard) => {
-                    let epoch = Arc::new(julie_core::workspace::ownership::OwnerEpoch::new(
-                        1,
-                        workspace_id.to_string(),
-                        guard,
-                    ));
-                    return epoch
-                        .acquire_writer_shared(&self.mutation_gate_registry)
-                        .await;
-                }
-                Err(_) => return Err(OwnershipError::NotOwner),
-            }
-        }
-
-        Err(OwnershipError::NotOwner)
+    /// Serialize every writer for `workspace_id` through the in-process mutation gate.
+    pub(crate) async fn acquire_mutation_guard(
+        &self,
+        workspace_id: &str,
+    ) -> MutationGuard<'static> {
+        acquire_gate(workspace_id).await
     }
 
     pub fn is_primary_workspace_swap_in_progress(&self) -> bool {
@@ -1669,35 +1553,17 @@ impl JulieServerHandler {
             self.teardown_loaded_workspace(use_pooled_rebind).await;
 
             if let Some(index_root) = &self.in_process_index_root {
-                // In-process force reindex (codex pre-merge F-B): the leader's
-                // db/tantivy AND the held `leader.lock` all live under the shared
-                // `index_root` (~/.julie/indexes/{ws}/). The non-force branch
-                // already redirects storage there (T8/F2); the force branch MUST
-                // too, or a force reindex (incl. an auto-triggered semantic-engine
-                // version bump) would silently rebuild project-local storage while
-                // the leader lock sits in the daemon path — breaking the F2 inode
-                // coupling and letting a second process "lead" the same workspace.
-                //
-                // Clear ONLY db/ and tantivy/ under index_root (a full rebuild
-                // follows via index_workspace_files force=true). NEVER remove
-                // `index_root` wholesale: that would unlink the leader.lock file
-                // this process holds on Unix, letting another process acquire a
-                // duplicate leader lock.
-                for derived in ["db", "tantivy"] {
-                    let dir = index_root.join(derived);
-                    if dir.exists() {
-                        if let Err(e) = std::fs::remove_dir_all(&dir) {
-                            warn!(
-                                "Failed to clear in-process {} for force reindex at {}: {}",
-                                derived,
-                                dir.display(),
-                                e
-                            );
-                        }
+                if index_root.exists() {
+                    if let Err(e) = std::fs::remove_dir_all(index_root) {
+                        warn!(
+                            "Failed to clear in-process index root for force reindex at {}: {}",
+                            index_root.display(),
+                            e
+                        );
                     }
                 }
                 info!(
-                    "🗑️ Cleared in-process db+tantivy for force reindex under {} (leader.lock preserved)",
+                    "🗑️ Cleared in-process index root for force reindex at {}",
                     index_root.display()
                 );
                 JulieWorkspace::initialize_with_index_root(target_path.clone(), index_root.clone())

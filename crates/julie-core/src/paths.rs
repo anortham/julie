@@ -368,20 +368,6 @@ impl RegistryPaths {
         self.workspace_index_dir(workspace_id).join("tantivy")
     }
 
-    /// Per-workspace leader-election lock (Phase 3c).
-    ///
-    /// Returns `indexes/{workspace_id}/leader.lock` — a direct sibling of the
-    /// `db/` and `tantivy/` subdirs inside the workspace index directory.
-    ///
-    /// Placing the lock here means it survives a Tantivy-dir rebuild (which
-    /// atomically swaps the `tantivy/` tree, not the parent dir) and is
-    /// uniquely scoped per workspace.  It is intentionally distinct from the
-    /// Tantivy rebuild lock (`tantivy.julie-rebuild.lock`) so the non-blocking
-    /// leader lock can never alias the blocking rebuild lock.
-    pub fn workspace_leader_lock(&self, workspace_id: &str) -> PathBuf {
-        self.workspace_index_dir(workspace_id).join("leader.lock")
-    }
-
     /// FNV-1a hash of `julie_home`, used for Windows embedding host pipe names.
     #[cfg(windows)]
     fn julie_home_hash(&self) -> u64 {

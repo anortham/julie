@@ -8,7 +8,7 @@ use super::handlers;
 use super::types::{FileChangeEvent, FileChangeType};
 use julie_core::database::SymbolDatabase;
 use julie_core::indexing_state::{IndexingRepairReason, SharedIndexingRuntime};
-use julie_core::workspace::ownership::WriterPermit;
+use julie_core::workspace::mutation_gate::MutationGuard;
 
 /// Dispatch a file event to appropriate handler.
 ///
@@ -25,7 +25,7 @@ pub(crate) async fn dispatch_file_event(
     lang_configs: &Arc<julie_index::search::language_config::LanguageConfigs>,
     tantivy_dirty: &Arc<StdMutex<std::collections::HashSet<String>>>,
     indexing_runtime: &SharedIndexingRuntime,
-    permit: &WriterPermit<'_>,
+    guard: &MutationGuard<'_>,
 ) -> Option<PathBuf> {
     let relative_for_embed =
         julie_core::paths::to_relative_unix_style(&event.path, workspace_root).ok();
@@ -38,7 +38,7 @@ pub(crate) async fn dispatch_file_event(
                 db,
                 workspace_root,
                 search_index.as_ref(),
-                permit,
+                guard,
             )
             .await
             {
@@ -119,7 +119,7 @@ pub(crate) async fn dispatch_file_event(
                 db,
                 workspace_root,
                 search_index.as_ref(),
-                permit,
+                guard,
             )
             .await
             {
@@ -143,7 +143,7 @@ pub(crate) async fn dispatch_file_event(
                 db,
                 workspace_root,
                 search_index.as_ref(),
-                permit,
+                guard,
             )
             .await
             {

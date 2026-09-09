@@ -105,12 +105,13 @@ impl SearchProjection {
             return Err(err);
         }
 
-        let payload =
-            serde_json::to_string(&julie_core::workspace::ownership::TantivyCommitPayload {
+        let payload = serde_json::to_string(
+            &julie_core::workspace::projection_stamp::TantivyCommitPayload {
                 epoch: 1,
                 revision: target_revision as u64,
                 generation: target_revision as u64,
-            })?;
+            },
+        )?;
         index.commit_with_payload(&payload)?;
 
         db.upsert_projection_state(
@@ -223,12 +224,13 @@ impl SearchProjection {
             return Err(err);
         }
 
-        let payload =
-            serde_json::to_string(&julie_core::workspace::ownership::TantivyCommitPayload {
+        let payload = serde_json::to_string(
+            &julie_core::workspace::projection_stamp::TantivyCommitPayload {
                 epoch: 1,
                 revision: target_revision as u64,
                 generation: target_revision as u64,
-            })?;
+            },
+        )?;
         index.commit_with_payload(&payload)?;
 
         let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -274,11 +276,13 @@ impl SearchProjection {
         match apply_result {
             Ok(()) => {
                 let payload = target_revision.map(|rev| {
-                    serde_json::to_string(&julie_core::workspace::ownership::TantivyCommitPayload {
-                        epoch: 1,
-                        revision: rev,
-                        generation: rev,
-                    })
+                    serde_json::to_string(
+                        &julie_core::workspace::projection_stamp::TantivyCommitPayload {
+                            epoch: 1,
+                            revision: rev,
+                            generation: rev,
+                        },
+                    )
                     .unwrap_or_default()
                 });
                 index.release_writer_with_payload(payload.as_deref())?;

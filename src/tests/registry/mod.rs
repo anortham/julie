@@ -5,7 +5,6 @@ pub mod embedding_service;
 pub mod embedding_service_shutdown;
 pub mod handler;
 pub mod inprocess_embedding;
-pub mod lock_test;
 pub mod paths;
 pub mod roots;
 pub mod session;

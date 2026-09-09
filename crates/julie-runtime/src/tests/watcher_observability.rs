@@ -9,7 +9,7 @@
 //! dropped. This avoids the `block_on`-inside-a-runtime panic that occurs when
 //! using `with_default(subscriber, || { runtime.block_on(...) })`.
 
-use crate::tests::test_writer_permit;
+use crate::tests::test_mutation_guard;
 use crate::watcher::handlers::handle_file_created_or_modified_static;
 use crate::watcher::observability::LogCapture;
 use crate::workspace::mutation_gate::acquire_gate;
@@ -58,7 +58,7 @@ async fn test_hash_match_logs_skipped_info() {
 
     // First index — establishes the hash (no capture needed here).
     {
-        let permit = test_writer_permit(&workspace_root).await;
+        let permit = test_mutation_guard(&workspace_root).await;
         handle_file_created_or_modified_static(abs.clone(), &db, &workspace_root, None, &permit)
             .await
             .expect("first index should succeed");
@@ -68,7 +68,7 @@ async fn test_hash_match_logs_skipped_info() {
     let (capture, _sub_guard) = install_capture();
 
     {
-        let permit = test_writer_permit(&workspace_root).await;
+        let permit = test_mutation_guard(&workspace_root).await;
         handle_file_created_or_modified_static(abs.clone(), &db, &workspace_root, None, &permit)
             .await
             .expect("second index should succeed");
@@ -109,7 +109,7 @@ async fn test_indexed_file_logs_symbol_count_info() {
     let (capture, _sub_guard) = install_capture();
 
     {
-        let permit = test_writer_permit(&workspace_root).await;
+        let permit = test_mutation_guard(&workspace_root).await;
         handle_file_created_or_modified_static(abs.clone(), &db, &workspace_root, None, &permit)
             .await
             .expect("index should succeed");

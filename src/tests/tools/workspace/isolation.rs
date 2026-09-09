@@ -230,4 +230,48 @@ mod workspace_isolation {
 
         Ok(())
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn index_root_holds_only_db_and_tantivy_after_index() -> Result<()> {
+        let workspace = TempDir::new()?;
+        fs::write(
+            workspace.path().join("lib.rs"),
+            "pub fn layout_marker() {}\n",
+        )?;
+        let workspace_path = workspace.path().canonicalize()?;
+
+        let handler = JulieServerHandler::new_for_test().await?;
+        crate::tools::workspace::ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_path.to_string_lossy().to_string()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            detailed: None,
+        }
+        .call_tool(&handler)
+        .await?;
+
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&workspace_path.to_string_lossy())?;
+        let loaded = handler.get_workspace().await?.unwrap();
+        let index_root = loaded
+            .workspace_db_path(&workspace_id)
+            .parent()
+            .and_then(|db| db.parent())
+            .unwrap()
+            .to_path_buf();
+
+        let mut entries: Vec<String> = fs::read_dir(&index_root)?
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        entries.sort();
+        assert_eq!(
+            entries,
+            vec!["db".to_string(), "tantivy".to_string()],
+            "unexpected entries under {}",
+            index_root.display()
+        );
+        Ok(())
+    }
 }

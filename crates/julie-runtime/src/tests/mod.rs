@@ -18,4 +18,4 @@ pub mod workspace; // registry + root_safety pure-unit tests
 // ── Test helpers ───────────────────────────────────────────────────────────
 pub mod helpers;
 #[allow(unused_imports)]
-pub use helpers::{TestWriterScope, test_writer_permit};
+pub use helpers::test_mutation_guard;

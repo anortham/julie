@@ -3,7 +3,6 @@
 pub mod database;
 
 pub mod connection_pool;
-pub mod discovery;
 pub mod embedding_service;
 pub mod lifecycle;
 pub mod project_log;

@@ -241,7 +241,7 @@ async fn test_real_time_file_watcher_indexing() {
 
 #[tokio::test]
 async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files() {
-    use crate::tests::test_writer_permit;
+    use crate::tests::test_mutation_guard;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use julie_core::database::SymbolDatabase;
     use std::sync::{Arc, Mutex, atomic::Ordering};
@@ -265,7 +265,7 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
     )
     .unwrap();
 
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
     handle_file_created_or_modified_static(
         tracked_file.canonicalize().unwrap(),
         &db,
@@ -462,7 +462,7 @@ async fn test_run_guarded_task_step_returns_true_after_success() {
 /// content does change.
 #[tokio::test]
 async fn test_blake3_change_detection() {
-    use crate::tests::test_writer_permit;
+    use crate::tests::test_mutation_guard;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use julie_core::database::SymbolDatabase;
     use std::sync::{Arc, Mutex};
@@ -470,7 +470,7 @@ async fn test_blake3_change_detection() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let permit = test_writer_permit(dir.path()).await;
+    let permit = test_mutation_guard(dir.path()).await;
 
     // 1. Create a file and index it for the first time
     let test_file = dir.path().join("example.rs");

@@ -1874,7 +1874,6 @@ name = "julie-index"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "fs2",
  "julie-core",
  "julie-extractors",
  "julie-test-support",

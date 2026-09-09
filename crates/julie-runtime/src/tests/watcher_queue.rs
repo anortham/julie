@@ -454,7 +454,7 @@ async fn test_runtime_drops_recent_duplicates_and_processes_delete_and_rename() 
 
 #[tokio::test]
 async fn test_overflow_repair_skips_unchanged_indexed_files() {
-    use crate::tests::test_writer_permit;
+    use crate::tests::test_mutation_guard;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use julie_core::database::SymbolDatabase;
     use julie_core::indexing_state::IndexingRepairReason;
@@ -477,7 +477,7 @@ async fn test_overflow_repair_skips_unchanged_indexed_files() {
     let stable_file = workspace_root.join("stable.rs");
     fs::write(&stable_file, "fn stable_symbol() {}\n").unwrap();
     {
-        let permit = test_writer_permit(&workspace_root).await;
+        let permit = test_mutation_guard(&workspace_root).await;
         handle_file_created_or_modified_static(
             stable_file.canonicalize().unwrap(),
             &db,
@@ -565,7 +565,7 @@ async fn test_stop_with_pending_queue_does_not_wait_forever_when_gate_is_held() 
 
 #[tokio::test]
 async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_only() {
-    use crate::tests::test_writer_permit;
+    use crate::tests::test_mutation_guard;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use julie_core::database::SymbolDatabase;
 
@@ -592,7 +592,7 @@ async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_o
     fs::write(&deleted, "fn deleted_symbol() {}\n").unwrap();
 
     {
-        let permit = test_writer_permit(&workspace_root).await;
+        let permit = test_mutation_guard(&workspace_root).await;
         for file in [&unchanged, &changed, &deleted] {
             handle_file_created_or_modified_static(
                 file.canonicalize().unwrap(),
@@ -731,7 +731,7 @@ async fn test_repair_retry_clears_unsupported_extensionless_and_unsupported_name
 
 #[tokio::test]
 async fn test_repair_retry_keeps_supported_extractor_failures_due_for_retry() {
-    use crate::tests::test_writer_permit;
+    use crate::tests::test_mutation_guard;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
     use julie_core::database::SymbolDatabase;
 
@@ -744,7 +744,7 @@ async fn test_repair_retry_keeps_supported_extractor_failures_due_for_retry() {
     let rust_file = workspace_root.join("broken.rs");
     fs::write(&rust_file, "fn previously_indexed() {}\n").unwrap();
     {
-        let permit = test_writer_permit(&workspace_root).await;
+        let permit = test_mutation_guard(&workspace_root).await;
         handle_file_created_or_modified_static(
             rust_file.canonicalize().unwrap(),
             &db,

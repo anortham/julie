@@ -107,31 +107,6 @@ impl IndexRoute {
         })
     }
 
-    pub fn index_root(&self) -> PathBuf {
-        self.tantivy_path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| self.tantivy_path.clone())
-    }
-
-    pub fn publication_lock_path(&self) -> PathBuf {
-        self.index_root().join("publication.lock")
-    }
-
-    #[cfg(test)]
-    pub fn for_test(workspace_id: &str, workspace_root: &Path, index_root: &Path) -> Self {
-        Self {
-            workspace_id: workspace_id.to_string(),
-            workspace_root: workspace_root.to_path_buf(),
-            db_path: index_root.join("db").join("symbols.db"),
-            tantivy_path: index_root.join("tantivy"),
-            is_primary: true,
-            database: None,
-            search_index: None,
-            indexing_runtime: None,
-        }
-    }
-
     async fn open_database_from_path(
         &self,
     ) -> Result<Option<Arc<std::sync::Mutex<SymbolDatabase>>>> {

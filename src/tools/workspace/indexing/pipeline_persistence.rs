@@ -139,16 +139,6 @@ pub(crate) fn persist_batch(
     Ok(PersistBatchResult { canonical_revision })
 }
 
-#[cfg(test)]
-pub(crate) fn persist_batch_for_test(
-    db: &std::sync::Arc<std::sync::Mutex<SymbolDatabase>>,
-    route: &IndexRoute,
-    operation: IndexingOperation,
-    batch: &ExtractedBatch,
-) -> Result<PersistBatchResult> {
-    persist_batch(db, route, operation, batch)
-}
-
 fn store_parse_diagnostics(db: &SymbolDatabase, batch: &ExtractedBatch) -> Result<()> {
     for (path, diagnostics) in &batch.parse_diagnostics_by_file {
         db.store_file_parse_diagnostics(path, diagnostics)?;

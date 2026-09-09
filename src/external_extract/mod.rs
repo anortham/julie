@@ -1,7 +1,6 @@
 pub mod cli;
 mod data_loss_guard;
 pub mod info;
-pub mod lock;
 pub mod metadata;
 pub mod operations;
 pub mod paths;
@@ -10,10 +9,6 @@ pub mod report;
 pub use cli::{ExternalExtractArgs, ExternalExtractCommand, ExternalExtractRawArgs};
 pub use info::{
     ExternalExtractCounts, ExternalExtractInfo, ExternalInfoSchemaState, read_external_extract_info,
-};
-pub use lock::{
-    DEFAULT_EXTERNAL_EXTRACT_OPERATION_LOCK_TIMEOUT, ExternalExtractOperationLock,
-    ExternalExtractOperationLockError, external_extract_operation_lock_path,
 };
 pub use metadata::{
     EXTRACT_CONTRACT_VERSION, ExternalExtractDatabaseOperation, ExternalExtractMetadata,

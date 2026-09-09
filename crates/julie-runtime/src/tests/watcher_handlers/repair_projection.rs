@@ -1,5 +1,5 @@
 use super::*;
-use crate::tests::test_writer_permit;
+use crate::tests::test_mutation_guard;
 
 #[tokio::test]
 async fn test_extractor_failure_is_persisted_durably() {
@@ -14,7 +14,7 @@ async fn test_extractor_failure_is_persisted_durably() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         absolute_path.clone(),
@@ -93,7 +93,7 @@ async fn test_delete_handler_always_cleans_up() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -216,7 +216,7 @@ fn render_rich_text_field() {
 }
 "#;
     fs::write(&test_file, modified_content).unwrap();
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     // Call the watcher handler WITH the search index (this is the code path that has the bug)
     handle_file_created_or_modified_static(
@@ -307,7 +307,7 @@ fn watched_annotation_marker() {
     fs::create_dir_all(&tantivy_dir).unwrap();
     let search_index =
         Arc::new(SearchIndex::create(&tantivy_dir).expect("Failed to create search index"));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         absolute_path,
@@ -362,7 +362,7 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
         idx.shutdown()
             .expect("search index should shut down cleanly");
     }
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     let outcome = handle_file_created_or_modified_static(
         absolute_path,
@@ -405,7 +405,7 @@ async fn test_hash_match_clears_stale_repair_entry() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     // First pass: index the file (stores hash + symbols)
     handle_file_created_or_modified_static(
@@ -477,7 +477,7 @@ async fn test_watcher_does_not_publish_uncommitted_projection_revision() {
     fs::create_dir_all(&tantivy_dir).unwrap();
     let search_index = Arc::new(SearchIndex::create(&tantivy_dir).unwrap());
 
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         absolute_path.clone(),
@@ -685,7 +685,7 @@ async fn test_mid_crash_projection_lag_reconciliation() {
     let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
 
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     // Phase 1: Index via watcher WITHOUT a search_index.
     // This advances canonical_revision in SQLite but leaves Tantivy untouched —

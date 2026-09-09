@@ -132,7 +132,7 @@ async fn test_rename_any_existing_path_emits_modified() {
 /// indexed symbols — should clean up regardless (trust the caller's decision).
 #[tokio::test]
 async fn test_delete_handler_trusts_caller_no_toctou() {
-    use crate::tests::test_writer_permit;
+    use crate::tests::test_mutation_guard;
     use crate::watcher::handlers::{
         handle_file_created_or_modified_static, handle_file_deleted_static,
     };
@@ -142,7 +142,7 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
-    let permit = test_writer_permit(dir.path()).await;
+    let permit = test_mutation_guard(dir.path()).await;
 
     // Index a real file first
     let test_file = dir.path().join("toctou.rs");

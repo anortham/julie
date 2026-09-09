@@ -1,11 +1,9 @@
 //! src/workspace_runtime/scheduler.rs
 //! Workspace indexing scheduler enforcing:
 //! 1. 10-second scheduling quantum checked between completed file commits.
-//! 2. Cross-process host slot admission before workspace mutation gate.
-//! 3. Enforcing source size limits before reading files.
-//! 4. Releasing host slot permit before requeuing unfinished paths.
-//! 5. Never holding host slot during semantic provider inference or while idle.
-//! 6. Fair FIFO scheduling across workspaces in the process.
+//! 2. Enforcing source size limits before reading files.
+//! 3. Releasing the mutation gate before requeuing unfinished paths.
+//! 4. Fair FIFO scheduling across workspaces in the process.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -19,20 +17,16 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
 use super::dirty_queue::{DirtyOp, DirtyQueue};
-use julie_core::workspace::host_slots::{AdmissionError, IndexJobAdmission};
 use julie_core::workspace::mutation_gate::Registry as MutationGateRegistry;
 
 pub const DEFAULT_SCHEDULING_QUANTUM: Duration = Duration::from_secs(10);
 pub const DEFAULT_MAX_SOURCE_SIZE_BYTES: usize = 1024 * 1024; // 1 MiB
-pub const DEFAULT_ADMISSION_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Error)]
 pub enum SchedulerError {
-    #[error("Host admission error: {0}")]
-    Admission(#[from] AdmissionError),
     #[error("Cancelled by caller")]
     Cancelled,
-    #[error("Timeout waiting for admission or execution")]
+    #[error("Timeout waiting for execution")]
     Timeout,
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -47,7 +41,6 @@ pub enum SchedulerError {
 pub struct SchedulerConfig {
     pub quantum: Duration,
     pub max_file_size: usize,
-    pub admission_timeout: Duration,
 }
 
 impl Default for SchedulerConfig {
@@ -55,7 +48,6 @@ impl Default for SchedulerConfig {
         Self {
             quantum: DEFAULT_SCHEDULING_QUANTUM,
             max_file_size: DEFAULT_MAX_SOURCE_SIZE_BYTES,
-            admission_timeout: DEFAULT_ADMISSION_TIMEOUT,
         }
     }
 }
@@ -63,8 +55,6 @@ impl Default for SchedulerConfig {
 /// Telemetry and execution report returned by `WorkspaceScheduler::execute_quantum`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QuantumReport {
-    pub admission_wait: Duration,
-    pub slot_index: Option<usize>,
     pub longest_file_duration: Duration,
     pub longest_file_path: Option<String>,
     pub files_processed: usize,
@@ -87,7 +77,6 @@ pub struct WorkspaceScheduler {
     pub workspace_id: String,
     pub workspace_root: PathBuf,
     pub queue: Arc<Mutex<DirtyQueue>>,
-    pub admission: Arc<IndexJobAdmission>,
     pub mutation_gate: Arc<MutationGateRegistry>,
     pub config: SchedulerConfig,
 }
@@ -96,7 +85,6 @@ impl WorkspaceScheduler {
     pub fn new(
         workspace_id: String,
         workspace_root: PathBuf,
-        admission: Arc<IndexJobAdmission>,
         mutation_gate: Arc<MutationGateRegistry>,
         config: SchedulerConfig,
     ) -> Self {
@@ -104,7 +92,6 @@ impl WorkspaceScheduler {
             workspace_id,
             workspace_root,
             queue: Arc::new(Mutex::new(DirtyQueue::default())),
-            admission,
             mutation_gate,
             config,
         }
@@ -134,16 +121,12 @@ impl WorkspaceScheduler {
     ///
     /// Lifecycle invariants enforced:
     /// 1. Takes dirty chunk snapshot (events arriving later accumulate safely).
-    /// 2. Acquires host slot permit BEFORE per-workspace mutation gate.
-    /// 3. Never holds SQLite mutex while waiting for host slot.
-    /// 4. Checks source file size limits before reading.
-    /// 5. Checks 10-second quantum between completed file commits.
-    /// 6. Releases host slot BEFORE requeuing unfinished paths.
-    /// 7. Never holds host slot during semantic provider inference or while idle.
+    /// 2. Checks source file size limits before reading.
+    /// 3. Checks 10-second quantum between completed file commits.
+    /// 4. Releases the mutation gate BEFORE requeuing unfinished paths.
     pub async fn execute_quantum<C: FileCommitter>(
         &self,
         committer: &C,
-        deadline: Option<Instant>,
         cancel: &CancellationToken,
     ) -> Result<QuantumReport, SchedulerError> {
         let total_start = Instant::now();
@@ -168,32 +151,12 @@ impl WorkspaceScheduler {
             return Err(SchedulerError::Cancelled);
         }
 
-        // Step 2: Acquire host slot admission BEFORE acquiring mutation gate.
-        let admission_start = Instant::now();
-        let permit = match self.admission.acquire(deadline, Some(cancel)).await {
-            Ok(p) => p,
-            Err(e) => {
-                let mut q = self.queue.lock().await;
-                q.requeue_paths(chunk.entries);
-                return Err(SchedulerError::Admission(e));
-            }
-        };
-        report.admission_wait = admission_start.elapsed();
-        report.slot_index = Some(permit.slot_index());
-
-        if cancel.is_cancelled() {
-            drop(permit);
-            let mut q = self.queue.lock().await;
-            q.requeue_paths(chunk.entries);
-            return Err(SchedulerError::Cancelled);
-        }
-
-        // Step 3: Acquire per-workspace mutation gate under held host permit.
+        // Step 2: Acquire per-workspace mutation gate.
         let mutation_guard = self.mutation_gate.acquire(&self.workspace_id).await;
 
         let quantum_start = Instant::now();
 
-        // Step 4: Full directory rescan if latched
+        // Step 3: Full directory rescan if latched
         if chunk.rescan_required {
             info!(workspace_id = %self.workspace_id, "Executing full reconciliation rescan");
             match committer.execute_full_rescan().await {
@@ -203,7 +166,6 @@ impl WorkspaceScheduler {
                 }
                 Err(msg) => {
                     drop(mutation_guard);
-                    drop(permit);
                     return Err(SchedulerError::Commit {
                         path: self.workspace_root.to_string_lossy().into(),
                         message: msg,
@@ -212,7 +174,7 @@ impl WorkspaceScheduler {
             }
         }
 
-        // Step 5: Process dirty entries with per-file commit & quantum check
+        // Step 4: Process dirty entries with per-file commit & quantum check
         let mut unfinished_entries = Vec::new();
 
         for (idx, entry) in chunk.entries.iter().enumerate() {
@@ -249,7 +211,6 @@ impl WorkspaceScheduler {
                     "Failed to commit file"
                 );
                 drop(mutation_guard);
-                drop(permit);
                 return Err(SchedulerError::Commit {
                     path: entry.path.clone(),
                     message: msg,
@@ -277,10 +238,9 @@ impl WorkspaceScheduler {
             }
         }
 
-        // Step 6: Quantum yield / Completion handling
-        // CRITICAL INVARIANT: Drop mutation guard & host slot permit BEFORE requeueing!
+        // Step 5: Quantum yield / Completion handling
+        // CRITICAL INVARIANT: Drop mutation guard BEFORE requeueing!
         drop(mutation_guard);
-        drop(permit); // Host slot is now released immediately to other contenders
 
         if report.quantum_yielded || !unfinished_entries.is_empty() {
             report.requeued_count = unfinished_entries.len();

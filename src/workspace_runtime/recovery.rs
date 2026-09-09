@@ -1,11 +1,12 @@
 //! src/workspace_runtime/recovery.rs
-//! Projection recovery coordinator using authentic writer permits.
+//! Projection recovery coordinator; runs under the workspace mutation gate.
 
 use std::sync::Arc;
 use tracing::info;
 
 use julie_core::database::SymbolDatabase;
-use julie_core::workspace::ownership::{WriterPermit, needs_projection_recovery};
+use julie_core::workspace::mutation_gate::MutationGuard;
+use julie_core::workspace::projection_stamp::needs_projection_recovery;
 use julie_index::search::SearchIndex;
 use julie_index::search::projection::SearchProjection;
 
@@ -22,21 +23,13 @@ impl ProjectionRecoveryCoordinator {
         &self.workspace_id
     }
 
-    /// Reconciles projection lag from canonical SQLite state under authentic Owner proof.
+    /// Reconciles projection lag from canonical SQLite state under the mutation gate.
     pub async fn reconcile_if_needed(
         &self,
         db_arc: &Arc<std::sync::Mutex<SymbolDatabase>>,
         search_index: &Arc<SearchIndex>,
-        permit: &WriterPermit<'_>,
+        _guard: &MutationGuard<'_>,
     ) -> Result<bool, anyhow::Error> {
-        if permit.workspace_id() != self.workspace_id {
-            anyhow::bail!(
-                "WriterPermit workspace mismatch: permit for '{}' but coordinator for '{}'",
-                permit.workspace_id(),
-                self.workspace_id
-            );
-        }
-
         let (canonical_rev, projected_rev) = {
             let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
             let canonical = db
@@ -60,18 +53,8 @@ impl ProjectionRecoveryCoordinator {
             workspace_id = %self.workspace_id,
             canonical,
             projected = ?projected_rev,
-            "Reconciling projection gap from canonical SQLite truth under writer permit"
+            "Reconciling projection gap from canonical SQLite truth"
         );
-
-        let pub_lock_path = if let Some(p) = search_index.path() {
-            p.parent().unwrap_or(p).join("publication.lock")
-        } else {
-            std::env::temp_dir().join("publication.lock")
-        };
-        let _publication_guard =
-            julie_core::workspace::publication_lock::PublicationLock::acquire_exclusive_path(
-                &pub_lock_path,
-            )?;
 
         let workspace_id = self.workspace_id.clone();
         let db_clone = Arc::clone(db_arc);

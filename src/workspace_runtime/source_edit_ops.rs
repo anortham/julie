@@ -2,10 +2,10 @@
 
 pub use super::edit_journal::{EditDisposition, RecoveryAction};
 use crate::request_engine::RequestFailure;
-use julie_core::workspace::leader_lock::{AcquireError, DaemonLockGuard};
+use julie_core::workspace::mutation_gate::{MutationGuard, acquire_gate};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
-use std::io::{ErrorKind, Read};
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -19,7 +19,6 @@ pub const ENV_MAX_EDIT_SOURCE_BYTES: &str = "JULIE_MAX_EDIT_SOURCE_BYTES";
 #[derive(Debug, Clone)]
 pub struct SourceEditConfig {
     pub max_source_bytes: usize,
-    pub poll_interval: Duration,
 }
 
 impl Default for SourceEditConfig {
@@ -30,10 +29,7 @@ impl Default for SourceEditConfig {
             .unwrap_or(DEFAULT_MAX_EDIT_SOURCE_BYTES)
             .clamp(MIN_MAX_EDIT_SOURCE_BYTES, MAX_MAX_EDIT_SOURCE_BYTES);
 
-        Self {
-            max_source_bytes,
-            poll_interval: Duration::from_millis(50),
-        }
+        Self { max_source_bytes }
     }
 }
 
@@ -255,47 +251,20 @@ pub async fn acquire_source_edit_lock(
     lock_path: &Path,
     deadline: Instant,
     cancellation: &CancellationToken,
-    poll_interval: Duration,
-) -> Result<DaemonLockGuard, SourceEditError> {
+) -> Result<MutationGuard<'static>, SourceEditError> {
     if cancellation.is_cancelled() {
         return Err(SourceEditError::Cancelled);
     }
-    if let Some(parent) = lock_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| SourceEditError::Unavailable {
-            reason: format!(
-                "Failed to create lock directory '{}': {e}",
-                parent.display()
-            ),
-        })?;
-    }
-
     let start = Instant::now();
-    loop {
-        if cancellation.is_cancelled() {
-            return Err(SourceEditError::Cancelled);
-        }
-        if Instant::now() >= deadline {
-            return Err(SourceEditError::Busy {
+    let key = lock_path.to_string_lossy().into_owned();
+    tokio::select! {
+        acquired = tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), acquire_gate(&key)) => {
+            acquired.map_err(|_| SourceEditError::Busy {
                 path: lock_path.to_path_buf(),
                 elapsed: start.elapsed(),
-            });
+            })
         }
-
-        match DaemonLockGuard::try_acquire(lock_path) {
-            Ok(guard) => return Ok(guard),
-            Err(AcquireError::AlreadyHeld(_)) => tokio::time::sleep(poll_interval).await,
-            Err(AcquireError::Io { path: _, source })
-                if source.kind() == ErrorKind::WouldBlock
-                    || source.kind() == ErrorKind::Interrupted =>
-            {
-                tokio::time::sleep(poll_interval).await
-            }
-            Err(AcquireError::Io { path, source }) => {
-                return Err(SourceEditError::Unavailable {
-                    reason: format!("Lock acquisition failed on '{}': {source}", path.display()),
-                });
-            }
-        }
+        _ = cancellation.cancelled() => Err(SourceEditError::Cancelled),
     }
 }
 

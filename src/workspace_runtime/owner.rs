@@ -1,9 +1,8 @@
 //! src/workspace_runtime/owner.rs
 //! WorkspaceRuntime representation and owner startup.
 
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 
 use tokio::sync::{Mutex, watch};
 use tokio_util::sync::CancellationToken;
@@ -12,12 +11,7 @@ use tracing::{info, warn};
 use super::{RuntimeError, RuntimePhase};
 use crate::handler::JulieServerHandler;
 use crate::request_engine::types::WorkspaceBinding;
-use julie_core::workspace::leader_lock::DaemonLockGuard;
-use julie_core::workspace::ownership::OwnerEpoch;
-
-pub struct OwnerState {
-    pub epoch: Arc<OwnerEpoch>,
-}
+use julie_core::workspace::mutation_gate::acquire_gate;
 
 /// Independent runtime representation for an active workspace.
 pub struct WorkspaceRuntime {
@@ -27,8 +21,6 @@ pub struct WorkspaceRuntime {
     pub handler: Arc<JulieServerHandler>,
     pub active_requests: AtomicUsize,
     pub in_flight_commits: AtomicUsize,
-    pub current_epoch: AtomicU64,
-    pub(crate) owner_state: Mutex<Option<OwnerState>>,
     pub(crate) shutdown_token: CancellationToken,
     pub(crate) last_activity: AtomicI64,
     pub(crate) fault_flag: Mutex<Option<String>>,
@@ -62,8 +54,6 @@ impl WorkspaceRuntime {
             handler,
             active_requests: AtomicUsize::new(0),
             in_flight_commits: AtomicUsize::new(0),
-            current_epoch: AtomicU64::new(0),
-            owner_state: Mutex::new(None),
             shutdown_token: CancellationToken::new(),
             last_activity: AtomicI64::new(now_millis),
             fault_flag: Mutex::new(None),
@@ -82,10 +72,6 @@ impl WorkspaceRuntime {
         self.last_activity.load(Ordering::Relaxed)
     }
 
-    pub fn leader_lock_path(&self) -> PathBuf {
-        self.binding.index_root.join("leader.lock")
-    }
-
     pub async fn inject_fault(&self, fault: &str) {
         let mut guard = self.fault_flag.lock().await;
         *guard = Some(fault.to_string());
@@ -99,21 +85,10 @@ impl WorkspaceRuntime {
         Ok(())
     }
 
-    /// Owner startup sequence: Reconcile -> Start Watcher -> Owner { epoch }
-    pub async fn promote_to_owner(
-        self: &Arc<Self>,
-        guard: DaemonLockGuard,
-    ) -> Result<(), RuntimeError> {
-        let epoch_num = self.current_epoch.fetch_add(1, Ordering::SeqCst) + 1;
-
-        let owner_epoch = Arc::new(OwnerEpoch::new(
-            epoch_num,
-            self.binding.workspace_id.clone(),
-            guard,
-        ));
-
+    /// Owner startup sequence: Reconcile -> Start Watcher -> Owner
+    pub async fn promote_to_owner(self: &Arc<Self>) -> Result<(), RuntimeError> {
         // Step 1: Reconcile canonical SQLite vs Tantivy projection lag
-        if let Err(err) = self.reconcile_projection_lag(&owner_epoch).await {
+        if let Err(err) = self.reconcile_projection_lag().await {
             warn!(
                 workspace_id = %self.binding.workspace_id,
                 error = %err,
@@ -150,10 +125,7 @@ impl WorkspaceRuntime {
                         )));
                     }
                 }
-                if let Err(e) = ws
-                    .start_file_watching_with_epoch(true, Some(Arc::clone(&owner_epoch)))
-                    .await
-                {
+                if let Err(e) = ws.start_file_watching(true).await {
                     let _ = self.set_phase(RuntimePhase::Failed {
                         code: format!("WATCHER_START_FAILED: {e}"),
                     });
@@ -164,30 +136,17 @@ impl WorkspaceRuntime {
             }
         }
 
-        // Store active owner state
-        {
-            let mut owner_guard = self.owner_state.lock().await;
-            *owner_guard = Some(OwnerState {
-                epoch: Arc::clone(&owner_epoch),
-            });
-        }
-        {
-            let mut handler_epoch = self.handler.leadership.owner_epoch.write().await;
-            *handler_epoch = Some(Arc::clone(&owner_epoch));
-        }
-
         // Step 4: Publish Owner
-        self.set_phase(RuntimePhase::Owner { epoch: epoch_num })?;
+        self.set_phase(RuntimePhase::Owner)?;
         info!(
             workspace_id = %self.binding.workspace_id,
-            epoch = epoch_num,
             "Successfully promoted to Owner"
         );
 
         Ok(())
     }
 
-    async fn reconcile_projection_lag(&self, owner_epoch: &OwnerEpoch) -> Result<(), RuntimeError> {
+    async fn reconcile_projection_lag(&self) -> Result<(), RuntimeError> {
         let snapshot = match self.handler.primary_workspace_snapshot().await {
             Ok(s) => s,
             Err(_) => return Ok(()),
@@ -238,14 +197,10 @@ impl WorkspaceRuntime {
             }
         };
 
-        let permit = owner_epoch
-            .acquire_writer(&self.handler.mutation_gate_registry)
-            .await
-            .map_err(|e| RuntimeError::Internal(format!("Failed to acquire writer permit: {e}")))?;
-
+        let guard = acquire_gate(&workspace_id).await;
         let coordinator = super::recovery::ProjectionRecoveryCoordinator::new(workspace_id);
         coordinator
-            .reconcile_if_needed(&db_arc, &search_index, &permit)
+            .reconcile_if_needed(&db_arc, &search_index, &guard)
             .await
             .map_err(|e| {
                 RuntimeError::Internal(format!("Projection reconciliation failed: {e}"))

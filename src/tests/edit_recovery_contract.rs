@@ -14,7 +14,6 @@ use crate::request_engine::{
     SemanticMode, ToolReply, ToolRequest, WorkspaceBinding,
 };
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
-use julie_core::workspace::leader_lock::DaemonLockGuard;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -36,7 +35,6 @@ pub struct FollowerEditFixture {
     pub temp_home: Arc<tempfile::TempDir>,
     pub workspace_id: String,
     pub binding: WorkspaceBinding,
-    pub held_owner_guard: Option<DaemonLockGuard>,
     pub follower_engine: RequestEngine,
     pub file_path: PathBuf,
     pub initial_revision: i64,
@@ -71,12 +69,6 @@ impl FollowerEditFixture {
             index_root: index_root.clone(),
         };
 
-        // Acquire owner leader lock to pin this fixture session as a follower
-        let lock_path = registry_paths.workspace_leader_lock(&workspace_id);
-        let _ = std::fs::create_dir_all(lock_path.parent().unwrap());
-        let held_owner_guard =
-            Some(DaemonLockGuard::try_acquire(&lock_path).expect("acquire owner lock"));
-
         // Build follower RequestEngine
         let binding_resolver =
             BindingResolver::new(Some(workspace_root.clone()), false, registry_paths.clone());
@@ -89,7 +81,6 @@ impl FollowerEditFixture {
             temp_home: Arc::new(temp_home),
             workspace_id,
             binding,
-            held_owner_guard,
             follower_engine,
             file_path,
             initial_revision: 0,
@@ -914,7 +905,6 @@ async fn source_edit_bounded_read_rejects_oversized_file() {
 
     let config = crate::workspace_runtime::SourceEditConfig {
         max_source_bytes: 1024,
-        poll_interval: std::time::Duration::from_millis(10),
     };
     let coordinator = crate::workspace_runtime::SourceEditCoordinator::with_config(
         fixture.workspace_root.clone(),

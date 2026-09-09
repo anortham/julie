@@ -1,9 +1,7 @@
 //! src/workspace_runtime/publication.rs
-//! Coherent read snapshot acquisition and publication lock coordination.
+//! Coherent read snapshot acquisition.
 
-use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
 
 use tantivy::Searcher;
 use tantivy::collector::TopDocs;
@@ -14,11 +12,8 @@ use thiserror::Error;
 use crate::paths::RegistryPaths;
 use crate::request_engine::types::WorkspaceBinding;
 use julie_core::database::{ProjectionStatus, SymbolDatabase};
-use julie_core::workspace::ownership::{
+use julie_core::workspace::projection_stamp::{
     PublicationStamp, TantivyCommitPayload, needs_projection_recovery,
-};
-use julie_core::workspace::publication_lock::{
-    PublicationLock, PublicationLockError, PublicationSharedGuard,
 };
 use julie_index::search::SearchIndex;
 
@@ -32,8 +27,6 @@ pub enum SnapshotError {
         projected: Option<u64>,
         tantivy_revision: Option<u64>,
     },
-    #[error("Lock acquisition failed: {0}")]
-    Lock(#[from] PublicationLockError),
     #[error("Database error: {0}")]
     Database(#[from] anyhow::Error),
     #[error("I/O error: {0}")]
@@ -45,8 +38,6 @@ pub struct WorkspaceReadSnapshot {
     pub stamp: PublicationStamp,
     pub searcher: Searcher,
     pub db: Arc<std::sync::Mutex<SymbolDatabase>>,
-    #[allow(dead_code)]
-    _guard: Option<PublicationSharedGuard>,
 }
 
 impl std::fmt::Debug for WorkspaceReadSnapshot {
@@ -70,29 +61,11 @@ impl WorkspaceReadSnapshot {
         &self.db
     }
 
-    /// Acquire a coherent read snapshot under the shared publication lock.
+    /// Acquire a coherent read snapshot of the SQLite and Tantivy stores.
     pub async fn acquire(
         binding: &WorkspaceBinding,
-        paths: &RegistryPaths,
-    ) -> Result<Self, SnapshotError> {
-        Self::acquire_with_deadline(
-            binding,
-            paths,
-            Instant::now() + std::time::Duration::from_secs(10),
-        )
-        .await
-    }
-
-    /// Acquire a coherent read snapshot with a specific deadline.
-    pub async fn acquire_with_deadline(
-        binding: &WorkspaceBinding,
         _paths: &RegistryPaths,
-        deadline: Instant,
     ) -> Result<Self, SnapshotError> {
-        let lock_path = binding.index_root.join("publication.lock");
-        let lock = PublicationLock::from_path(&lock_path);
-        let guard = lock.acquire_shared(deadline).await?;
-
         let db_path = binding.index_root.join("db").join("symbols.db");
         let db = SymbolDatabase::new(&db_path).map_err(SnapshotError::Database)?;
         let db_arc = Arc::new(std::sync::Mutex::new(db));
@@ -155,7 +128,6 @@ impl WorkspaceReadSnapshot {
             stamp,
             searcher,
             db: db_arc,
-            _guard: Some(guard),
         })
     }
 
@@ -205,22 +177,4 @@ impl WorkspaceReadSnapshot {
 
         Ok(results)
     }
-}
-
-/// Helper to acquire an exclusive publication lock guard for a given index root.
-pub fn acquire_exclusive_publication_lock(
-    index_root: &Path,
-) -> Result<julie_core::workspace::publication_lock::PublicationExclusiveGuard, PublicationLockError>
-{
-    let lock_path = index_root.join("publication.lock");
-    PublicationLock::acquire_exclusive_path(&lock_path)
-}
-
-/// Helper to non-blocking try-acquire an exclusive publication lock guard for a given index root.
-pub fn try_acquire_exclusive_publication_lock(
-    index_root: &Path,
-) -> Result<julie_core::workspace::publication_lock::PublicationExclusiveGuard, PublicationLockError>
-{
-    let lock_path = index_root.join("publication.lock");
-    PublicationLock::try_acquire_exclusive(&lock_path)
 }

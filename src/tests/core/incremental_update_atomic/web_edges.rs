@@ -412,16 +412,9 @@ async fn test_watcher_delete_handler_degrades_cross_file_edge_to_external() {
     }
 
     let handler_abs = workspace_root.join("src/Controller.php");
-    let tmp_lock = tempfile::TempDir::new().unwrap();
-    let lock_guard = julie_core::workspace::leader_lock::DaemonLockGuard::try_acquire(
-        &tmp_lock.path().join("leader.lock"),
-    )
-    .unwrap();
-    let epoch =
-        julie_core::workspace::ownership::OwnerEpoch::new(1, "test_ws".to_string(), lock_guard);
     let registry = crate::workspace::mutation_gate::Registry::new();
-    let permit = epoch.acquire_writer(&registry).await.unwrap();
-    handle_file_deleted_static(handler_abs, &db, &workspace_root, None, &permit)
+    let guard = registry.acquire("test_ws").await;
+    handle_file_deleted_static(handler_abs, &db, &workspace_root, None, &guard)
         .await
         .expect("watcher delete must succeed");
 

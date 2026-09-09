@@ -28,9 +28,9 @@ impl QueueRuntime {
             return;
         };
 
-        // Acquire the writer permit before writing to Tantivy.
-        let Some(_permit) = self
-            .acquire_writer_permit_or_mark_rescan("dirty Tantivy retry")
+        // Acquire the mutation gate before writing to Tantivy.
+        let Some(_guard) = self
+            .acquire_gate_or_mark_rescan("dirty Tantivy retry")
             .await
         else {
             return;

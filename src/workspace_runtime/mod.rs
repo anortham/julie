@@ -1,5 +1,5 @@
 //! src/workspace_runtime/mod.rs
-//! Workspace runtime lifecycle management, phases, leases, and errors.
+//! Workspace runtime lifecycle management, phases, and errors.
 
 pub mod builder;
 pub mod continuation;
@@ -34,15 +34,13 @@ pub use dirty_queue::{
 pub use edit_journal::{
     EditDisposition, EditJournal, JournalFileEntry, JournalFileState, JournalState, RecoveryAction,
 };
-pub use julie_core::workspace::ownership::{RuntimePhaseKind, allowed_transition};
 pub use manager::{RuntimeKey, WorkspaceRuntimeManager};
 pub use owner::WorkspaceRuntime;
 pub use publication::{SnapshotError, WorkspaceReadSnapshot};
 pub use recovery::ProjectionRecoveryCoordinator;
 pub use scheduler::{
-    DEFAULT_ADMISSION_TIMEOUT, DEFAULT_MAX_SOURCE_SIZE_BYTES, DEFAULT_SCHEDULING_QUANTUM,
-    FileCommitter, ProcessFairScheduler, QuantumReport, SchedulerConfig, SchedulerError,
-    WorkspaceScheduler,
+    DEFAULT_MAX_SOURCE_SIZE_BYTES, DEFAULT_SCHEDULING_QUANTUM, FileCommitter, ProcessFairScheduler,
+    QuantumReport, SchedulerConfig, SchedulerError, WorkspaceScheduler,
 };
 pub use source_edit::{
     DEFAULT_MAX_EDIT_SOURCE_BYTES, ENV_MAX_EDIT_SOURCE_BYTES, MAX_MAX_EDIT_SOURCE_BYTES,
@@ -54,7 +52,7 @@ pub use source_edit::{
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimePhase {
     /// Active index owner: exclusive writer for SQLite and Tantivy.
-    Owner { epoch: u64 },
+    Owner,
     /// Unrecoverable error state.
     Failed { code: String },
 }
@@ -68,47 +66,23 @@ pub enum TransitionError {
     },
     #[error("Failed cannot become Owner; runtime is in failed state")]
     FailedToOwnerForbidden,
-    #[error("Owner epoch cannot decrement: current {current}, next {next}")]
-    EpochDecrementForbidden { current: u64, next: u64 },
 }
 
 impl RuntimePhase {
-    /// Pure discriminant kind for state machine transition evaluation.
-    pub fn kind(&self) -> RuntimePhaseKind {
-        match self {
-            Self::Owner { .. } => RuntimePhaseKind::Owner,
-            Self::Failed { .. } => RuntimePhaseKind::Failed,
-        }
-    }
-
-    /// Validate state machine transitions.
+    /// Validate state machine transitions: `Failed` is terminal.
     pub fn validate_transition(&self, next: &RuntimePhase) -> Result<(), TransitionError> {
-        let from_kind = self.kind();
-        let to_kind = next.kind();
-
-        if !allowed_transition(from_kind, to_kind) {
-            return match (from_kind, to_kind) {
-                (RuntimePhaseKind::Failed, RuntimePhaseKind::Owner) => {
-                    Err(TransitionError::FailedToOwnerForbidden)
-                }
-                _ => Err(TransitionError::InvalidTransition {
+        match (self, next) {
+            (RuntimePhase::Failed { .. }, RuntimePhase::Owner) => {
+                Err(TransitionError::FailedToOwnerForbidden)
+            }
+            (RuntimePhase::Failed { .. }, RuntimePhase::Failed { .. }) => {
+                Err(TransitionError::InvalidTransition {
                     from: self.clone(),
                     to: next.clone(),
-                }),
-            };
+                })
+            }
+            _ => Ok(()),
         }
-
-        if let (RuntimePhase::Owner { epoch: cur }, RuntimePhase::Owner { epoch: next }) =
-            (self, next)
-            && next <= cur
-        {
-            return Err(TransitionError::EpochDecrementForbidden {
-                current: *cur,
-                next: *next,
-            });
-        }
-
-        Ok(())
     }
 
     pub fn can_transition_to(&self, next: &RuntimePhase) -> bool {
@@ -116,7 +90,7 @@ impl RuntimePhase {
     }
 
     pub fn is_owner(&self) -> bool {
-        matches!(self, RuntimePhase::Owner { .. })
+        matches!(self, RuntimePhase::Owner)
     }
 
     pub fn is_terminal(&self) -> bool {
@@ -156,8 +130,6 @@ impl Drop for RuntimeLease {
 
 #[derive(Debug, Error)]
 pub enum RuntimeError {
-    #[error("Failed to acquire leader lock: {0}")]
-    LockAcquire(String),
     #[error("Runtime failed: {0}")]
     Failed(String),
     #[error("Transition error: {0}")]

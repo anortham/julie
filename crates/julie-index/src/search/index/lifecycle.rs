@@ -133,11 +133,7 @@ impl SearchIndex {
                         );
                         drop(existing);
                         (
-                            Self::recreate_index_with_lock(
-                                path,
-                                &expected_schema,
-                                &expected_marker,
-                            )?,
+                            Self::recreate_index(path, &expected_schema, &expected_marker)?,
                             SearchIndexOpenDisposition::RecreatedIncompatible,
                         )
                     }
@@ -148,14 +144,14 @@ impl SearchIndex {
                         path.display()
                     );
                     (
-                        Self::recreate_index_with_lock(path, &expected_schema, &expected_marker)?,
+                        Self::recreate_index(path, &expected_schema, &expected_marker)?,
                         SearchIndexOpenDisposition::RecreatedOpenFailure,
                     )
                 }
             }
         } else {
             (
-                Self::recreate_index_with_lock(path, &expected_schema, &expected_marker)?,
+                Self::recreate_index(path, &expected_schema, &expected_marker)?,
                 SearchIndexOpenDisposition::Compatible,
             )
         };
@@ -210,7 +206,7 @@ impl SearchIndex {
                     );
                     drop(index);
                     (
-                        Self::recreate_index_with_lock(path, &expected_schema, &expected_marker)?,
+                        Self::recreate_index(path, &expected_schema, &expected_marker)?,
                         SearchIndexOpenDisposition::RecreatedIncompatible,
                     )
                 }
@@ -221,7 +217,7 @@ impl SearchIndex {
                     path.display()
                 );
                 (
-                    Self::recreate_index_with_lock(path, &expected_schema, &expected_marker)?,
+                    Self::recreate_index(path, &expected_schema, &expected_marker)?,
                     SearchIndexOpenDisposition::RecreatedOpenFailure,
                 )
             }

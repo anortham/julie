@@ -3,7 +3,7 @@
 //! These tests verify that file creation, modification, deletion, and rename
 //! operations correctly update the database with proper path handling.
 
-use crate::tests::test_writer_permit;
+use crate::tests::test_mutation_guard;
 use crate::watcher::handlers::{
     handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
 };
@@ -46,7 +46,7 @@ fn caller() -> i32 {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -130,7 +130,7 @@ public:
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     handle_file_created_or_modified_static(absolute_path, &db, &workspace_root, None, &permit)
         .await
@@ -193,7 +193,7 @@ pub fn should_use_semantic_fallback() {}
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     handle_file_created_or_modified_static(callee_abs, &db, &workspace_root, None, &permit)
         .await
@@ -258,7 +258,7 @@ fn original_symbol() {}
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     let initial_outcome = handle_file_created_or_modified_static(
         absolute_path.clone(),
@@ -338,7 +338,7 @@ fn initial_function() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
 
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     println!("DEBUG: absolute_path = {}", absolute_path.display());
     println!("DEBUG: workspace_root = {}", workspace_root.display());
@@ -623,7 +623,7 @@ async fn test_file_deletion_absolute_path() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -674,7 +674,7 @@ async fn test_file_rename_absolute_paths() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     // Index original file
     handle_file_created_or_modified_static(
@@ -732,7 +732,7 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         old_absolute.clone(),
@@ -809,7 +809,7 @@ async fn test_file_rename_persists_repair_when_source_retirement_fails() {
     let db = Arc::new(Mutex::new(
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
-    let permit = test_writer_permit(&workspace_root).await;
+    let permit = test_mutation_guard(&workspace_root).await;
 
     handle_file_created_or_modified_static(
         old_absolute.clone(),

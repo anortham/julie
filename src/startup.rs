@@ -61,9 +61,9 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 /// Acquire the mutation gate for the primary workspace, then run the repair pass.
 ///
 /// This is the public entry point. It serializes concurrent catch-up scans by
-use julie_core::workspace::ownership::WriterPermit;
+use julie_core::workspace::mutation_gate::MutationGuard;
 
-/// Perform primary workspace repair at startup while holding an authentic `WriterPermit`.
+/// Perform primary workspace repair at startup under the workspace mutation gate.
 pub(crate) async fn run_primary_workspace_repair(
     handler: &JulieServerHandler,
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
@@ -71,31 +71,22 @@ pub(crate) async fn run_primary_workspace_repair(
         return Ok(None);
     };
 
-    let permit = match handler.acquire_writer_permit(&workspace_id).await {
-        Ok(p) => p,
-        Err(julie_core::workspace::ownership::OwnershipError::NotOwner) => return Ok(None),
-        Err(e) => {
-            return Err(anyhow::anyhow!(
-                "Cannot acquire writer permit for repair: {e}"
-            ));
-        }
-    };
-    run_primary_workspace_repair_inner(&permit, handler).await
+    let guard = handler.acquire_mutation_guard(&workspace_id).await;
+    run_primary_workspace_repair_inner(&guard, handler).await
 }
 
-/// Inner repair implementation. Takes a `&WriterPermit<'_>` as a proof token
-/// that the caller already holds an authentic OS owner permit.
+/// Inner repair implementation. Takes a `&MutationGuard<'_>` as a proof token
+/// that the caller already holds the workspace mutation gate.
 pub(crate) async fn run_primary_workspace_repair_inner(
-    permit: &WriterPermit<'_>,
+    guard: &MutationGuard<'_>,
     handler: &JulieServerHandler,
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
-    run_primary_workspace_repair_body(handler, permit).await
+    run_primary_workspace_repair_body(handler, guard).await
 }
 
-/// The actual repair body requiring a live `WriterPermit`.
 async fn run_primary_workspace_repair_body(
     handler: &JulieServerHandler,
-    permit: &WriterPermit<'_>,
+    guard: &MutationGuard<'_>,
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
     let indexing_runtime = handler
         .primary_workspace_snapshot()
@@ -164,7 +155,7 @@ async fn run_primary_workspace_repair_body(
                 });
                 let skip_embeddings = !repair_rebuilds_embedding_inputs;
                 index_tool
-                    .handle_index_command_with_permit(handler, None, false, skip_embeddings, permit)
+                    .handle_index_command_with_guard(handler, None, false, skip_embeddings, guard)
                     .await?;
                 if let Some(runtime) = indexing_runtime.as_ref() {
                     let mut runtime = runtime
@@ -190,15 +181,15 @@ async fn run_primary_workspace_repair_body(
     }
 
     let repair_plan = repair_result?;
-    reconcile_projections_after_successful_repair(permit, handler).await?;
+    reconcile_projections_after_successful_repair(guard, handler).await?;
     Ok(repair_plan)
 }
 
 async fn reconcile_projections_after_successful_repair(
-    permit: &WriterPermit<'_>,
+    guard: &MutationGuard<'_>,
     handler: &JulieServerHandler,
 ) -> Result<()> {
-    reconcile_projection_lag_if_needed(permit, handler).await
+    reconcile_projection_lag_if_needed(guard, handler).await
 }
 
 async fn cancel_primary_embedding_task(handler: &JulieServerHandler) {
@@ -243,7 +234,7 @@ async fn cancel_primary_embedding_task(handler: &JulieServerHandler) {
 /// Called after every successful startup repair outcome. Idempotent: if each
 /// projection is current, the checks return without touching derived state.
 async fn reconcile_projection_lag_if_needed(
-    _permit: &WriterPermit<'_>,
+    _guard: &MutationGuard<'_>,
     handler: &JulieServerHandler,
 ) -> Result<()> {
     let snapshot = match handler.primary_workspace_snapshot().await {
