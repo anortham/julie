@@ -341,6 +341,11 @@ impl RegistryPaths {
         false
     }
 
+    /// Runtime discovery record for the machine service. Not a database.
+    pub fn service_json(&self) -> PathBuf {
+        self.julie_home.join("service.json")
+    }
+
     /// Directory containing all workspace indexes.
     pub fn indexes_dir(&self) -> PathBuf {
         self.julie_home.join("indexes")

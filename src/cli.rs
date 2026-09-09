@@ -79,6 +79,26 @@ pub enum Command {
     // -- Generic tool fallback -----------------------------------------------
     /// Run any tool by name with JSON params
     Tool(GenericToolArgs),
+
+    // -- Service command -----------------------------------------------------
+    /// Run the machine service in the foreground (started automatically by clients).
+    Service(ServiceArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub struct ServiceArgs {
+    #[command(subcommand)]
+    pub action: Option<ServiceAction>,
+}
+
+#[derive(clap::Subcommand, Debug, Clone)]
+pub enum ServiceAction {
+    /// Print the running service's status document.
+    Status,
+    /// Ask the running service to exit.
+    Stop,
+    /// Stop the running service, then start a new one.
+    Restart,
 }
 
 /// Resolve the workspace root path from CLI arg, env var, or current directory.
@@ -130,7 +150,11 @@ pub fn resolve_workspace_root(cli_workspace: Option<PathBuf>) -> PathBuf {
 }
 
 pub fn cli_command_needs_workspace_startup_hint(command: &Option<Command>) -> bool {
-    command.is_none()
+    match command {
+        None => true,
+        Some(Command::Service(_)) => false,
+        Some(_) => false,
+    }
 }
 
 fn resolve_explicit_workspace_candidate(

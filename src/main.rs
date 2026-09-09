@@ -77,6 +77,10 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Extract(raw_args)) => {
             run_extract_command(raw_args, &cli.tool_flags).await?;
         }
+        Some(Command::Service(args)) => match args.action {
+            None => julie::service::run_service(julie::service::ServiceConfig::from_env()?).await?,
+            Some(_) => anyhow::bail!("service status/stop/restart arrive in Task 4"),
+        },
 
         None => {
             debug_assert!(needs_workspace_startup_hint);

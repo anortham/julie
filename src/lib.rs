@@ -31,6 +31,7 @@ pub mod paths;
 pub mod registry;
 pub mod request_engine;
 pub mod server_in_process;
+pub mod service;
 pub mod workspace_runtime;
 
 #[cfg(test)]
