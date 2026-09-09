@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-use tracing::warn;
-
 use crate::dashboard::AppState;
 use crate::handler::JulieServerHandler;
 use crate::workspace::registry::generate_workspace_id;
@@ -30,17 +28,6 @@ pub(crate) async fn dashboard_handler(
         .await?;
 
     Ok((handler, anchor_dir, anchor_id))
-}
-
-pub(crate) async fn disconnect_dashboard_attached_workspaces(handler: &JulieServerHandler) {
-    for workspace_id in handler.session_attached_workspace_ids().await {
-        if let Err(error) = handler.detach_workspace_for_session(&workspace_id).await {
-            warn!(
-                workspace_id,
-                "Failed to detach dashboard workspace session: {error}"
-            );
-        }
-    }
 }
 
 pub(crate) async fn cleanup_dashboard_anchor(state: &AppState, anchor_id: &str) {

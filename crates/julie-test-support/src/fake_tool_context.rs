@@ -42,7 +42,6 @@ pub struct FakeToolContext {
     /// Injected workspace root — returned verbatim by `require_primary_workspace_root`.
     /// No filesystem walk. Tests inject e.g. a `TempDir` path.
     pub primary_workspace_root: Option<PathBuf>,
-    pub swap_in_progress: bool,
 
     // ── Spillover ───────────────────────────────────────────────────────────
     pub spillover: Arc<SpilloverStore>,
@@ -74,7 +73,6 @@ impl Default for FakeToolContext {
             primary_workspace_id: None,
             loaded_workspace_id_val: None,
             primary_workspace_root: None,
-            swap_in_progress: false,
             spillover: Arc::new(SpilloverStore::default()),
             primary_db_path: None,
             workspace_db_paths: HashMap::new(),
@@ -152,11 +150,6 @@ impl FakeToolContext {
         self
     }
 
-    pub fn with_swap_in_progress(mut self, val: bool) -> Self {
-        self.swap_in_progress = val;
-        self
-    }
-
     // ── Internal helper ──────────────────────────────────────────────────────
 
     fn open_db(&self, method: &str) -> Result<SymbolDatabase> {
@@ -199,10 +192,6 @@ impl ToolContext for FakeToolContext {
 
     fn loaded_workspace_id(&self) -> Option<String> {
         self.loaded_workspace_id_val.clone()
-    }
-
-    fn is_primary_workspace_swap_in_progress(&self) -> bool {
-        self.swap_in_progress
     }
 
     fn session_id(&self) -> &str {
@@ -309,7 +298,6 @@ mod tests {
         assert_eq!(ctx.session_id(), "fake-session");
         assert_eq!(ctx.current_workspace_id(), None);
         assert_eq!(ctx.loaded_workspace_id(), None);
-        assert!(!ctx.is_primary_workspace_swap_in_progress());
     }
 
     #[tokio::test]
@@ -317,13 +305,11 @@ mod tests {
         let ctx = FakeToolContext::new()
             .with_session_id("test-session")
             .with_workspace_id("ws-abc")
-            .with_loaded_workspace_id("ws-secondary")
-            .with_swap_in_progress(true);
+            .with_loaded_workspace_id("ws-secondary");
 
         assert_eq!(ctx.session_id(), "test-session");
         assert_eq!(ctx.current_workspace_id(), Some("ws-abc".to_string()));
         assert_eq!(ctx.loaded_workspace_id(), Some("ws-secondary".to_string()));
-        assert!(ctx.is_primary_workspace_swap_in_progress());
         assert_eq!(ctx.require_primary_workspace_identity().unwrap(), "ws-abc");
     }
 

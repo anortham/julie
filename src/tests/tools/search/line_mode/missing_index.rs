@@ -72,7 +72,7 @@ async fn test_fast_search_line_mode_reports_index_requirement_for_reference_with
     )?;
     let _reference_db = crate::database::SymbolDatabase::new(&reference_db_path)?;
 
-    handler.mark_workspace_active(&reference_id).await;
+    handler.mark_workspace_active(&reference_id);
     mark_index_ready(&handler).await;
 
     let search_tool = FastSearchTool {
@@ -205,7 +205,7 @@ async fn test_fast_search_definitions_reports_index_requirement_for_reference_wi
         &reference_id,
     )?;
 
-    handler.mark_workspace_active(&reference_id).await;
+    handler.mark_workspace_active(&reference_id);
     mark_index_ready(&handler).await;
 
     let search_tool = FastSearchTool {

@@ -49,10 +49,6 @@
           <td style="border: none; padding: 0.25rem 0;">{{ workspace.session_state.badge_html | safe }}</td>
         </tr>
         <tr>
-          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Current primaries</td>
-          <td style="border: none; padding: 0.25rem 0;">{{ workspace.session_state.current_session_count }}</td>
-        </tr>
-        <tr>
           <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Path health</td>
           <td style="border: none; padding: 0.25rem 0;">
             {% if workspace.session_state.path_state_badge_html %}

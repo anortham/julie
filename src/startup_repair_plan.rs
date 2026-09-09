@@ -25,10 +25,6 @@ pub(crate) async fn plan_primary_workspace_repair(
         {
             Ok(route) => route,
             Err(err) => {
-                if handler.is_primary_workspace_swap_in_progress() {
-                    return Err(anyhow::Error::new(err));
-                }
-
                 if handler.get_workspace().await?.is_none() {
                     debug!("No workspace found - indexing needed");
                     return Ok(Some(PrimaryWorkspaceRepairPlan {

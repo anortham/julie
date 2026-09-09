@@ -328,32 +328,6 @@ async fn test_fast_refs_primary_uses_rebound_current_primary_store() -> Result<(
 }
 
 #[tokio::test]
-async fn test_fast_refs_primary_rejects_swap_gap() -> Result<()> {
-    let (handler, _rebound_id, _rebound_path) = setup_rebound_primary_fast_refs_handler().await?;
-    handler.publish_loaded_workspace_swap_intent_for_test();
-
-    let err = FastRefsTool {
-        symbol: "rebound_primary_symbol".to_string(),
-        include_definition: true,
-        limit: 10,
-        workspace: Some("primary".to_string()),
-        reference_kind: None,
-        semantics: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect_err("swap gap should reject primary fast_refs");
-
-    assert!(
-        err.to_string()
-            .contains("Primary workspace identity unavailable during swap"),
-        "unexpected error: {err:#}"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn test_fast_refs_primary_keeps_rebound_source_name_resolution_after_rebind() -> Result<()> {
     let (handler, _rebound_id, _rebound_path) = setup_rebound_primary_fast_refs_handler().await?;
 

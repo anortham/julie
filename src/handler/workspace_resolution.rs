@@ -2,8 +2,8 @@
 //!
 //! `resolve_workspace_filter` backs `ToolContext::resolve_workspace_target`.
 //! It lives here (adjacent to `tool_context_impl.rs`) because it accesses
-//! `JulieServerHandler` fields directly: `daemon_db`, `activate_workspace_with_root`,
-//! `was_workspace_attached_in_session`, `is_workspace_active`.
+//! `JulieServerHandler` fields directly: `daemon_db`, `mark_workspace_active`,
+//! `is_workspace_active`.
 //!
 //! Handler-free helpers (`parse_qualified_name`, `definition_priority`, etc.)
 //! stay in `src/tools/navigation/resolution.rs`.
@@ -87,17 +87,9 @@ pub async fn resolve_workspace_filter(
 
                 return match workspace_row_opt {
                     Some(workspace_row) => {
-                        let startup_workspace_loaded_for_session =
-                            handler.loaded_workspace_id().as_deref()
-                                == Some(workspace_row.workspace_id.as_str())
-                                && handler
-                                    .was_workspace_attached_in_session(&workspace_row.workspace_id)
-                                    .await;
-
                         if handler
                             .is_workspace_active(&workspace_row.workspace_id)
                             .await
-                            || startup_workspace_loaded_for_session
                         {
                             Ok(WorkspaceTarget::Target(workspace_row.workspace_id))
                         } else if workspace_row.status != "ready" {
@@ -108,29 +100,9 @@ pub async fn resolve_workspace_filter(
                                     workspace_id, workspace_row.status, workspace_id
                                 ),
                             ))
-                        } else if handler.is_primary_workspace_swap_in_progress() {
-                            Err(workspace_resolution_failure(
-                                WorkspaceResolutionFailureKind::PrimarySwapInProgress,
-                                "Primary workspace swap in progress; retry workspace-scoped query after the swap completes.",
-                            ))
                         } else {
-                            let workspace_root = PathBuf::from(&workspace_row.path);
-                            match handler
-                                .activate_workspace_with_root(
-                                    &workspace_row.workspace_id,
-                                    workspace_root,
-                                )
-                                .await
-                            {
-                                Ok(_) => Ok(WorkspaceTarget::Target(workspace_row.workspace_id)),
-                                Err(error) => Err(workspace_resolution_failure(
-                                    WorkspaceResolutionFailureKind::AutoActivationFailed,
-                                    format!(
-                                        "Workspace '{}' is known but auto-activation failed: {}. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
-                                        workspace_id, error, workspace_id
-                                    ),
-                                )),
-                            }
+                            handler.mark_workspace_active(&workspace_row.workspace_id);
+                            Ok(WorkspaceTarget::Target(workspace_row.workspace_id))
                         }
                     }
                     None => {

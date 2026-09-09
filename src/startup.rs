@@ -25,10 +25,6 @@ pub async fn checkpoint_active_workspace_wal(
     let primary_snapshot = match handler.primary_workspace_snapshot().await {
         Ok(snapshot) => snapshot,
         Err(err) => {
-            if handler.is_primary_workspace_swap_in_progress() {
-                return Err(err);
-            }
-
             if handler.get_workspace().await?.is_none() {
                 return Ok(None);
             }

@@ -68,9 +68,6 @@ impl julie_context::ToolContext for IsolatedStorageHandler {
     fn loaded_workspace_id(&self) -> Option<String> {
         julie_context::ToolContext::loaded_workspace_id(&self.handler)
     }
-    fn is_primary_workspace_swap_in_progress(&self) -> bool {
-        julie_context::ToolContext::is_primary_workspace_swap_in_progress(&self.handler)
-    }
     fn session_id(&self) -> &str {
         julie_context::ToolContext::session_id(&self.handler)
     }

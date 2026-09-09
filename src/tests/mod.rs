@@ -79,7 +79,6 @@ pub mod tools {
     pub mod refactoring; // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
 
     pub mod workspace {
-        pub mod deferred_open; // Deferred-session workspace open path tests
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
         pub mod embedding_deferred; // Deferred-embedding non-blocking semantics (Task 2)
         pub mod file_policy; // Shared watcher/indexer extraction and path policy parity tests

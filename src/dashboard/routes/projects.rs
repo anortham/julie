@@ -1,7 +1,5 @@
 //! Projects page route handlers.
 
-use std::collections::HashMap;
-
 use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
@@ -35,7 +33,6 @@ pub struct WorkspaceSessionStateView {
     pub cleanup_block_reason: Option<String>,
     pub path_state_label: String,
     pub path_state_badge_html: String,
-    pub current_session_count: usize,
     pub active_session_count: usize,
 }
 
@@ -139,58 +136,24 @@ fn path_state_badge(label: &str) -> String {
     }
 }
 
-fn base_session_state(
-    workspace: &WorkspaceRow,
-    current_workspace_counts: &HashMap<String, usize>,
-) -> (String, String, usize, usize) {
-    let current_session_count = current_workspace_counts
-        .get(&workspace.workspace_id)
-        .copied()
-        .unwrap_or(0);
+fn base_session_state(workspace: &WorkspaceRow) -> (String, String, usize) {
     let active_session_count = workspace.session_count.max(0) as usize;
 
-    let (label, detail) = if current_session_count > 0 {
-        let suffix = if current_session_count == 1 { "" } else { "s" };
-        let detail = if active_session_count > current_session_count {
-            format!(
-                "{} session{} have this as primary, {} total are attached.",
-                current_session_count, suffix, active_session_count
-            )
-        } else {
-            format!(
-                "{} session{} have this as primary.",
-                current_session_count, suffix
-            )
-        };
-        ("CURRENT", detail)
-    } else if active_session_count > 0 {
+    let (label, detail) = if active_session_count > 0 {
         let suffix = if active_session_count == 1 { "" } else { "s" };
         (
             "ACTIVE",
-            format!(
-                "{} session{} are attached without owning primary.",
-                active_session_count, suffix
-            ),
+            format!("{} session{} attached.", active_session_count, suffix),
         )
     } else {
         ("KNOWN", "Indexed and inactive.".to_string())
     };
 
-    (
-        label.to_string(),
-        detail,
-        current_session_count,
-        active_session_count,
-    )
+    (label.to_string(), detail, active_session_count)
 }
 
-async fn workspace_session_state(
-    _state: &AppState,
-    workspace: &WorkspaceRow,
-    current_workspace_counts: &HashMap<String, usize>,
-) -> WorkspaceSessionStateView {
-    let (label, base_detail, current_session_count, active_session_count) =
-        base_session_state(workspace, current_workspace_counts);
+async fn workspace_session_state(workspace: &WorkspaceRow) -> WorkspaceSessionStateView {
+    let (label, base_detail, active_session_count) = base_session_state(workspace);
     let cleanup_activity = WorkspaceCleanupActivity::new(Default::default());
     let lifecycle =
         inspect_workspace_cleanup_state(workspace, &cleanup_activity, CLEANUP_ACTION_AUTO_PRUNE)
@@ -239,7 +202,6 @@ async fn workspace_session_state(
         cleanup_block_reason,
         path_state_label: path_state_label.clone(),
         path_state_badge_html: path_state_badge(&path_state_label),
-        current_session_count,
         active_session_count,
     }
 }
@@ -264,11 +226,9 @@ async fn load_projects_page_data(state: &AppState) -> ProjectsPageData {
         .daemon_db()
         .and_then(|db| db.list_workspaces().ok())
         .unwrap_or_default();
-    let current_workspace_counts = state.dashboard.sessions().current_workspace_counts();
     let mut workspaces = Vec::with_capacity(workspace_rows.len());
     for workspace in workspace_rows {
-        let session_state =
-            workspace_session_state(state, &workspace, &current_workspace_counts).await;
+        let session_state = workspace_session_state(&workspace).await;
         workspaces.push(ProjectWorkspaceView {
             workspace,
             session_state,
@@ -500,9 +460,8 @@ pub async fn detail(
         .get_workspace(&workspace_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    let current_workspace_counts = state.dashboard.sessions().current_workspace_counts();
     let workspace = ProjectWorkspaceView {
-        session_state: workspace_session_state(&state, &workspace, &current_workspace_counts).await,
+        session_state: workspace_session_state(&workspace).await,
         workspace,
     };
     let health = db.get_latest_snapshot(&workspace_id).ok().flatten();

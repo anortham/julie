@@ -35,8 +35,6 @@ use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
 use crate::dashboard::state::DashboardEvent;
-use crate::registry::session::{SessionLifecycleHandle, SessionLifecyclePhase};
-use crate::registry::workspace_session_attachment::WorkspaceSessionAttachment;
 
 use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
 use crate::database::SymbolDatabase;
@@ -56,69 +54,6 @@ pub(crate) struct PrimaryWorkspaceSnapshot {
     pub database: Arc<std::sync::Mutex<SymbolDatabase>>,
     pub search_index: Option<Arc<SearchIndex>>,
     pub indexing_runtime: Option<crate::tools::workspace::indexing::state::SharedIndexingRuntime>,
-}
-
-#[derive(Clone)]
-struct PrimarySwapRollback {
-    workspace: Option<JulieWorkspace>,
-    loaded_workspace_id: Option<String>,
-    loaded_workspace_root: Option<PathBuf>,
-    session_workspace: SessionWorkspaceState,
-}
-
-impl PrimarySwapRollback {
-    async fn capture(handler: &JulieServerHandler) -> Self {
-        let workspace = handler.workspace.read().await.clone();
-        let loaded_workspace_root = workspace.as_ref().map(|workspace| workspace.root.clone());
-        let loaded_workspace_id = handler
-            .workspace_id
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone();
-        let session_workspace = handler
-            .session_workspace
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone();
-
-        Self {
-            workspace,
-            loaded_workspace_id,
-            loaded_workspace_root,
-            session_workspace,
-        }
-    }
-
-    async fn restore(self, handler: &JulieServerHandler) -> Result<()> {
-        let mut restored_workspace = match self.loaded_workspace_root.clone() {
-            Some(workspace_root) => JulieWorkspace::detect_and_load(workspace_root)
-                .await?
-                .or(self.workspace),
-            None => self.workspace,
-        };
-
-        if handler.daemon_db.is_none() {
-            if let Some(workspace) = restored_workspace.as_mut() {
-                if workspace.config.incremental_updates {
-                    workspace.initialize_file_watcher()?;
-                    workspace.start_file_watching(true).await?;
-                }
-            }
-        }
-
-        *handler.workspace.write().await = restored_workspace;
-        handler.set_loaded_workspace_id(self.loaded_workspace_id);
-        let phase = {
-            let mut session_workspace = handler
-                .session_workspace
-                .write()
-                .unwrap_or_else(|p| p.into_inner());
-            *session_workspace = self.session_workspace;
-            session_workspace.lifecycle_phase()
-        };
-        handler.publish_session_lifecycle_snapshot(phase, handler.current_workspace_id());
-        Ok(())
-    }
 }
 
 // Production callers were removed with the WorkspacePool metrics fast-path in
@@ -234,31 +169,14 @@ pub struct JulieServerHandler {
     pub(crate) workspace_id: Arc<StdRwLock<Option<String>>>,
     /// Shared embedding service for daemon mode. None in stdio mode.
     pub(crate) embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
-    /// Set when on_initialized defers auto-indexing until the primary workspace
-    /// is resolved from client roots. Consumed by the first successful bind.
-    deferred_auto_index_pending: Arc<AtomicBool>,
-    /// Single-flight gate for deferred auto-index repair so primary requests can
-    /// wait behind an already-started background repair instead of racing it.
-    deferred_auto_index_gate: Arc<tokio::sync::Mutex<()>>,
     /// Serializes concurrent roots resolution calls so only one task sends a
     /// ListRoots round-trip to the client at a time. The second waiter re-checks
     /// the binding state after acquiring the gate and short-circuits when the
     /// first caller already bound the workspace.
     roots_resolution_gate: Arc<tokio::sync::Mutex<()>>,
-    /// In-flight claim for the F1 background repair spawn (codex pre-merge F-C).
-    /// The leader's `call_tool` envelope spawns a non-cancellable repair task
-    /// when `deferred_auto_index_pending` is set; without a claim, every
-    /// concurrent in-process read would spawn its own task, and on persistent
-    /// repair failure each queued task re-runs the (failed) repair in turn.
-    /// A `compare_exchange(false → true)` claim ensures at most ONE repair task
-    /// is outstanding per release cycle.
-    deferred_auto_index_in_flight: Arc<AtomicBool>,
     /// Certification/replay handlers can index external repos without writing
     /// helper files such as `.julieignore` into those repos.
     pub(crate) suppress_workspace_file_writes: Arc<AtomicBool>,
-    /// Optional daemon session lifecycle handle. Present when this handler is
-    /// serving an IPC session through the daemon.
-    session_lifecycle: Option<SessionLifecycleHandle>,
     /// Bounded channel sender for background metrics writes (M03).
     /// A single background task drains this; try_send drops on backpressure
     /// rather than spawning unbounded tasks.
@@ -432,85 +350,17 @@ impl JulieServerHandler {
     }
 
     fn activate_primary_binding(&self, binding: &PrimaryWorkspaceBinding) {
-        self.rebind_current_primary(binding.workspace_id.clone(), binding.workspace_root.clone());
+        self.bind_current_primary(binding.workspace_id.clone(), binding.workspace_root.clone());
     }
 
-    fn mark_deferred_auto_index_pending(&self, pending: bool) {
-        use std::sync::atomic::Ordering;
-
-        self.deferred_auto_index_pending
-            .store(pending, Ordering::Release);
-    }
-
-    /// Claim the single in-flight deferred-repair slot (codex pre-merge F-C).
-    ///
-    /// Returns `true` for exactly ONE caller per release cycle — the caller that
-    /// flips the flag `false → true` owns the slot and must spawn the background
-    /// repair, then call [`Self::release_deferred_repair_slot`] when the spawned
-    /// task finishes. Concurrent callers lose the `compare_exchange` and get
-    /// `false`, so they skip spawning. This bounds a persistently-failing repair
-    /// to one outstanding task at a time instead of one per concurrent in-process
-    /// read.
-    pub(crate) fn try_claim_deferred_repair_slot(&self) -> bool {
-        use std::sync::atomic::Ordering;
-
-        self.deferred_auto_index_in_flight
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
-    }
-
-    /// Release the in-flight deferred-repair slot claimed by
-    /// [`Self::try_claim_deferred_repair_slot`]. Call exactly once after the
-    /// spawned repair task completes (success or failure), so the next pending
-    /// cycle can spawn a fresh task.
-    pub(crate) fn release_deferred_repair_slot(&self) {
-        use std::sync::atomic::Ordering;
-
-        self.deferred_auto_index_in_flight
-            .store(false, Ordering::Release);
-    }
-
-    async fn complete_deferred_auto_index_if_needed(&self) -> Result<()> {
-        use std::sync::atomic::Ordering;
-
-        let _deferred_guard = self.deferred_auto_index_gate.lock().await;
-        if !self
-            .deferred_auto_index_pending
-            .swap(false, Ordering::AcqRel)
-        {
-            return Ok(());
-        }
-
-        match crate::startup::run_primary_workspace_repair(self).await {
-            Ok(Some(plan)) => {
-                let reasons = plan
-                    .reasons
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                info!(%reasons, "Completed deferred auto-index repair");
-                Ok(())
-            }
-            Ok(None) => {
-                *self.is_indexed.write().await = true;
-                info!("Deferred auto-index repair found workspace already indexed");
-                Ok(())
-            }
-            Err(err) => {
-                self.mark_deferred_auto_index_pending(true);
-                Err(err.context("deferred auto-index repair failed"))
-            }
-        }
-    }
-
-    async fn attach_daemon_primary_binding_if_needed(
+    fn register_workspace_row(
         &self,
-        binding: &PrimaryWorkspaceBinding,
+        workspace_id: &str,
+        workspace_root: &std::path::Path,
     ) -> Result<()> {
-        self.session_attachment()
-            .attach_workspace_once(&binding.workspace_id, binding.workspace_root.clone())
-            .await?;
+        if let Some(db) = self.daemon_db.as_deref() {
+            db.upsert_workspace(workspace_id, &workspace_root.to_string_lossy(), "ready")?;
+        }
         Ok(())
     }
 
@@ -520,8 +370,10 @@ impl JulieServerHandler {
         };
 
         let primary_binding = self.primary_binding_for_root(primary_root)?;
-        self.attach_daemon_primary_binding_if_needed(&primary_binding)
-            .await?;
+        self.register_workspace_row(
+            &primary_binding.workspace_id,
+            &primary_binding.workspace_root,
+        )?;
 
         let mut secondary_workspace_ids = {
             let state = self
@@ -537,11 +389,7 @@ impl JulieServerHandler {
         };
         for root in roots.iter().skip(1).cloned() {
             let binding = self.primary_binding_for_root(root)?;
-            self.activate_workspace_with_root(
-                &binding.workspace_id,
-                binding.workspace_root.clone(),
-            )
-            .await?;
+            self.register_workspace_row(&binding.workspace_id, &binding.workspace_root)?;
             secondary_workspace_ids.insert(binding.workspace_id);
         }
 
@@ -554,8 +402,10 @@ impl JulieServerHandler {
     async fn reconcile_primary_workspace_to_startup_hint(&self) -> Result<()> {
         self.reject_sensitive_cwd_startup_hint()?;
         let startup_binding = self.primary_binding_for_root(self.workspace_startup_hint().path)?;
-        self.attach_daemon_primary_binding_if_needed(&startup_binding)
-            .await?;
+        self.register_workspace_row(
+            &startup_binding.workspace_id,
+            &startup_binding.workspace_root,
+        )?;
         let secondary_workspace_ids = {
             let state = self
                 .session_workspace
@@ -574,49 +424,25 @@ impl JulieServerHandler {
         Ok(())
     }
 
-    async fn ensure_primary_workspace_for_request(
-        &self,
-        peer: &Peer<RoleServer>,
-        complete_deferred_auto_index: bool,
-    ) -> Result<()> {
-        let existing_binding = match self.require_primary_binding() {
-            Ok(binding) => Some(binding),
-            Err(err) if self.is_primary_workspace_swap_in_progress() => return Err(err),
-            Err(_) => None,
-        };
+    async fn ensure_primary_workspace_for_request(&self, peer: &Peer<RoleServer>) -> Result<()> {
+        let existing_binding = self.require_primary_binding().ok();
         let prefers_request_roots = self.request_prefers_client_roots();
 
         if !prefers_request_roots {
             if self.roots_dirty() || existing_binding.is_none() {
                 self.reconcile_primary_workspace_to_startup_hint().await?;
-                if complete_deferred_auto_index {
-                    self.complete_deferred_auto_index_if_needed().await?;
-                }
             }
             return Ok(());
         }
 
         if existing_binding.is_some() && !self.roots_dirty() {
-            if complete_deferred_auto_index {
-                self.complete_deferred_auto_index_if_needed().await?;
-            }
             return Ok(());
         }
 
         if self.client_supports_workspace_roots() {
-            // Serialize concurrent ListRoots round-trips. Without the gate,
-            // two tasks (e.g. the `on_initialized` eager probe and the first
-            // incoming tool call) can both see an unbound state, both send
-            // ListRoots to the client, and then one hangs because the client
-            // only handles a single request. The gate ensures only one task
-            // performs the round-trip; the second waiter re-checks the
-            // binding state after acquiring and short-circuits when it finds
-            // the workspace already bound.
-            //
-            // The gate is held from the re-check through
-            // `reconcile_primary_workspace_roots` so the binding write is
-            // visible to the next waiter. It is released before the expensive
-            // `complete_deferred_auto_index_if_needed` call.
+            // Serialize concurrent ListRoots round-trips: the client handles a
+            // single outstanding request, so a second waiter re-checks the
+            // binding after acquiring and short-circuits when already bound.
             enum GateOutcome {
                 AlreadyBound,
                 Reconciled(bool),
@@ -624,8 +450,6 @@ impl JulieServerHandler {
             }
             let gate_outcome: GateOutcome = {
                 let _gate = self.roots_resolution_gate.lock().await;
-                // Re-check inside the gate — the previous holder may have
-                // already bound the workspace.
                 if self.require_primary_binding().is_ok() && !self.roots_dirty() {
                     GateOutcome::AlreadyBound
                 } else {
@@ -640,23 +464,9 @@ impl JulieServerHandler {
             };
 
             match gate_outcome {
-                GateOutcome::AlreadyBound => {
-                    if complete_deferred_auto_index {
-                        self.complete_deferred_auto_index_if_needed().await?;
-                    }
-                    return Ok(());
-                }
-                GateOutcome::Reconciled(true) => {
-                    if complete_deferred_auto_index {
-                        self.complete_deferred_auto_index_if_needed().await?;
-                    }
-                    return Ok(());
-                }
+                GateOutcome::AlreadyBound | GateOutcome::Reconciled(true) => return Ok(()),
                 GateOutcome::Reconciled(false) => {
                     self.reconcile_primary_workspace_to_startup_hint().await?;
-                    if complete_deferred_auto_index {
-                        self.complete_deferred_auto_index_if_needed().await?;
-                    }
                     return Ok(());
                 }
                 GateOutcome::Failed(err) => {
@@ -672,9 +482,6 @@ impl JulieServerHandler {
                             self.last_roots_snapshot().filter(|roots| !roots.is_empty())
                         {
                             if self.reconcile_primary_workspace_roots(roots).await? {
-                                if complete_deferred_auto_index {
-                                    self.complete_deferred_auto_index_if_needed().await?;
-                                }
                                 return Ok(());
                             }
                         }
@@ -685,19 +492,9 @@ impl JulieServerHandler {
 
         self.reject_sensitive_cwd_startup_hint()?;
         let binding = self.primary_binding_for_root(self.workspace_startup_hint().path)?;
-        self.attach_daemon_primary_binding_if_needed(&binding)
-            .await?;
+        self.register_workspace_row(&binding.workspace_id, &binding.workspace_root)?;
         self.activate_primary_binding(&binding);
-        if complete_deferred_auto_index {
-            self.complete_deferred_auto_index_if_needed().await?;
-        }
         Ok(())
-    }
-
-    fn manage_workspace_primary_index_request(
-        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
-    ) -> bool {
-        ManageWorkspaceOperation::primary_index_request(arguments)
     }
 
     fn manage_workspace_request_targets_primary(
@@ -789,12 +586,8 @@ impl JulieServerHandler {
             daemon_db: None,
             workspace_id: Arc::new(StdRwLock::new(None)),
             embedding_service: None,
-            deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
-            deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
-            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
-            session_lifecycle: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx: None,
@@ -900,12 +693,8 @@ impl JulieServerHandler {
             daemon_db,
             workspace_id: Arc::new(StdRwLock::new(workspace_id)),
             embedding_service,
-            deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
-            deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
-            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
-            session_lifecycle: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
@@ -919,10 +708,7 @@ impl JulieServerHandler {
         };
 
         if let Some(id) = initial_workspace_id {
-            handler
-                .session_attachment()
-                .attach_workspace_once(&id, workspace_root)
-                .await?;
+            handler.register_workspace_row(&id, &workspace_root)?;
         }
 
         Ok(handler)
@@ -997,12 +783,8 @@ impl JulieServerHandler {
             daemon_db,
             workspace_id: Arc::new(StdRwLock::new(None)),
             embedding_service,
-            deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
-            deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             roots_resolution_gate: Arc::new(tokio::sync::Mutex::new(())),
-            deferred_auto_index_in_flight: Arc::new(AtomicBool::new(false)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
-            session_lifecycle: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
@@ -1081,67 +863,15 @@ impl JulieServerHandler {
         Ok(handler)
     }
 
-    // Orphaned by the Phase 3d.2b deletion of `src/registry/mcp_session.rs` (the
-    // per-HTTP-session wiring that attached lifecycle handles and drove the
-    // serving/closing phase transitions). The in-process server does not yet
-    // publish session-lifecycle phases; the `SessionLifecycleHandle` plumbing is
-    // torn out in the Phase 3d.3 session-lifecycle/dashboard rewrite.
-    #[allow(dead_code)]
-    pub(crate) fn attach_session_lifecycle(&mut self, session_lifecycle: SessionLifecycleHandle) {
-        let phase = self.current_session_lifecycle_phase();
-        session_lifecycle.set_phase(phase);
-        session_lifecycle.set_current_workspace(self.current_workspace_id());
-        self.session_lifecycle = Some(session_lifecycle);
-    }
-
-    fn current_session_lifecycle_phase(&self) -> SessionLifecyclePhase {
-        self.session_workspace
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .lifecycle_phase()
-    }
-
-    fn publish_session_lifecycle_snapshot(
-        &self,
-        phase: SessionLifecyclePhase,
-        current_workspace_id: Option<String>,
-    ) {
-        if let Some(session_lifecycle) = &self.session_lifecycle {
-            session_lifecycle.set_phase(phase);
-            session_lifecycle.set_current_workspace(current_workspace_id);
-        }
-    }
-
     fn update_session_workspace<R>(
         &self,
         update: impl FnOnce(&mut SessionWorkspaceState) -> R,
     ) -> R {
-        let (result, phase, current_workspace_id) = {
-            let mut state = self
-                .session_workspace
-                .write()
-                .unwrap_or_else(|p| p.into_inner());
-            let result = update(&mut state);
-            let phase = state.lifecycle_phase();
-            let current_workspace_id = state.current_workspace_id();
-            (result, phase, current_workspace_id)
-        };
-        self.publish_session_lifecycle_snapshot(phase, current_workspace_id);
-        result
-    }
-
-    // See `attach_session_lifecycle`: orphaned with the daemon mcp_session
-    // deletion (3d.2b), removed in the 3d.3 session-lifecycle/dashboard rewrite.
-    // `mark_session_serving` stays reachable in test builds via
-    // `mark_session_serving_for_test`.
-    #[allow(dead_code)]
-    pub(crate) fn mark_session_serving(&self) {
-        self.update_session_workspace(|state| state.mark_serving());
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn mark_session_closing(&self) {
-        self.update_session_workspace(|state| state.mark_closing());
+        let mut state = self
+            .session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner());
+        update(&mut state)
     }
 
     /// Returns `true` when this handler was built by an in-process constructor.
@@ -1200,24 +930,11 @@ impl JulieServerHandler {
         acquire_gate(workspace_id).await
     }
 
-    pub fn is_primary_workspace_swap_in_progress(&self) -> bool {
-        self.session_workspace
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .primary_swap_in_progress()
-    }
-
     fn require_primary_binding(&self) -> Result<PrimaryWorkspaceBinding> {
         let session_workspace = self
             .session_workspace
             .read()
             .unwrap_or_else(|p| p.into_inner());
-
-        if session_workspace.primary_swap_in_progress() {
-            return Err(anyhow::anyhow!(
-                "Primary workspace identity unavailable during swap"
-            ));
-        }
 
         session_workspace.primary_binding().ok_or_else(|| {
             anyhow::anyhow!(
@@ -1239,10 +956,6 @@ impl JulieServerHandler {
     }
 
     pub fn loaded_workspace_id(&self) -> Option<String> {
-        if self.is_primary_workspace_swap_in_progress() {
-            return None;
-        }
-
         self.workspace_id
             .read()
             .unwrap_or_else(|p| p.into_inner())
@@ -1253,102 +966,11 @@ impl JulieServerHandler {
         *self.workspace_id.write().unwrap_or_else(|p| p.into_inner()) = workspace_id;
     }
 
-    pub async fn attached_workspace_id(&self) -> Option<String> {
-        let state = self
-            .session_workspace
-            .read()
-            .unwrap_or_else(|p| p.into_inner());
-        if let Some(current_id) = state.current_workspace_id() {
-            if state.was_workspace_attached_in_session(&current_id) {
-                return Some(current_id);
-            }
-        }
-
-        let loaded_id = self.loaded_workspace_id()?;
-        if state.was_workspace_attached_in_session(&loaded_id) {
-            Some(loaded_id)
-        } else {
-            None
-        }
-    }
-
-    /// Returns whether the workspace was attached at any point during this
-    /// session. This is session-lifetime bookkeeping for pool/session-count
-    /// cleanup, not a guarantee about the currently loaded workspace.
-    pub async fn was_workspace_attached_in_session(&self, workspace_id: &str) -> bool {
-        self.session_workspace
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .was_workspace_attached_in_session(workspace_id)
-    }
-
-    pub async fn detach_workspace_for_session(&self, workspace_id: &str) -> Result<bool> {
-        self.session_attachment()
-            .detach_workspace_once(workspace_id)
-            .await
-    }
-
-    fn session_attachment(&self) -> WorkspaceSessionAttachment {
-        WorkspaceSessionAttachment::new(
-            self.daemon_db.as_ref().map(Arc::clone),
-            Arc::clone(&self.session_workspace),
-        )
-    }
-
-    fn rebind_current_primary(&self, workspace_id: impl Into<String>, workspace_root: PathBuf) {
+    fn bind_current_primary(&self, workspace_id: impl Into<String>, workspace_root: PathBuf) {
         let workspace_id = workspace_id.into();
         self.update_session_workspace(move |session_workspace| {
             session_workspace.bind_primary(workspace_id, workspace_root);
         });
-    }
-
-    fn publish_loaded_workspace_swap_intent(&self) {
-        self.update_session_workspace(|session_workspace| {
-            session_workspace.begin_primary_swap();
-            session_workspace.clear_primary_binding();
-        });
-        self.set_loaded_workspace_id(None);
-    }
-
-    async fn publish_loaded_workspace_swap(
-        &self,
-        workspace: JulieWorkspace,
-        workspace_id: Option<String>,
-        mark_attached: bool,
-    ) {
-        let workspace_root = workspace.root.clone();
-        let workspace_root_for_registry = workspace_root.clone();
-        {
-            let mut workspace_guard = self.workspace.write().await;
-            *workspace_guard = Some(workspace);
-        }
-
-        *self.workspace_id.write().unwrap_or_else(|p| p.into_inner()) = workspace_id.clone();
-
-        let attached_workspace_id = workspace_id.clone().filter(|_| mark_attached);
-        let registry_workspace_id = workspace_id.clone();
-        self.update_session_workspace(move |session_workspace| {
-            if let Some(workspace_id) = workspace_id {
-                session_workspace.bind_primary(workspace_id, workspace_root);
-            }
-
-            session_workspace.complete_primary_swap();
-        });
-        if let Some(workspace_id) = registry_workspace_id
-            && let Err(error) = self
-                .session_attachment()
-                .attach_workspace_resources(&workspace_id, workspace_root_for_registry)
-                .await
-        {
-            warn!(
-                workspace_id = %workspace_id,
-                "Failed to register loaded primary workspace in registry: {error}"
-            );
-        }
-        if let Some(workspace_id) = attached_workspace_id {
-            self.session_attachment()
-                .mark_workspace_attached(workspace_id);
-        }
     }
 
     #[cfg(test)]
@@ -1357,33 +979,12 @@ impl JulieServerHandler {
         workspace_id: impl Into<String>,
         workspace_root: PathBuf,
     ) {
-        self.rebind_current_primary(workspace_id, workspace_root);
+        self.bind_current_primary(workspace_id, workspace_root);
     }
 
     #[cfg(test)]
     pub fn set_client_supports_workspace_roots_for_test(&self, supported: bool) {
         self.record_client_roots_capability(supported);
-    }
-
-    #[cfg(test)]
-    pub fn publish_loaded_workspace_swap_intent_for_test(&self) {
-        self.publish_loaded_workspace_swap_intent();
-    }
-
-    #[cfg(test)]
-    pub fn session_lifecycle_phase_for_test(&self) -> SessionLifecyclePhase {
-        self.current_session_lifecycle_phase()
-    }
-
-    #[cfg(test)]
-    pub fn mark_session_serving_for_test(&self) {
-        self.mark_session_serving();
-    }
-
-    #[cfg(test)]
-    pub async fn publish_loaded_workspace_swap_teardown_gap_for_test(&self) {
-        self.publish_loaded_workspace_swap_intent();
-        self.teardown_loaded_workspace(false).await;
     }
 
     #[cfg(test)]
@@ -1536,19 +1137,10 @@ impl JulieServerHandler {
         // its workspace directly via `JulieWorkspace::initialize`. The old
         // `use_pooled_rebind = pool.is_some()` gate is collapsed to false.
         let use_pooled_rebind = false;
-        let rollback = if loaded_workspace_root_changed {
-            Some(PrimarySwapRollback::capture(self).await)
-        } else {
-            None
-        };
 
         // Handle force reinitialization vs normal initialization
         let workspace_result: Result<JulieWorkspace> = if force {
             info!("🔄 Force reinitialization requested - clearing derived data only");
-
-            if loaded_workspace_root_changed {
-                self.publish_loaded_workspace_swap_intent();
-            }
 
             self.teardown_loaded_workspace(use_pooled_rebind).await;
 
@@ -1642,7 +1234,6 @@ impl JulieServerHandler {
             }
         } else {
             if loaded_workspace_root_changed {
-                self.publish_loaded_workspace_swap_intent();
                 info!(
                     "Loaded workspace root changed - tearing down old workspace before replacement"
                 );
@@ -1672,19 +1263,7 @@ impl JulieServerHandler {
             }
         };
 
-        let mut workspace: JulieWorkspace = match workspace_result {
-            Ok(workspace) => workspace,
-            Err(err) => {
-                if let Some(rollback) = rollback {
-                    if let Err(restore_err) = rollback.restore(self).await {
-                        return Err(
-                            err.context(format!("primary swap rollback failed: {restore_err:#}"))
-                        );
-                    }
-                }
-                return Err(err);
-            }
-        };
+        let mut workspace: JulieWorkspace = workspace_result?;
 
         // Start file watching BEFORE storing workspace (to avoid clone issue).
         if let Err(e) = workspace.start_file_watching(true).await {
@@ -1694,14 +1273,18 @@ impl JulieServerHandler {
         let workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
                 .ok();
-        // `mark_attached` must reflect "this workspace came from the pool",
-        // not "a pool exists". The old `self.workspace_pool.is_some()` form
-        // silently lied when `use_pooled_rebind` was false — the workspace
-        // went through `JulieWorkspace::initialize` (project-local path) but
-        // session state still marked the id as attached, wedging later
-        // primary-scoped calls with Finding #38's guard.
-        self.publish_loaded_workspace_swap(workspace, workspace_id, use_pooled_rebind)
-            .await;
+        let workspace_root = workspace.root.clone();
+        *self.workspace.write().await = Some(workspace);
+        self.set_loaded_workspace_id(workspace_id.clone());
+        if let Some(workspace_id) = workspace_id {
+            self.bind_current_primary(workspace_id.clone(), workspace_root.clone());
+            if let Err(error) = self.register_workspace_row(&workspace_id, &workspace_root) {
+                warn!(
+                    workspace_id = %workspace_id,
+                    "Failed to register loaded primary workspace in registry: {error}"
+                );
+            }
+        }
 
         info!("Workspace initialization complete");
         Ok(())
@@ -2068,13 +1651,6 @@ impl JulieServerHandler {
             .active_workspace_ids()
     }
 
-    pub async fn session_attached_workspace_ids(&self) -> Vec<String> {
-        self.session_workspace
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .session_attached_workspace_ids()
-    }
-
     /// Check whether a workspace ID is currently active for this session.
     pub async fn is_workspace_active(&self, workspace_id: &str) -> bool {
         self.session_workspace
@@ -2083,75 +1659,9 @@ impl JulieServerHandler {
             .is_workspace_active(workspace_id)
     }
 
-    fn mark_workspace_active_internal(&self, workspace_id: &str) -> bool {
-        let mut guard = self
-            .session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner());
-        guard.mark_workspace_active(workspace_id)
-    }
-
-    /// Add a workspace ID to this session's active set.
-    #[cfg(test)]
-    pub async fn mark_workspace_active(&self, workspace_id: &str) {
-        self.mark_workspace_active_internal(workspace_id);
-    }
-
-    /// Activate a workspace for this session. Returns `true` if this was a new activation.
-    #[cfg(test)]
-    pub async fn activate_workspace(&self, workspace_id: &str) -> bool {
-        self.mark_workspace_active_internal(workspace_id)
-    }
-
-    /// Load a workspace through the daemon pool, then mark it active for this session.
-    pub async fn activate_workspace_with_root(
-        &self,
-        workspace_id: &str,
-        workspace_root: PathBuf,
-    ) -> Result<bool> {
-        let attached_matches_target = self.was_workspace_attached_in_session(workspace_id).await;
-        let already_active = self.is_workspace_active(workspace_id).await;
-
-        if !attached_matches_target {
-            self.session_attachment()
-                .attach_workspace_once(workspace_id, workspace_root)
-                .await?;
-        }
-
-        if already_active {
-            return Ok(false);
-        }
-
-        Ok(self.mark_workspace_active_internal(workspace_id))
-    }
-
-    pub async fn switch_primary_workspace_with_root(
-        &self,
-        workspace_id: &str,
-        workspace_root: PathBuf,
-    ) -> Result<bool> {
-        let previous_primary_id = self
-            .session_workspace
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .primary_binding()
-            .map(|binding| binding.workspace_id);
-        let target_workspace_id = workspace_id.to_string();
-        let activated = self
-            .activate_workspace_with_root(&target_workspace_id, workspace_root.clone())
-            .await?;
-
-        self.update_session_workspace(move |session_workspace| {
-            let opened_workspace_id = target_workspace_id.clone();
-            session_workspace.bind_primary(target_workspace_id, workspace_root);
-            if let Some(previous_primary_id) = previous_primary_id {
-                if previous_primary_id != opened_workspace_id {
-                    session_workspace.mark_workspace_active(previous_primary_id);
-                }
-            }
-        });
-
-        Ok(activated)
+    /// Add a workspace ID to this session's active set. Returns `true` when it was new.
+    pub fn mark_workspace_active(&self, workspace_id: &str) -> bool {
+        self.update_session_workspace(|state| state.mark_workspace_active(workspace_id))
     }
 
     pub(crate) async fn workspace_storage_anchor(&self) -> Result<(PathBuf, Option<PathBuf>)> {
@@ -2176,31 +1686,13 @@ impl JulieServerHandler {
         }
 
         if loaded_workspace_id.is_none() {
-            return Err(anyhow::anyhow!(
-                "Primary workspace identity unavailable during swap"
-            ));
+            return Err(anyhow::anyhow!("Loaded workspace has no workspace id"));
         }
 
         Ok((
             loaded_workspace.root.clone(),
             loaded_workspace.index_root_override.clone(),
         ))
-    }
-
-    /// Daemon-mode invariant guard: when accessing the *current primary*
-    /// workspace's storage, the workspace must be attached in the workspace
-    /// pool. Path computation stays lenient (see `workspace_storage_anchor`)
-    /// because operations like `manage_workspace(register)` need to compute target
-    /// paths before the pool catches up — but actually opening the DB or
-    /// search index against a non-pool-resident primary indicates a rebind
-    /// that bypassed `attach_daemon_primary_binding_if_needed` (see Findings
-    /// #28/#29 in ROOTS_IMPL_REVIEW_NOTES.md).
-    ///
-    /// Secondary workspaces (workspace_id != current primary) are exempt:
-    /// they are accessed lazily via on-disk paths and don't require a pool
-    /// entry to function.
-    async fn ensure_primary_pool_membership_for(&self, _workspace_id: &str) -> Result<()> {
-        Ok(())
     }
 
     pub(crate) async fn workspace_index_dir_for(&self, workspace_id: &str) -> Result<PathBuf> {
@@ -2294,8 +1786,6 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
-        self.ensure_primary_pool_membership_for(workspace_id)
-            .await?;
         let db_path = self.workspace_db_file_path_for(workspace_id).await?;
 
         // Fast path: return cached connection for this session (M22).
@@ -2343,8 +1833,6 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Option<Arc<SearchIndex>>> {
-        self.ensure_primary_pool_membership_for(workspace_id)
-            .await?;
         let tantivy_path = self.workspace_tantivy_dir_for(workspace_id).await?;
         if !tantivy_path.join("meta.json").exists() {
             return Ok(None);
@@ -2608,26 +2096,12 @@ impl ServerHandler for JulieServerHandler {
         let exempt = is_write_exempt(&tool_name, request.arguments.as_ref());
 
         if Self::tool_request_targets_primary(request.name.as_ref(), request.arguments.as_ref()) {
-            let complete_deferred_auto_index = !(request.name.as_ref() == "manage_workspace"
-                && Self::manage_workspace_primary_index_request(request.arguments.as_ref()));
-
             if self.is_in_process() && !exempt {
-                use std::sync::atomic::Ordering;
-                if self.deferred_auto_index_pending.load(Ordering::Acquire)
-                    && self.try_claim_deferred_repair_slot()
-                {
-                    let h = self.clone();
-                    tokio::spawn(async move {
-                        let _ = h.complete_deferred_auto_index_if_needed().await;
-                        h.release_deferred_repair_slot();
-                    });
-                }
-
                 let deadline = parse_request_timeout(std::env::var(REQUEST_TIMEOUT_ENV).ok());
                 let handler = self.clone();
                 let bounded_fut = async move {
                     handler
-                        .ensure_primary_workspace_for_request(&context.peer, false)
+                        .ensure_primary_workspace_for_request(&context.peer)
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?;
                     let adapter = mcp_adapter::McpAdapter::new(
@@ -2655,7 +2129,7 @@ impl ServerHandler for JulieServerHandler {
                 };
             }
 
-            self.ensure_primary_workspace_for_request(&context.peer, complete_deferred_auto_index)
+            self.ensure_primary_workspace_for_request(&context.peer)
                 .await
                 .map_err(|err| McpError::internal_error(err.to_string(), None))?;
         }
@@ -2685,8 +2159,6 @@ impl ServerHandler for JulieServerHandler {
 
         let startup_hint = self.workspace_startup_hint();
         if crate::startup::startup_source_prefers_request_roots(startup_hint.source) {
-            self.mark_deferred_auto_index_pending(true);
-
             if self.client_supports_workspace_roots() {
                 info!(
                     startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
@@ -2695,23 +2167,21 @@ impl ServerHandler for JulieServerHandler {
                 let handler = self.clone();
                 let peer = context.peer;
                 tokio::spawn(async move {
-                    if let Err(err) = handler
-                        .ensure_primary_workspace_for_request(&peer, true)
-                        .await
-                    {
-                        warn!("Failed to resolve primary workspace from client roots: {err}");
+                    match handler.ensure_primary_workspace_for_request(&peer).await {
+                        Ok(()) => handler.run_auto_indexing().await,
+                        Err(err) => {
+                            warn!("Failed to resolve primary workspace from client roots: {err}")
+                        }
                     }
                 });
             } else {
                 info!(
                     startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
-                    "Deferring cwd auto-indexing until first primary tool request"
+                    "Client roots unavailable; primary binds on the first primary tool request"
                 );
             }
             return;
         }
-
-        self.mark_deferred_auto_index_pending(false);
 
         // Atomically claim the indexing slot. Two concurrent on_initialized calls on
         // a shared handler clone would both see is_indexed=false with a read lock;
@@ -2748,23 +2218,7 @@ impl ServerHandler for JulieServerHandler {
         });
     }
 
-    async fn on_roots_list_changed(&self, context: NotificationContext<RoleServer>) {
+    async fn on_roots_list_changed(&self, _context: NotificationContext<RoleServer>) {
         self.mark_roots_dirty();
-
-        if self
-            .deferred_auto_index_pending
-            .load(std::sync::atomic::Ordering::Acquire)
-        {
-            let handler = self.clone();
-            let peer = context.peer;
-            tokio::spawn(async move {
-                if let Err(err) = handler
-                    .ensure_primary_workspace_for_request(&peer, true)
-                    .await
-                {
-                    warn!("Failed to resolve deferred workspace on roots_list_changed: {err}");
-                }
-            });
-        }
     }
 }

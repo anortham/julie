@@ -109,9 +109,7 @@ impl FastSearchTool {
         match readiness {
             SystemStatus::NotReady => {
                 if let WorkspaceTarget::Primary = &workspace_target {
-                    if !handler.is_primary_workspace_swap_in_progress()
-                        && handler.require_primary_workspace_identity().is_err()
-                    {
+                    if handler.require_primary_workspace_identity().is_err() {
                         let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
                         return Ok(FastSearchExecution {
                             result: CallToolResult::text_content(vec![Content::text(message)]),

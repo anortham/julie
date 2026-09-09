@@ -28,12 +28,6 @@
     </div>
     <div class="column">
       <div class="julie-card" style="text-align: center;">
-        <p class="label-text">Active Sessions</p>
-        <p class="value-text" id="stat-sessions">{{ active_sessions }}</p>
-      </div>
-    </div>
-    <div class="column">
-      <div class="julie-card" style="text-align: center;">
         <p class="label-text">Workspaces</p>
         <p class="value-text" id="stat-workspaces">{{ workspace_count }}</p>
       </div>
@@ -93,23 +87,17 @@ setInterval(async () => {
     const el = (id) => document.getElementById(id);
     if (el('stat-overall')) el('stat-overall').innerHTML = statusMarkup(d.health.overall);
     if (el('stat-uptime')) el('stat-uptime').textContent = d.uptime;
-    if (el('stat-sessions')) el('stat-sessions').textContent = d.active_sessions;
     if (el('stat-workspaces')) el('stat-workspaces').textContent = d.workspace_count;
     setPlaneStatus('control-plane', d.health.control_plane.level, d.health.control_plane.detail);
     setPlaneStatus('data-plane', d.health.data_plane.level, d.health.data_plane.detail);
     setPlaneStatus('runtime-plane', d.health.runtime_plane.level, d.health.runtime_plane.detail);
 
-    if (el('control-plane-sessions')) el('control-plane-sessions').textContent = d.health.control_plane.active_sessions;
     if (el('control-plane-phase')) {
       el('control-plane-phase').textContent = formatUpperValue(d.health.control_plane.daemon_phase);
     }
     if (el('control-plane-shutdown-cause')) {
       el('control-plane-shutdown-cause').textContent = formatUpperValue(d.health.control_plane.shutdown_cause);
     }
-    if (el('control-plane-connecting')) el('control-plane-connecting').textContent = d.health.control_plane.session_phases.connecting;
-    if (el('control-plane-bound')) el('control-plane-bound').textContent = d.health.control_plane.session_phases.bound;
-    if (el('control-plane-serving')) el('control-plane-serving').textContent = d.health.control_plane.session_phases.serving;
-    if (el('control-plane-closing')) el('control-plane-closing').textContent = d.health.control_plane.session_phases.closing;
     if (el('control-plane-workspace-pool')) {
       el('control-plane-workspace-pool').textContent = d.health.control_plane.workspace_pool_connected ? 'Attached' : 'Detached';
     }

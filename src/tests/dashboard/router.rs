@@ -9,11 +9,9 @@ use tower::ServiceExt;
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
 use crate::registry::lifecycle::LifecyclePhase;
-use crate::registry::session::SessionTracker;
 
 fn test_state() -> DashboardState {
     DashboardState::new(
-        Arc::new(SessionTracker::new()),
         None,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),

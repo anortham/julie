@@ -18,7 +18,6 @@ use crate::health::{
 use crate::registry::database::DaemonDatabase;
 use crate::registry::embedding_service::EmbeddingService;
 use crate::registry::lifecycle::{LifecyclePhase, LifecyclePhaseKind, ShutdownCause};
-use crate::registry::session::{SessionPhaseCounts, SessionTracker};
 use crate::search::projection::TANTIVY_PROJECTION_NAME;
 
 /// Events broadcast over the SSE channel to connected dashboard clients.
@@ -49,8 +48,6 @@ pub struct DashboardControlPlaneHealth {
     pub level: HealthLevel,
     pub daemon_phase: DashboardDaemonPhase,
     pub shutdown_cause: Option<ShutdownCause>,
-    pub active_sessions: usize,
-    pub session_phases: SessionPhaseCounts,
     pub daemon_db_connected: bool,
     pub workspace_pool_connected: bool,
     pub detail: String,
@@ -112,7 +109,6 @@ pub struct DashboardEmbeddingRuntimeStatus {
 /// Cheap to clone — all fields are either `Arc`-wrapped or `Copy`.
 #[derive(Clone)]
 pub struct DashboardState {
-    sessions: Arc<SessionTracker>,
     daemon_db: Option<Arc<DaemonDatabase>>,
     action_csrf_token: Arc<String>,
     daemon_phase: Arc<RwLock<LifecyclePhase>>,
@@ -139,7 +135,6 @@ impl DashboardState {
     /// broadcast channel with capacity 256. Pool fields were removed in
     /// Phase 3d.2b-ii (dashboard dead-but-compiling until 3d.3).
     pub fn new(
-        sessions: Arc<SessionTracker>,
         daemon_db: Option<Arc<DaemonDatabase>>,
         daemon_phase: Arc<RwLock<LifecyclePhase>>,
         start_time: Instant,
@@ -149,7 +144,6 @@ impl DashboardState {
         let error_buffer = ErrorBuffer::new(error_buffer_capacity);
         let (tx, _rx) = broadcast::channel(256);
         Self {
-            sessions,
             daemon_db,
             action_csrf_token: Arc::new(uuid::Uuid::new_v4().to_string()),
             daemon_phase,
@@ -177,11 +171,6 @@ impl DashboardState {
     /// Snapshot of recovery markers visible to dashboard handlers.
     pub fn recovery_markers(&self) -> &[crate::registry::shutdown::RecoveryMarker] {
         &self.recovery_markers
-    }
-
-    /// Reference to the session tracker.
-    pub fn sessions(&self) -> &SessionTracker {
-        &self.sessions
     }
 
     /// Reference to the daemon database, if available.
@@ -224,11 +213,9 @@ impl DashboardState {
     /// Build a dashboard-friendly health snapshot from the state already
     /// available to the dashboard server.
     pub async fn health_snapshot(&self) -> DashboardHealthSnapshot {
-        let active_sessions = self.sessions.active_count();
         let daemon_phase_snapshot = *self.daemon_phase.read().unwrap_or_else(|p| p.into_inner());
         let daemon_phase = daemon_phase_snapshot.kind();
         let shutdown_cause = daemon_phase_snapshot.shutdown_cause();
-        let session_phases = self.sessions.phase_counts();
         let workspace_pool_connected = false;
 
         let (workspaces, daemon_db_connected) = match self.daemon_db.as_ref() {
@@ -277,24 +264,16 @@ impl DashboardState {
             },
             daemon_phase,
             shutdown_cause,
-            active_sessions,
-            session_phases,
             daemon_db_connected,
             workspace_pool_connected,
             detail: if !daemon_db_connected {
                 "daemon registry unavailable".to_string()
             } else {
                 format!(
-                    "daemon {}{}; {} live session(s); phases {} / {} / {} / {}{}",
+                    "daemon {}{}; workspace pool detached",
                     daemon_phase.label(),
                     shutdown_cause
                         .map_or_else(String::new, |cause| format!(" ({})", cause.label())),
-                    active_sessions,
-                    session_phases.connecting,
-                    session_phases.bound,
-                    session_phases.serving,
-                    session_phases.closing,
-                    "; workspace pool detached"
                 )
             },
         };

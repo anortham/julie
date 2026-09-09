@@ -12,7 +12,6 @@ use crate::database::types::FileInfo;
 use crate::extractors::{AnnotationMarker, SymbolKind};
 use crate::registry::database::DaemonDatabase;
 use crate::registry::lifecycle::LifecyclePhase;
-use crate::registry::session::SessionTracker;
 use crate::search::SearchProjection;
 use crate::tools::workspace::indexing::state::{
     IndexingOperation, IndexingRepairReason, IndexingStage,
@@ -22,7 +21,6 @@ use julie_core::Symbol;
 
 fn test_state() -> DashboardState {
     DashboardState::new(
-        Arc::new(SessionTracker::new()),
         None,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
@@ -43,7 +41,6 @@ fn test_state_with_db() -> (DashboardState, tempfile::TempDir) {
         .unwrap();
 
     let state = DashboardState::new(
-        Arc::new(SessionTracker::new()),
         Some(daemon_db),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
@@ -220,7 +217,6 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
 
     (
         DashboardState::new(
-            Arc::new(SessionTracker::new()),
             Some(daemon_db),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
@@ -296,7 +292,6 @@ async fn state_with_signal_workspace() -> (DashboardState, tempfile::TempDir, St
 
     (
         DashboardState::new(
-            Arc::new(SessionTracker::new()),
             Some(daemon_db),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
@@ -363,7 +358,6 @@ async fn state_with_search_workspace(
 
     (
         DashboardState::new(
-            Arc::new(SessionTracker::new()),
             Some(daemon_db),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),

@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::registry::session::SessionLifecyclePhase;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,12 +15,8 @@ pub struct SessionWorkspaceState {
     pub client_supports_workspace_roots: bool,
     pub roots_dirty: bool,
     pub last_roots_snapshot: Option<Vec<PathBuf>>,
-    serving_active: bool,
-    closing: bool,
-    primary_swap_in_progress: bool,
     primary_binding: Option<PrimaryWorkspaceBinding>,
     secondary_workspace_ids: HashSet<String>,
-    attached_workspace_ids: HashSet<String>,
 }
 
 impl SessionWorkspaceState {
@@ -31,37 +26,9 @@ impl SessionWorkspaceState {
             client_supports_workspace_roots: false,
             roots_dirty: false,
             last_roots_snapshot: None,
-            serving_active: false,
-            closing: false,
-            primary_swap_in_progress: false,
             primary_binding: None,
             secondary_workspace_ids: HashSet::new(),
-            attached_workspace_ids: HashSet::new(),
         }
-    }
-
-    pub fn lifecycle_phase(&self) -> SessionLifecyclePhase {
-        if self.closing {
-            SessionLifecyclePhase::Closing
-        } else if self.primary_swap_in_progress || self.primary_binding.is_none() {
-            SessionLifecyclePhase::Connecting
-        } else if self.serving_active {
-            SessionLifecyclePhase::Serving
-        } else {
-            SessionLifecyclePhase::Bound
-        }
-    }
-
-    pub fn begin_primary_swap(&mut self) {
-        self.primary_swap_in_progress = true;
-    }
-
-    pub fn complete_primary_swap(&mut self) {
-        self.primary_swap_in_progress = false;
-    }
-
-    pub fn primary_swap_in_progress(&self) -> bool {
-        self.primary_swap_in_progress
     }
 
     pub fn primary_binding(&self) -> Option<PrimaryWorkspaceBinding> {
@@ -85,18 +52,6 @@ impl SessionWorkspaceState {
         });
     }
 
-    pub fn clear_primary_binding(&mut self) {
-        self.primary_binding = None;
-    }
-
-    pub fn mark_serving(&mut self) {
-        self.serving_active = true;
-    }
-
-    pub fn mark_closing(&mut self) {
-        self.closing = true;
-    }
-
     pub fn apply_root_snapshot(
         &mut self,
         primary: PrimaryWorkspaceBinding,
@@ -112,10 +67,6 @@ impl SessionWorkspaceState {
     }
 
     pub fn current_workspace_root(&self) -> PathBuf {
-        if self.primary_swap_in_progress {
-            return self.startup_hint.path.clone();
-        }
-
         self.primary_binding
             .as_ref()
             .map(|binding| binding.workspace_root.clone())
@@ -123,10 +74,6 @@ impl SessionWorkspaceState {
     }
 
     pub fn current_workspace_id(&self) -> Option<String> {
-        if self.primary_swap_in_progress {
-            return None;
-        }
-
         self.primary_binding
             .as_ref()
             .map(|binding| binding.workspace_id.clone())
@@ -149,30 +96,6 @@ impl SessionWorkspaceState {
 
     pub fn has_secondary_workspace(&self, workspace_id: &str) -> bool {
         self.secondary_workspace_ids.contains(workspace_id)
-    }
-
-    /// Returns the set of workspace ids that were attached at any point during
-    /// this session. This is append-only session bookkeeping for cleanup, not a
-    /// statement about what is currently loaded.
-    pub fn session_attached_workspace_ids(&self) -> Vec<String> {
-        let mut ids: Vec<String> = self.attached_workspace_ids.iter().cloned().collect();
-        ids.sort();
-        ids.dedup();
-        ids
-    }
-
-    /// Returns whether this workspace was attached at some point during the
-    /// current session. This does not mean it is the currently loaded workspace.
-    pub fn was_workspace_attached_in_session(&self, workspace_id: &str) -> bool {
-        self.attached_workspace_ids.contains(workspace_id)
-    }
-
-    pub fn mark_workspace_attached(&mut self, workspace_id: impl Into<String>) -> bool {
-        self.attached_workspace_ids.insert(workspace_id.into())
-    }
-
-    pub fn mark_workspace_detached(&mut self, workspace_id: &str) -> bool {
-        self.attached_workspace_ids.remove(workspace_id)
     }
 
     pub fn mark_workspace_active(&mut self, workspace_id: impl Into<String>) -> bool {

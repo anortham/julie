@@ -612,9 +612,7 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
     .await?;
 
     handler.set_current_primary_binding(rebound_id.clone(), rebound_path.clone());
-    handler
-        .activate_workspace_with_root(&rebound_id, rebound_path.clone())
-        .await?;
+    handler.mark_workspace_active(&rebound_id);
 
     let resolved_root = resolve_workspace_root(Some("primary"), &handler).await?;
     assert_eq!(resolved_root.canonicalize()?, rebound_path.canonicalize()?);

@@ -47,20 +47,12 @@ impl HealthChecker {
                 }))
             }
             Err(err) => {
-                let binding = match handler.require_primary_workspace_binding() {
-                    Ok(binding) => binding,
-                    Err(identity_err) => {
-                        if handler.is_primary_workspace_swap_in_progress() {
-                            return Err(identity_err);
-                        }
-
-                        return Ok(PrimaryWorkspaceHealth::ColdStart);
-                    }
+                let Ok(binding) = handler.require_primary_workspace_binding() else {
+                    return Ok(PrimaryWorkspaceHealth::ColdStart);
                 };
-
-                if handler.is_primary_workspace_swap_in_progress() {
-                    return Err(err);
-                }
+                tracing::debug!(
+                    "primary snapshot unavailable, reporting binding-only health: {err}"
+                );
 
                 let search_index_ready = handler
                     .get_search_index_for_workspace(&binding.workspace_id)

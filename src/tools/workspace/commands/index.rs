@@ -48,12 +48,6 @@ impl ManageWorkspaceTool {
         info!("📚 Starting workspace indexing...");
         let explicit_path_requested = path.is_some();
 
-        if handler.is_primary_workspace_swap_in_progress() {
-            return Err(anyhow::anyhow!(
-                "Primary workspace identity unavailable during swap"
-            ));
-        }
-
         let target = self.resolve_index_target(handler, path, force).await?;
         let canonical_path = target.canonical_path;
         let gate_workspace_id = target.gate_workspace_id;

@@ -19,13 +19,6 @@ fn request_targets_primary(value: Value) -> bool {
     ManageWorkspaceOperation::request_targets_primary(Some(args))
 }
 
-fn primary_index_request(value: Value) -> bool {
-    let args = value
-        .as_object()
-        .expect("test input should be a JSON object");
-    ManageWorkspaceOperation::primary_index_request(Some(args))
-}
-
 #[test]
 fn manage_workspace_tool_keeps_flat_json_shape_for_representative_operations() {
     let register = tool_from_json(json!({
@@ -218,16 +211,4 @@ fn manage_workspace_preflight_classification_uses_shared_operation_parser() {
         "path": "/repo"
     })));
     assert!(!request_targets_primary(json!({ "operation": "add" })));
-
-    assert!(primary_index_request(json!({ "operation": "index" })));
-    assert!(primary_index_request(json!({
-        "operation": "index",
-        "path": null
-    })));
-    assert!(!primary_index_request(json!({
-        "operation": "index",
-        "path": "/repo"
-    })));
-    assert!(!primary_index_request(json!({ "operation": "list" })));
-    assert!(!primary_index_request(json!({ "operation": "dashboard" })));
 }

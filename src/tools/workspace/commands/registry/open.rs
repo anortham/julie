@@ -15,7 +15,6 @@ use crate::workspace::registry::generate_workspace_id;
 
 struct OpenTarget {
     workspace_id: String,
-    workspace_path: PathBuf,
     canonical_path: String,
     is_primary: bool,
     status: String,
@@ -43,15 +42,6 @@ impl ManageWorkspaceTool {
         };
         let cleanup_activity = cleanup_activity_for_handler(handler).await;
 
-        // A primary workspace swap is already in progress; refuse to mutate
-        // session state or primary binding concurrently. The swap machinery
-        // holds this flag only briefly, so retry is the right remedy.
-        if handler.is_primary_workspace_swap_in_progress() {
-            return Err(anyhow!(
-                "Primary workspace swap in progress; retry 'open' after the swap completes."
-            ));
-        }
-
         let current_primary_id = handler.current_workspace_id();
 
         let target = if let Some(path) = path.as_ref() {
@@ -75,7 +65,6 @@ impl ManageWorkspaceTool {
                 OpenTarget {
                     is_primary,
                     workspace_id,
-                    workspace_path: canonical_path,
                     canonical_path: canonical_path_str,
                     status,
                 }
@@ -85,7 +74,6 @@ impl ManageWorkspaceTool {
                 OpenTarget {
                     is_primary: current_primary_id.as_deref() == Some(workspace_id.as_str()),
                     workspace_id,
-                    workspace_path: canonical_path,
                     canonical_path: canonical_path_str,
                     status: "pending".to_string(),
                 }
@@ -143,13 +131,13 @@ impl ManageWorkspaceTool {
             }
             let workspace_id = row.workspace_id;
             let row_path = row.path;
-            let workspace_path = PathBuf::from(&row_path);
-            crate::workspace::root_safety::reject_sensitive_workspace_root(&workspace_path)?;
+            crate::workspace::root_safety::reject_sensitive_workspace_root(&PathBuf::from(
+                &row_path,
+            ))?;
             let status = row.status;
             OpenTarget {
                 is_primary: current_primary_id.as_deref() == Some(workspace_id.as_str()),
                 workspace_id,
-                workspace_path,
                 canonical_path: row_path,
                 status,
             }
@@ -165,11 +153,7 @@ impl ManageWorkspaceTool {
             "Opening workspace for current session"
         );
 
-        let already_active = handler.is_workspace_active(&target.workspace_id).await;
-        let attached_matches_target = handler
-            .was_workspace_attached_in_session(&target.workspace_id)
-            .await;
-        if already_active && !force && target.is_primary && attached_matches_target {
+        if target.is_primary && !force {
             return Ok(Self::opened_message(&target));
         }
 
@@ -198,9 +182,7 @@ impl ManageWorkspaceTool {
             }
         }
 
-        handler
-            .switch_primary_workspace_with_root(&target.workspace_id, target.workspace_path.clone())
-            .await?;
+        handler.mark_workspace_active(&target.workspace_id);
 
         Ok(Self::opened_message(&target))
     }

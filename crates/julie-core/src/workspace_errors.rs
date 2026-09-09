@@ -10,8 +10,6 @@ use std::fmt;
 pub enum WorkspaceResolutionFailureKind {
     UnknownWorkspace,
     WorkspaceNotReady,
-    PrimarySwapInProgress,
-    AutoActivationFailed,
     /// The caller supplied a file path that resolves outside the workspace root.
     FileOutsideWorkspace,
 }

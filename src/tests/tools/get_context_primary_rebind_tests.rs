@@ -124,36 +124,3 @@ async fn test_get_context_primary_uses_rebound_current_primary_store() -> Result
 
     Ok(())
 }
-
-#[tokio::test]
-async fn test_get_context_primary_rejects_swap_gap() -> Result<()> {
-    let (handler, _rebound_id, _rebound_path) = setup_rebound_primary_get_context_handler().await?;
-    handler.publish_loaded_workspace_swap_intent_for_test();
-
-    let err = GetContextTool {
-        query: "rebound context phrase".to_string(),
-        max_tokens: Some(1200),
-        workspace: Some("primary".to_string()),
-        language: Some("rust".to_string()),
-        file_pattern: None,
-        format: Some("readable".to_string()),
-        edited_files: None,
-        entry_symbols: None,
-        stack_trace: None,
-        failing_test: None,
-        max_hops: None,
-        prefer_tests: None,
-        semantics: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect_err("swap gap should reject primary get_context");
-
-    assert!(
-        err.to_string()
-            .contains("Primary workspace identity unavailable during swap"),
-        "unexpected error: {err:#}"
-    );
-
-    Ok(())
-}

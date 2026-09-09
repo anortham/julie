@@ -139,28 +139,3 @@ async fn test_deep_dive_primary_uses_rebound_current_primary_store() -> Result<(
 
     Ok(())
 }
-
-#[tokio::test]
-async fn test_deep_dive_primary_rejects_swap_gap() -> Result<()> {
-    let (handler, _rebound_id, _rebound_path) = setup_rebound_primary_deep_dive_handler().await?;
-    handler.publish_loaded_workspace_swap_intent_for_test();
-
-    let err = DeepDiveTool {
-        symbol: "rebound_primary_symbol".to_string(),
-        depth: DeepDiveDepth::Overview,
-        context_file: None,
-        workspace: Some("primary".to_string()),
-        semantics: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect_err("swap gap should reject primary deep_dive");
-
-    assert!(
-        err.to_string()
-            .contains("Primary workspace identity unavailable during swap"),
-        "unexpected error: {err:#}"
-    );
-
-    Ok(())
-}

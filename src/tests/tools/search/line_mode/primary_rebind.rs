@@ -351,63 +351,6 @@ async fn test_fast_search_reference_indexing_uses_rebound_primary_storage_root()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_fast_search_primary_rejects_neutral_gap_without_primary_identity() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
-    let temp_dir = TempDir::new()?;
-    let workspace_path = temp_dir.path().to_path_buf();
-    let src_dir = workspace_path.join("src");
-    fs::create_dir_all(&src_dir)?;
-    fs::write(
-        src_dir.join("example.rs"),
-        "pub fn neutral_gap_search_target() {}\n",
-    )?;
-
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    handler.publish_loaded_workspace_swap_intent_for_test();
-
-    let search_tool = FastSearchTool {
-        query: "neutral_gap_search_target".to_string(),
-        language: None,
-        file_pattern: None,
-        limit: 10,
-        workspace: Some("primary".to_string()),
-        context_lines: None,
-        exclude_tests: None,
-        ..Default::default()
-    };
-
-    let err = search_tool
-        .call_tool(&handler)
-        .await
-        .expect_err("neutral gap should reject primary fast_search requests");
-
-    assert!(
-        err.to_string()
-            .contains("Primary workspace identity unavailable during swap"),
-        "unexpected error: {err:#}"
-    );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_primary_cold_start_reports_index_first_instead_of_swap_gap() -> Result<()>
 {
     let handler = JulieServerHandler::new_for_test().await?;
@@ -435,69 +378,6 @@ async fn test_fast_search_primary_cold_start_reports_index_first_instead_of_swap
     assert!(
         !response_text.contains("Primary workspace identity unavailable during swap"),
         "cold-start primary search should not be classified as a swap gap: {response_text}"
-    );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_fast_search_primary_rejects_swap_in_progress_after_partial_publish() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
-    let temp_dir = TempDir::new()?;
-    let rebound_dir = TempDir::new()?;
-    let workspace_path = temp_dir.path().to_path_buf();
-    let rebound_path = rebound_dir.path().canonicalize()?;
-    let src_dir = workspace_path.join("src");
-    fs::create_dir_all(&src_dir)?;
-    fs::write(
-        src_dir.join("example.rs"),
-        "pub fn partial_publish_search_target() {}\n",
-    )?;
-
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    let rebound_id =
-        crate::workspace::registry::generate_workspace_id(&rebound_path.to_string_lossy())?;
-
-    handler.publish_loaded_workspace_swap_intent_for_test();
-    handler.set_current_primary_binding(rebound_id, rebound_path);
-
-    let search_tool = FastSearchTool {
-        query: "partial_publish_search_target".to_string(),
-        language: None,
-        file_pattern: None,
-        limit: 10,
-        workspace: Some("primary".to_string()),
-        context_lines: None,
-        exclude_tests: None,
-        ..Default::default()
-    };
-
-    let err = search_tool
-        .call_tool(&handler)
-        .await
-        .expect_err("swap-in-progress should reject primary fast_search after partial publish");
-
-    assert!(
-        err.to_string()
-            .contains("Primary workspace identity unavailable during swap"),
-        "unexpected error: {err:#}"
     );
 
     Ok(())

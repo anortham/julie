@@ -39,9 +39,6 @@ pub trait ToolContext: Send + Sync {
     /// Returns the loaded (non-primary / secondary) workspace ID, if any.
     fn loaded_workspace_id(&self) -> Option<String>;
 
-    /// Returns `true` while a primary workspace swap is in progress.
-    fn is_primary_workspace_swap_in_progress(&self) -> bool;
-
     /// Returns the session ID for this handler instance.
     ///
     /// NEW accessor wrapping the raw `session_metrics.session_id` field.
@@ -115,7 +112,7 @@ pub trait ToolContext: Send + Sync {
     ///   (stdio mode) as `WorkspaceTarget::Target(id)`.
     ///
     /// Encapsulates the full `resolve_workspace_filter` resolver, including
-    /// the `activate_workspace_with_root` mutation (Blocker B2).
+    /// the `mark_workspace_active` mutation (Blocker B2).
     async fn resolve_workspace_target(
         &self,
         workspace_param: Option<&str>,

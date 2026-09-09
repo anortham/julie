@@ -192,19 +192,6 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         info!("Refreshing workspace: {}", workspace_id);
 
-        // Refuse all refresh work while a primary workspace swap is mid-flight.
-        // Rationale (Findings #28/#29): both the force=true primary reindex branch
-        // and the post-refresh `initialize_workspace_with_force` rebind below
-        // mutate the same session state the swap machinery guards. Note that
-        // `current_workspace_id()` returns `None` during a swap, so we can't
-        // condition this check on "targets current primary"; the safe move is
-        // to back off entirely for the brief window the swap holds the flag.
-        if handler.is_primary_workspace_swap_in_progress() {
-            return Err(anyhow::anyhow!(
-                "Primary workspace swap in progress; retry 'refresh' after the swap completes."
-            ));
-        }
-
         if force && handler.current_workspace_id().as_deref() == Some(workspace_id) {
             return self.handle_index_command(handler, None, force, false).await;
         }
@@ -217,13 +204,6 @@ impl ManageWorkspaceTool {
                 if handler.current_workspace_id().as_deref() == Some(workspace_id)
                     && handler.loaded_workspace_id().as_deref() != Some(workspace_id)
                 {
-                    // Defensive re-check: a swap could theoretically start between
-                    // refresh_workspace_internal returning and this rebind call.
-                    if handler.is_primary_workspace_swap_in_progress() {
-                        return Err(anyhow::anyhow!(
-                            "Primary workspace swap in progress; retry 'refresh' after the swap completes."
-                        ));
-                    }
                     handler
                         .initialize_workspace_with_force(
                             Some(success.workspace_path.clone()),

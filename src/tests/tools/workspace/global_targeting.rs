@@ -132,11 +132,9 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
 }
 
 mod deferred_explicit_targets;
-mod deferred_sessions;
 mod global_remove;
 mod list_stats;
 mod open_lifecycle;
-mod primary_swap_guards;
 mod rebind_index;
 mod resolution_failures;
 mod target_activation;

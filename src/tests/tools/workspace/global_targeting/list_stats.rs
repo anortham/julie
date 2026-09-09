@@ -104,10 +104,7 @@ async fn test_manage_workspace_list_labels_current_active_and_known_workspaces()
     daemon_db
         .upsert_workspace(&active_id, &active_path_str, "ready")
         .unwrap();
-    handler
-        .activate_workspace_with_root(&active_id, active_path.clone())
-        .await
-        .expect("known workspace should activate for the session");
+    handler.mark_workspace_active(&active_id);
 
     let known_path = known_root.canonicalize().unwrap();
     let known_path_str = known_path.to_string_lossy().to_string();
@@ -217,10 +214,7 @@ async fn test_manage_workspace_list_uses_session_primary_binding_for_current_lab
         .unwrap();
 
     handler.set_current_primary_binding(rebound_primary_id.clone(), rebound_primary_path);
-    handler
-        .activate_workspace_with_root(&active_id, active_path.clone())
-        .await
-        .expect("known workspace should activate for the session");
+    handler.mark_workspace_active(&active_id);
 
     let result = ManageWorkspaceTool {
         operation: "list".to_string(),
@@ -386,10 +380,7 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
     daemon_db
         .update_workspace_stats(&active_id, 20, 3, None, None, None)
         .unwrap();
-    handler
-        .activate_workspace_with_root(&active_id, active_path.clone())
-        .await
-        .expect("known workspace should activate for the session");
+    handler.mark_workspace_active(&active_id);
 
     let known_path = known_root.canonicalize().unwrap();
     let known_path_str = known_path.to_string_lossy().to_string();
@@ -433,64 +424,5 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
     assert!(
         text.contains("Total Symbols: 60"),
         "stats should aggregate all known symbols: {text}"
-    );
-}
-
-#[tokio::test]
-async fn test_manage_workspace_stats_neutral_gap_returns_registry_summary_without_primary_identity()
-{
-    let temp_dir = tempfile::TempDir::new().unwrap();
-
-    let primary_root = temp_dir.path().join("primary");
-    fs::create_dir_all(&primary_root).unwrap();
-    fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
-
-    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-
-    let primary_path = primary_root.canonicalize().unwrap();
-    let primary_path_str = primary_path.to_string_lossy().to_string();
-    let primary_id = generate_workspace_id(&primary_path_str).unwrap();
-    daemon_db
-        .upsert_workspace(&primary_id, &primary_path_str, "ready")
-        .unwrap();
-    let primary_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(primary_path.clone())
-            .await
-            .expect("primary workspace should initialize"),
-    );
-
-    let handler = JulieServerHandler::new_with_shared_workspace(
-        primary_ws,
-        primary_path,
-        Some(Arc::clone(&daemon_db)),
-        Some(primary_id),
-        None,
-        None,
-    )
-    .await
-    .expect("handler should initialize");
-
-    handler.publish_loaded_workspace_swap_intent_for_test();
-
-    let result = ManageWorkspaceTool {
-        operation: "stats".to_string(),
-        path: None,
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect("neutral gap should still return registry stats");
-
-    let text = extract_text_from_result(&result);
-    assert!(
-        text.contains("Current Workspace: none"),
-        "stats should report an unbound current workspace during the swap gap: {text}"
-    );
-    assert!(
-        text.contains("Known Workspaces: 1"),
-        "stats should still report registry counts during the swap gap: {text}"
     );
 }

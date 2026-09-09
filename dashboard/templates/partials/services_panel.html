@@ -68,19 +68,6 @@
         <td id="control-plane-shutdown-cause">{% if health.control_plane.shutdown_cause %}{{ health.control_plane.shutdown_cause | upper | replace(from="_", to=" ") }}{% else %}NONE{% endif %}</td>
       </tr>
       <tr>
-        <td>Active Sessions</td>
-        <td id="control-plane-sessions">{{ health.control_plane.active_sessions }}</td>
-      </tr>
-      <tr>
-        <td>Session Phases</td>
-        <td>
-          <span id="control-plane-connecting">{{ health.control_plane.session_phases.connecting }}</span> /
-          <span id="control-plane-bound">{{ health.control_plane.session_phases.bound }}</span> /
-          <span id="control-plane-serving">{{ health.control_plane.session_phases.serving }}</span> /
-          <span id="control-plane-closing">{{ health.control_plane.session_phases.closing }}</span>
-        </td>
-      </tr>
-      <tr>
         <td>Workspace Pool</td>
         <td id="control-plane-workspace-pool">{% if health.control_plane.workspace_pool_connected %}Attached{% else %}Detached{% endif %}</td>
       </tr>

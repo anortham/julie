@@ -49,7 +49,7 @@ pub(crate) async fn cleanup_activity_for_handler(
     if let Some(workspace_id) = handler.current_workspace_id() {
         live_workspace_ids.insert(workspace_id);
     }
-    live_workspace_ids.extend(handler.session_attached_workspace_ids().await);
+    live_workspace_ids.extend(handler.active_workspace_ids().await);
     WorkspaceCleanupActivity::new(live_workspace_ids)
 }
 

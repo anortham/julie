@@ -107,10 +107,10 @@ async fn answer_roots_request_error(
     }
 }
 
-mod deferred_auto_index_sensitive;
 mod initial_binding;
 mod list_changed_refresh;
 mod secondary_targets;
+mod sensitive_cwd;
 mod startup_deferral;
 
 fn extract_text(result: &impl crate::mcp_compat::AsCallToolResult) -> String {

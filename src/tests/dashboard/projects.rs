@@ -6,14 +6,11 @@ use axum::body::Body;
 use axum::http::Request;
 use tower::ServiceExt;
 
-use crate::dashboard::routes::search_session::{
-    cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
-};
+use crate::dashboard::routes::search_session::{cleanup_dashboard_anchor, dashboard_handler};
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
 use crate::registry::database::DaemonDatabase;
 use crate::registry::lifecycle::{LifecyclePhase, ShutdownCause};
-use crate::registry::session::SessionTracker;
 use crate::workspace::registry::generate_workspace_id;
 
 async fn body_to_string(body: Body) -> String {
@@ -33,9 +30,7 @@ fn action_state_with_phase(
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let daemon_db =
         Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon"));
-    let sessions = Arc::new(SessionTracker::new());
     let state = DashboardState::new(
-        sessions,
         Some(Arc::clone(&daemon_db)),
         Arc::new(RwLock::new(phase)),
         Instant::now(),
@@ -49,7 +44,6 @@ fn action_state_with_phase(
 fn action_state_without_daemon() -> (DashboardState, tempfile::TempDir) {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let state = DashboardState::new(
-        Arc::new(SessionTracker::new()),
         None,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
@@ -106,14 +100,6 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
     std::fs::remove_dir_all(&stale_path).expect("remove stale path");
     std::fs::remove_dir_all(&blocked_path).expect("remove blocked path");
 
-    let current_session = state.sessions().add_session();
-    assert!(
-        state
-            .sessions()
-            .set_current_workspace(&current_session, Some("current_ws".to_string())),
-        "session should accept current workspace tracking"
-    );
-
     let config = DashboardConfig::default();
     let app = create_router(state, config).unwrap();
     let response = app
@@ -131,7 +117,6 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
     assert!(html.contains("Recent Cleanup"));
     assert!(!html.contains("Add Workspace"));
     assert!(!html.contains("name=\"csrf_token\""));
-    assert!(html.contains("CURRENT"));
     assert!(html.contains("ACTIVE"));
     assert!(html.contains("KNOWN"));
     assert!(html.contains("STALE"));
@@ -262,8 +247,7 @@ async fn test_dashboard_handler_does_not_write_project_log_under_process_cwd() {
     .await;
 
     std::env::set_current_dir(old_cwd).expect("restore cwd");
-    let (handler, _anchor_dir, anchor_id) = result.expect("dashboard handler");
-    disconnect_dashboard_attached_workspaces(&handler).await;
+    let (_handler, _anchor_dir, anchor_id) = result.expect("dashboard handler");
     cleanup_dashboard_anchor(
         &crate::dashboard::AppState {
             dashboard: state,
@@ -444,14 +428,6 @@ async fn test_project_detail_shows_workspace_state_without_reference_section() {
         .unwrap();
     daemon_db.increment_session_count(&workspace_id).unwrap();
 
-    let session_id = state.sessions().add_session();
-    assert!(
-        state
-            .sessions()
-            .set_current_workspace(&session_id, Some(workspace_id.clone())),
-        "session should accept current workspace tracking"
-    );
-
     let config = DashboardConfig::default();
     let app = create_router(state, config).unwrap();
     let response = app
@@ -467,7 +443,7 @@ async fn test_project_detail_shows_workspace_state_without_reference_section() {
     assert_eq!(response.status().as_u16(), 200);
     let html = body_to_string(response.into_body()).await;
     assert!(html.contains("Workspace State"));
-    assert!(html.contains("CURRENT"));
+    assert!(html.contains("ACTIVE"));
     assert!(!html.contains(&format!("/projects/{workspace_id}/refresh")));
     assert!(!html.contains(&format!("/projects/{workspace_id}/delete")));
     assert!(html.contains(&format!("/metrics?workspace={workspace_id}")));

@@ -47,7 +47,6 @@ fn mapped_buckets_for_path(path: &str) -> &'static [&'static str] {
         path,
         &[
             "src/registry/workspace_registry_store.rs",
-            "src/registry/workspace_session_attachment.rs",
             "src/registry/workspace_cleanup.rs",
             "src/workspace/registry.rs",
             "src/tests/registry/workspace_cleanup.rs",

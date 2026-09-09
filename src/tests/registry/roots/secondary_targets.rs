@@ -387,11 +387,6 @@ async fn test_fast_search_startup_workspace_id_first_request_succeeds_without_pr
         None,
         "startup-scoped first request should start before any primary bind"
     );
-    assert!(
-        handler
-            .was_workspace_attached_in_session(&startup_workspace_id)
-            .await
-    );
     assert!(!handler.is_workspace_active(&startup_workspace_id).await);
 
     let search_result = tokio::time::timeout(Duration::from_secs(30), async {

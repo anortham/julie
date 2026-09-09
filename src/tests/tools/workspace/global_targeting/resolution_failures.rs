@@ -85,36 +85,6 @@ async fn test_workspace_resolution_failure_known_not_ready_is_typed() {
     );
 }
 
-#[ignore = "daemon multi-workspace write lifecycle (pool-backed); fate decided in Phase 3d.3 registry rework"]
-#[tokio::test]
-async fn test_workspace_resolution_failure_auto_activation_failed_is_typed() {
-    let (temp_dir, handler, _target_id) = setup_known_reference_search_workspace().await;
-    let missing_root = temp_dir.path().join("missing-auto-activation");
-    let missing_path = missing_root.to_string_lossy().to_string();
-    let missing_workspace_id = generate_workspace_id(&missing_path).unwrap();
-    handler
-        .daemon_db
-        .as_ref()
-        .expect("test handler should expose daemon db")
-        .upsert_workspace(&missing_workspace_id, &missing_path, "ready")
-        .expect("missing workspace row should be registered for test");
-
-    let error = resolve_workspace_filter(Some(&missing_workspace_id), &handler)
-        .await
-        .expect_err("missing workspace root should fail auto-activation");
-
-    assert_workspace_resolution_failure(
-        &error,
-        WorkspaceResolutionFailureKind::AutoActivationFailed,
-        &format!(
-            "Workspace '{}' is known but auto-activation failed: Workspace path does not exist: {}. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
-            missing_workspace_id,
-            missing_root.display(),
-            missing_workspace_id
-        ),
-    );
-}
-
 #[tokio::test]
 async fn test_deep_dive_invalid_workspace_uses_invalid_params_from_typed_resolution_failure() {
     let (_temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;

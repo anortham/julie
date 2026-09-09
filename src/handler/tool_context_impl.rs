@@ -47,10 +47,6 @@ impl ToolContext for JulieServerHandler {
         JulieServerHandler::loaded_workspace_id(self)
     }
 
-    fn is_primary_workspace_swap_in_progress(&self) -> bool {
-        JulieServerHandler::is_primary_workspace_swap_in_progress(self)
-    }
-
     /// NEW accessor — wraps the raw `session_metrics.session_id` field.
     fn session_id(&self) -> &str {
         &self.session_metrics.session_id
@@ -118,7 +114,7 @@ impl ToolContext for JulieServerHandler {
     // ── Purpose-methods (top-crate impls) ────────────────────────────────
 
     /// Encapsulates the full `resolve_workspace_filter` resolver verbatim,
-    /// including the `activate_workspace_with_root` mutation (Blocker B2).
+    /// including the `mark_workspace_active` mutation (Blocker B2).
     async fn resolve_workspace_target(
         &self,
         workspace_param: Option<&str>,

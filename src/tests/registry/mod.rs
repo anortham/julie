@@ -7,6 +7,4 @@ pub mod handler;
 pub mod inprocess_embedding;
 pub mod paths;
 pub mod roots;
-pub mod session;
-pub mod session_workspace;
 pub mod symbol_db_pooled_test;

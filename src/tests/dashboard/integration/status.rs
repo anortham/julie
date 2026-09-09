@@ -23,11 +23,11 @@ async fn test_status_live_exposes_nested_health_snapshot() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(json["health"]["overall"], "ready");
-    assert_eq!(json["health"]["control_plane"]["active_sessions"], 0);
     assert_eq!(json["health"]["control_plane"]["daemon_phase"], "ready");
-    assert_eq!(
-        json["health"]["control_plane"]["session_phases"]["connecting"],
-        0
+    assert!(
+        json["health"]["control_plane"]
+            .get("active_sessions")
+            .is_none()
     );
     assert_eq!(json["health"]["data_plane"]["workspace_count"], 1);
     assert_eq!(json["health"]["data_plane"]["ready_workspace_count"], 1);
@@ -72,7 +72,6 @@ async fn test_status_live_exposes_indexing_health_snapshot() {
     }
 
     let state = DashboardState::new(
-        Arc::new(SessionTracker::new()),
         Some(daemon_db),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
@@ -200,7 +199,7 @@ async fn test_status_page_renders_health_sections() {
     assert!(html.contains("Runtime Plane"));
     assert!(html.contains("Overall Health"));
     assert!(html.contains("Daemon Phase"));
-    assert!(html.contains("Session Phases"));
+    assert!(!html.contains("Session Phases"));
     assert_eq!(
         html.matches("id=\"data-plane-projection-tantivy-status\"")
             .count(),

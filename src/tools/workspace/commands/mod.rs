@@ -77,17 +77,6 @@ impl ManageWorkspaceOperation {
         Self::parse(operation).ok()
     }
 
-    pub(crate) fn primary_index_request(
-        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
-    ) -> bool {
-        let Some(arguments) = arguments else {
-            return false;
-        };
-
-        matches!(Self::from_arguments(Some(arguments)), Some(Self::Index))
-            && arguments.get("path").is_none_or(serde_json::Value::is_null)
-    }
-
     pub(crate) fn request_targets_primary(
         arguments: Option<&serde_json::Map<String, serde_json::Value>>,
     ) -> bool {

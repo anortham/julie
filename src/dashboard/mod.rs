@@ -70,7 +70,7 @@ impl Default for DashboardConfig {
 /// Full application state threaded through every route handler.
 #[derive(Clone)]
 pub struct AppState {
-    /// Dashboard-level shared state (sessions, events, etc.).
+    /// Dashboard-level shared state (registry, events, etc.).
     pub dashboard: DashboardState,
 
     /// The Tera template engine instance.
@@ -127,7 +127,6 @@ pub fn dashboard_router(paths: &julie_core::paths::RegistryPaths) -> anyhow::Res
     )?);
     let recovery_markers = Arc::new(crate::registry::shutdown::read_recovery_markers(paths));
     let state = DashboardState::new(
-        Arc::new(crate::registry::session::SessionTracker::new()),
         Some(registry),
         Arc::new(std::sync::RwLock::new(
             crate::registry::lifecycle::LifecyclePhase::Ready,
