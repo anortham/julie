@@ -430,17 +430,10 @@ fn rss_bytes() -> Option<u64> {
 }
 
 pub fn now_rfc3339() -> String {
-    // chrono is not a dependency; format seconds since epoch as a plain integer string
-    // if the crate has no RFC 3339 helper. Check `Cargo.toml` for `chrono` or `time` first
-    // and use it when present.
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    secs.to_string()
+    chrono::Utc::now().to_rfc3339()
 }
 ```
-If `Cargo.toml` already has `chrono` or `time` (check with `grep -nE '^(chrono|time)' Cargo.toml`), use it for `now_rfc3339` and produce a real RFC 3339 string; the `started_at` field in `service.json` must then be RFC 3339. If neither exists, keep the integer seconds string and change the Global Constraint wording for `started_at` to "seconds since epoch as a string" in this plan and the design.
+`chrono` 0.4.42 is already a dependency (`Cargo.toml:140`), so `started_at` is a real RFC 3339 string.
 
 `src/service/http.rs`:
 ```rust
@@ -531,11 +524,12 @@ async fn api_call(
 }
 
 pub fn failure_response(failure: RequestFailure) -> Response {
-    let code = if failure.code == "INTERNAL" { StatusCode::INTERNAL_SERVER_ERROR } else { StatusCode::BAD_REQUEST };
+    let internal = RequestFailure::internal("").code;
+    let code = if failure.code == internal { StatusCode::INTERNAL_SERVER_ERROR } else { StatusCode::BAD_REQUEST };
     (code, Json(failure)).into_response()
 }
 ```
-Check the real `RequestOrigin` variant names at `src/request_engine/types.rs:69-72` and the real internal failure code constant in `types.rs` before writing `"INTERNAL"`; use the constants the crate exports. If `RequestOrigin` has no MCP-like variant, use the one the in-process server used (find with `grep -n RequestOrigin:: src/handler/mcp_adapter.rs`).
+`RequestOrigin::Mcp` exists at `src/request_engine/types.rs:69-72`. `RequestFailure::internal` at `types.rs:299` sets the internal code; comparing against a freshly built internal failure avoids naming the string twice.
 
 `src/service/mod.rs`:
 ```rust
@@ -757,7 +751,7 @@ async fn server_discover_lists_2026_07_28_without_a_session_header() {
         .send().await.unwrap();
     assert!(res.headers().get("Mcp-Session-Id").is_none());
     let body: Value = res.json().await.unwrap();
-    let versions = body["result"]["protocolVersions"].as_array().expect("protocolVersions");
+    let versions = body["result"]["supportedVersions"].as_array().expect("supportedVersions");
     assert!(versions.iter().any(|v| v == "2026-07-28"));
 }
 
@@ -786,7 +780,7 @@ async fn tools_call_manage_workspace_list_returns_a_complete_result() {
     assert!(body["result"]["content"].is_array());
 }
 ```
-Check the exact field name the `server/discover` result uses for versions in `rmcp-3.0.1/src/model.rs` (search `struct ServerDiscoverResult` or similar) and the exact `ToolInfo` field for the name at `src/request_engine/catalog.rs:9` before running; fix the test to the real names, not the other way around.
+`DiscoverResult` at `rmcp-3.0.1/src/model.rs:1183` is `rename_all = "camelCase"`, so the field is `supportedVersions`. `ToolInfo.name` is `&'static str` at `src/request_engine/catalog.rs:9`.
 
 **Step 2: Run the tests to verify they fail.**
 
@@ -809,8 +803,7 @@ pub fn mcp_service(engine: Arc<RequestEngine>) -> StreamableHttpService<McpAdapt
     let config = StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
         .with_json_response(true)
-        .with_allowed_hosts(vec!["127.0.0.1".into(), "localhost".into()])
-        .with_allowed_origins(vec![]);
+        .with_allowed_hosts(["127.0.0.1", "localhost"]);
     StreamableHttpService::new(
         move || Ok(McpAdapter::new(Arc::clone(&engine), None)),
         Arc::new(NeverSessionManager::default()),
@@ -818,7 +811,7 @@ pub fn mcp_service(engine: Arc<RequestEngine>) -> StreamableHttpService<McpAdapt
     )
 }
 ```
-Verify `NeverSessionManager` implements `Default` (see `session/never.rs:19`); if not, use its constructor. Verify the allowed-hosts and allowed-origins builder argument types at `tower.rs:155-178`; if allowed-origins with an empty list rejects browser requests to `/mcp`, that is correct behavior (the browser never calls `/mcp`).
+`NeverSessionManager` derives `Default` (`session/never.rs:17-21`). `with_allowed_hosts` takes `impl IntoIterator<Item = impl Into<String>>` (`tower.rs:155`). Origin validation stays at its default, which ignores `Origin`; the token is the access control. The `Host` header allowlist must include the loopback forms hosts actually send; if a host sends `127.0.0.1:<port>`, check whether `rmcp` compares with or without the port and add the form it needs.
 
 `src/service/http.rs`, in `router`, before `.layer(...)`:
 ```rust
@@ -968,7 +961,7 @@ async fn shim_forwards_requests_and_drops_notifications() {
     let lines: Vec<Value> = String::from_utf8(output).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     assert_eq!(lines.len(), 2, "one line per request, none for the notification");
     assert_eq!(lines[0]["id"], 1);
-    assert!(lines[0]["result"]["protocolVersions"].is_array());
+    assert!(lines[0]["result"]["supportedVersions"].is_array());
     assert_eq!(lines[1]["id"], 2);
     assert_eq!(lines[1]["result"]["resultType"], "complete");
 }
@@ -1287,7 +1280,7 @@ cargo nextest run --lib tests::service::control
 **Step 3: Implement.**
 
 - `http.rs`: add `.route("/shutdown", post(shutdown))` where `shutdown` sets a `CancellationToken` carried in `AppState` (`pub shutdown: tokio_util::sync::CancellationToken`) after returning `(StatusCode::ACCEPTED, r#"{"stopping":true}"#)`; use `tokio::spawn` with a 50 ms delay so the response flushes first. `ServiceApp::serve` uses that same token for graceful shutdown instead of creating its own.
-- `http.rs`: build the dashboard router with `crate::dashboard::create_router(DashboardState::new(<args from state.rs:141>), DashboardConfig::default())` and `.merge(...)` it into the service router before the token layer. If `create_router` returns `Err`, `ServiceApp::new` fails; do not fall back.
+- `http.rs`: build `DashboardState` exactly as `build_dashboard_server` does at `src/dashboard/standalone.rs:141-155` (`DaemonDatabase::open(&paths.registry_db())`, `SessionTracker::new()`, `LifecyclePhase::Ready`, `Instant::now()`, no embedding service, error buffer 50, `.with_recovery_markers(...)`), then `crate::dashboard::create_router(state, DashboardConfig::default())` and `.merge(...)` it into the service router before the token layer. Move that construction into a `fn dashboard_router(paths: &RegistryPaths) -> anyhow::Result<Router>` in `src/dashboard/mod.rs` so `standalone.rs` can lose it. If `create_router` returns `Err`, `ServiceApp::new` fails; do not fall back.
 - `dashboard/standalone.rs`: delete `ensure_background_server`, `spawn_background_server`, `cached_server`, `DashboardServer`, `launch_dashboard_for_paths`, and `build_dashboard_server`. `serve_dashboard_forever` becomes:
 ```rust
 pub async fn serve_dashboard_forever() -> Result<()> {
@@ -1329,7 +1322,7 @@ cargo build
 - Create: `src/tests/service/process.rs`, `src/tests/service/budget.rs`
 - Modify: `xtask/test_tiers.toml` (new buckets `service` and `service-process`; add `service` to `fast`, `smoke`, `dev`, `full`; add `service-process` to `dev` and `full`), `src/tests/service/mod.rs`
 
-**Contract inputs:** bucket format at `xtask/test_tiers.toml:21-35`: `expected_seconds`, `timeout_seconds`, `scope_label`, `notes`, `commands = [...]`. Tiers at `:3-17`. Existing subprocess tests use `std::process::Command::new(env!("CARGO_BIN_EXE_julie-server"))`; confirm the exact env name with `grep -rn CARGO_BIN_EXE src/tests | head -3` and reuse it.
+**Contract inputs:** bucket format at `xtask/test_tiers.toml:21-35`: `expected_seconds`, `timeout_seconds`, `scope_label`, `notes`, `commands = [...]`. Tiers at `:3-17`. Existing subprocess tests resolve the binary with `crate::tests::request_process_helpers::resolve_julie_binary()` (`src/tests/request_process_helpers.rs:10`), which reads `CARGO_BIN_EXE_julie-server` with a fallback. Reuse it.
 
 **File ownership:** as listed. **Serialization required:** Yes. **Dependency reason:** exercises the finished binary.
 
@@ -1379,7 +1372,7 @@ The `Mutex` in `status.rs` is a word the test does not ban; `lock()` as a method
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-fn bin() -> &'static str { env!("CARGO_BIN_EXE_julie-server") }
+fn bin() -> std::path::PathBuf { crate::tests::request_process_helpers::resolve_julie_binary() }
 
 fn home() -> tempfile::TempDir { tempfile::tempdir().unwrap() }
 
