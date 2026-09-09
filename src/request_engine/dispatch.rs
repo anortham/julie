@@ -133,12 +133,27 @@ impl RequestEngine {
                     .handler()
                     .set_injected_embedding_provider(Some(provider));
             }
+            runtime
+                .handler()
+                .semantics_disabled
+                .store(false, Ordering::Release);
         } else if request.semantics == SemanticMode::Off {
             runtime.handler().set_injected_embedding_provider(None);
+            runtime
+                .handler()
+                .semantics_disabled
+                .store(true, Ordering::Release);
+        } else {
+            runtime
+                .handler()
+                .semantics_disabled
+                .store(false, Ordering::Release);
         }
 
         // Step 7: Dispatch tool execution
-        let result = self.dispatch(decoded, &runtime, &context).await?;
+        let result = self
+            .dispatch(decoded, &runtime, &context, request.semantics)
+            .await?;
 
         // Step 8: Envelope construction and normalization
         let readiness = semantic_readiness.to_request_readiness(request.semantics);
@@ -159,6 +174,7 @@ impl RequestEngine {
         decoded: DecodedTool,
         runtime: &RequestRuntime,
         context: &RequestContext,
+        semantics_mode: SemanticMode,
     ) -> Result<CallToolResult, RequestFailure> {
         // Mirror cancellation into AtomicBool for syntax-api cooperation
         let cancelled = Arc::new(AtomicBool::new(context.cancellation.is_cancelled()));
@@ -168,13 +184,26 @@ impl RequestEngine {
             token.cancelled().await;
             c_clone.store(true, Ordering::Release);
         });
+        let budget = julie_core::embeddings_contract::EmbeddingRequestBudget::new(
+            context.to_std_deadline(),
+            Arc::clone(&cancelled),
+        );
 
         let handler = runtime.handler();
+
+        let core_mode = match semantics_mode {
+            SemanticMode::Auto => julie_core::embeddings_contract::SemanticMode::Auto,
+            SemanticMode::Off => julie_core::embeddings_contract::SemanticMode::Off,
+            SemanticMode::Required => julie_core::embeddings_contract::SemanticMode::Required,
+        };
 
         let result = match decoded {
             DecodedTool::BlastRadius(p) => handler.execute_blast_radius(p).await,
             DecodedTool::CallPath(p) => handler.execute_call_path(p).await,
-            DecodedTool::DeepDive(p) => handler.execute_deep_dive(p).await,
+            DecodedTool::DeepDive(mut p) => {
+                p.semantics = Some(core_mode);
+                handler.execute_deep_dive(p).await
+            }
             DecodedTool::EditFile(p) => {
                 handler
                     .execute_edit_file_with_context(
@@ -184,9 +213,18 @@ impl RequestEngine {
                     )
                     .await
             }
-            DecodedTool::FastRefs(p) => handler.execute_fast_refs(p).await,
-            DecodedTool::FastSearch(p) => handler.execute_fast_search(p).await,
-            DecodedTool::GetContext(p) => handler.execute_get_context(p).await,
+            DecodedTool::FastRefs(mut p) => {
+                p.semantics = Some(core_mode);
+                handler.execute_fast_refs_with_budget(p, budget).await
+            }
+            DecodedTool::FastSearch(mut p) => {
+                p.search.semantics = Some(core_mode);
+                handler.execute_fast_search_with_budget(p, budget).await
+            }
+            DecodedTool::GetContext(mut p) => {
+                p.semantics = Some(core_mode);
+                handler.execute_get_context_with_budget(p, budget).await
+            }
             DecodedTool::GetSymbols(p) => handler.execute_get_symbols(p).await,
             DecodedTool::ManageWorkspace(p) => handler.execute_manage_workspace(p).await,
             DecodedTool::Patterns(p) => handler.execute_patterns(p).await,
@@ -214,6 +252,22 @@ impl RequestEngine {
         result.map_err(|e| {
             if let Some(failure) = e.downcast_ref::<RequestFailure>() {
                 failure.clone()
+            } else if context.cancellation.is_cancelled()
+                || e.to_string().to_lowercase().contains("cancelled")
+            {
+                RequestFailure::cancelled(e.to_string())
+            } else if tokio::time::Instant::now() >= context.deadline
+                || e.to_string().to_lowercase().contains("deadline exceeded")
+                || e.to_string().to_lowercase().contains("timed out")
+            {
+                RequestFailure::deadline_exceeded(e.to_string())
+            } else if e.to_string().contains("SEMANTICS_NOT_READY")
+                || e.to_string().to_lowercase().contains("semantics not ready")
+                || e.to_string()
+                    .to_lowercase()
+                    .contains("refusing file embedding: no ready embedding generation exists")
+            {
+                RequestFailure::semantics_not_ready(e.to_string(), serde_json::json!({}))
             } else {
                 RequestFailure::new("TOOL_ERROR", e.to_string(), false, serde_json::json!({}))
             }

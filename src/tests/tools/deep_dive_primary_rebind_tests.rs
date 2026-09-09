@@ -126,6 +126,7 @@ async fn test_deep_dive_primary_uses_rebound_current_primary_store() -> Result<(
         depth: DeepDiveDepth::Overview,
         context_file: None,
         workspace: Some("primary".to_string()),
+        semantics: None,
     }
     .call_tool(&handler)
     .await?;
@@ -149,6 +150,7 @@ async fn test_deep_dive_primary_rejects_swap_gap() -> Result<()> {
         depth: DeepDiveDepth::Overview,
         context_file: None,
         workspace: Some("primary".to_string()),
+        semantics: None,
     }
     .call_tool(&handler)
     .await

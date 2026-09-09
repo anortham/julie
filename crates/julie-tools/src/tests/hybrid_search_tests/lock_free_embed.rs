@@ -21,7 +21,9 @@ mod lock_free_embed_tests {
         compute_query_embedding_for_hybrid, hybrid_search_with_embedding,
     };
     use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex};
-    use julie_pipeline::embeddings::{DeviceInfo, EmbeddingProvider};
+    use julie_pipeline::embeddings::{
+        DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+    };
     use julie_test_support::db::{file_info_builder, store_file_info_if_missing, symbol_builder};
     use tempfile::TempDir;
 
@@ -33,11 +35,18 @@ mod lock_free_embed_tests {
     struct StaticProvider;
 
     impl EmbeddingProvider for StaticProvider {
-        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+        fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
             Ok(vec![1.0_f32; 384])
         }
-        fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> Result<Vec<Vec<f32>>> {
             Ok(texts.iter().map(|_| vec![1.0_f32; 384]).collect())
+        }
+        fn encoder_identity(&self) -> Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("static-mock", 384))
         }
         fn dimensions(&self) -> usize {
             384
@@ -56,13 +65,20 @@ mod lock_free_embed_tests {
     struct SlowProvider;
 
     impl EmbeddingProvider for SlowProvider {
-        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+        fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
             std::thread::sleep(Duration::from_millis(80));
             Ok(vec![0.5_f32; 384])
         }
-        fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> Result<Vec<Vec<f32>>> {
             std::thread::sleep(Duration::from_millis(80));
             Ok(texts.iter().map(|_| vec![0.5_f32; 384]).collect())
+        }
+        fn encoder_identity(&self) -> Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("slow-mock", 384))
         }
         fn dimensions(&self) -> usize {
             384
@@ -82,11 +98,18 @@ mod lock_free_embed_tests {
     struct FailingProvider;
 
     impl EmbeddingProvider for FailingProvider {
-        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+        fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
             anyhow::bail!("embed_query must NOT be called inside the lock region")
         }
-        fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            _texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> Result<Vec<Vec<f32>>> {
             anyhow::bail!("embed_batch must NOT be called inside the lock region")
+        }
+        fn encoder_identity(&self) -> Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("failing-mock", 384))
         }
         fn dimensions(&self) -> usize {
             384
@@ -158,7 +181,11 @@ mod lock_free_embed_tests {
     #[test]
     fn test_compute_query_embedding_returns_vector() {
         let provider = StaticProvider;
-        let embedding = compute_query_embedding_for_hybrid("find me something", Some(&provider));
+        let embedding = compute_query_embedding_for_hybrid(
+            "find me something",
+            Some(&provider),
+            &EmbeddingRequestBudget::default(),
+        );
         assert!(embedding.is_some(), "should return embedding from provider");
         assert_eq!(embedding.unwrap().len(), 384);
     }
@@ -166,7 +193,11 @@ mod lock_free_embed_tests {
     /// `compute_query_embedding_for_hybrid` returns `None` when no provider given.
     #[test]
     fn test_compute_query_embedding_none_provider_returns_none() {
-        let embedding = compute_query_embedding_for_hybrid("find me something", None);
+        let embedding = compute_query_embedding_for_hybrid(
+            "find me something",
+            None,
+            &EmbeddingRequestBudget::default(),
+        );
         assert!(embedding.is_none());
     }
 
@@ -175,7 +206,11 @@ mod lock_free_embed_tests {
     #[test]
     fn test_compute_query_embedding_error_returns_none() {
         let provider = FailingProvider;
-        let embedding = compute_query_embedding_for_hybrid("find me something", Some(&provider));
+        let embedding = compute_query_embedding_for_hybrid(
+            "find me something",
+            Some(&provider),
+            &EmbeddingRequestBudget::default(),
+        );
         assert!(
             embedding.is_none(),
             "provider error should degrade to None (keyword-only), not propagate"
@@ -211,7 +246,11 @@ mod lock_free_embed_tests {
         let (index, db, _idx_dir, _db_dir) = setup_index_and_db();
 
         // Pre-compute embedding outside the (conceptual) lock
-        let embedding = compute_query_embedding_for_hybrid("process_data", Some(&StaticProvider));
+        let embedding = compute_query_embedding_for_hybrid(
+            "process_data",
+            Some(&StaticProvider),
+            &EmbeddingRequestBudget::default(),
+        );
         assert!(embedding.is_some());
 
         // Pass a FailingProvider to detect any hidden embed_query call inside hybrid_search_with_embedding.
@@ -262,7 +301,11 @@ mod lock_free_embed_tests {
 
         // Main thread: embed OUTSIDE the lock (the fix).  Takes ~80 ms.
         let start = Instant::now();
-        let embedding = compute_query_embedding_for_hybrid("process_data", Some(&SlowProvider));
+        let embedding = compute_query_embedding_for_hybrid(
+            "process_data",
+            Some(&SlowProvider),
+            &EmbeddingRequestBudget::default(),
+        );
 
         // Other thread tried at 20 ms; embed finishes at ~80 ms.
         // Since we weren't holding the lock during embed, the other thread

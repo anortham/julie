@@ -14,8 +14,38 @@ mod tests {
         create_isolated_storage_handler(std::env::current_dir()?).await
     }
 
+    struct EnvGuard {
+        key: String,
+        previous: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe { std::env::set_var(key, value) };
+            Self {
+                key: key.to_owned(),
+                previous,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(ref prev) = self.previous {
+                unsafe { std::env::set_var(&self.key, prev) };
+            } else {
+                unsafe { std::env::remove_var(&self.key) };
+            }
+        }
+    }
+
     #[tokio::test]
     async fn test_target_minimal_mode_includes_body_for_child_symbols() -> Result<()> {
+        // Suppress background embedding generation so indexing the full repo focuses
+        // strictly on symbol extraction for GetSymbolsTool without CPU inference timeouts.
+        let _guard = EnvGuard::set("JULIE_EMBEDDING_PROVIDER", "none");
+
         // BUG: When target is set and mode is "minimal", child symbols (methods)
         // get their body stripped because parent_id.is_none() == false.
         // The fix: when target is set, all matched symbols should get bodies.

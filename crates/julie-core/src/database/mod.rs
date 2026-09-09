@@ -21,6 +21,9 @@ pub mod analytics;
 pub mod bulk;
 mod bulk_operations;
 mod complexity_metrics;
+pub mod embedding_generation;
+pub mod embedding_generation_eligibility;
+pub mod embedding_generation_types;
 mod files;
 mod helpers;
 mod identifiers;
@@ -45,6 +48,8 @@ pub mod vectors;
 mod web_edges;
 mod workspace;
 pub use analytics::*;
+pub use embedding_generation_eligibility::*;
+pub use embedding_generation_types::{EmbeddingGeneration, EmbeddingGenerationStatus};
 pub use projections::{ProjectionState, ProjectionStatus};
 pub use revision_changes::{RevisionChangeKind, RevisionFileChange};
 pub use revisions::{CanonicalRevision, CanonicalRevisionKind};
@@ -277,6 +282,32 @@ impl SymbolDatabase {
     pub fn into_read_snapshot(self) -> Result<ReadSnapshot> {
         self.conn.execute_batch("BEGIN DEFERRED TRANSACTION")?;
         Ok(ReadSnapshot { db: self })
+    }
+
+    /// Executes a closure within a deferred read transaction, rolling it back on exit.
+    /// In WAL mode, a read transaction guarantees that all read statements see an
+    /// identical, consistent snapshot of the database, unaffected by concurrent writes.
+    pub fn with_read_transaction<F, T>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&SymbolDatabase) -> Result<T>,
+    {
+        struct ReadTxGuard<'a>(&'a Connection, bool);
+        impl<'a> Drop for ReadTxGuard<'a> {
+            fn drop(&mut self) {
+                if self.1 && !self.0.is_autocommit() {
+                    if let Err(e) = self.0.execute_batch("ROLLBACK") {
+                        warn!("Failed to rollback read transaction: {e}");
+                    }
+                }
+            }
+        }
+
+        let was_autocommit = self.conn.is_autocommit();
+        if was_autocommit {
+            self.conn.execute_batch("BEGIN DEFERRED TRANSACTION")?;
+        }
+        let _guard = ReadTxGuard(&self.conn, was_autocommit);
+        f(self)
     }
 
     pub fn is_autocommit_for_test(&self) -> bool {

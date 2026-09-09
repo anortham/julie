@@ -55,6 +55,9 @@ pub struct FastRefsTool {
     /// Narrow by reference kind: "call", "variable_ref", "type_usage", "member_access", "import". Omit to see all reference types
     #[serde(default)]
     pub reference_kind: Option<String>,
+    /// Optional semantic mode override (Auto, Off, Required)
+    #[serde(default)]
+    pub semantics: Option<julie_core::embeddings_contract::SemanticMode>,
 }
 
 impl FastRefsTool {
@@ -70,73 +73,6 @@ impl FastRefsTool {
         Ok(CallToolResult::text_content(vec![Content::text(
             lean_output,
         )]))
-    }
-
-    /// When zero references are found, try semantic similarity as a fallback.
-    /// Embeds the symbol name on the fly and finds similar symbols by vector distance.
-    /// Returns formatted semantic results or empty string.
-    /// Skips for some explicit workspace queries when embeddings are unavailable.
-    async fn try_semantic_fallback(
-        &self,
-        handler: &dyn ToolContext,
-        workspace_target: &WorkspaceTarget,
-    ) -> String {
-        use super::formatting::format_semantic_fallback;
-        use julie_index::search::similarity;
-
-        // Embedding provider: prefer daemon shared service, fall back to workspace
-        let provider = match handler.embedding_provider().await {
-            Some(p) => p,
-            None => return String::new(),
-        };
-
-        // Embed the symbol name on the fly — no need for it to exist in the DB
-        let query_vector = match provider.embed_query(&self.symbol) {
-            Ok(vec) => vec,
-            Err(_) => return String::new(),
-        };
-
-        // Use a lower threshold than MIN_SIMILARITY_SCORE (0.5) because we're
-        // comparing a raw symbol name against rich metadata embeddings (kind +
-        // name + signature + docstring). Different input domains = lower scores.
-        const QUERY_SIMILARITY_THRESHOLD: f32 = 0.2;
-
-        // Pooled DB: read-only, no mutation gate required.
-        let pooled_db = match workspace_target {
-            WorkspaceTarget::Target(target_workspace_id) => {
-                debug!("Semantic fallback: workspace '{}'", target_workspace_id);
-                match handler
-                    .get_pooled_database_for_workspace(target_workspace_id)
-                    .await
-                {
-                    Ok(db) => db,
-                    Err(e) => {
-                        debug!(
-                            "Semantic fallback: DB error for '{}': {}",
-                            target_workspace_id, e
-                        );
-                        return String::new();
-                    }
-                }
-            }
-            WorkspaceTarget::Primary => match handler.primary_pooled_database().await {
-                Ok(db) => db,
-                Err(_) => return String::new(),
-            },
-        };
-        let similar = match similarity::find_similar_by_query(
-            &pooled_db,
-            &query_vector,
-            5,
-            QUERY_SIMILARITY_THRESHOLD,
-        ) {
-            Ok(results) => results,
-            Err(e) => {
-                debug!("Semantic fallback: KNN error: {}", e);
-                return String::new();
-            }
-        };
-        format_semantic_fallback(&self.symbol, &similar)
     }
 
     pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
@@ -158,6 +94,16 @@ impl FastRefsTool {
         handler: &dyn ToolContext,
         workspace_target: &WorkspaceTarget,
     ) -> Result<CallToolResult> {
+        self.call_tool_with_target_and_budget(handler, workspace_target, None)
+            .await
+    }
+
+    pub async fn call_tool_with_target_and_budget(
+        &self,
+        handler: &dyn ToolContext,
+        workspace_target: &WorkspaceTarget,
+        budget: Option<julie_core::embeddings_contract::EmbeddingRequestBudget>,
+    ) -> Result<CallToolResult> {
         debug!("Finding references for: {}", self.symbol);
 
         // Find references (workspace resolution is handled by workspace_target)
@@ -167,7 +113,17 @@ impl FastRefsTool {
 
         if definitions.is_empty() && references.is_empty() {
             // Attempt semantic fallback (works for both primary and explicit workspaces)
-            let semantic_section = self.try_semantic_fallback(handler, workspace_target).await;
+            let semantic_mode = self
+                .semantics
+                .unwrap_or(julie_core::embeddings_contract::SemanticMode::Auto);
+            let semantic_section = super::fast_refs_semantic::try_semantic_fallback(
+                &self.symbol,
+                handler,
+                workspace_target,
+                budget,
+                semantic_mode,
+            )
+            .await?;
 
             let empty_names = HashMap::new();
             let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &empty_names);

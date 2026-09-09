@@ -110,7 +110,7 @@ fn fresh_database_creation_initializes_schema_31_with_receiver_type() {
     let path = dir.path().join("fresh.db");
     let db = SymbolDatabase::new(&path).unwrap();
     assert_eq!(db.get_schema_version().unwrap(), LATEST_SCHEMA_VERSION);
-    assert_eq!(LATEST_SCHEMA_VERSION, 31);
+    assert_eq!(LATEST_SCHEMA_VERSION, 32);
     assert!(db.has_column("identifiers", "receiver_type").unwrap());
 }
 
@@ -136,7 +136,7 @@ fn migration_031_upgrades_v30_database_without_data_loss() {
     }
 
     let db = SymbolDatabase::new(&path).unwrap();
-    assert_eq!(db.get_schema_version().unwrap(), 31);
+    assert_eq!(db.get_schema_version().unwrap(), 32);
     assert!(db.has_column("identifiers", "receiver_type").unwrap());
 
     let (id, name, kind, receiver_type): (String, String, String, Option<String>) = db

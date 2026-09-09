@@ -490,6 +490,7 @@ fn backend_label(backend: &EmbeddingBackend) -> String {
     match backend {
         EmbeddingBackend::Auto => "auto".to_string(),
         EmbeddingBackend::Sidecar => "sidecar".to_string(),
+        EmbeddingBackend::Native => "native".to_string(),
         EmbeddingBackend::Unresolved => "unresolved".to_string(),
         EmbeddingBackend::Invalid(value) => format!("invalid({value})"),
     }

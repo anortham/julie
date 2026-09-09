@@ -163,6 +163,8 @@ async fn run_search(
             context_lines: None,
             exclude_tests: None,
             backend: crate::tools::search::SearchBackend::resolve(None),
+            semantic_mode: None,
+            budget: None,
         },
         &execution_workspaces,
         &handler,

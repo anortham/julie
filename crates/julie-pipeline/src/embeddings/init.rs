@@ -53,6 +53,10 @@ pub fn create_embedding_provider() -> (
     config.cache_dir = std::env::var("JULIE_EMBEDDING_CACHE_DIR")
         .ok()
         .map(std::path::PathBuf::from);
+    config.native_program = std::env::var("JULIE_NATIVE_SIDECAR_PROGRAM")
+        .ok()
+        .map(std::path::PathBuf::from);
+    config.native_model = std::env::var("JULIE_NATIVE_SIDECAR_MODEL").ok();
 
     // Allow explicit disabling (e.g. CI, tests, offline environments)
     if matches!(

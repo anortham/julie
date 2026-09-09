@@ -158,6 +158,8 @@ pub mod integration {
     pub mod in_process_boundary; // T12: in-process boundary tripwire (cutover bypasses, not deletes, daemon/adapter)
     pub mod indexing_pipeline;
     pub mod lock_contention; // Lock contention regression tests
+    pub mod native_semantic_acceptance; // Milestone N5: Acceptance and CPU qualification
+    pub mod native_semantic_lifecycle; // Milestone N4: Native semantic lifecycle and dynamic recovery
     pub mod projection_repair;
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
@@ -310,6 +312,7 @@ pub mod dashboard;
 // DAEMON TESTS - v6 daemon infrastructure (paths, PID, lifecycle)
 // ============================================================================
 pub mod edit_recovery_contract;
+pub mod health;
 pub mod mcp_protocol_contract;
 pub mod registry;
 pub mod request_engine;
@@ -319,6 +322,7 @@ mod request_transport_parity;
 pub mod runtime_continuation;
 pub mod runtime_lifecycle;
 pub mod runtime_scheduler;
+pub mod semantic_m1_challenges;
 pub mod semantic_request_contract;
 pub mod workspace_process_lifecycle;
 pub mod writer_fencing_contract;

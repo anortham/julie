@@ -14,14 +14,25 @@ use std::sync::Arc;
 struct MockProvider;
 
 impl crate::embeddings::EmbeddingProvider for MockProvider {
-    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+    fn embed_query(
+        &self,
+        _text: &str,
+        _budget: &crate::embeddings::EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<f32>> {
         Ok(vec![1.0])
     }
-    fn embed_batch(&self, _texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+    fn embed_batch(
+        &self,
+        _texts: &[String],
+        _budget: &crate::embeddings::EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<Vec<f32>>> {
         Ok(vec![])
     }
     fn dimensions(&self) -> usize {
         1
+    }
+    fn encoder_identity(&self) -> anyhow::Result<crate::embeddings::EncoderIdentity> {
+        Ok(crate::embeddings::EncoderIdentity::mock("mock", 1))
     }
     fn device_info(&self) -> crate::embeddings::DeviceInfo {
         crate::embeddings::DeviceInfo {

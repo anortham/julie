@@ -192,6 +192,7 @@ impl SearchIndex {
         std::fs::create_dir_all(&tmp_path)?;
         let _tmp_index = Index::create_in_dir(&tmp_path, schema.clone())?;
         Self::write_compat_marker(&tmp_path, marker)?;
+        drop(_tmp_index);
 
         // Atomically replace: remove old, rename temp into final location.
         if path.exists() {

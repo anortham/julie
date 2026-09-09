@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 
 #[cfg(feature = "embeddings-sidecar")]
 use super::SidecarEmbeddingProvider;
-use super::{EmbeddingBackend, EmbeddingProvider};
+use super::{EmbeddingBackend, EmbeddingProvider, NativeEmbeddingProvider};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BackendResolverCapabilities {
@@ -26,6 +26,7 @@ impl BackendResolverCapabilities {
     fn is_available(self, backend: EmbeddingBackend) -> bool {
         match backend {
             EmbeddingBackend::Sidecar => self.sidecar_available,
+            EmbeddingBackend::Native => true,
             _ => false,
         }
     }
@@ -36,6 +37,8 @@ impl BackendResolverCapabilities {
 pub struct EmbeddingConfig {
     pub provider: String,
     pub cache_dir: Option<PathBuf>,
+    pub native_program: Option<PathBuf>,
+    pub native_model: Option<String>,
 }
 
 impl Default for EmbeddingConfig {
@@ -43,6 +46,8 @@ impl Default for EmbeddingConfig {
         Self {
             provider: "auto".to_string(),
             cache_dir: None,
+            native_program: None,
+            native_model: None,
         }
     }
 }
@@ -50,10 +55,13 @@ impl Default for EmbeddingConfig {
 pub fn parse_provider_preference(provider: &str) -> Result<EmbeddingBackend> {
     match provider.trim().to_ascii_lowercase().as_str() {
         "auto" => Ok(EmbeddingBackend::Auto),
+        "native" => Ok(EmbeddingBackend::Native),
         "sidecar" => Ok(EmbeddingBackend::Sidecar),
-        "ort" => bail!("ORT embedding backend has been removed. Use 'auto' or 'sidecar' instead."),
+        "ort" => bail!(
+            "ORT embedding backend has been removed. Use 'auto', 'sidecar', or 'native' instead."
+        ),
         unknown => bail!(
-            "Unknown embedding provider: {} (valid: auto|sidecar)",
+            "Unknown embedding provider: {} (valid: auto|sidecar|native)",
             unknown
         ),
     }
@@ -94,6 +102,7 @@ pub fn resolve_backend_preference(
                 )
             }
         }
+        EmbeddingBackend::Native => EmbeddingBackend::Native,
         EmbeddingBackend::Sidecar => EmbeddingBackend::Sidecar,
         EmbeddingBackend::Unresolved => {
             bail!("Cannot resolve embedding backend from unresolved preference")
@@ -125,6 +134,7 @@ impl EmbeddingProviderFactory {
             resolve_backend_preference(requested_backend, &BackendResolverCapabilities::current())?;
 
         match resolved_backend {
+            EmbeddingBackend::Native => Ok(Arc::new(NativeEmbeddingProvider::try_new(config)?)),
             EmbeddingBackend::Sidecar => {
                 #[cfg(feature = "embeddings-sidecar")]
                 {

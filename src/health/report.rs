@@ -257,6 +257,38 @@ impl SystemHealthSnapshot {
             self.runtime_plane.embeddings.query_fallback
         ));
 
+        if let Some(ref qual) = self.qualification {
+            report.push('\n');
+            report.push_str("Native Qualification\n");
+            report.push_str(&format!("Qualified: {}\n", qual.qualified));
+            report.push_str(&format!("Schema: {}\n", qual.schema));
+            report.push_str(&format!("Model ID: {}\n", qual.encoder_identity.model_id));
+            report.push_str(&format!(
+                "Sidecar Executable SHA-256: {}\n",
+                qual.executable_sha256
+            ));
+            report.push_str(&format!(
+                "Backend / Device: {} / {} (Accelerated: {})\n",
+                qual.backend, qual.device, qual.accelerated
+            ));
+            report.push_str(&format!("Corpus Commit: {}\n", qual.corpus_commit));
+            report.push_str(&format!(
+                "Revisions: canonical {} / vector {} (equal)\n",
+                qual.canonical_revision, qual.vector_revision
+            ));
+            report.push_str(&format!(
+                "Vector Coverage: {} / {} symbols (100%)\n",
+                qual.embedded_symbols, qual.eligible_symbols
+            ));
+            report.push_str(&format!("Qualified At: {}\n", qual.timestamp));
+            if let Some(ref unverified) = qual.unverified_lanes {
+                report.push_str(&format!(
+                    "Unverified Physical Lanes: {}\n",
+                    unverified.join(", ")
+                ));
+            }
+        }
+
         report
     }
 }

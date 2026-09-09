@@ -20,7 +20,7 @@
 //! box** (matches the Phase 3 design's "Unix proof is the must-have" stance).
 
 use std::io::{self, BufRead, BufReader, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use std::path::PathBuf;
@@ -99,7 +99,7 @@ pub struct HostClientConn {
 ///
 /// Generous: a legitimate cold batch embed can take a while, but an infinite
 /// hang is never acceptable.  Override via `JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS`.
-const DEFAULT_RPC_TIMEOUT: Duration = Duration::from_secs(120);
+pub(crate) const DEFAULT_RPC_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Parse a raw env-var string into an RPC timeout.
 ///
@@ -122,7 +122,7 @@ pub(crate) fn parse_rpc_timeout(raw: Option<String>) -> Option<Duration> {
     }
 }
 
-fn resolve_rpc_timeout() -> Option<Duration> {
+pub(crate) fn resolve_rpc_timeout() -> Option<Duration> {
     parse_rpc_timeout(std::env::var("JULIE_EMBEDDING_HOST_RPC_TIMEOUT_SECS").ok())
 }
 
@@ -166,25 +166,118 @@ impl HostClientConn {
         }
     }
 
-    /// Send one request line and read exactly one response line.
+    /// Update read and write timeouts on the active connection.
+    pub fn set_timeout(&mut self, timeout: Option<Duration>) -> io::Result<()> {
+        #[cfg(unix)]
+        {
+            self.writer.set_write_timeout(timeout)?;
+            self.reader.get_ref().set_read_timeout(timeout)?;
+        }
+        #[cfg(windows)]
+        {
+            let _ = timeout;
+        }
+        Ok(())
+    }
+
+    /// Send one request line and read exactly one response line with deadline clamping.
     ///
     /// `request_line` MUST be a single line (no embedded `\n`) — JSON produced
     /// by `serde_json::to_string` satisfies this. The returned string has its
     /// trailing newline stripped.
-    pub fn round_trip(&mut self, request_line: &str) -> io::Result<String> {
+    pub fn round_trip_with_deadline(
+        &mut self,
+        request_line: &str,
+        deadline: Option<Instant>,
+        per_read_timeout: Option<Duration>,
+    ) -> io::Result<String> {
         self.writer.write_all(request_line.as_bytes())?;
         self.writer.write_all(b"\n")?;
         self.writer.flush()?;
 
-        let mut line = String::new();
-        let n = self.reader.read_line(&mut line)?;
-        if n == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "embedding-host closed the connection before responding",
-            ));
+        let mut bytes = Vec::new();
+        let mut total_read = 0;
+        let max_bytes = 16 * 1024 * 1024; // 16 MiB ceiling
+        let deadline = deadline.or_else(|| per_read_timeout.map(|t| Instant::now() + t));
+
+        loop {
+            if let Some(dl) = deadline {
+                let now = Instant::now();
+                if now >= dl {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "overall deadline exceeded while reading host response",
+                    ));
+                }
+                let remaining = dl.saturating_duration_since(now);
+                if remaining.is_zero() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "overall deadline exceeded while reading host response",
+                    ));
+                }
+                let effective = match per_read_timeout {
+                    Some(pr) => pr.min(remaining),
+                    None => remaining,
+                };
+                self.set_timeout(Some(effective))?;
+            } else if let Some(pr) = per_read_timeout {
+                self.set_timeout(Some(pr))?;
+            }
+
+            let available = self.reader.fill_buf()?;
+            if available.is_empty() {
+                if total_read == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "embedding-host closed the connection before responding",
+                    ));
+                }
+                break;
+            }
+
+            if let Some(pos) = available.iter().position(|&b| b == b'\n') {
+                let take_len = pos + 1;
+                if total_read + take_len > max_bytes {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("response line exceeds maximum allowed size of {max_bytes} bytes"),
+                    ));
+                }
+                bytes.extend_from_slice(&available[..take_len]);
+                self.reader.consume(take_len);
+                break;
+            } else {
+                let chunk_len = available.len();
+                if total_read + chunk_len > max_bytes {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("response line exceeds maximum allowed size of {max_bytes} bytes"),
+                    ));
+                }
+                bytes.extend_from_slice(available);
+                self.reader.consume(chunk_len);
+                total_read += chunk_len;
+            }
+
+            if let Some(dl) = deadline {
+                if Instant::now() >= dl {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "overall deadline exceeded while reading host response line",
+                    ));
+                }
+            }
         }
+
+        let line =
+            String::from_utf8(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         Ok(line.trim_end_matches(['\n', '\r']).to_string())
+    }
+
+    /// Send one request line and read exactly one response line.
+    pub fn round_trip(&mut self, request_line: &str) -> io::Result<String> {
+        self.round_trip_with_deadline(request_line, None, None)
     }
 }
 
@@ -294,6 +387,13 @@ impl HostServerConn {
     pub async fn write_line(&mut self, line: &str) -> io::Result<()> {
         self.writer.write_all(line.as_bytes()).await?;
         self.writer.write_all(b"\n").await?;
+        self.writer.flush().await?;
+        Ok(())
+    }
+
+    /// Write raw bytes and flush without appending newline.
+    pub async fn write_raw(&mut self, data: &[u8]) -> io::Result<()> {
+        self.writer.write_all(data).await?;
         self.writer.flush().await?;
         Ok(())
     }

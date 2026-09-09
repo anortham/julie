@@ -110,6 +110,8 @@ pub struct RuntimePlaneHealth {
     pub embeddings: EmbeddingRuntimeHealth,
 }
 
+use crate::request_engine::NativeQualificationRecord;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SystemHealthSnapshot {
     pub overall: HealthLevel,
@@ -117,6 +119,8 @@ pub struct SystemHealthSnapshot {
     pub control_plane: ControlPlaneHealth,
     pub data_plane: DataPlaneHealth,
     pub runtime_plane: RuntimePlaneHealth,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qualification: Option<NativeQualificationRecord>,
 }
 
 #[cfg(test)]

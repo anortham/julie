@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+use crate::embeddings::{DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity};
 use crate::registry::embedding_service::EmbeddingService;
 
 // ---- fake providers ----
@@ -32,16 +32,28 @@ impl PromptExitProvider {
 }
 
 impl EmbeddingProvider for PromptExitProvider {
-    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+    fn embed_query(
+        &self,
+        _text: &str,
+        _budget: &EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<f32>> {
         Ok(Vec::new())
     }
 
-    fn embed_batch(&self, _texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+    fn embed_batch(
+        &self,
+        _texts: &[String],
+        _budget: &EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<Vec<f32>>> {
         Ok(Vec::new())
     }
 
     fn dimensions(&self) -> usize {
         0
+    }
+
+    fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+        Ok(EncoderIdentity::mock("test-prompt-exit", 0))
     }
 
     fn device_info(&self) -> DeviceInfo {
@@ -77,16 +89,28 @@ impl TimeoutExitProvider {
 }
 
 impl EmbeddingProvider for TimeoutExitProvider {
-    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+    fn embed_query(
+        &self,
+        _text: &str,
+        _budget: &EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<f32>> {
         Ok(Vec::new())
     }
 
-    fn embed_batch(&self, _texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+    fn embed_batch(
+        &self,
+        _texts: &[String],
+        _budget: &EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<Vec<f32>>> {
         Ok(Vec::new())
     }
 
     fn dimensions(&self) -> usize {
         0
+    }
+
+    fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+        Ok(EncoderIdentity::mock("test-timeout-exit", 0))
     }
 
     fn device_info(&self) -> DeviceInfo {

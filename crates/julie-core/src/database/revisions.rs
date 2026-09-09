@@ -216,4 +216,16 @@ impl SymbolDatabase {
             .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
         Ok(file_count + symbol_count)
     }
+
+    pub fn get_latest_canonical_revision_number(&self) -> Result<Option<i64>> {
+        use rusqlite::OptionalExtension;
+        self.conn
+            .query_row(
+                "SELECT revision FROM canonical_revisions ORDER BY revision DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
 }

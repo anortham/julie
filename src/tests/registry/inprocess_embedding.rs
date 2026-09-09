@@ -155,6 +155,7 @@ mod tests {
                     degraded_reason: Some("model still loading".to_string()),
                     capabilities: None,
                     load_policy: None,
+                    ..Default::default()
                 }),
                 error: None,
             })
@@ -221,6 +222,7 @@ mod tests {
                     degraded_reason: None,
                     capabilities: None,
                     load_policy: None,
+                    ..Default::default()
                 }),
                 error: None,
             })

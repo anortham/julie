@@ -35,11 +35,15 @@ pub struct ProtocolError {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EmbedQueryRequest {
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_budget_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EmbedBatchRequest {
     pub texts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_budget_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -54,7 +58,7 @@ pub struct EmbedBatchResult {
     pub vectors: Vec<Vec<f32>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct HealthResult {
     pub ready: bool,
     #[serde(default)]
@@ -75,6 +79,34 @@ pub struct HealthResult {
     pub capabilities: Option<DeviceBackendCapabilities>,
     #[serde(default)]
     pub load_policy: Option<DeviceLoadPolicy>,
+
+    // Native semantics & encoder identity fields from julie-semantic-sidecar v1
+    #[serde(default)]
+    pub model_sha256: Option<String>,
+    #[serde(default)]
+    pub model_revision: Option<String>,
+    #[serde(default)]
+    pub pooling: Option<String>,
+    #[serde(default)]
+    pub normalization: Option<String>,
+    #[serde(default)]
+    pub instruction_policy_version: Option<u64>,
+    #[serde(default)]
+    pub max_text_tokens: Option<usize>,
+    #[serde(default)]
+    pub max_batch_items: Option<usize>,
+    #[serde(default)]
+    pub max_request_bytes: Option<usize>,
+    #[serde(default)]
+    pub native_dims: Option<usize>,
+    #[serde(default)]
+    pub mrl_lanes: Option<Vec<usize>>,
+    #[serde(default)]
+    pub llama_cpp_build: Option<String>,
+    #[serde(default)]
+    pub sidecar_version: Option<String>,
+    #[serde(default)]
+    pub accelerator_lease_held: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -83,7 +115,7 @@ pub struct DeviceBackendCapability {
     pub available: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct DeviceBackendCapabilities {
     #[serde(default)]
     pub cpu: DeviceBackendCapability,
@@ -93,6 +125,10 @@ pub struct DeviceBackendCapabilities {
     pub directml: DeviceBackendCapability,
     #[serde(default)]
     pub mps: DeviceBackendCapability,
+    #[serde(default)]
+    pub metal: DeviceBackendCapability,
+    #[serde(default)]
+    pub vulkan: DeviceBackendCapability,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -243,4 +279,61 @@ pub fn validate_batch_response(
     }
 
     Ok(())
+}
+
+pub fn check_reconnect_health_match(
+    expected: &HealthResult,
+    actual: &HealthResult,
+) -> std::result::Result<(), String> {
+    let mut mismatches = Vec::new();
+    if actual.model_id != expected.model_id {
+        mismatches.push(format!(
+            "model={:?} vs {:?}",
+            expected.model_id, actual.model_id
+        ));
+    }
+    if actual.dims != expected.dims {
+        mismatches.push(format!("dims={:?} vs {:?}", expected.dims, actual.dims));
+    }
+    if actual.model_sha256 != expected.model_sha256 {
+        mismatches.push(format!(
+            "sha256={:?} vs {:?}",
+            expected.model_sha256, actual.model_sha256
+        ));
+    }
+    if actual.pooling != expected.pooling {
+        mismatches.push(format!(
+            "pooling={:?} vs {:?}",
+            expected.pooling, actual.pooling
+        ));
+    }
+    if actual.normalization != expected.normalization {
+        mismatches.push(format!(
+            "norm={:?} vs {:?}",
+            expected.normalization, actual.normalization
+        ));
+    }
+    if actual.instruction_policy_version != expected.instruction_policy_version {
+        mismatches.push(format!(
+            "policy={:?} vs {:?}",
+            expected.instruction_policy_version, actual.instruction_policy_version
+        ));
+    }
+    if actual.runtime != expected.runtime {
+        mismatches.push(format!(
+            "runtime={:?} vs {:?}",
+            expected.runtime, actual.runtime
+        ));
+    }
+    if actual.llama_cpp_build != expected.llama_cpp_build {
+        mismatches.push(format!(
+            "llama_cpp_build={:?} vs {:?}",
+            expected.llama_cpp_build, actual.llama_cpp_build
+        ));
+    }
+    if mismatches.is_empty() {
+        Ok(())
+    } else {
+        Err(mismatches.join(", "))
+    }
 }

@@ -94,15 +94,16 @@ mod tests {
             ("s3", "handle_error", SymbolKind::Method),
         ]);
 
+        let provider = create_test_sidecar_provider();
+        let encoder_key = provider.encoder_identity().unwrap().storage_key().unwrap();
+
         // Pre-store dummy embeddings for s1 and s2, and set config to match the
         // sidecar provider so the pipeline doesn't treat this as a model change.
         {
             let mut db_guard = db.lock().unwrap();
-            // The fake sidecar returns model_id=None in its health response, so the
-            // provider falls back to "BAAI/bge-small-en-v1.5".
             db_guard
                 .set_embedding_config(
-                    "BAAI/bge-small-en-v1.5",
+                    &encoder_key,
                     384,
                     crate::embeddings::pipeline::EMBEDDING_FORMAT_VERSION,
                 )
@@ -119,7 +120,6 @@ mod tests {
         // Run pipeline — should embed s3 (new) + re-embed s2 (container symbol,
         // always re-embedded because child method enrichment may change).
         // s1 (Function) is skipped because it's already embedded and not a container.
-        let provider = create_test_sidecar_provider();
         let stats = run_embedding_pipeline(&db, &provider, None).unwrap();
 
         assert_eq!(

@@ -242,6 +242,7 @@ mod tests {
                     depth: DeepDiveDepth::Overview,
                     context_file: None,
                     workspace: None,
+                    semantics: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;
@@ -284,6 +285,7 @@ mod tests {
                     failing_test: None,
                     max_hops: Some(1),
                     prefer_tests: Some(false),
+                    semantics: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;
@@ -308,6 +310,7 @@ mod tests {
                     backend: None,
                     workspace: None,
                     return_format: "locations".to_string(),
+                    semantics: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;
@@ -468,6 +471,7 @@ mod tests {
                     depth: DeepDiveDepth::Overview,
                     context_file: None,
                     workspace: Some(ws),
+                    semantics: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;
@@ -486,6 +490,7 @@ mod tests {
                     limit: 10,
                     workspace: Some(ws),
                     reference_kind: None,
+                    semantics: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;

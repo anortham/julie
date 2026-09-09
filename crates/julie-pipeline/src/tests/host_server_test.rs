@@ -11,7 +11,9 @@ mod unix {
     use std::sync::Arc;
 
     use julie_core::{
-        embeddings_contract::{DeviceInfo, EmbeddingProvider},
+        embeddings_contract::{
+            DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+        },
         paths::RegistryPaths,
     };
     use tokio_util::sync::CancellationToken;
@@ -34,15 +36,27 @@ mod unix {
     struct FakeProvider;
 
     impl EmbeddingProvider for FakeProvider {
-        fn embed_query(&self, text: &str) -> anyhow::Result<Vec<f32>> {
+        fn embed_query(
+            &self,
+            text: &str,
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<f32>> {
             Ok(vec![text.len() as f32; FAKE_DIMS])
         }
 
-        fn embed_batch(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<Vec<f32>>> {
             Ok(texts
                 .iter()
                 .map(|t| vec![t.len() as f32; FAKE_DIMS])
                 .collect())
+        }
+
+        fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("fake-model", FAKE_DIMS))
         }
 
         fn dimensions(&self) -> usize {
@@ -136,6 +150,7 @@ mod unix {
                     "q1",
                     EmbedQueryRequest {
                         text: "hello".to_string(),
+                        remaining_budget_ms: None,
                     }, // len=5
                 ))
                 .expect("embed_query round_trip");
@@ -146,6 +161,7 @@ mod unix {
                     "b1",
                     EmbedBatchRequest {
                         texts: vec!["hi".to_string(), "there".to_string()], // len 2,5
+                        remaining_budget_ms: None,
                     },
                 ))
                 .expect("embed_batch round_trip");
@@ -211,6 +227,7 @@ mod unix {
                 "c1",
                 EmbedQueryRequest {
                     text: "abcde".to_string(),
+                    remaining_budget_ms: None,
                 }, // len=5
             ))
             .expect("c1 round_trip")
@@ -222,6 +239,7 @@ mod unix {
                 "c2",
                 EmbedQueryRequest {
                     text: "ab".to_string(),
+                    remaining_budget_ms: None,
                 }, // len=2
             ))
             .expect("c2 round_trip")

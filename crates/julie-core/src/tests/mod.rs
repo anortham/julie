@@ -4,6 +4,7 @@ mod database;
 mod database_init_race;
 mod database_lightweight_query;
 mod database_row_mapping;
+pub mod embeddings_identity;
 pub mod extractor_projection;
 pub mod host_slots;
 mod memory_vectors;

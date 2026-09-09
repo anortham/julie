@@ -6,7 +6,10 @@
 //! returns immediately with `EmbeddingOutcome { deferred: true, symbols: 0 }`
 //! and queues a deferred task that runs the pipeline once the service settles.
 
-use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
+use crate::embeddings::{
+    DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRequestBudget,
+    EmbeddingRuntimeStatus, EncoderIdentity,
+};
 use crate::registry::embedding_service::{EmbeddingService, EmbeddingServiceSettled};
 use std::sync::Arc;
 
@@ -197,16 +200,28 @@ fn describe(s: &Option<EmbeddingServiceSettled>) -> &'static str {
 struct NoopProvider;
 
 impl EmbeddingProvider for NoopProvider {
-    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+    fn embed_query(
+        &self,
+        _text: &str,
+        _budget: &EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<f32>> {
         Ok(Vec::new())
     }
 
-    fn embed_batch(&self, _texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+    fn embed_batch(
+        &self,
+        _texts: &[String],
+        _budget: &EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<Vec<f32>>> {
         Ok(Vec::new())
     }
 
     fn dimensions(&self) -> usize {
         0
+    }
+
+    fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+        Ok(EncoderIdentity::mock("test-noop", 0))
     }
 
     fn device_info(&self) -> DeviceInfo {

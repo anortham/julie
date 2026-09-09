@@ -465,3 +465,89 @@ fn test_format_semantic_fallback_empty() {
         "Should return empty string for no results"
     );
 }
+
+#[tokio::test]
+async fn test_fast_refs_semantic_fallback_offloaded_to_spawn_blocking() {
+    use julie_core::database::SymbolDatabase;
+    use julie_core::embeddings_contract::{
+        DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+    };
+    use julie_test_support::FakeToolContext;
+    use std::sync::mpsc::channel;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    let (tx, rx) = channel();
+
+    struct ThreadRecordingProvider {
+        tx: Mutex<std::sync::mpsc::Sender<std::thread::ThreadId>>,
+    }
+
+    impl EmbeddingProvider for ThreadRecordingProvider {
+        fn embed_query(
+            &self,
+            _text: &str,
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<f32>> {
+            let _ = self.tx.lock().unwrap().send(std::thread::current().id());
+            Ok(vec![0.1_f32; 384])
+        }
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![0.1_f32; 384]).collect())
+        }
+        fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("test-mock", 384))
+        }
+        fn dimensions(&self) -> usize {
+            384
+        }
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "test".into(),
+                device: "cpu".into(),
+                model_name: "test-mock".into(),
+                dimensions: 384,
+            }
+        }
+    }
+
+    let temp = tempfile::tempdir().unwrap();
+    let db_path = temp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let identity = EncoderIdentity::mock("test-mock", 384);
+    let key = identity.storage_key().unwrap();
+    let gen_id = db.begin_embedding_generation(&key, 0, 384).unwrap();
+    db.publish_embedding_generation(gen_id, 0, 0, 0).unwrap();
+
+    let provider = Arc::new(ThreadRecordingProvider { tx: Mutex::new(tx) });
+    let context = FakeToolContext::new()
+        .with_primary_db_path(db_path)
+        .with_embedding_provider(provider);
+
+    let caller_thread_id = std::thread::current().id();
+
+    let tool = crate::navigation::FastRefsTool {
+        symbol: "nonexistent_symbol".to_string(),
+        limit: 10,
+        reference_kind: None,
+        include_definition: false,
+        workspace: Some("primary".to_string()),
+        semantics: None,
+    };
+
+    let _result = tool.call_tool(&context).await.unwrap();
+
+    let embed_thread_id = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("embed_query should have been called on zero-match fallback");
+
+    assert_ne!(
+        caller_thread_id, embed_thread_id,
+        "embed_query MUST execute on a separate blocking pool thread, not the Tokio async caller thread"
+    );
+}

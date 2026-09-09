@@ -14,6 +14,7 @@ mod tests {
         embed_symbols_for_file, reembed_symbols_for_file, run_embedding_pipeline,
     };
     use crate::tests::integration::sidecar_test_helpers::create_test_sidecar_provider;
+    use julie_core::embeddings_contract::EmbeddingProvider;
 
     /// Helper: create a test database with a file and symbols.
     fn setup_db_with_file(
@@ -22,7 +23,11 @@ mod tests {
         symbols: &[(&str, &str, &str)], // (id, name, kind)
     ) -> Arc<Mutex<SymbolDatabase>> {
         let db_path = dir.join("test.db");
-        let db = SymbolDatabase::new(&db_path).expect("create db");
+        let mut db = SymbolDatabase::new(&db_path).expect("create db");
+        let provider = create_test_sidecar_provider();
+        let key = provider.encoder_identity().unwrap().storage_key().unwrap();
+        db.publish_test_generation(&key, 1, 384)
+            .expect("publish test generation");
 
         db.conn
             .execute(

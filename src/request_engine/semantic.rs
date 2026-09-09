@@ -2,16 +2,16 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::embeddings::EmbeddingProvider;
+use crate::embeddings::{EmbeddingProvider, EncoderIdentity};
 use crate::paths::RegistryPaths;
 use crate::request_engine::types::{RequestFailure, RequestReadiness, WorkspaceBinding};
 
-pub const CURRENT_EMBEDDING_FORMAT_VERSION: u32 = 3;
+pub use julie_core::CURRENT_EMBEDDING_FORMAT_VERSION;
 
 /// Semantic retrieval execution mode across CLI and MCP transports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, clap::ValueEnum)]
@@ -21,6 +21,15 @@ pub enum SemanticMode {
     Auto,
     Off,
     Required,
+}
+
+/// Determine whether a semantic execution mode requires an embedding provider.
+///
+/// Returns `false` for `Off` (zero provider work, zero sidecar launch),
+/// and `true` for `Auto` and `Required`.
+#[inline]
+pub fn semantic_mode_needs_provider(mode: SemanticMode) -> bool {
+    !matches!(mode, SemanticMode::Off)
 }
 
 /// Granular semantic requirement for a tool invocation.
@@ -38,13 +47,44 @@ impl SemanticRequirement {
     pub fn requires_query(&self) -> bool {
         matches!(self, Self::Query | Self::QueryAndSymbols)
     }
-
     pub fn requires_symbols(&self) -> bool {
         matches!(self, Self::Symbols | Self::QueryAndSymbols)
     }
-
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
+    }
+}
+
+/// Unified runtime provider state machine governing lifecycle, late broker attachment, and dynamic recovery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum RuntimeProviderState {
+    /// Semantics explicitly disabled (mode=Off or JULIE_EMBEDDING_PROVIDER=none/off/disabled).
+    Disabled,
+
+    /// Provider is actively initializing or acquiring the sidecar broker.
+    Starting,
+
+    /// Provider is active, connected, and ready to serve embeddings.
+    Ready,
+
+    /// Provider is degraded.
+    /// retryable: true for transient network/socket/boot timeouts.
+    /// retryable: false for permanent configuration/model incompatibilities.
+    Degraded { reason: String, retryable: bool },
+}
+
+impl RuntimeProviderState {
+    pub fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready)
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Starting => true,
+            Self::Degraded { retryable, .. } => *retryable,
+            _ => false,
+        }
     }
 }
 
@@ -58,45 +98,70 @@ pub enum SemanticReadiness {
         model_id: String,
         dimensions: usize,
         device: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        encoder_identity: Option<EncoderIdentity>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        vector_generation: Option<i64>,
+        #[serde(default)]
+        eligible_symbols: usize,
+        #[serde(default)]
+        embedded_symbols: usize,
     },
     Degraded {
-        code: String,
+        #[serde(alias = "code")]
+        reason: String,
         retryable: bool,
     },
 }
 
 impl SemanticReadiness {
+    /// Access degradation reason if degraded.
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            Self::Degraded { reason, .. } => Some(reason),
+            _ => None,
+        }
+    }
+
+    /// Access code (alias for reason).
+    pub fn code(&self) -> Option<&str> {
+        self.reason()
+    }
+
+    /// Check if ready.
+    pub fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready { .. })
+    }
+
     /// Convert semantic readiness to unified `RequestReadiness`.
     pub fn to_request_readiness(&self, mode: SemanticMode) -> RequestReadiness {
-        match self {
-            Self::Disabled => RequestReadiness {
-                mode: SemanticMode::Off,
-                status: "disabled".to_string(),
-                coverage: None,
-                canonical_revision: None,
-                lexical_revision: None,
-            },
-            Self::Starting => RequestReadiness {
+        let (mode, status, coverage) = match self {
+            Self::Disabled => (SemanticMode::Off, "disabled".to_string(), None),
+            Self::Starting => (mode, "starting".to_string(), Some("starting".to_string())),
+            Self::Ready {
+                eligible_symbols,
+                embedded_symbols,
+                ..
+            } => {
+                let cov = if *eligible_symbols == 0 || *embedded_symbols >= *eligible_symbols {
+                    "full".to_string()
+                } else {
+                    format!("{}/{}", embedded_symbols, eligible_symbols)
+                };
+                (mode, "ready".to_string(), Some(cov))
+            }
+            Self::Degraded { reason, .. } => (
                 mode,
-                status: "starting".to_string(),
-                coverage: Some("starting".to_string()),
-                canonical_revision: None,
-                lexical_revision: None,
-            },
-            Self::Ready { .. } => RequestReadiness {
-                mode,
-                status: "ready".to_string(),
-                coverage: Some("full".to_string()),
-                canonical_revision: None,
-                lexical_revision: None,
-            },
-            Self::Degraded { code, .. } => RequestReadiness {
-                mode,
-                status: format!("degraded: {code}"),
-                coverage: Some("missing".to_string()),
-                canonical_revision: None,
-                lexical_revision: None,
-            },
+                format!("degraded: {reason}"),
+                Some("missing".to_string()),
+            ),
+        };
+        RequestReadiness {
+            mode,
+            status,
+            coverage,
+            canonical_revision: None,
+            lexical_revision: None,
         }
     }
 }
@@ -118,6 +183,9 @@ pub trait SemanticRuntime: Send + Sync {
     fn provider(&self) -> Option<Arc<dyn EmbeddingProvider>> {
         None
     }
+
+    /// Invalidate the current provider cache and mark runtime as Degraded.
+    async fn invalidate_provider(&self, _reason: &str) {}
 }
 
 /// Default no-op semantic runtime used for testing or disabled configurations.
@@ -148,35 +216,79 @@ impl SemanticRuntime for NoopSemanticRuntime {
         }
 
         Ok(SemanticReadiness::Degraded {
-            code: "no_semantic_runtime".to_string(),
+            reason: "no_semantic_runtime".to_string(),
             retryable: false,
         })
     }
 }
 
-/// Standard implementation of `SemanticRuntime` backed by lazy acquisition and SQLite vector verification.
+type ProviderSender = tokio::sync::broadcast::Sender<Option<Arc<dyn EmbeddingProvider>>>;
+
+/// Standard implementation of `SemanticRuntime` backed by lazy acquisition,
+/// dynamic recovery, and SQLite vector verification.
 pub struct DefaultSemanticRuntime {
     registry_paths: Option<RegistryPaths>,
     provider_cache: Arc<tokio::sync::RwLock<Option<Arc<dyn EmbeddingProvider>>>>,
+    state: Arc<tokio::sync::RwLock<RuntimeProviderState>>,
+    in_flight_init: Arc<tokio::sync::Mutex<Option<ProviderSender>>>,
 }
 
 impl DefaultSemanticRuntime {
-    pub fn new(provider: Option<Arc<dyn EmbeddingProvider>>) -> Self {
+    fn with_parts(
+        paths: Option<RegistryPaths>,
+        provider: Option<Arc<dyn EmbeddingProvider>>,
+        state: RuntimeProviderState,
+    ) -> Self {
         Self {
-            registry_paths: None,
+            registry_paths: paths,
             provider_cache: Arc::new(tokio::sync::RwLock::new(provider)),
+            state: Arc::new(tokio::sync::RwLock::new(state)),
+            in_flight_init: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
+    pub fn new(provider: Option<Arc<dyn EmbeddingProvider>>) -> Self {
+        let state = if provider.is_some() {
+            RuntimeProviderState::Ready
+        } else {
+            RuntimeProviderState::Disabled
+        };
+        Self::with_parts(None, provider, state)
+    }
+
     pub fn from_registry_paths(paths: RegistryPaths) -> Self {
-        Self {
-            registry_paths: Some(paths),
-            provider_cache: Arc::new(tokio::sync::RwLock::new(None)),
-        }
+        Self::with_parts(Some(paths), None, RuntimeProviderState::Starting)
     }
 
     pub fn provider(&self) -> Option<Arc<dyn EmbeddingProvider>> {
         self.provider_cache.try_read().ok().and_then(|g| g.clone())
+    }
+
+    pub async fn runtime_state(&self) -> RuntimeProviderState {
+        self.state.read().await.clone()
+    }
+
+    pub async fn update_provider(&self, provider: Option<Arc<dyn EmbeddingProvider>>) {
+        let mut cache = self.provider_cache.write().await;
+        let mut st = self.state.write().await;
+        *cache = provider.clone();
+        *st = match provider {
+            Some(_) => RuntimeProviderState::Ready,
+            None => RuntimeProviderState::Degraded {
+                reason: "PROVIDER_UNAVAILABLE".to_string(),
+                retryable: true,
+            },
+        };
+    }
+
+    pub async fn invalidate_provider(&self, reason: &str) {
+        let mut cache = self.provider_cache.write().await;
+        let mut st = self.state.write().await;
+        *cache = None;
+        *st = RuntimeProviderState::Degraded {
+            reason: reason.to_string(),
+            retryable: true,
+        };
     }
 
     async fn get_or_acquire_provider(
@@ -184,215 +296,121 @@ impl DefaultSemanticRuntime {
         deadline: Instant,
         cancellation: &CancellationToken,
     ) -> Result<Option<Arc<dyn EmbeddingProvider>>, RequestFailure> {
+        // 1. Fast path: check cached provider and probe health
         {
-            let guard = self.provider_cache.read().await;
-            if let Some(ref p) = *guard {
-                return Ok(Some(Arc::clone(p)));
+            let cache = self.provider_cache.read().await;
+            let st = self.state.read().await;
+            if let (Some(p), RuntimeProviderState::Ready) = (cache.as_ref(), &*st) {
+                let p_clone = Arc::clone(p);
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let probe_budget =
+                    julie_core::embeddings_contract::EmbeddingRequestBudget::with_timeout(
+                        Duration::from_millis(500).min(remaining),
+                    );
+                if tokio::task::spawn_blocking(move || p_clone.health_check(&probe_budget))
+                    .await
+                    .is_ok_and(|r| r.is_ok())
+                {
+                    return Ok(Some(Arc::clone(p)));
+                }
+                drop(cache);
+                drop(st);
+                self.invalidate_provider("HEALTH_PROBE_FAILED").await;
+            } else if matches!(
+                &*st,
+                RuntimeProviderState::Degraded {
+                    retryable: false,
+                    ..
+                }
+            ) {
+                return Ok(None);
             }
         }
 
         let paths = match &self.registry_paths {
             Some(p) => p.clone(),
-            None => return Ok(None),
+            None => {
+                let cache = self.provider_cache.read().await;
+                return Ok(cache.clone());
+            }
         };
 
-        let mut guard = self.provider_cache.write().await;
-        if let Some(ref p) = *guard {
-            return Ok(Some(Arc::clone(p)));
-        }
+        // 2. Single-flight shared initialization task
+        let mut rx = {
+            let mut init_guard = self.in_flight_init.lock().await;
+            // Re-check after acquiring init lock
+            {
+                let cache = self.provider_cache.read().await;
+                let st = self.state.read().await;
+                if let (Some(p), RuntimeProviderState::Ready) = (cache.as_ref(), &*st) {
+                    return Ok(Some(Arc::clone(p)));
+                }
+                if matches!(
+                    &*st,
+                    RuntimeProviderState::Degraded {
+                        retryable: false,
+                        ..
+                    }
+                ) {
+                    return Ok(None);
+                }
+            }
 
-        let acquire_fut = crate::server_in_process::acquire_in_process_embedding_provider(&paths);
+            if let Some(ref tx) = *init_guard {
+                tx.subscribe()
+            } else {
+                let (tx, rx) = tokio::sync::broadcast::channel(1);
+                *init_guard = Some(tx.clone());
 
-        let acquired = tokio::select! {
+                {
+                    let mut st = self.state.write().await;
+                    *st = RuntimeProviderState::Starting;
+                }
+
+                let state_clone = Arc::clone(&self.state);
+                let cache_clone = Arc::clone(&self.provider_cache);
+                let in_flight_clone = Arc::clone(&self.in_flight_init);
+
+                tokio::spawn(async move {
+                    let provider =
+                        crate::server_in_process::acquire_in_process_embedding_provider(&paths)
+                            .await;
+                    {
+                        let mut cache = cache_clone.write().await;
+                        let mut st = state_clone.write().await;
+                        if let Some(ref p) = provider {
+                            *cache = Some(Arc::clone(p));
+                            *st = RuntimeProviderState::Ready;
+                        } else {
+                            *cache = None;
+                            *st = RuntimeProviderState::Degraded {
+                                reason: "PROVIDER_UNAVAILABLE".to_string(),
+                                retryable: true,
+                            };
+                        }
+                    }
+                    let _ = tx.send(provider);
+                    *in_flight_clone.lock().await = None;
+                });
+
+                rx
+            }
+        };
+
+        // 3. Await result bounded by caller deadline and cancellation
+        tokio::select! {
             biased;
             _ = cancellation.cancelled() => {
-                return Err(RequestFailure::cancelled("Semantic initialization cancelled"));
+                Err(RequestFailure::cancelled("Semantic initialization cancelled"))
             }
             _ = tokio::time::sleep_until(deadline) => {
-                return Err(RequestFailure::deadline_exceeded("Semantic initialization deadline exceeded"));
+                Err(RequestFailure::deadline_exceeded("Semantic initialization deadline exceeded"))
             }
-            res = acquire_fut => res,
-        };
-
-        if let Some(ref p) = acquired {
-            *guard = Some(Arc::clone(p));
-        }
-
-        Ok(acquired)
-    }
-
-    fn check_sqlite_vectors(
-        db_path: &Path,
-        provider: &dyn EmbeddingProvider,
-        mode: SemanticMode,
-    ) -> Result<SemanticReadiness, RequestFailure> {
-        if !db_path.exists() {
-            return match mode {
-                SemanticMode::Required => Err(RequestFailure::semantics_not_ready(
-                    "Workspace symbols database does not exist",
-                    serde_json::json!({ "coverage": "missing" }),
-                )),
-                SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
-                    code: "DATABASE_MISSING".to_string(),
-                    retryable: true,
-                }),
-                SemanticMode::Off => Ok(SemanticReadiness::Disabled),
-            };
-        }
-
-        // Open read-only without acquiring write or exclusive locks
-        let conn = rusqlite::Connection::open_with_flags(
-            db_path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )
-        .map_err(|e| RequestFailure::internal(format!("Failed to open SQLite database: {e}")))?;
-
-        // 1. Verify table presence
-        let has_vectors: bool = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='symbol_vectors'",
-                [],
-                |row| row.get::<_, i32>(0).map(|c| c > 0),
-            )
-            .unwrap_or(false);
-
-        let has_config: bool = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='embedding_config'",
-                [],
-                |row| row.get::<_, i32>(0).map(|c| c > 0),
-            )
-            .unwrap_or(false);
-
-        let has_symbols: bool = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='symbols'",
-                [],
-                |row| row.get::<_, i32>(0).map(|c| c > 0),
-            )
-            .unwrap_or(false);
-
-        if !has_vectors || !has_config {
-            return match mode {
-                SemanticMode::Required => Err(RequestFailure::semantics_not_ready(
-                    "Workspace vector storage tables missing",
-                    serde_json::json!({ "coverage": "missing" }),
-                )),
-                SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
-                    code: "VECTORS_MISSING".to_string(),
-                    retryable: true,
-                }),
-                SemanticMode::Off => Ok(SemanticReadiness::Disabled),
-            };
-        }
-
-        // 2. Validate model & dimensions
-        let config: Result<(String, usize, u32), _> = conn.query_row(
-            "SELECT model_name, dimensions, format_version FROM embedding_config WHERE id = 1",
-            [],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get::<_, i64>(1)? as usize,
-                    row.get::<_, i64>(2)? as u32,
-                ))
+            res = rx.recv() => match res {
+                Ok(provider) => Ok(provider),
+                Err(_) => Ok(self.provider_cache.read().await.clone()),
             },
-        );
-
-        let (stored_model, stored_dims, stored_fmt) = match config {
-            Ok(c) => c,
-            Err(_) => {
-                return match mode {
-                    SemanticMode::Required => Err(RequestFailure::semantics_not_ready(
-                        "Embedding configuration row missing in SQLite",
-                        serde_json::json!({ "coverage": "missing" }),
-                    )),
-                    SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
-                        code: "CONFIG_MISSING".to_string(),
-                        retryable: true,
-                    }),
-                    SemanticMode::Off => Ok(SemanticReadiness::Disabled),
-                };
-            }
-        };
-
-        let dev_info = provider.device_info();
-        let provider_dims = provider.dimensions();
-
-        if stored_dims != provider_dims || stored_model != dev_info.model_name {
-            return match mode {
-                SemanticMode::Required => Err(RequestFailure::semantics_not_ready(
-                    format!(
-                        "Stored vectors are incompatible: stored {} ({}d) vs provider {} ({}d)",
-                        stored_model, stored_dims, dev_info.model_name, provider_dims
-                    ),
-                    serde_json::json!({
-                        "coverage": "incompatible",
-                        "stored_model": stored_model,
-                        "stored_dimensions": stored_dims,
-                        "provider_model": dev_info.model_name,
-                        "provider_dimensions": provider_dims,
-                    }),
-                )),
-                SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
-                    code: "VECTORS_INCOMPATIBLE".to_string(),
-                    retryable: true,
-                }),
-                SemanticMode::Off => Ok(SemanticReadiness::Disabled),
-            };
         }
-
-        // 3. Check vector count & staleness
-        let vector_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM symbol_vectors", [], |row| row.get(0))
-            .unwrap_or(0);
-
-        let symbol_count: i64 = if has_symbols {
-            conn.query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
-                .unwrap_or(0)
-        } else {
-            0
-        };
-
-        if symbol_count > 0 && vector_count == 0 {
-            return match mode {
-                SemanticMode::Required => Err(RequestFailure::semantics_not_ready(
-                    "Workspace has symbols but zero vector embeddings",
-                    serde_json::json!({ "coverage": "missing" }),
-                )),
-                SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
-                    code: "VECTORS_MISSING".to_string(),
-                    retryable: true,
-                }),
-                SemanticMode::Off => Ok(SemanticReadiness::Disabled),
-            };
-        }
-
-        if stored_fmt < CURRENT_EMBEDDING_FORMAT_VERSION && symbol_count > 0 {
-            return match mode {
-                SemanticMode::Required => Err(RequestFailure::semantics_not_ready(
-                    format!(
-                        "Stored vectors are stale: format v{stored_fmt} < v{CURRENT_EMBEDDING_FORMAT_VERSION}"
-                    ),
-                    serde_json::json!({
-                        "coverage": "stale",
-                        "format_version": stored_fmt,
-                        "expected_version": CURRENT_EMBEDDING_FORMAT_VERSION,
-                    }),
-                )),
-                SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
-                    code: "VECTORS_STALE".to_string(),
-                    retryable: true,
-                }),
-                SemanticMode::Off => Ok(SemanticReadiness::Disabled),
-            };
-        }
-
-        Ok(SemanticReadiness::Ready {
-            model_id: dev_info.model_name,
-            dimensions: provider_dims,
-            device: dev_info.device,
-        })
     }
 }
 
@@ -417,13 +435,8 @@ impl SemanticRuntime for DefaultSemanticRuntime {
             ));
         }
 
-        // Rule 1: Off mode performs zero provider/model/vector work
-        if mode == SemanticMode::Off {
-            return Ok(SemanticReadiness::Disabled);
-        }
-
-        // Rule 2: Requirement None performs zero work
-        if requirement.is_none() {
+        // Rule 1 & 2: Off mode or Requirement None performs zero work
+        if mode == SemanticMode::Off || requirement.is_none() {
             return Ok(SemanticReadiness::Disabled);
         }
 
@@ -431,14 +444,20 @@ impl SemanticRuntime for DefaultSemanticRuntime {
         let provider = match self.get_or_acquire_provider(deadline, cancellation).await? {
             Some(p) => p,
             None => {
+                let st = self.state.read().await;
+                let retryable = match &*st {
+                    RuntimeProviderState::Degraded { retryable, .. } => *retryable,
+                    RuntimeProviderState::Starting => true,
+                    _ => false,
+                };
                 return match mode {
                     SemanticMode::Required => Err(RequestFailure::semantics_not_ready(
                         "No embedding provider configured or available",
                         serde_json::json!({ "coverage": "missing", "reason": "provider_unavailable" }),
                     )),
                     SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
-                        code: "PROVIDER_UNAVAILABLE".to_string(),
-                        retryable: true,
+                        reason: "PROVIDER_UNAVAILABLE".to_string(),
+                        retryable,
                     }),
                     SemanticMode::Off => Ok(SemanticReadiness::Disabled),
                 };
@@ -448,19 +467,32 @@ impl SemanticRuntime for DefaultSemanticRuntime {
         // If only Query is required, provider readiness is sufficient
         if requirement == SemanticRequirement::Query {
             let dev_info = provider.device_info();
+            let encoder_identity = provider.encoder_identity().ok();
             return Ok(SemanticReadiness::Ready {
                 model_id: dev_info.model_name,
                 dimensions: provider.dimensions(),
                 device: dev_info.device,
+                encoder_identity,
+                vector_generation: None,
+                eligible_symbols: 0,
+                embedded_symbols: 0,
             });
         }
 
         // Rule 4: Symbols or QueryAndSymbols requires SQLite vector compatibility
         let db_path = binding.index_root.join("db/symbols.db");
-        Self::check_sqlite_vectors(&db_path, provider.as_ref(), mode)
+        crate::request_engine::semantic_store::check_sqlite_vectors(
+            &db_path,
+            provider.as_ref(),
+            mode,
+        )
     }
 
     fn provider(&self) -> Option<Arc<dyn EmbeddingProvider>> {
         self.provider_cache.try_read().ok().and_then(|g| g.clone())
+    }
+
+    async fn invalidate_provider(&self, reason: &str) {
+        self.invalidate_provider(reason).await;
     }
 }

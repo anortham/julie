@@ -9,7 +9,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use crate::embeddings::{EmbeddingProvider, SidecarEmbeddingProvider};
+    use crate::embeddings::{EmbeddingProvider, EmbeddingRequestBudget, SidecarEmbeddingProvider};
     use crate::tests::integration::sidecar_test_helpers::test_python_interpreter;
 
     fn build_test_sidecar_provider(
@@ -150,7 +150,10 @@ while True:
     async fn test_sidecar_provider_embed_batch_roundtrip() {
         let provider = build_test_sidecar_provider("normal", 384, None);
         let out = provider
-            .embed_batch(&["a".to_string(), "b".to_string()])
+            .embed_batch(
+                &["a".to_string(), "b".to_string()],
+                &EmbeddingRequestBudget::default(),
+            )
             .expect("embed_batch should succeed");
 
         assert_eq!(out.len(), 2);
@@ -162,7 +165,7 @@ while True:
     async fn test_sidecar_provider_rejects_bad_dimensions() {
         let provider = build_test_sidecar_provider("bad_dims_response", 384, None);
         let err = provider
-            .embed_query("x")
+            .embed_query("x", &EmbeddingRequestBudget::default())
             .expect_err("query response with bad dimensions must be rejected");
 
         assert!(
@@ -175,7 +178,7 @@ while True:
     fn test_sidecar_provider_surfaces_error_envelope_as_anyhow_error() {
         let provider = build_test_sidecar_provider("error_envelope", 384, None);
         let err = provider
-            .embed_query("x")
+            .embed_query("x", &EmbeddingRequestBudget::default())
             .expect_err("error envelope should be surfaced as provider error");
 
         let msg = err.to_string();
@@ -189,7 +192,7 @@ while True:
     fn test_sidecar_provider_rejects_request_id_mismatch() {
         let provider = build_test_sidecar_provider("request_id_mismatch", 384, None);
         let err = provider
-            .embed_query("x")
+            .embed_query("x", &EmbeddingRequestBudget::default())
             .expect_err("request id mismatch must be rejected");
 
         assert!(
@@ -211,7 +214,7 @@ while True:
         );
 
         let err = provider
-            .embed_query("first")
+            .embed_query("first", &EmbeddingRequestBudget::default())
             .expect_err("first request should time out");
         assert!(
             err.to_string()
@@ -220,7 +223,7 @@ while True:
         );
 
         let embedding = provider
-            .embed_query("second")
+            .embed_query("second", &EmbeddingRequestBudget::default())
             .expect("provider should recover by resetting process after timeout");
         assert_eq!(embedding.len(), 384);
     }
@@ -233,14 +236,14 @@ while True:
         let provider =
             build_test_sidecar_provider("exit_after_health_once", 384, Some(&marker_str));
 
-        let first = provider.embed_query("first");
+        let first = provider.embed_query("first", &EmbeddingRequestBudget::default());
         assert!(
             first.is_err(),
             "first request should fail after sidecar exits post-health"
         );
 
         let embedding = provider
-            .embed_query("second")
+            .embed_query("second", &EmbeddingRequestBudget::default())
             .expect("provider should respawn sidecar after write-path failure");
         assert_eq!(embedding.len(), 384);
     }
@@ -257,7 +260,7 @@ while True:
         );
 
         let err = provider
-            .embed_query("first")
+            .embed_query("first", &EmbeddingRequestBudget::default())
             .expect_err("first request should fail with request_id mismatch");
         assert!(
             err.to_string().contains("request_id mismatch"),
@@ -265,7 +268,7 @@ while True:
         );
 
         let embedding = provider
-            .embed_query("second")
+            .embed_query("second", &EmbeddingRequestBudget::default())
             .expect("provider should recover by resetting process after protocol mismatch");
         assert_eq!(embedding.len(), 384);
     }
@@ -280,7 +283,7 @@ while True:
             joins.push(thread::spawn(move || {
                 let text = format!("q-{i}");
                 let embedding = provider
-                    .embed_query(&text)
+                    .embed_query(&text, &EmbeddingRequestBudget::default())
                     .expect("concurrent embed_query should succeed");
                 assert_eq!(embedding.len(), 384);
             }));
@@ -303,7 +306,7 @@ while True:
         {
             let provider = build_test_sidecar_provider("normal", 384, Some(&marker_str));
             let _ = provider
-                .embed_query("x")
+                .embed_query("x", &EmbeddingRequestBudget::default())
                 .expect("provider should respond before drop");
             // Explicit shutdown creates the marker
             provider.shutdown();
@@ -372,6 +375,105 @@ while True:
         assert!(
             full_err.contains("not ready"),
             "expected readiness probe failure, got: {full_err}"
+        );
+    }
+
+    #[test]
+    fn test_sidecar_provider_clamps_timeout_to_remaining_budget() {
+        use std::time::Instant;
+
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let marker = temp_dir.path().join("timeout-clamp.marker");
+        let marker_str = marker.to_string_lossy().to_string();
+
+        // Provider has 10-second response timeout, but sidecar will sleep 5.5 seconds.
+        let provider = build_test_sidecar_provider_with_timeout(
+            "timeout_once",
+            384,
+            Some(&marker_str),
+            Duration::from_secs(10),
+        );
+
+        // Budget allows only 120ms.
+        let budget = EmbeddingRequestBudget::with_timeout(Duration::from_millis(120));
+        let start = Instant::now();
+        let err = provider
+            .embed_query("clamp_test", &budget)
+            .expect_err("embed_query should time out per budget");
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "embed_query should have timed out within budget (~120ms), took: {elapsed:?}"
+        );
+        assert!(
+            err.to_string()
+                .contains("timed out waiting for sidecar response"),
+            "expected timeout error message, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_sidecar_provider_expired_budget_fails_fast() {
+        use std::time::Instant;
+
+        let provider = build_test_sidecar_provider("normal", 384, None);
+
+        // Budget expired in the past
+        let expired_budget = EmbeddingRequestBudget::new(
+            Instant::now() - Duration::from_millis(100),
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        );
+
+        let start = Instant::now();
+        let err = provider
+            .embed_query("test", &expired_budget)
+            .expect_err("expired budget must fail query");
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed < Duration::from_millis(50),
+            "expired budget should fail fast, took: {elapsed:?}"
+        );
+        assert!(
+            err.to_string().contains("deadline exceeded")
+                || err.to_string().contains("budget exceeded"),
+            "expected deadline/budget exceeded error, got: {err}"
+        );
+
+        // Also test batch
+        let err_batch = provider
+            .embed_batch(&["test".to_string()], &expired_budget)
+            .expect_err("expired budget must fail batch");
+        assert!(
+            err_batch.to_string().contains("deadline exceeded")
+                || err_batch.to_string().contains("budget exceeded"),
+            "expected deadline/budget exceeded error on batch, got: {err_batch}"
+        );
+    }
+
+    #[test]
+    fn test_sidecar_provider_cancelled_budget_fails_fast() {
+        use std::time::Instant;
+
+        let provider = build_test_sidecar_provider("normal", 384, None);
+
+        let budget = EmbeddingRequestBudget::with_timeout(Duration::from_secs(30));
+        budget.cancel();
+
+        let start = Instant::now();
+        let err = provider
+            .embed_query("test", &budget)
+            .expect_err("cancelled budget must fail query");
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed < Duration::from_millis(50),
+            "cancelled budget should fail fast, took: {elapsed:?}"
+        );
+        assert!(
+            err.to_string().contains("cancelled"),
+            "expected cancelled error, got: {err}"
         );
     }
 }

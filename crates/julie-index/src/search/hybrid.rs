@@ -23,111 +23,14 @@ use super::SymbolSearchResult;
 use super::index::{SearchFilter, SearchIndex, SymbolSearchResults, symbol_role_and_test_role};
 use super::weights::SearchWeightProfile;
 use julie_core::database::SymbolDatabase;
-use julie_core::embeddings_contract::EmbeddingProvider;
+use julie_core::embeddings_contract::{
+    EmbeddingProvider, EmbeddingRequestBudget, SemanticMode, TaggedQueryEmbedding,
+};
 
-/// Per-side over-fetch multiplier for the hybrid candidate pool.
-///
-/// Before the cascade fix this was hardcoded at 2× per side, so `limit=8`
-/// produced 16+16 candidates merged via RRF. That asymmetry against the
-/// keyword-only path's 4× over-fetch (`NL_RERANK_OVERFETCH_FACTOR` in
-/// `search/index.rs`) starved the reranker on hybrid NL queries —
-/// correct answers that only matched in body text fell off the candidate
-/// cliff before the reranker could rescue them. Aligning to 4× gives the
-/// reranker a comparable working set on both paths.
+/// Per-side over-fetch multiplier (4×) for hybrid candidate pool aligning with keyword path.
 const HYBRID_CANDIDATE_OVERFETCH_FACTOR: usize = 4;
 
-/// Merge two ranked lists of search results using Reciprocal Rank Fusion.
-///
-/// # Arguments
-/// - `tantivy_results`: Keyword search results (ordered by Tantivy score)
-/// - `semantic_results`: Semantic/embedding search results (ordered by similarity)
-/// - `k`: RRF smoothing constant (typically 60). Higher values reduce the
-///   influence of high-ranking items relative to lower-ranking ones.
-/// - `limit`: Maximum number of results to return
-///
-/// # Returns
-/// Merged results sorted by RRF score descending. Each result's `score` field
-/// is replaced with its RRF score.
-pub fn rrf_merge(
-    tantivy_results: Vec<SymbolSearchResult>,
-    semantic_results: Vec<SymbolSearchResult>,
-    k: u32,
-    limit: usize,
-) -> Vec<SymbolSearchResult> {
-    weighted_rrf_merge(tantivy_results, semantic_results, k, limit, 1.0, 1.0)
-}
-
-/// Weighted variant of `rrf_merge` — applies per-source weights to the RRF formula.
-///
-/// Formula: `score(d) = keyword_weight * 1/(k + rank_keyword(d)) + semantic_weight * 1/(k + rank_semantic(d))`
-///
-/// When both weights are 1.0, this produces identical results to `rrf_merge`.
-pub fn weighted_rrf_merge(
-    tantivy_results: Vec<SymbolSearchResult>,
-    semantic_results: Vec<SymbolSearchResult>,
-    k: u32,
-    limit: usize,
-    keyword_weight: f32,
-    semantic_weight: f32,
-) -> Vec<SymbolSearchResult> {
-    // Fast path: if one list is empty, return the other (weighted but still RRF-scored)
-    if semantic_results.is_empty() {
-        let mut results = tantivy_results;
-        let k_f32 = k as f32;
-        for (i, result) in results.iter_mut().enumerate() {
-            result.score = keyword_weight * (1.0 / (k_f32 + (i + 1) as f32));
-        }
-        results.truncate(limit);
-        return results;
-    }
-    if tantivy_results.is_empty() {
-        let mut results = semantic_results;
-        let k_f32 = k as f32;
-        for (i, result) in results.iter_mut().enumerate() {
-            result.score = semantic_weight * (1.0 / (k_f32 + (i + 1) as f32));
-        }
-        results.truncate(limit);
-        return results;
-    }
-
-    let k_f32 = k as f32;
-
-    let mut scores: HashMap<String, f32> = HashMap::new();
-    let mut results_by_id: HashMap<String, SymbolSearchResult> = HashMap::new();
-
-    for (i, result) in tantivy_results.into_iter().enumerate() {
-        let rank = (i + 1) as f32;
-        let rrf_score = keyword_weight * (1.0 / (k_f32 + rank));
-        *scores.entry(result.id.clone()).or_insert(0.0) += rrf_score;
-        results_by_id.entry(result.id.clone()).or_insert(result);
-    }
-
-    for (i, result) in semantic_results.into_iter().enumerate() {
-        let rank = (i + 1) as f32;
-        let rrf_score = semantic_weight * (1.0 / (k_f32 + rank));
-        *scores.entry(result.id.clone()).or_insert(0.0) += rrf_score;
-        // Overwrite keyword metadata: semantic results come from SQLite (source of truth),
-        // while keyword results use Tantivy stored fields which may be stale.
-        results_by_id.insert(result.id.clone(), result);
-    }
-
-    let mut merged: Vec<SymbolSearchResult> = results_by_id
-        .into_values()
-        .map(|mut result| {
-            result.score = scores[&result.id];
-            result
-        })
-        .collect();
-
-    merged.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    merged.truncate(limit);
-
-    merged
-}
+pub use super::rrf::{rrf_merge, weighted_rrf_merge};
 
 /// Convert KNN search results (symbol_id, distance) into `SymbolSearchResult` objects.
 ///
@@ -211,9 +114,20 @@ pub fn hybrid_search(
     // Step 1: Tantivy keyword search (always runs)
     let tantivy_results = search_index.search_symbols_via_unified(query, filter, tantivy_limit)?;
 
-    // Step 2: If no embedding provider, return keyword results directly
+    // Step 2: If no provider or generation unready, return keyword results directly
     let provider = match embedding_provider {
-        Some(p) => p,
+        Some(p) => {
+            let key = p.encoder_identity().ok().and_then(|i| i.storage_key().ok());
+            let rev = db
+                .get_latest_canonical_revision_number()
+                .ok()
+                .flatten()
+                .unwrap_or(0);
+            if !key.is_some_and(|k| db.embedding_generation_ready(&k, rev).unwrap_or(false)) {
+                return Ok(tantivy_results);
+            }
+            p
+        }
         None => return Ok(tantivy_results),
     };
 
@@ -223,6 +137,7 @@ pub fn hybrid_search(
         limit.saturating_mul(HYBRID_CANDIDATE_OVERFETCH_FACTOR),
         db,
         provider,
+        &EmbeddingRequestBudget::default(),
     ) {
         Ok(results) => results,
         Err(e) => {
@@ -234,7 +149,7 @@ pub fn hybrid_search(
     // Enforce caller filter constraints on semantic candidates before merge.
     let semantic_results: Vec<SymbolSearchResult> = semantic_results
         .into_iter()
-        .filter(|result| matches_filter(result, filter))
+        .filter(|result| filter.matches_symbol_result(result))
         .collect();
 
     // Step 4: Merge via RRF (k=60), optionally weighted
@@ -268,40 +183,33 @@ pub fn hybrid_search(
         debug!("  semantic top-10: [{}]", sem_top.join(", "));
     }
 
-    use crate::search::weights::classify_query;
-
-    let merged = match weight_profile {
+    let profile = match weight_profile {
         Some(profile) => {
             debug!(
                 "  weight profile (explicit): keyword={:.2}, semantic={:.2}",
                 profile.keyword_weight, profile.semantic_weight
             );
-            weighted_rrf_merge(
-                tantivy_results.results,
-                semantic_results,
-                60,
-                limit,
-                profile.keyword_weight,
-                profile.semantic_weight,
-            )
+            profile
         }
         None => {
-            let intent = classify_query(query);
+            let intent = crate::search::weights::classify_query(query);
             let profile = intent.to_weight_profile();
             debug!(
                 "  weight profile (classified {:?}): keyword={:.2}, semantic={:.2}",
                 intent, profile.keyword_weight, profile.semantic_weight
             );
-            weighted_rrf_merge(
-                tantivy_results.results,
-                semantic_results,
-                60,
-                limit,
-                profile.keyword_weight,
-                profile.semantic_weight,
-            )
+            profile
         }
     };
+
+    let merged = weighted_rrf_merge(
+        tantivy_results.results,
+        semantic_results,
+        60,
+        limit,
+        profile.keyword_weight,
+        profile.semantic_weight,
+    );
 
     Ok(SymbolSearchResults {
         results: merged,
@@ -309,68 +217,193 @@ pub fn hybrid_search(
     })
 }
 
-fn matches_filter(result: &SymbolSearchResult, filter: &SearchFilter) -> bool {
-    filter.matches_symbol_result(result)
-}
-
-/// Internal: run the semantic search pipeline (embed → KNN → convert).
-///
-/// Separated from `hybrid_search` so the orchestrator can catch errors from
-/// any step in a single `match`.
+/// Internal: run semantic search pipeline (embed → KNN → convert).
 fn run_semantic_search(
     query: &str,
     limit: usize,
     db: &SymbolDatabase,
     provider: &dyn EmbeddingProvider,
+    budget: &EmbeddingRequestBudget,
 ) -> Result<Vec<SymbolSearchResult>> {
-    let query_vector = provider.embed_query(query)?;
-    let knn_hits = db.knn_search(&query_vector, limit)?;
-    knn_to_search_results(&knn_hits, db)
+    let query_vector = provider.embed_query(query, budget)?;
+    let key = provider
+        .encoder_identity()
+        .ok()
+        .and_then(|i| i.storage_key().ok());
+    db.with_read_transaction(|tx_db| {
+        if let Some(ref k) = key {
+            let rev = tx_db.get_latest_canonical_revision_number()?.unwrap_or(0);
+            if !tx_db.embedding_generation_ready(k, rev)? {
+                anyhow::bail!("generation not ready");
+            }
+        }
+        let knn_hits = tx_db.knn_search(&query_vector, limit)?;
+        knn_to_search_results(&knn_hits, tx_db)
+    })
 }
 
-/// Compute the query embedding for hybrid search **before** running hybrid search.
-///
-/// The embedding sidecar round-trip takes up to 30 s on a cold start or a slow
-/// GPU. Prefer calling this first, then [`hybrid_search_with_embedding`], so the
-/// search merge path does no sidecar I/O and a slow embed cannot stall concurrent
-/// Tantivy readers/writers waiting on the interior writer mutex.
-///
-/// Returns `None` when:
-/// - `provider` is `None` (keyword-only search — no embedding needed), or
-/// - the provider returns an error (graceful degradation to keyword-only).
+/// Compute query embedding before acquiring index lock.
 pub fn compute_query_embedding_for_hybrid(
     query: &str,
     provider: Option<&dyn EmbeddingProvider>,
+    budget: &EmbeddingRequestBudget,
 ) -> Option<Vec<f32>> {
-    let provider = provider?;
-    match provider.embed_query(query) {
-        Ok(vec) => Some(vec),
-        Err(e) => {
-            warn!(
-                "hybrid search: query embedding failed before lock acquisition, \
-                 degrading to keyword-only: {e}"
-            );
-            None
-        }
-    }
+    provider?.embed_query(query, budget).ok()
 }
 
-/// Hybrid search using a **pre-computed** query embedding vector.
-///
-/// This is the lock-safe variant of [`hybrid_search`].  Use it when the caller
-/// holds the `SearchIndex` lock to avoid blocking the index for the full sidecar
-/// round-trip (up to 30 s):
-///
-/// ```text
-/// // Correct order — sidecar RPC happens outside the locked region:
-/// let embedding = compute_query_embedding_for_hybrid(query, provider);  // no lock
-/// let guard = index_mutex.lock()?;                                       // acquire lock
-/// let results = hybrid_search_with_embedding(query, ..., &guard, ..., embedding, ...)?;
-/// drop(guard);                                                            // release lock
-/// ```
-///
-/// When `query_embedding` is `None` the function returns keyword-only results
-/// (same behaviour as [`hybrid_search`] with no provider).
+/// Compute tagged query embedding bound to active ready generation.
+pub fn compute_tagged_query_embedding_for_hybrid(
+    query: &str,
+    provider: Option<&dyn EmbeddingProvider>,
+    budget: &EmbeddingRequestBudget,
+    db: &SymbolDatabase,
+    semantic_mode: SemanticMode,
+) -> Result<Option<TaggedQueryEmbedding>> {
+    budget.check_budget()?;
+
+    let Some(provider) = provider else {
+        if semantic_mode == SemanticMode::Required {
+            anyhow::bail!("SEMANTICS_NOT_READY: Embedding provider unavailable");
+        }
+        return Ok(None);
+    };
+
+    let encoder_key = match provider.encoder_identity().and_then(|id| id.storage_key()) {
+        Ok(key) => key,
+        Err(e) => {
+            if semantic_mode == SemanticMode::Required {
+                return Err(e.context("SEMANTICS_NOT_READY: Encoder identity unavailable"));
+            }
+            return Ok(None);
+        }
+    };
+
+    let rev = db.get_latest_canonical_revision_number()?.unwrap_or(0);
+    if !db.embedding_generation_ready(&encoder_key, rev)? {
+        if semantic_mode == SemanticMode::Required {
+            anyhow::bail!(
+                "SEMANTICS_NOT_READY: generation for encoder '{}' at rev {} is not ready",
+                encoder_key,
+                rev
+            );
+        }
+        return Ok(None);
+    }
+
+    let vector = match provider.embed_query(query, budget) {
+        Ok(v) => v,
+        Err(e) => {
+            budget.check_budget()?;
+            if semantic_mode == SemanticMode::Required {
+                return Err(e.context("SEMANTICS_NOT_READY: embed_query failed"));
+            }
+            return Ok(None);
+        }
+    };
+
+    budget.check_budget()?;
+
+    Ok(Some(TaggedQueryEmbedding {
+        vector,
+        encoder_key,
+        source_revision: rev,
+    }))
+}
+
+/// Hybrid search using a tagged query embedding with explicit semantic mode and transaction isolation.
+pub fn hybrid_search_with_tagged_embedding(
+    query: &str,
+    filter: &SearchFilter,
+    limit: usize,
+    search_index: &SearchIndex,
+    db: &SymbolDatabase,
+    query_embedding: Option<TaggedQueryEmbedding>,
+    weight_profile: Option<SearchWeightProfile>,
+    semantic_mode: SemanticMode,
+) -> Result<SymbolSearchResults> {
+    let tantivy_limit = if query_embedding.is_some() && semantic_mode != SemanticMode::Off {
+        limit.saturating_mul(HYBRID_CANDIDATE_OVERFETCH_FACTOR)
+    } else {
+        limit
+    };
+    let tantivy_results = search_index.search_symbols_via_unified(query, filter, tantivy_limit)?;
+
+    if semantic_mode == SemanticMode::Off {
+        return Ok(tantivy_results);
+    }
+
+    let tagged = match query_embedding {
+        Some(t) => t,
+        None => {
+            if semantic_mode == SemanticMode::Required {
+                anyhow::bail!("SEMANTICS_NOT_READY: Query embedding required but not provided");
+            }
+            return Ok(tantivy_results);
+        }
+    };
+    let knn_limit = limit.saturating_mul(HYBRID_CANDIDATE_OVERFETCH_FACTOR);
+    let semantic_results_res = db.with_read_transaction(|tx_db| {
+        let current_rev = tx_db.get_latest_canonical_revision_number()?.unwrap_or(0);
+        if tagged.source_revision != current_rev {
+            if semantic_mode == SemanticMode::Required {
+                anyhow::bail!(
+                    "SEMANTICS_NOT_READY: query revision {} differs from current canonical revision {}",
+                    tagged.source_revision,
+                    current_rev
+                );
+            }
+            return Ok(Vec::new());
+        }
+        if !tx_db.embedding_generation_ready(&tagged.encoder_key, tagged.source_revision)? {
+            if semantic_mode == SemanticMode::Required {
+                anyhow::bail!(
+                    "SEMANTICS_NOT_READY: generation for encoder '{}' at rev {} is not ready",
+                    tagged.encoder_key,
+                    tagged.source_revision
+                );
+            }
+            return Ok(Vec::new());
+        }
+        let hits = tx_db.knn_search(&tagged.vector, knn_limit)?;
+        knn_to_search_results(&hits, tx_db)
+    });
+
+    let semantic_results = match semantic_results_res {
+        Ok(results) => results,
+        Err(e) => {
+            if semantic_mode == SemanticMode::Required {
+                return Err(e);
+            }
+            warn!("hybrid search: KNN search failed, degrading to keyword-only: {e}");
+            Vec::new()
+        }
+    };
+
+    let semantic_results: Vec<SymbolSearchResult> = semantic_results
+        .into_iter()
+        .filter(|r| filter.matches_symbol_result(r))
+        .collect();
+
+    let profile = match weight_profile {
+        Some(p) => p,
+        None => crate::search::weights::classify_query(query).to_weight_profile(),
+    };
+    let merged = weighted_rrf_merge(
+        tantivy_results.results,
+        semantic_results,
+        60,
+        limit,
+        profile.keyword_weight,
+        profile.semantic_weight,
+    );
+
+    Ok(SymbolSearchResults {
+        results: merged,
+        relaxed: tantivy_results.relaxed,
+    })
+}
+
+/// Hybrid search using a pre-computed query embedding vector (auto mode).
 pub fn hybrid_search_with_embedding(
     query: &str,
     filter: &SearchFilter,
@@ -380,110 +413,15 @@ pub fn hybrid_search_with_embedding(
     query_embedding: Option<Vec<f32>>,
     weight_profile: Option<SearchWeightProfile>,
 ) -> Result<SymbolSearchResults> {
-    // Step 1: Tantivy keyword search (always runs).
-    // Over-fetch when we have a semantic candidate pool to merge with.
-    let tantivy_limit = if query_embedding.is_some() {
-        limit.saturating_mul(HYBRID_CANDIDATE_OVERFETCH_FACTOR)
-    } else {
-        limit
-    };
-    let tantivy_results = search_index.search_symbols_via_unified(query, filter, tantivy_limit)?;
-
-    // Step 2: If no pre-computed embedding, return keyword results directly.
-    let vec = match query_embedding {
-        Some(v) => v,
-        None => return Ok(tantivy_results),
-    };
-
-    // Step 3: KNN search against SQLite — no sidecar I/O, just a vector scan.
-    let knn_limit = limit.saturating_mul(HYBRID_CANDIDATE_OVERFETCH_FACTOR);
-    let semantic_results = match db.knn_search(&vec, knn_limit) {
-        Ok(hits) => match knn_to_search_results(&hits, db) {
-            Ok(results) => results,
-            Err(e) => {
-                warn!("hybrid_search_with_embedding: KNN result conversion failed, degrading: {e}");
-                Vec::new()
-            }
-        },
-        Err(e) => {
-            warn!(
-                "hybrid_search_with_embedding: KNN search failed, degrading to keyword-only: {e}"
-            );
-            Vec::new()
-        }
-    };
-
-    // Enforce caller filter constraints on semantic candidates before merge.
-    let semantic_results: Vec<SymbolSearchResult> = semantic_results
-        .into_iter()
-        .filter(|r| matches_filter(r, filter))
-        .collect();
-
-    // Step 4: Merge via RRF (k=60), optionally weighted.
-    info!(
-        "Hybrid merge (precomputed embedding): {} keyword + {} semantic results → {} (limit {})",
-        tantivy_results.results.len(),
-        semantic_results.len(),
-        if weight_profile.is_some() {
-            "weighted RRF (explicit)"
-        } else {
-            "weighted RRF (classified)"
-        },
-        limit
-    );
-
-    if tracing::enabled!(tracing::Level::DEBUG) {
-        let kw_top: Vec<_> = tantivy_results
-            .results
-            .iter()
-            .take(10)
-            .map(|r| format!("{}({:.3})", r.name, r.score))
-            .collect();
-        let sem_top: Vec<_> = semantic_results
-            .iter()
-            .take(10)
-            .map(|r| format!("{}({:.3})", r.name, r.score))
-            .collect();
-        debug!("  keyword top-10: [{}]", kw_top.join(", "));
-        debug!("  semantic top-10: [{}]", sem_top.join(", "));
-    }
-
-    use crate::search::weights::classify_query;
-    let merged = match weight_profile {
-        Some(profile) => {
-            debug!(
-                "  weight profile (explicit): keyword={:.2}, semantic={:.2}",
-                profile.keyword_weight, profile.semantic_weight
-            );
-            weighted_rrf_merge(
-                tantivy_results.results,
-                semantic_results,
-                60,
-                limit,
-                profile.keyword_weight,
-                profile.semantic_weight,
-            )
-        }
-        None => {
-            let intent = classify_query(query);
-            let profile = intent.to_weight_profile();
-            debug!(
-                "  weight profile (classified {:?}): keyword={:.2}, semantic={:.2}",
-                intent, profile.keyword_weight, profile.semantic_weight
-            );
-            weighted_rrf_merge(
-                tantivy_results.results,
-                semantic_results,
-                60,
-                limit,
-                profile.keyword_weight,
-                profile.semantic_weight,
-            )
-        }
-    };
-
-    Ok(SymbolSearchResults {
-        results: merged,
-        relaxed: tantivy_results.relaxed,
-    })
+    let tagged = query_embedding.map(TaggedQueryEmbedding::untagged);
+    hybrid_search_with_tagged_embedding(
+        query,
+        filter,
+        limit,
+        search_index,
+        db,
+        tagged,
+        weight_profile,
+        SemanticMode::Auto,
+    )
 }

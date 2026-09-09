@@ -163,6 +163,7 @@ async fn fast_search_unified_returns_file_hits_for_filename_query() {
         backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
+        semantics: None,
     }
     .execute_with_trace(&handler)
     .await
@@ -209,6 +210,7 @@ async fn fast_search_file_pattern_scopes_results() {
         backend: None,
         workspace: Some("primary".to_string()),
         return_format: "locations".to_string(),
+        semantics: None,
     }
     .execute_with_trace(&handler)
     .await
@@ -260,6 +262,7 @@ async fn filename_locations_preserve_exact_file_rank_instead_of_line_mode_mentio
         backend: None,
         workspace: Some("primary".to_string()),
         return_format: "locations".to_string(),
+        semantics: None,
     }
     .execute_with_trace(&handler)
     .await
@@ -304,6 +307,7 @@ async fn locations_scope_rescue_labels_out_of_scope_results() {
         backend: None,
         workspace: Some("primary".to_string()),
         return_format: "locations".to_string(),
+        semantics: None,
     }
     .execute_with_trace(&handler)
     .await
@@ -348,6 +352,7 @@ async fn request_level_whitespace_separated_globs_return_syntax_hint() {
         backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
+        semantics: None,
     }
     .execute_with_trace(&handler)
     .await

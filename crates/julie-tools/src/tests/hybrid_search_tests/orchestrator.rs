@@ -19,7 +19,9 @@ mod orchestrator_tests {
     use julie_index::search::index::{
         SearchDocument, SearchFilter, SearchIndex, SymbolSearchResults,
     };
-    use julie_pipeline::embeddings::{DeviceInfo, EmbeddingProvider};
+    use julie_pipeline::embeddings::{
+        DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+    };
     use julie_test_support::db::{file_info_builder, store_file_info_if_missing, symbol_builder};
     use tempfile::TempDir;
 
@@ -89,14 +91,21 @@ mod orchestrator_tests {
     struct FailingProvider;
 
     impl EmbeddingProvider for FailingProvider {
-        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+        fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
             anyhow::bail!("embedding model not loaded")
         }
-        fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            _texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> Result<Vec<Vec<f32>>> {
             anyhow::bail!("embedding model not loaded")
         }
         fn dimensions(&self) -> usize {
             384
+        }
+        fn encoder_identity(&self) -> Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("failing-mock", 384))
         }
         fn device_info(&self) -> DeviceInfo {
             DeviceInfo {
@@ -112,13 +121,17 @@ mod orchestrator_tests {
     struct SidecarTimeoutProvider;
 
     impl EmbeddingProvider for SidecarTimeoutProvider {
-        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+        fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
             anyhow::bail!(
                 "timed out waiting for sidecar response for method 'embed_query' after 50ms"
             )
         }
 
-        fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            _texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> Result<Vec<Vec<f32>>> {
             anyhow::bail!(
                 "timed out waiting for sidecar response for method 'embed_batch' after 50ms"
             )
@@ -126,6 +139,10 @@ mod orchestrator_tests {
 
         fn dimensions(&self) -> usize {
             384
+        }
+
+        fn encoder_identity(&self) -> Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("fake-sidecar-timeout", 384))
         }
 
         fn device_info(&self) -> DeviceInfo {
@@ -142,16 +159,24 @@ mod orchestrator_tests {
     struct StaticProvider;
 
     impl EmbeddingProvider for StaticProvider {
-        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+        fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
             Ok(vec![1.0_f32; 384])
         }
 
-        fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> Result<Vec<Vec<f32>>> {
             Ok(texts.iter().map(|_| vec![1.0_f32; 384]).collect())
         }
 
         fn dimensions(&self) -> usize {
             384
+        }
+
+        fn encoder_identity(&self) -> Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("static-mock", 384))
         }
 
         fn device_info(&self) -> DeviceInfo {
@@ -306,6 +331,10 @@ mod orchestrator_tests {
             .build()])
             .unwrap();
 
+        let provider = StaticProvider;
+        let key = provider.encoder_identity().unwrap().storage_key().unwrap();
+        db.publish_test_generation(&key, 0, 384).unwrap();
+
         // Seed embeddings so KNN returns both symbols.
         db.store_embeddings(&[
             ("sym1".to_string(), vec![0.95_f32; 384]),
@@ -320,7 +349,6 @@ mod orchestrator_tests {
             exclude_tests: false,
         };
 
-        let provider = StaticProvider;
         let results = hybrid_search(
             "process_data",
             &filter,
@@ -348,8 +376,10 @@ mod orchestrator_tests {
 
     #[test]
     fn test_hybrid_search_sidecar_timeout_degrades_to_keyword_results() {
-        let (index, db, _idx_dir, _db_dir) = setup_index_and_db();
+        let (index, mut db, _idx_dir, _db_dir) = setup_index_and_db();
         let timeout = SidecarTimeoutProvider;
+        let key = timeout.encoder_identity().unwrap().storage_key().unwrap();
+        db.publish_test_generation(&key, 0, 384).unwrap();
 
         let (results, logs) = run_hybrid_search_with_warn_capture(|| {
             hybrid_search(
@@ -404,25 +434,21 @@ mod orchestrator_tests {
 
         // Do NOT add the test symbol to Tantivy — it should only be reachable
         // via the semantic (KNN) path, so the only way it enters the merge is
-        // through matches_filter on semantic candidates.
-
-        // Store 384-dim embeddings for both symbols so the semantic path finds them.
-        // The test symbol gets a slightly higher embedding similarity score.
-        let prod_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.8 } else { 0.0 }).collect();
-        let test_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.9 } else { 0.0 }).collect();
-        db.store_embeddings(&[
-            ("test_fn".to_string(), test_vec),
-            ("sym1".to_string(), prod_vec),
-        ])
-        .unwrap();
-
         // Provider that returns a query vector close to both stored embeddings
         struct TestProvider;
         impl EmbeddingProvider for TestProvider {
-            fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+            fn embed_query(
+                &self,
+                _text: &str,
+                _budget: &EmbeddingRequestBudget,
+            ) -> Result<Vec<f32>> {
                 Ok((0..384).map(|i| if i == 0 { 0.85 } else { 0.0 }).collect())
             }
-            fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+            fn embed_batch(
+                &self,
+                texts: &[String],
+                _budget: &EmbeddingRequestBudget,
+            ) -> Result<Vec<Vec<f32>>> {
                 Ok(texts
                     .iter()
                     .map(|_| (0..384).map(|i| if i == 0 { 0.85 } else { 0.0 }).collect())
@@ -430,6 +456,9 @@ mod orchestrator_tests {
             }
             fn dimensions(&self) -> usize {
                 384
+            }
+            fn encoder_identity(&self) -> Result<EncoderIdentity> {
+                Ok(EncoderIdentity::mock("test-provider", 384))
             }
             fn device_info(&self) -> DeviceInfo {
                 DeviceInfo {
@@ -440,6 +469,20 @@ mod orchestrator_tests {
                 }
             }
         }
+
+        let provider = TestProvider;
+        let key = provider.encoder_identity().unwrap().storage_key().unwrap();
+        db.publish_test_generation(&key, 0, 384).unwrap();
+
+        // Store 384-dim embeddings for both symbols so the semantic path finds them.
+        // The test symbol gets a slightly higher embedding similarity score.
+        let prod_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.8 } else { 0.0 }).collect();
+        let test_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.9 } else { 0.0 }).collect();
+        db.store_embeddings(&[
+            ("test_fn".to_string(), test_vec),
+            ("sym1".to_string(), prod_vec),
+        ])
+        .unwrap();
 
         let filter = SearchFilter {
             exclude_tests: true,
@@ -491,21 +534,21 @@ mod orchestrator_tests {
         .build()])
             .unwrap();
 
-        let prod_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.8 } else { 0.0 }).collect();
-        let test_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.9 } else { 0.0 }).collect();
-        db.store_embeddings(&[
-            ("inline_test_fn".to_string(), test_vec),
-            ("sym1".to_string(), prod_vec),
-        ])
-        .unwrap();
-
         struct TestProvider;
         impl EmbeddingProvider for TestProvider {
-            fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+            fn embed_query(
+                &self,
+                _text: &str,
+                _budget: &EmbeddingRequestBudget,
+            ) -> Result<Vec<f32>> {
                 Ok((0..384).map(|i| if i == 0 { 0.85 } else { 0.0 }).collect())
             }
 
-            fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+            fn embed_batch(
+                &self,
+                texts: &[String],
+                _budget: &EmbeddingRequestBudget,
+            ) -> Result<Vec<Vec<f32>>> {
                 Ok(texts
                     .iter()
                     .map(|_| (0..384).map(|i| if i == 0 { 0.85 } else { 0.0 }).collect())
@@ -514,6 +557,10 @@ mod orchestrator_tests {
 
             fn dimensions(&self) -> usize {
                 384
+            }
+
+            fn encoder_identity(&self) -> Result<EncoderIdentity> {
+                Ok(EncoderIdentity::mock("test-provider", 384))
             }
 
             fn device_info(&self) -> DeviceInfo {
@@ -525,6 +572,18 @@ mod orchestrator_tests {
                 }
             }
         }
+
+        let provider = TestProvider;
+        let key = provider.encoder_identity().unwrap().storage_key().unwrap();
+        db.publish_test_generation(&key, 0, 384).unwrap();
+
+        let prod_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.8 } else { 0.0 }).collect();
+        let test_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.9 } else { 0.0 }).collect();
+        db.store_embeddings(&[
+            ("inline_test_fn".to_string(), test_vec),
+            ("sym1".to_string(), prod_vec),
+        ])
+        .unwrap();
 
         let filter = SearchFilter {
             exclude_tests: true,
@@ -554,5 +613,127 @@ mod orchestrator_tests {
                 .map(|result| (&result.id, &result.name, &result.file_path, &result.role))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn test_hybrid_search_with_tagged_embedding_required_fails_closed_when_unready() {
+        let (index, db, _idx_dir, _db_dir) = setup_index_and_db();
+        let provider = StaticProvider;
+        let key = provider.encoder_identity().unwrap().storage_key().unwrap();
+        // Do NOT publish generation at rev 999
+        let tagged = julie_core::embeddings_contract::TaggedQueryEmbedding {
+            vector: vec![1.0_f32; 384],
+            encoder_key: key,
+            source_revision: 999,
+        };
+
+        let result = julie_index::search::hybrid::hybrid_search_with_tagged_embedding(
+            "process_data",
+            &SearchFilter::default(),
+            10,
+            &index,
+            &db,
+            Some(tagged),
+            None,
+            julie_core::embeddings_contract::SemanticMode::Required,
+        );
+
+        match result {
+            Err(e) => {
+                let err_msg = e.to_string();
+                assert!(
+                    err_msg.contains("SEMANTICS_NOT_READY"),
+                    "Expected SEMANTICS_NOT_READY, got: {err_msg}"
+                );
+            }
+            Ok(_) => panic!("Required mode MUST fail closed when generation is not ready"),
+        }
+    }
+
+    #[test]
+    fn test_hybrid_search_with_tagged_embedding_required_fails_closed_on_knn_error() {
+        let (index, mut db, _idx_dir, _db_dir) = setup_index_and_db();
+        let provider = StaticProvider;
+        let key = provider.encoder_identity().unwrap().storage_key().unwrap();
+        db.publish_test_generation(&key, 0, 384).unwrap();
+        // Vector has 128 dimensions instead of 384
+        let tagged = julie_core::embeddings_contract::TaggedQueryEmbedding {
+            vector: vec![1.0_f32; 128],
+            encoder_key: key,
+            source_revision: 0,
+        };
+
+        let result = julie_index::search::hybrid::hybrid_search_with_tagged_embedding(
+            "process_data",
+            &SearchFilter::default(),
+            10,
+            &index,
+            &db,
+            Some(tagged),
+            None,
+            julie_core::embeddings_contract::SemanticMode::Required,
+        );
+
+        assert!(
+            result.is_err(),
+            "Required mode MUST fail closed when KNN search fails with dimension mismatch"
+        );
+    }
+
+    #[test]
+    fn test_hybrid_search_with_tagged_embedding_auto_degrades_when_unready() {
+        let (index, db, _idx_dir, _db_dir) = setup_index_and_db();
+        let provider = StaticProvider;
+        let key = provider.encoder_identity().unwrap().storage_key().unwrap();
+        let tagged = julie_core::embeddings_contract::TaggedQueryEmbedding {
+            vector: vec![1.0_f32; 384],
+            encoder_key: key,
+            source_revision: 999,
+        };
+
+        let result = julie_index::search::hybrid::hybrid_search_with_tagged_embedding(
+            "process_data",
+            &SearchFilter::default(),
+            10,
+            &index,
+            &db,
+            Some(tagged),
+            None,
+            julie_core::embeddings_contract::SemanticMode::Auto,
+        );
+
+        assert!(
+            result.is_ok(),
+            "Auto mode must degrade gracefully when generation is unready"
+        );
+        let res = result.unwrap();
+        assert_eq!(res.results[0].name, "process_data");
+    }
+
+    #[test]
+    fn test_hybrid_search_with_tagged_embedding_required_fails_closed_when_query_embedding_none() {
+        let (index, db, _idx_dir, _db_dir) = setup_index_and_db();
+
+        let result = julie_index::search::hybrid::hybrid_search_with_tagged_embedding(
+            "process_data",
+            &SearchFilter::default(),
+            10,
+            &index,
+            &db,
+            None,
+            None,
+            julie_core::embeddings_contract::SemanticMode::Required,
+        );
+
+        match result {
+            Err(e) => {
+                let err_msg = e.to_string();
+                assert!(
+                    err_msg.contains("SEMANTICS_NOT_READY"),
+                    "Expected SEMANTICS_NOT_READY, got: {err_msg}"
+                );
+            }
+            Ok(_) => panic!("Required mode MUST fail closed when query_embedding is None"),
+        }
     }
 }

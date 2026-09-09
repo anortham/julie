@@ -12,7 +12,9 @@ mod weight_profile_wiring_tests {
     use julie_index::search::hybrid::hybrid_search;
     use julie_index::search::index::{SearchDocument, SearchFilter, SearchIndex};
     use julie_index::search::weights::SearchWeightProfile;
-    use julie_pipeline::embeddings::{DeviceInfo, EmbeddingProvider};
+    use julie_pipeline::embeddings::{
+        DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+    };
     use julie_test_support::db::{file_info_builder, store_file_info_if_missing, symbol_builder};
     use tempfile::TempDir;
 
@@ -20,12 +22,20 @@ mod weight_profile_wiring_tests {
     struct StaticProvider;
 
     impl EmbeddingProvider for StaticProvider {
-        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+        fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
             Ok(vec![1.0_f32; 384])
         }
 
-        fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> Result<Vec<Vec<f32>>> {
             Ok(texts.iter().map(|_| vec![1.0_f32; 384]).collect())
+        }
+
+        fn encoder_identity(&self) -> Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("static-mock", 384))
         }
 
         fn dimensions(&self) -> usize {
@@ -68,6 +78,10 @@ mod weight_profile_wiring_tests {
             ))
             .unwrap();
         index.commit().unwrap();
+
+        let provider = StaticProvider;
+        let key = provider.encoder_identity().unwrap().storage_key().unwrap();
+        db.publish_test_generation(&key, 0, 384).unwrap();
 
         // Seed embeddings so KNN returns results
         db.store_embeddings(&[("sym1".to_string(), vec![0.95_f32; 384])])

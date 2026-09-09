@@ -18,6 +18,7 @@ use crate::navigation::resolution::WorkspaceTarget;
 use crate::spillover::{SpilloverFormat, SpilloverStore};
 use julie_context::ToolContext;
 use julie_core::database::SymbolDatabase;
+use julie_core::embeddings_contract::{EmbeddingRequestBudget, SemanticMode, TaggedQueryEmbedding};
 
 /// Run the full get_context pipeline: search → rank → expand → allocate → format.
 pub fn run_pipeline(
@@ -63,10 +64,44 @@ pub fn run_pipeline_with_options(
     db: &SymbolDatabase,
     search_index: &julie_index::search::SearchIndex,
     embedding_provider: Option<&dyn julie_pipeline::embeddings::EmbeddingProvider>,
-    precomputed_embedding: Option<Vec<f32>>,
+    precomputed_embedding: Option<TaggedQueryEmbedding>,
     task_signals: Option<&TaskSignals>,
     spillover_store: Option<&SpilloverStore>,
     spillover_session: Option<(&str, SpilloverFormat)>,
+) -> Result<String> {
+    run_pipeline_with_mode(
+        query,
+        max_tokens,
+        language,
+        file_pattern,
+        format,
+        db,
+        search_index,
+        embedding_provider,
+        precomputed_embedding,
+        task_signals,
+        spillover_store,
+        spillover_session,
+        SemanticMode::Auto,
+    )
+}
+
+/// Run the get_context pipeline with explicit semantic mode control.
+#[allow(clippy::too_many_arguments)]
+pub fn run_pipeline_with_mode(
+    query: &str,
+    max_tokens: Option<u32>,
+    language: Option<String>,
+    file_pattern: Option<String>,
+    format: Option<String>,
+    db: &SymbolDatabase,
+    search_index: &julie_index::search::SearchIndex,
+    embedding_provider: Option<&dyn julie_pipeline::embeddings::EmbeddingProvider>,
+    precomputed_embedding: Option<TaggedQueryEmbedding>,
+    task_signals: Option<&TaskSignals>,
+    spillover_store: Option<&SpilloverStore>,
+    spillover_session: Option<(&str, SpilloverFormat)>,
+    semantic_mode: SemanticMode,
 ) -> Result<String> {
     use super::allocation::TokenBudget;
     use super::entries::{build_neighbor_entries, build_pivot_entries};
@@ -83,12 +118,20 @@ pub fn run_pipeline_with_options(
         exclude_tests: false,
     };
     let profile = julie_index::search::weights::SearchWeightProfile::get_context();
-    // Prefer a precomputed embedding so the sidecar round-trip (up to 30 s)
-    // does not run on the hybrid search path. Tests / wrappers may pass `None`.
-    let effective_embedding = precomputed_embedding.or_else(|| {
-        julie_index::search::hybrid::compute_query_embedding_for_hybrid(query, embedding_provider)
-    });
-    let mut search_results = julie_index::search::hybrid::hybrid_search_with_embedding(
+    let effective_embedding = match precomputed_embedding {
+        Some(t) => Some(t),
+        None if semantic_mode != SemanticMode::Off => {
+            julie_index::search::hybrid::compute_tagged_query_embedding_for_hybrid(
+                query,
+                embedding_provider,
+                &EmbeddingRequestBudget::default(),
+                db,
+                semantic_mode,
+            )?
+        }
+        None => None,
+    };
+    let mut search_results = julie_index::search::hybrid::hybrid_search_with_tagged_embedding(
         query,
         &filter,
         30,
@@ -96,6 +139,7 @@ pub fn run_pipeline_with_options(
         db,
         effective_embedding,
         Some(profile),
+        semantic_mode,
     )?;
     merge_task_signal_seed_results(&mut search_results.results, db, &filter, &resolved_signals)?;
     let output_format = super::formatting::OutputFormat::from_option(format.as_deref());
@@ -219,6 +263,18 @@ pub async fn run_with_target(
     handler: &dyn ToolContext,
     workspace_target: WorkspaceTarget,
 ) -> Result<String> {
+    run_with_target_and_budget(tool, handler, workspace_target, None).await
+}
+
+/// Same as `run_with_target`, but accepts an optional `EmbeddingRequestBudget`
+/// for request-level timeout and cancellation enforcement.
+pub async fn run_with_target_and_budget(
+    tool: &GetContextTool,
+    handler: &dyn ToolContext,
+    workspace_target: WorkspaceTarget,
+    budget: Option<EmbeddingRequestBudget>,
+) -> Result<String> {
+    let budget = budget.unwrap_or_default();
     let query = tool.query.clone();
     let max_tokens = tool.max_tokens;
     let language = tool.language.clone();
@@ -228,6 +284,8 @@ pub async fn run_with_target(
     let spillover_store = handler.spillover_store();
     let session_id = handler.session_id().to_string();
     let spillover_format = SpilloverFormat::from_option(tool.format.as_deref());
+
+    let semantic_mode = tool.semantics.unwrap_or(SemanticMode::Auto);
 
     match workspace_target {
         WorkspaceTarget::Target(target_workspace_id) => {
@@ -241,6 +299,7 @@ pub async fn run_with_target(
                 .get_search_index_for_workspace(&target_workspace_id)
                 .await?;
             let embedding_provider = handler.embedding_provider().await;
+            let budget_clone = budget.clone();
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let pooled_db = pooled_db.into_read_snapshot()?;
@@ -252,12 +311,19 @@ pub async fn run_with_target(
                 // Compute embedding before searching.
                 // The sidecar RPC can take up to 30 s; hybrid search must not
                 // serialize readers behind an outer SearchIndex mutex.
-                let precomputed_embedding = julie_index::search::hybrid::compute_query_embedding_for_hybrid(
-                    &query,
-                    embedding_provider.as_deref(),
-                );
+                let precomputed_embedding = if semantic_mode == SemanticMode::Off {
+                    None
+                } else {
+                    julie_index::search::hybrid::compute_tagged_query_embedding_for_hybrid(
+                        &query,
+                        embedding_provider.as_deref(),
+                        &budget_clone,
+                        &pooled_db,
+                        semantic_mode,
+                    )?
+                };
                 let index = si;
-                run_pipeline_with_options(
+                run_pipeline_with_mode(
                     &query,
                     max_tokens,
                     language,
@@ -270,6 +336,7 @@ pub async fn run_with_target(
                     Some(&task_signals),
                     Some(&spillover_store),
                     Some((&session_id, spillover_format)),
+                    semantic_mode,
                 )
             })
             .await
@@ -280,17 +347,24 @@ pub async fn run_with_target(
         WorkspaceTarget::Primary => {
             let (db, search_index) = handler.primary_pooled_database_and_search_index().await?;
             let embedding_provider = handler.embedding_provider().await;
+            let budget_clone = budget.clone();
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let db = db.into_read_snapshot()?;
                 // Compute embedding before searching (sidecar RPC can take tens of seconds).
-                let precomputed_embedding =
-                    julie_index::search::hybrid::compute_query_embedding_for_hybrid(
+                let precomputed_embedding = if semantic_mode == SemanticMode::Off {
+                    None
+                } else {
+                    julie_index::search::hybrid::compute_tagged_query_embedding_for_hybrid(
                         &query,
                         embedding_provider.as_deref(),
-                    );
+                        &budget_clone,
+                        &db,
+                        semantic_mode,
+                    )?
+                };
                 let index = search_index;
-                run_pipeline_with_options(
+                run_pipeline_with_mode(
                     &query,
                     max_tokens,
                     language,
@@ -303,9 +377,11 @@ pub async fn run_with_target(
                     Some(&task_signals),
                     Some(&spillover_store),
                     Some((&session_id, spillover_format)),
+                    semantic_mode,
                 )
             })
-            .await??;
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
 
             Ok(result)
         }

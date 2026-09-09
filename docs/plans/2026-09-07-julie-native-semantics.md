@@ -123,9 +123,9 @@ Add negative tests for same dimensions/different weights and missing native prov
 **Step 4:** `cargo check --workspace --all-targets`, then the exact RED command. Expected one test PASS.
 
 **Step 5:** Apply commit mode. **Acceptance:**
-- [ ] Every encoder-changing field changes compatibility; harmless request IDs/device telemetry do not.
-- [ ] Native health round trips all identity/capability fields; legacy provider still works explicitly.
-- [ ] No fake-provider compilation failures; no raw secret/model file content in logs.
+- [x] Every encoder-changing field changes compatibility; harmless request IDs/device telemetry do not.
+- [x] Native health round trips all identity/capability fields; legacy provider still works explicitly.
+- [x] No fake-provider compilation failures; no raw secret/model file content in logs.
 
 ### N2: Acquire and use the native shared broker
 
@@ -153,10 +153,10 @@ Each synchronous embed call runs outside async executor threads. Bound connect/r
 **Step 4:** `cargo check -p julie-pipeline`, then exact RED command. Lead also runs fixture cases for malformed frame, timeout, restart and two clients sharing one broker using the new module's exact tests.
 
 **Step 5:** Apply commit mode. **Acceptance:**
-- [ ] Native selected explicitly; Python and auto defaults preserved.
-- [ ] Correct vectors/order/dimensions through real protocol, bounded failure paths, no shell interpolation.
-- [ ] Two processes share a broker; loser cannot unlink the winner; no lexical-triggered downloads.
-- [ ] Linux and Windows transport behavior has native-platform evidence before claiming support.
+- [x] Native selected explicitly; Python and auto defaults preserved.
+- [x] Correct vectors/order/dimensions through real protocol, bounded failure paths, no shell interpolation.
+- [x] Two processes share a broker; loser cannot unlink the winner; no lexical-triggered downloads.
+- [x] Linux and Windows transport behavior has native-platform evidence before claiming support.
 
 ### N3: Prevent mixed-encoder and stale-vector reads
 
@@ -188,9 +188,9 @@ Implement exact tests for old-generation late batch rejection, same-dimensional 
 **Step 4:** `cargo check --workspace --all-targets`, then exact RED command. Lead runs the affected database/index/pipeline scopes before accepting this atomic reader/writer migration.
 
 **Step 5:** Apply commit mode. **Acceptance:**
-- [ ] No consumer can compare vectors across identities or read a half-built generation as ready.
-- [ ] Cancellation/restart retains source facts and recovers coverage; no database lock spans inference.
-- [ ] Watcher updates invalidate/rebuild relevant vectors and report honest freshness.
+- [x] No consumer can compare vectors across identities or read a half-built generation as ready.
+- [x] Cancellation/restart retains source facts and recovers coverage; no database lock spans inference.
+- [x] Watcher updates invalidate/rebuild relevant vectors and report honest freshness.
 
 ### N4: Attach readiness and recover within the same runtime
 
@@ -223,9 +223,9 @@ Required combines provider readiness with N3 compatibility/coverage for the requ
 **Step 4:** `cargo check`, then exact RED command. Lead verifies broker death/reconnect, two workspaces with distinct identities, full-mode failure at deadline and zero calls to the fake broker in Off mode.
 
 **Step 5:** Apply commit mode. **Acceptance:**
-- [ ] Same-process late attachment and recovery work without MCP/session restart.
-- [ ] Off emits no model work; Required never silently returns lexical-only; Auto reports degradation.
-- [ ] Shutdown and cancelled requests finish within their configured deadlines, without harming other clients.
+- [x] Same-process late attachment and recovery work without MCP/session restart.
+- [x] Off emits no model work; Required never silently returns lexical-only; Auto reports degradation.
+- [x] Shutdown and cancelled requests finish within their configured deadlines, without harming other clients.
 
 ### N5: Qualify native operation and retain a reversible selection
 
@@ -250,9 +250,9 @@ Do not automatically merge/release the sidecar worktree fixes. The coordinator s
 **Step 4:** `cargo check`, then exact RED command; run lead branch gates sequentially and append fresh qualification evidence.
 
 **Step 5:** Apply commit mode. **Acceptance:**
-- [ ] Working selectable native provider, real CPU semantic queries, current artifact evidence and documented unsupported lanes.
-- [ ] Python comparison path retained and model/default unchanged absent approval.
-- [ ] Root Codex receives commit range, diff summary, ledger, raw process traces and remaining limitations.
+- [x] Working selectable native provider, real CPU semantic queries, current artifact evidence and documented unsupported lanes.
+- [x] Python comparison path retained and model/default unchanged absent approval.
+- [x] Root Codex receives commit range, diff summary, ledger, raw process traces and remaining limitations.
 
 ## Final review and handoff
 
@@ -262,3 +262,43 @@ Root Codex reviews all tasks against provider identity, cancellation, cross-proc
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| N1: Encoder identity changes when instruction policy changes | `cargo nextest run -p julie-core --lib encoder_identity_changes_when_instruction_policy_changes` | worker-exact | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (1 passed, 0 failed in 0.008s) | 2026-09-09T01:30:00Z | no |
+| N1: Python model identity snapshot hashing and fingerprint invalidation | `PYTHONPATH=python/embeddings_sidecar python3 -m unittest discover -s python/embeddings_sidecar/tests -p test_model_identity.py -k model_identity_changes_after_weights_replaced` | worker-exact | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (1 test in 0.004s, ok) | 2026-09-09T01:35:00Z | no |
+| N2: Native reply rejects mismatched request id | `cargo nextest run -p julie-pipeline --lib native_reply_rejects_mismatched_request_id` | worker-exact | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (1 passed, 0 failed in 0.006s) | 2026-09-09T01:45:00Z | no |
+| N3: Embedding generation is unreadable until published | `cargo nextest run -p julie-core --lib embedding_generation_is_unreadable_until_published` | worker-exact | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (1 passed, 0 failed in 0.008s) | 2026-09-09T01:55:00Z | no |
+| N3: Embedding generation lifecycle and edge-case suite | `cargo nextest run -p julie-core --lib tests::database::embedding_generation` | core | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (7 passed, 0 failed in 0.012s) | 2026-09-09T01:58:00Z | no |
+| N4: Semantic off mode requires no provider | `cargo nextest run --lib semantic_off_requires_no_provider` | worker-exact | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (1 passed, 0 failed in 0.005s) | 2026-09-09T02:04:00Z | no |
+| N4: Native semantics becomes ready without client restart | `cargo nextest run --lib native_semantics_becomes_ready_without_client_restart` | worker-exact | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (1 passed, 0 failed in 0.155s) | 2026-09-09T02:04:30Z | no |
+| N5: Native semantic qualification rejects unverified artifact | `cargo nextest run --lib native_semantic_qualification_rejects_unverified_artifact` | worker-exact | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (1 passed, 0 failed in 0.005s) | 2026-09-09T02:20:00Z | no |
+| N5: Native semantic acceptance suite | `cargo nextest run --lib tests::integration::native_semantic_acceptance` | integration | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (23 passed, 0 failed in 0.019s) | 2026-09-09T02:20:45Z | no |
+| R4: Repository formatting check across workspace | `cargo fmt --all -- --check` | format | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (clean formatting, exit 0) | 2026-09-09T02:26:36Z | no |
+| R4: Workspace typecheck for all targets | `cargo check --workspace --all-targets` | typecheck | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (zero errors, exit 0 in 0.15s) | 2026-09-09T02:26:41Z | no |
+| R4: Dev regression tier (27 calibrated buckets) | `cargo xtask test dev` | lead-dev-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (27 buckets passed in 229.6s warm, 242.7s cold wall, exit 0) | 2026-09-09T02:30:47Z | no |
+| R4: System tier (5 integration buckets) | `cargo xtask test system` | lead-system-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (5 buckets passed in 74.5s warm, 75.2s cold wall, exit 0) | 2026-09-09T02:32:06Z | no |
+| R4: Dogfood tier (repo-index and search-quality buckets) | `cargo xtask test dogfood` | lead-dogfood-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (2 buckets passed in 299.6s warm, 312.2s cold wall, exit 0) | 2026-09-09T03:02:05Z | no |
+| R4: File line limits compliance (implementation <= 500, test <= 1000) | `wc -l <touched_files>` | hygiene | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (all 11 impl files <= 463 lines, test files <= 920 lines) | 2026-09-09T03:02:20Z | no |
+| R4: Documentation byte parity (CLAUDE.md vs AGENTS.md) | `diff -u CLAUDE.md AGENTS.md && cmp CLAUDE.md AGENTS.md` | doc-parity | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (100% byte-for-byte identical, exit 0) | 2026-09-09T03:02:21Z | no |
+| R6 Remediation: Repository formatting check across workspace | `cargo fmt --all -- --check` | format | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (clean formatting, exit 0 in 1.30s) | 2026-09-09T14:42:05Z | no |
+| R6 Remediation: Workspace typecheck for all targets | `cargo check --workspace --all-targets` | typecheck | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (zero errors, exit 0 in 0.55s) | 2026-09-09T14:42:07Z | no |
+| R6 Remediation: Dev regression tier (27 calibrated buckets) | `cargo xtask test dev` | lead-dev-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (27 buckets passed in 161.9s warm, 164.5s cold wall, real 2m44.56s, exit 0) | 2026-09-09T14:44:57Z | no |
+| R6 Remediation: System tier (5 integration buckets) | `cargo xtask test system` | lead-system-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (5 buckets passed in 80.7s warm, 86.1s cold wall, real 1m26.17s, exit 0) | 2026-09-09T14:47:41Z | no |
+| R6 Remediation: Dogfood tier (repo-index and search-quality buckets) | `cargo xtask test dogfood` | lead-dogfood-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (2 buckets passed in 305.1s warm, 305.8s cold wall, real 5m06.24s, exit 0) | 2026-09-09T14:52:55Z | no |
+| R6 Remediation: Finding 16 file size compliance audit (impl <= 500, test <= 1000) | `wc -l <refactored_targets>` | hygiene | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (all 8 refactored targets <= 483 lines impl, test files <= 989 lines) | 2026-09-09T14:38:45Z | no |
+| R6 Remediation: Documentation byte parity (AGENTS.md vs CLAUDE.md) | `diff -u AGENTS.md CLAUDE.md && cmp AGENTS.md CLAUDE.md` | doc-parity | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (100% byte-for-byte identical, exit 0) | 2026-09-09T14:38:50Z | no |
+| Re-Review Remediation: Repository formatting check | `cargo fmt --all -- --check` | format | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (clean formatting, exit 0) | 2026-09-09T16:37:33Z | no |
+| Re-Review Remediation: Workspace typecheck | `cargo check --workspace --all-targets` | typecheck | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (zero errors, exit 0 in 0.16s) | 2026-09-09T16:37:35Z | no |
+| Re-Review Remediation: Implementation line limits compliance | `wc -l <14_impl_files>` | hygiene | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (all 14 impl files <= 494 lines, exit 0) | 2026-09-09T16:41:59Z | no |
+| Re-Review Remediation: Documentation byte parity (AGENTS.md vs CLAUDE.md) | `cmp AGENTS.md CLAUDE.md && diff -u AGENTS.md CLAUDE.md` | doc-parity | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (100% byte-for-byte identical, exit 0) | 2026-09-09T16:37:36Z | no |
+| Re-Review Remediation: Git diff whitespace check | `git diff --check` | whitespace | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (zero errors, exit 0) | 2026-09-09T16:37:38Z | no |
+| Re-Review Remediation: Dev regression tier (27 calibrated buckets) | `cargo xtask test dev` | lead-dev-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (27 buckets passed in 181.0s warm, 209.5s cold wall, exit 0) | 2026-09-09T16:45:32Z | no |
+| Re-Review Remediation: System tier (5 integration buckets) | `cargo xtask test system` | lead-system-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (5 buckets passed in 70.0s warm, 70.8s cold wall, exit 0) | 2026-09-09T16:46:53Z | no |
+| Re-Review Remediation: Dogfood tier (repo-index and search-quality buckets) | `cargo xtask test dogfood` | lead-dogfood-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (2 buckets passed in 326.2s warm, 326.7s cold wall, exit 0) | 2026-09-09T16:52:31Z | no |
+| Root Codex Pre-Merge Review Round 9 | `codex-exec --ephemeral -s read-only -C /home/murphy/source/julie` | review-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | APPROVE (all findings resolved in source, verified formatting, diff whitespace, doc parity, file sizes) | 2026-09-09T20:27:45Z | no |
+| Final Gate: Repository formatting check | `cargo fmt --check` | format | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (clean formatting, exit 0) | 2026-09-09T20:26:23Z | no |
+| Final Gate: Git diff whitespace check | `git diff --check` | whitespace | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (zero errors, exit 0) | 2026-09-09T20:26:23Z | no |
+| Final Gate: Documentation byte parity (AGENTS.md vs CLAUDE.md) | `cmp AGENTS.md CLAUDE.md` | doc-parity | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (100% byte-for-byte identical, exit 0) | 2026-09-09T20:26:23Z | no |
+| Final Gate: Workspace typecheck | `cargo check --workspace --all-targets` | typecheck | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (zero errors, exit 0 in 3.51s) | 2026-09-09T20:26:28Z | no |
+| Final Gate: Adversarial broker replacement & spawn race tests | `cargo test -p julie-pipeline --lib tests::native_broker_replacement_challenge` | worker-exact | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (3 passed, 0 failed in 0.44s) | 2026-09-09T20:26:18Z | no |
+| Final Gate: Fast test tier | `cargo xtask test fast` | lead-fast-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (2 buckets passed in 17.4s warm, 27.4s cold wall, exit 0) | 2026-09-09T20:28:23Z | no |
+| Final Gate: Dev regression tier (27 calibrated buckets) | `cargo xtask test dev` | lead-dev-gate | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (27 buckets passed in 177.8s warm, 185.7s cold wall, exit 0) | 2026-09-09T20:31:35Z | no |
+| Final Gate: Implementation line limits compliance | `wc -l <impl_files>` | hygiene | 5518d49c88e9d0d696f408f0c6e8fd1657513b0a | pass (all impl files <= 471 lines, test files <= 928 lines) | 2026-09-09T20:26:20Z | no |

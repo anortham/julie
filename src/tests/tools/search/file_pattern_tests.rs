@@ -241,6 +241,7 @@ mod boundary_normalization {
             backend: None,
             workspace: Some("primary".to_string()),
             return_format: "full".to_string(),
+            semantics: None,
         };
 
         let execution = tool
@@ -364,6 +365,7 @@ mod boundary_normalization {
             backend: None,
             workspace: Some("primary".to_string()),
             return_format: "full".to_string(),
+            semantics: None,
         };
 
         let run = tool
@@ -424,6 +426,7 @@ mod boundary_normalization {
             backend: None,
             workspace: Some("primary".to_string()),
             return_format: "full".to_string(),
+            semantics: None,
         };
 
         let run = tool

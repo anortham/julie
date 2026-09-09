@@ -13,7 +13,7 @@ use fs2::FileExt as _;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use julie_core::embeddings_contract::EmbeddingProvider;
+use julie_core::embeddings_contract::{EmbeddingProvider, EmbeddingRequestBudget};
 
 use super::host_transport::{HostAddress, HostListener, HostServerConn};
 use super::sidecar_protocol::{
@@ -21,6 +21,9 @@ use super::sidecar_protocol::{
     ProtocolError, RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA,
     SIDECAR_PROTOCOL_VERSION,
 };
+
+const MIN_HOST_REQUEST_TIMEOUT: Duration = Duration::from_millis(50);
+const MAX_HOST_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 // ---------------------------------------------------------------------------
 // Public entry points
@@ -180,6 +183,7 @@ async fn serve_connection(mut conn: HostServerConn, provider: Arc<dyn EmbeddingP
                 match tokio::task::spawn_blocking(move || {
                     let info = p.device_info();
                     let dims = p.dimensions();
+                    let identity = p.encoder_identity().ok();
                     HealthResult {
                         ready: true,
                         dims: Some(dims),
@@ -191,6 +195,17 @@ async fn serve_connection(mut conn: HostServerConn, provider: Arc<dyn EmbeddingP
                         degraded_reason: p.degraded_reason(),
                         capabilities: None,
                         load_policy: None,
+                        model_sha256: identity.as_ref().map(|i| i.weights_sha256.clone()),
+                        pooling: identity.as_ref().map(|i| i.pooling.clone()),
+                        normalization: identity.as_ref().map(|i| i.normalization.clone()),
+                        instruction_policy_version: identity.as_ref().and_then(|i| {
+                            i.instruction_policy
+                                .trim_start_matches('v')
+                                .parse::<u64>()
+                                .ok()
+                        }),
+                        llama_cpp_build: identity.as_ref().map(|i| i.runtime_build.clone()),
+                        ..Default::default()
                     }
                 })
                 .await
@@ -209,7 +224,13 @@ async fn serve_connection(mut conn: HostServerConn, provider: Arc<dyn EmbeddingP
                     let p = Arc::clone(&provider);
                     match tokio::task::spawn_blocking(
                         move || -> anyhow::Result<EmbedQueryResult> {
-                            let vector = p.embed_query(&req.text)?;
+                            let timeout_dur = match req.remaining_budget_ms {
+                                Some(ms) => Duration::from_millis(ms)
+                                    .clamp(MIN_HOST_REQUEST_TIMEOUT, MAX_HOST_REQUEST_TIMEOUT),
+                                None => Duration::from_secs(30),
+                            };
+                            let budget = EmbeddingRequestBudget::with_timeout(timeout_dur);
+                            let vector = p.embed_query(&req.text, &budget)?;
                             let dims = p.dimensions();
                             Ok(EmbedQueryResult { dims, vector })
                         },
@@ -237,7 +258,13 @@ async fn serve_connection(mut conn: HostServerConn, provider: Arc<dyn EmbeddingP
                     let p = Arc::clone(&provider);
                     match tokio::task::spawn_blocking(
                         move || -> anyhow::Result<EmbedBatchResult> {
-                            let vectors = p.embed_batch(&req.texts)?;
+                            let timeout_dur = match req.remaining_budget_ms {
+                                Some(ms) => Duration::from_millis(ms)
+                                    .clamp(MIN_HOST_REQUEST_TIMEOUT, MAX_HOST_REQUEST_TIMEOUT),
+                                None => Duration::from_secs(30),
+                            };
+                            let budget = EmbeddingRequestBudget::with_timeout(timeout_dur);
+                            let vectors = p.embed_batch(&req.texts, &budget)?;
                             let dims = p.dimensions();
                             Ok(EmbedBatchResult { dims, vectors })
                         },

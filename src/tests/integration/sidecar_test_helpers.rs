@@ -40,7 +40,7 @@ pub fn test_python_interpreter() -> String {
 #[cfg(feature = "embeddings-sidecar")]
 pub fn create_test_sidecar_provider() -> SidecarEmbeddingProvider {
     create_test_sidecar_provider_with_health_result(
-        r#"{"ready": true, "runtime": "fake-sidecar", "device": "cpu", "dims": 384}"#,
+        r#"{"ready": true, "runtime": "fake-sidecar", "device": "cpu", "dims": 384, "model_id": "bge-small-en-v1.5", "model_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "pooling": "cls", "normalization": "l2", "instruction_policy_version": 1}"#,
     )
 }
 

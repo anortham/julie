@@ -11,6 +11,7 @@
 
 pub mod call_path;
 mod fast_refs;
+pub(crate) mod fast_refs_semantic;
 pub mod formatting;
 pub mod resolution;
 pub mod target_workspace; // Public for use by other tools

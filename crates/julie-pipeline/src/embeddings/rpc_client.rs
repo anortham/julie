@@ -9,48 +9,27 @@
 
 use std::io;
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow, bail};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use julie_core::embeddings_contract::{DeviceInfo, EmbeddingProvider};
+use julie_core::embeddings_contract::{
+    DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+};
 
-use super::host_transport::{HostAddress, HostClientConn};
+use super::host_transport::{
+    DEFAULT_RPC_TIMEOUT, HostAddress, HostClientConn, resolve_rpc_timeout,
+};
 use super::sidecar_protocol::{
     EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, HealthResult,
     RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
-    validate_batch_response, validate_health_response, validate_query_response,
-    validate_response_envelope,
+    check_reconnect_health_match, validate_batch_response, validate_health_response,
+    validate_query_response, validate_response_envelope,
 };
 
-// ---------------------------------------------------------------------------
-// Internal state types
-// ---------------------------------------------------------------------------
-
-/// Active connection + per-connection sequential request-id counter.
-struct ConnInner {
-    conn: HostClientConn,
-    request_seq: u64,
-}
-
-impl ConnInner {
-    fn next_request_id(&mut self) -> String {
-        self.request_seq = self.request_seq.wrapping_add(1);
-        format!("rpc-{}", self.request_seq)
-    }
-}
-
-/// Dimensions, device info, and acceleration state cached from the first
-/// health round-trip. Written once via [`OnceLock`]; never mutated.
-#[derive(Clone)]
-struct CachedHealth {
-    dimensions: usize,
-    device_info: DeviceInfo,
-    accelerated: Option<bool>,
-    degraded_reason: Option<String>,
-}
+use super::rpc_client_types::{CachedHealth, ConnInner};
 
 // ---------------------------------------------------------------------------
 // Public provider
@@ -89,42 +68,41 @@ impl RpcEmbeddingProvider {
     /// Returns `io::Error` so callers can distinguish transport errors from
     /// deserialization / protocol errors.
     fn ensure_connected(
+        &self,
         guard: &mut Option<ConnInner>,
-        addr: &HostAddress,
-        cached: &OnceLock<CachedHealth>,
+        timeout: Option<Duration>,
+        deadline: Option<Instant>,
     ) -> io::Result<()> {
         if guard.is_some() {
             return Ok(());
         }
-        let new_conn = HostClientConn::connect(addr)?;
+        let new_conn = HostClientConn::connect_with_timeout(&self.addr, timeout)?;
         let mut inner = ConnInner {
             conn: new_conn,
             request_seq: 0,
         };
-        let health = Self::do_health_handshake(&mut inner)?;
-        // Only set the cache on the first successful connect; later reconnects
-        // are expected to return the same model/dims, so we keep the first value.
-        cached.get_or_init(|| {
-            let dims = health.dims.unwrap_or(0);
-            CachedHealth {
-                dimensions: dims,
-                device_info: DeviceInfo {
-                    runtime: health.runtime.unwrap_or_else(|| "rpc".to_string()),
-                    device: health.device.unwrap_or_else(|| "unknown".to_string()),
-                    model_name: health.model_id.unwrap_or_else(|| "unknown".to_string()),
-                    dimensions: dims,
-                },
-                accelerated: health.accelerated,
-                degraded_reason: health.degraded_reason,
+        let health = Self::do_health_handshake(&mut inner, deadline, timeout)?;
+        if let Some(existing) = self.cached.get() {
+            if let Err(mismatch) = check_reconnect_health_match(&existing.health, &health) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("reconnect health mismatch: {mismatch}"),
+                ));
             }
-        });
+        }
+        self.cached
+            .get_or_init(|| CachedHealth::from_health(health));
         *guard = Some(inner);
         Ok(())
     }
 
     /// Send a `health` request on a freshly opened connection and return the
     /// validated [`HealthResult`].
-    fn do_health_handshake(inner: &mut ConnInner) -> io::Result<HealthResult> {
+    fn do_health_handshake(
+        inner: &mut ConnInner,
+        deadline: Option<Instant>,
+        per_read_timeout: Option<Duration>,
+    ) -> io::Result<HealthResult> {
         let request_id = inner.next_request_id();
         let envelope = RequestEnvelope {
             schema: SIDECAR_PROTOCOL_SCHEMA.to_string(),
@@ -135,7 +113,9 @@ impl RpcEmbeddingProvider {
         };
         let line = serde_json::to_string(&envelope)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let resp_line = inner.conn.round_trip(&line)?;
+        let resp_line = inner
+            .conn
+            .round_trip_with_deadline(&line, deadline, per_read_timeout)?;
         let resp: ResponseEnvelope<HealthResult> = serde_json::from_str(resp_line.trim())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         validate_response_envelope(&resp, &request_id)
@@ -146,16 +126,13 @@ impl RpcEmbeddingProvider {
                 format!("health error from host: [{}] {}", err.code, err.message),
             ));
         }
-        let health = resp.result.ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "health response missing result")
-        })?;
+        let health = resp
+            .result
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing health result"))?;
         validate_health_response(&health)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         if !health.ready {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "embedding host reported not ready",
-            ));
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "host not ready"));
         }
         Ok(health)
     }
@@ -171,6 +148,8 @@ impl RpcEmbeddingProvider {
         guard: &mut Option<ConnInner>,
         method: &str,
         params: &serde_json::Value,
+        deadline: Option<Instant>,
+        per_read_timeout: Option<Duration>,
     ) -> io::Result<(String, String)> {
         let inner = guard.as_mut().expect("ConnInner must be Some");
         let request_id = inner.next_request_id();
@@ -183,7 +162,9 @@ impl RpcEmbeddingProvider {
         };
         let line = serde_json::to_string(&envelope)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let resp_line = inner.conn.round_trip(&line)?;
+        let resp_line = inner
+            .conn
+            .round_trip_with_deadline(&line, deadline, per_read_timeout)?;
         Ok((resp_line, request_id))
     }
 
@@ -195,31 +176,93 @@ impl RpcEmbeddingProvider {
         &self,
         method: &str,
         params: P,
+        budget: &EmbeddingRequestBudget,
     ) -> Result<R> {
         let params_val = serde_json::to_value(params)
             .map_err(|e| anyhow!("failed to serialize {method} params: {e}"))?;
-        let mut guard = self
-            .conn
-            .lock()
-            .map_err(|_| anyhow!("RpcEmbeddingProvider: mutex poisoned"))?;
 
-        Self::ensure_connected(&mut guard, &self.addr, &self.cached)
+        // Non-blocking mutex admission with budget polling
+        let mut guard = loop {
+            budget.check_budget()?;
+            match self.conn.try_lock() {
+                Ok(g) => break g,
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    let rem = budget.remaining_time();
+                    if rem.is_zero() {
+                        bail!(
+                            "embedding request deadline exceeded while waiting for rpc provider lock"
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(5).min(rem));
+                }
+                Err(std::sync::TryLockError::Poisoned(_)) => {
+                    bail!("RpcEmbeddingProvider: mutex poisoned")
+                }
+            }
+        };
+
+        budget.check_budget()?;
+        let remaining = budget.remaining_time();
+        if remaining.is_zero() {
+            bail!("embedding request deadline exceeded");
+        }
+        let default_rpc_timeout = resolve_rpc_timeout().unwrap_or(DEFAULT_RPC_TIMEOUT);
+        let clamped_timeout = default_rpc_timeout.min(remaining);
+
+        self.ensure_connected(&mut guard, Some(clamped_timeout), Some(budget.deadline))
             .map_err(|e| anyhow!("embedding host connect: {e}"))?;
 
-        let (resp_line, request_id) = match Self::attempt_once(&mut guard, method, &params_val) {
+        let remaining = budget.remaining_time();
+        if remaining.is_zero() {
+            bail!("embedding request deadline exceeded after connect");
+        }
+        if let Some(inner) = guard.as_mut() {
+            let _ = inner
+                .conn
+                .set_timeout(Some(default_rpc_timeout.min(remaining)));
+        }
+
+        let (resp_line, request_id) = match Self::attempt_once(
+            &mut guard,
+            method,
+            &params_val,
+            Some(budget.deadline),
+            Some(clamped_timeout),
+        ) {
             Ok(pair) => pair,
             Err(e) if is_connection_dropped(&e) => {
                 // Drop the dead connection and reconnect exactly once.
                 *guard = None;
-                Self::ensure_connected(&mut guard, &self.addr, &self.cached)
+                budget.check_budget()?;
+                let rem = budget.remaining_time();
+                if rem.is_zero() {
+                    bail!("embedding request deadline exceeded before reconnect");
+                }
+                let reconnect_timeout = default_rpc_timeout.min(rem);
+                self.ensure_connected(&mut guard, Some(reconnect_timeout), Some(budget.deadline))
                     .map_err(|e| anyhow!("embedding host reconnect: {e}"))?;
-                Self::attempt_once(&mut guard, method, &params_val)
-                    .map_err(|e| anyhow!("{method} failed after reconnect: {e}"))?
+                let rem2 = budget.remaining_time();
+                if rem2.is_zero() {
+                    bail!("embedding request deadline exceeded after reconnect");
+                }
+                if let Some(inner) = guard.as_mut() {
+                    let _ = inner.conn.set_timeout(Some(default_rpc_timeout.min(rem2)));
+                }
+                Self::attempt_once(
+                    &mut guard,
+                    method,
+                    &params_val,
+                    Some(budget.deadline),
+                    Some(default_rpc_timeout.min(rem2)),
+                )
+                .map_err(|e| anyhow!("{method} failed after reconnect: {e}"))?
             }
             Err(e) => return Err(anyhow!("{method} io error: {e}")),
         };
 
-        Self::parse_response::<R>(&resp_line, method, &request_id)
+        let res = Self::parse_response::<R>(&resp_line, method, &request_id)?;
+        budget.check_budget()?;
+        Ok(res)
     }
 
     /// Deserialize and validate one raw response line.
@@ -252,7 +295,9 @@ impl RpcEmbeddingProvider {
             .conn
             .lock()
             .map_err(|_| anyhow!("RpcEmbeddingProvider: mutex poisoned"))?;
-        Self::ensure_connected(&mut guard, &self.addr, &self.cached)
+        let timeout = resolve_rpc_timeout();
+        let deadline = timeout.map(|t| Instant::now() + t);
+        self.ensure_connected(&mut guard, timeout, deadline)
             .map_err(|e| anyhow!("embedding host connect: {e}"))?;
         self.cached
             .get()
@@ -286,32 +331,101 @@ fn is_connection_dropped(e: &io::Error) -> bool {
     )
 }
 
+fn is_valid_sha256_digest(digest: &str) -> bool {
+    digest.len() == 64 && digest.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 // ---------------------------------------------------------------------------
 // EmbeddingProvider impl
 // ---------------------------------------------------------------------------
 
 impl EmbeddingProvider for RpcEmbeddingProvider {
-    fn embed_query(&self, text: &str) -> Result<Vec<f32>> {
+    fn embed_query(&self, text: &str, budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
+        budget.check_budget()?;
+        let remaining = budget.remaining_time();
+        if remaining.is_zero() {
+            bail!("embedding request deadline exceeded");
+        }
         let result: EmbedQueryResult = self.send_request(
             "embed_query",
             EmbedQueryRequest {
                 text: text.to_string(),
+                remaining_budget_ms: Some(remaining.as_millis() as u64),
             },
+            budget,
         )?;
         validate_query_response(&result, self.dimensions())?;
+        budget.check_budget()?;
         Ok(result.vector)
     }
 
-    fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+    fn embed_batch(
+        &self,
+        texts: &[String],
+        budget: &EmbeddingRequestBudget,
+    ) -> Result<Vec<Vec<f32>>> {
+        budget.check_budget()?;
+        let remaining = budget.remaining_time();
+        if remaining.is_zero() {
+            bail!("embedding request deadline exceeded");
+        }
         let count = texts.len();
         let result: EmbedBatchResult = self.send_request(
             "embed_batch",
             EmbedBatchRequest {
                 texts: texts.to_vec(),
+                remaining_budget_ms: Some(remaining.as_millis() as u64),
             },
+            budget,
         )?;
         validate_batch_response(&result, count, self.dimensions())?;
+        budget.check_budget()?;
         Ok(result.vectors)
+    }
+
+    fn encoder_identity(&self) -> Result<EncoderIdentity> {
+        let cached = self.get_cached()?;
+        let health = &cached.health;
+        let weights_sha256 = match health.model_sha256.as_deref() {
+            Some(sha) if is_valid_sha256_digest(sha) => sha.to_ascii_lowercase(),
+            _ => bail!("IdentityUnavailable"),
+        };
+        let pooling = match health.pooling.as_deref() {
+            Some(p) if !p.trim().is_empty() => p.to_string(),
+            _ => bail!("IdentityUnavailable: missing pooling"),
+        };
+        let normalization = match health.normalization.as_deref() {
+            Some(n) if !n.trim().is_empty() => n.to_string(),
+            _ => bail!("IdentityUnavailable: missing normalization"),
+        };
+        let instruction_policy = match health.instruction_policy_version {
+            Some(v) => format!("v{v}"),
+            None => bail!("IdentityUnavailable: missing instruction_policy_version"),
+        };
+        let model_id = health
+            .model_id
+            .as_ref()
+            .unwrap_or(&cached.device_info.model_name)
+            .clone();
+        let runtime_build = health
+            .llama_cpp_build
+            .as_ref()
+            .or(health.runtime.as_ref())
+            .unwrap_or(&cached.device_info.runtime)
+            .clone();
+        let identity = EncoderIdentity {
+            schema: 1,
+            model_id,
+            weights_sha256,
+            dimensions: cached.dimensions,
+            pooling,
+            normalization,
+            instruction_policy,
+            text_format: 1,
+            runtime_build,
+        };
+        identity.validate()?;
+        Ok(identity)
     }
 
     fn dimensions(&self) -> usize {
@@ -321,7 +435,7 @@ impl EmbeddingProvider for RpcEmbeddingProvider {
     fn device_info(&self) -> DeviceInfo {
         self.get_cached()
             .map(|c| c.device_info.clone())
-            .unwrap_or_else(|_| DeviceInfo {
+            .unwrap_or(DeviceInfo {
                 runtime: "rpc".to_string(),
                 device: "unknown".to_string(),
                 model_name: "unknown".to_string(),
@@ -335,6 +449,10 @@ impl EmbeddingProvider for RpcEmbeddingProvider {
 
     fn degraded_reason(&self) -> Option<String> {
         self.get_cached().ok()?.degraded_reason.clone()
+    }
+
+    fn health_check(&self, _budget: &EmbeddingRequestBudget) -> Result<()> {
+        self.ensure_ready().map_err(Into::into)
     }
 
     fn shutdown(&self) {

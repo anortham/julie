@@ -286,6 +286,8 @@ pub struct JulieServerHandler {
     /// priority over `embedding_service` and the per-workspace provider.
     injected_embedding_provider:
         Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>,
+    /// When true, semantics are explicitly disabled for the current request context.
+    pub(crate) semantics_disabled: Arc<std::sync::atomic::AtomicBool>,
 
     /// Index root override for in-process sessions (T8/F2).  When `Some`, the
     /// non-pool branch of `initialize_workspace_with_force` routes db/tantivy
@@ -819,6 +821,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
+            semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             in_process_index_root: None,
 
             #[cfg(test)]
@@ -930,6 +933,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
+            semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             in_process_index_root: None,
 
             #[cfg(test)]
@@ -1027,6 +1031,7 @@ impl JulieServerHandler {
             mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             leadership: Arc::new(LeadershipState::none()),
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
+            semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             in_process_index_root: None,
 
             #[cfg(test)]
@@ -1586,6 +1591,12 @@ impl JulieServerHandler {
     pub(crate) async fn embedding_provider(
         &self,
     ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
+        if self
+            .semantics_disabled
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return None;
+        }
         // In-process mode: injected provider takes priority.
         if let Ok(guard) = self.injected_embedding_provider.read() {
             if let Some(ref p) = *guard {

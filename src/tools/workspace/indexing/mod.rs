@@ -19,6 +19,7 @@ pub(crate) mod incremental;
 pub(crate) mod index;
 pub(crate) mod pipeline;
 pub(crate) mod pipeline_persistence;
+pub(crate) mod pipeline_runner;
 pub(crate) mod processor;
 pub(crate) mod resolver;
 pub(crate) mod route;

@@ -12,7 +12,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::cli::Cli;
-use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+use crate::embeddings::{DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity};
 use crate::paths::RegistryPaths;
 use crate::request_engine::semantic::{
     CURRENT_EMBEDDING_FORMAT_VERSION, DefaultSemanticRuntime, SemanticReadiness,
@@ -49,18 +49,26 @@ impl MockReadyProvider {
 }
 
 impl EmbeddingProvider for MockReadyProvider {
-    fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+    fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(vec![0.1_f32; self.dimensions])
     }
 
-    fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+    fn embed_batch(
+        &self,
+        texts: &[String],
+        _budget: &EmbeddingRequestBudget,
+    ) -> Result<Vec<Vec<f32>>> {
         self.call_count.fetch_add(texts.len(), Ordering::SeqCst);
         Ok(vec![vec![0.1_f32; self.dimensions]; texts.len()])
     }
 
     fn dimensions(&self) -> usize {
         self.dimensions
+    }
+
+    fn encoder_identity(&self) -> Result<EncoderIdentity> {
+        Ok(EncoderIdentity::mock(&self.model_name, self.dimensions))
     }
 
     fn device_info(&self) -> DeviceInfo {
@@ -112,6 +120,13 @@ impl SemanticFixture {
         assert_eq!(db.embedding_count().unwrap(), 0);
 
         let provider = Arc::new(MockReadyProvider::new("bge-small-en-v1.5", 384));
+        let expected_key = provider
+            .encoder_identity()
+            .and_then(|id| id.storage_key())
+            .expect("storage key");
+        db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
+            .expect("align config");
+
         let runtime: Arc<dyn SemanticRuntime> = Arc::new(DefaultSemanticRuntime::new(Some(
             provider.clone() as Arc<dyn EmbeddingProvider>,
         )));
@@ -135,10 +150,24 @@ impl SemanticFixture {
         let fixture = Self::provider_ready_without_vectors().await;
         let db_path = fixture.binding.index_root.join("db/symbols.db");
         let mut db = SymbolDatabase::new(&db_path).expect("open db");
-        db.store_embeddings(&[("sym_1".to_string(), vec![0.1_f32; 384])])
+        let expected_key = fixture
+            .provider
+            .as_ref()
+            .unwrap()
+            .encoder_identity()
+            .and_then(|id| id.storage_key())
+            .expect("storage key");
+        let rev = db
+            .get_latest_canonical_revision_number()
+            .expect("canonical rev")
+            .unwrap_or(0);
+        let gen_id = db
+            .begin_embedding_generation(&expected_key, rev, 384)
+            .expect("begin gen");
+        db.store_embeddings_for_generation(gen_id, &[("sym_1".to_string(), vec![0.1_f32; 384])])
             .expect("store embedding");
-        db.set_embedding_config("bge-small-en-v1.5", 384, CURRENT_EMBEDDING_FORMAT_VERSION)
-            .expect("set config");
+        db.publish_embedding_generation(gen_id, rev, 1, 1)
+            .expect("publish gen");
         assert_eq!(db.embedding_count().unwrap(), 1);
         fixture
     }
@@ -147,8 +176,15 @@ impl SemanticFixture {
         let fixture = Self::provider_ready_without_vectors().await;
         let db_path = fixture.binding.index_root.join("db/symbols.db");
         let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let expected_key = fixture
+            .provider
+            .as_ref()
+            .unwrap()
+            .encoder_identity()
+            .and_then(|id| id.storage_key())
+            .expect("storage key");
         db.recreate_vectors_table(512).expect("recreate 512d");
-        db.set_embedding_config("bge-small-en-v1.5", 512, CURRENT_EMBEDDING_FORMAT_VERSION)
+        db.set_embedding_config(&expected_key, 512, CURRENT_EMBEDDING_FORMAT_VERSION)
             .expect("set config 512d");
         fixture
     }
@@ -166,7 +202,14 @@ impl SemanticFixture {
         let fixture = Self::ready_with_vectors().await;
         let db_path = fixture.binding.index_root.join("db/symbols.db");
         let mut db = SymbolDatabase::new(&db_path).expect("open db");
-        db.set_embedding_config("bge-small-en-v1.5", 384, 1)
+        let expected_key = fixture
+            .provider
+            .as_ref()
+            .unwrap()
+            .encoder_identity()
+            .and_then(|id| id.storage_key())
+            .expect("storage key");
+        db.set_embedding_config(&expected_key, 384, 1)
             .expect("set config stale format");
         fixture
     }
@@ -352,7 +395,7 @@ async fn auto_semantics_degrades_when_vectors_are_missing() {
         .unwrap();
     assert!(matches!(
         readiness,
-        SemanticReadiness::Degraded { ref code, retryable } if code == "VECTORS_MISSING" && retryable
+        SemanticReadiness::Degraded { ref reason, retryable } if reason == "VECTORS_MISSING" && retryable
     ));
 }
 
@@ -379,6 +422,7 @@ async fn required_semantics_succeeds_when_vectors_present_and_provider_ready() {
             model_id,
             dimensions,
             device,
+            ..
         } => {
             assert_eq!(model_id, "bge-small-en-v1.5");
             assert_eq!(dimensions, 384);
@@ -457,6 +501,138 @@ async fn required_semantics_refuses_missing_database() {
     assert_eq!(error.code, "SEMANTICS_NOT_READY");
 }
 
+struct MockProviderMissingIdentity {
+    dimensions: usize,
+    model_name: String,
+}
+
+impl EmbeddingProvider for MockProviderMissingIdentity {
+    fn embed_query(&self, _t: &str, _b: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
+        Ok(vec![0.1_f32; self.dimensions])
+    }
+    fn embed_batch(&self, t: &[String], _b: &EmbeddingRequestBudget) -> Result<Vec<Vec<f32>>> {
+        Ok(vec![vec![0.1_f32; self.dimensions]; t.len()])
+    }
+    fn dimensions(&self) -> usize {
+        self.dimensions
+    }
+    fn encoder_identity(&self) -> Result<EncoderIdentity> {
+        anyhow::bail!("IdentityUnavailable: missing pooling")
+    }
+    fn device_info(&self) -> DeviceInfo {
+        DeviceInfo {
+            runtime: "mock".to_string(),
+            device: "cpu".to_string(),
+            model_name: self.model_name.clone(),
+            dimensions: self.dimensions,
+        }
+    }
+}
+
+#[tokio::test]
+async fn challenge_required_semantics_refuses_missing_identity_without_fallback() {
+    let temp_repo = tempfile::tempdir().expect("temp repo dir");
+    let temp_home = tempfile::tempdir().expect("temp home dir");
+    let root = make_isolated_workspace_root(temp_repo.path(), "sem_no_fallback");
+    let index_root = temp_home.path().join("indexes/sem_no_fallback");
+    let db_dir = index_root.join("db");
+    std::fs::create_dir_all(&db_dir).expect("create db dir");
+    let db_path = db_dir.join("symbols.db");
+
+    let mut db = SymbolDatabase::new(&db_path).expect("initialize db");
+    let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
+        .language("rust")
+        .hash("deadbeef")
+        .size(100)
+        .last_modified(0)
+        .last_indexed(0)
+        .build();
+    crate::tests::helpers::db::store_file_info_if_missing(&mut db, &file).expect("store file info");
+    let sym = crate::tests::helpers::db::symbol_builder("sym_1", "probe_fn", "src/lib.rs").build();
+    db.store_symbols(&[sym]).expect("store symbols");
+
+    // In the old code, if encoder_identity failed, check_sqlite_vectors fell back to dev_info.model_name!
+    // We populate DB with a published generation using encoder_key = "bge-small-en-v1.5" (matching model_name).
+    let model_name = "bge-small-en-v1.5";
+    let rev = db
+        .get_latest_canonical_revision_number()
+        .expect("rev")
+        .unwrap_or(0);
+    let gen_id = db
+        .begin_embedding_generation(model_name, rev, 384)
+        .expect("begin gen");
+    db.store_embeddings_for_generation(gen_id, &[("sym_1".to_string(), vec![0.1_f32; 384])])
+        .expect("store");
+    db.publish_embedding_generation(gen_id, rev, 1, 1)
+        .expect("publish");
+    db.set_embedding_config(model_name, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
+        .expect("config");
+
+    let provider = Arc::new(MockProviderMissingIdentity {
+        dimensions: 384,
+        model_name: model_name.to_string(),
+    });
+    let runtime: Arc<dyn SemanticRuntime> = Arc::new(DefaultSemanticRuntime::new(Some(
+        provider.clone() as Arc<dyn EmbeddingProvider>,
+    )));
+    let binding = WorkspaceBinding {
+        workspace_id: "sem_no_fallback".to_string(),
+        root,
+        index_root,
+    };
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    let cancel = tokio_util::sync::CancellationToken::new();
+
+    // 1. SemanticMode::Required: MUST return error with missing_identity and NEVER fall back to model_name
+    let err = runtime
+        .ensure_ready(
+            &binding,
+            SemanticRequirement::QueryAndSymbols,
+            SemanticMode::Required,
+            deadline,
+            &cancel,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, "SEMANTICS_NOT_READY");
+    assert_eq!(err.details["coverage"], "missing_identity");
+    assert!(
+        err.message.contains("Encoder identity unavailable"),
+        "got: {}",
+        err.message
+    );
+
+    // 2. SemanticMode::Auto: returns Degraded with ENCODER_IDENTITY_UNAVAILABLE
+    let auto_res = runtime
+        .ensure_ready(
+            &binding,
+            SemanticRequirement::QueryAndSymbols,
+            SemanticMode::Auto,
+            deadline,
+            &cancel,
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        auto_res,
+        SemanticReadiness::Degraded { ref reason, retryable: true } if reason == "ENCODER_IDENTITY_UNAVAILABLE"
+    ));
+
+    // 3. SemanticMode::Off: returns Disabled
+    let off_res = runtime
+        .ensure_ready(
+            &binding,
+            SemanticRequirement::QueryAndSymbols,
+            SemanticMode::Off,
+            deadline,
+            &cancel,
+        )
+        .await
+        .unwrap();
+    assert!(matches!(off_res, SemanticReadiness::Disabled));
+}
+
 // ---------------------------------------------------------------------------
 // CLI Flag Mapping Contract Tests
 // ---------------------------------------------------------------------------
@@ -516,7 +692,7 @@ async fn adversarial_missing_database_with_ready_provider() {
         .unwrap();
     assert!(matches!(
         auto,
-        SemanticReadiness::Degraded { ref code, retryable: true } if code == "DATABASE_MISSING"
+        SemanticReadiness::Degraded { ref reason, retryable: true } if reason == "DATABASE_MISSING"
     ));
 
     // Off mode must return Disabled
@@ -553,7 +729,7 @@ async fn adversarial_missing_tables_in_sqlite() {
         .unwrap();
     assert!(matches!(
         auto,
-        SemanticReadiness::Degraded { ref code, retryable: true } if code == "VECTORS_MISSING"
+        SemanticReadiness::Degraded { ref reason, retryable: true } if reason == "VECTORS_MISSING"
     ));
 
     // Off mode returns Disabled
@@ -583,7 +759,7 @@ async fn adversarial_missing_config_row_in_sqlite() {
         .unwrap();
     assert!(matches!(
         auto,
-        SemanticReadiness::Degraded { ref code, retryable: true } if code == "CONFIG_MISSING"
+        SemanticReadiness::Degraded { ref reason, retryable: true } if reason == "CONFIG_MISSING"
     ));
 }
 
@@ -597,7 +773,7 @@ async fn adversarial_vector_state_matrix_auto_degradation_and_required_rejection
         .unwrap();
     assert!(matches!(
         auto_dims,
-        SemanticReadiness::Degraded { ref code, retryable: true } if code == "VECTORS_INCOMPATIBLE"
+        SemanticReadiness::Degraded { ref reason, retryable: true } if reason == "VECTORS_INCOMPATIBLE"
     ));
 
     // 2. Incompatible model
@@ -608,7 +784,7 @@ async fn adversarial_vector_state_matrix_auto_degradation_and_required_rejection
         .unwrap();
     assert!(matches!(
         auto_model,
-        SemanticReadiness::Degraded { ref code, retryable: true } if code == "VECTORS_INCOMPATIBLE"
+        SemanticReadiness::Degraded { ref reason, retryable: true } if reason == "VECTORS_INCOMPATIBLE"
     ));
 
     // 3. Stale format version
@@ -619,7 +795,7 @@ async fn adversarial_vector_state_matrix_auto_degradation_and_required_rejection
         .unwrap();
     assert!(matches!(
         auto_stale,
-        SemanticReadiness::Degraded { ref code, retryable: true } if code == "VECTORS_STALE"
+        SemanticReadiness::Degraded { ref reason, retryable: true } if reason == "VECTORS_STALE"
     ));
 
     // 4. Ready vectors
@@ -628,14 +804,14 @@ async fn adversarial_vector_state_matrix_auto_degradation_and_required_rejection
         .ensure(SemanticMode::Required, SemanticRequirement::QueryAndSymbols)
         .await
         .unwrap();
-    assert_eq!(
+    assert!(matches!(
         ready_res,
         SemanticReadiness::Ready {
-            model_id: "bge-small-en-v1.5".to_string(),
+            ref model_id,
             dimensions: 384,
-            device: "cpu".to_string(),
-        }
-    );
+            ..
+        } if model_id == "bge-small-en-v1.5"
+    ));
 }
 
 #[tokio::test]
@@ -736,6 +912,17 @@ async fn adversarial_request_engine_dispatch_integration() {
         .acquire(binding.as_ref(), &dummy_ctx)
         .await
         .unwrap();
+
+    {
+        let db_path = binding.as_ref().unwrap().index_root.join("db/symbols.db");
+        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let expected_key = provider
+            .encoder_identity()
+            .and_then(|id| id.storage_key())
+            .expect("storage key");
+        db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
+            .expect("align config");
+    }
 
     // 1. fast_search (requires QueryAndSymbols) with Required mode MUST fail with SEMANTICS_NOT_READY
     let req_required = ToolRequest::new(

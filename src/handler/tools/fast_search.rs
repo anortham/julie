@@ -38,6 +38,18 @@ impl JulieServerHandler {
         &self,
         params: FastSearchParams,
     ) -> Result<CallToolResult, anyhow::Error> {
+        self.execute_fast_search_with_budget(
+            params,
+            julie_core::embeddings_contract::EmbeddingRequestBudget::default(),
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_fast_search_with_budget(
+        &self,
+        params: FastSearchParams,
+        budget: julie_core::embeddings_contract::EmbeddingRequestBudget,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("⚡ Fast search: {:?}", params);
         let start = std::time::Instant::now();
 
@@ -71,7 +83,7 @@ impl JulieServerHandler {
             .metrics_workspace_binding_for_target(&workspace_target)
             .await;
         let executed = match params
-            .execute_with_trace_with_target(self, workspace_target)
+            .execute_with_trace_with_target_and_budget(self, workspace_target, Some(budget))
             .await
         {
             Ok(executed) => executed,

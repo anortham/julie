@@ -89,12 +89,79 @@ impl HealthChecker {
             handler.embedding_service.is_some(),
         );
 
+        let qualification = match &primary {
+            PrimaryWorkspaceHealth::Ready(state) => {
+                let mut record_opt =
+                    crate::request_engine::semantic_qualification::load_workspace_qualification(
+                        &state.binding.workspace_root,
+                    );
+
+                if let Some(ref mut record) = record_opt {
+                    let pooled_db = handler
+                        .get_pooled_database_for_workspace(&state.binding.workspace_id)
+                        .await
+                        .ok();
+
+                    let cur_rev = pooled_db
+                        .as_ref()
+                        .and_then(|db| {
+                            db.get_current_canonical_revision(&state.binding.workspace_id)
+                                .ok()
+                                .flatten()
+                        })
+                        .unwrap_or(-1);
+                    let ready_gen = pooled_db
+                        .as_ref()
+                        .and_then(|db| db.get_latest_ready_generation().ok().flatten());
+
+                    let active_provider = handler.embedding_provider().await;
+                    let active_id = active_provider
+                        .as_ref()
+                        .and_then(|p| p.encoder_identity().ok());
+                    let active_device = active_provider.as_ref().map(|p| p.device_info().device);
+                    let active_accel = active_provider.as_ref().and_then(|p| p.accelerated());
+                    let running_sha = active_provider
+                        .as_ref()
+                        .and_then(|p| p.running_executable_sha());
+
+                    let active_facts =
+                        crate::request_engine::semantic_qualification::ActiveProviderFacts {
+                            backend: &runtime_plane.embeddings.backend,
+                            encoder_identity: active_id.as_ref(),
+                            device: active_device.as_deref(),
+                            accelerated: active_accel,
+                            running_executable_sha: running_sha.as_deref(),
+                        };
+
+                    match crate::request_engine::semantic_qualification::validate_qualification_against_running_runtime(
+                        record,
+                        cur_rev,
+                        ready_gen.as_ref(),
+                        &active_facts,
+                    ) {
+                        Ok(()) => {
+                            record.qualified = true;
+                            record.disqualification_reason = None;
+                        }
+                        Err(mismatch) => {
+                            record.qualified = false;
+                            record.disqualification_reason = Some(mismatch.to_string());
+                        }
+                    }
+                }
+
+                record_opt
+            }
+            _ => None,
+        };
+
         Ok(SystemHealthSnapshot {
             overall,
             readiness,
             control_plane,
             data_plane,
             runtime_plane,
+            qualification,
         })
     }
 

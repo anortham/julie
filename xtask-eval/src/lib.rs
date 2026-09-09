@@ -3,6 +3,7 @@ pub mod search_ablation;
 pub mod search_matrix;
 pub mod search_matrix_mine;
 pub mod search_matrix_report;
+pub mod search_matrix_types;
 
 use std::path::{Path, PathBuf};
 

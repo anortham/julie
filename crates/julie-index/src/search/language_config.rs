@@ -305,6 +305,15 @@ impl LanguageConfigs {
         self.configs.get(language).map(|c| &c.embeddings)
     }
 
+    /// Returns all configured embeddings extra_kinds per language as (language, extra_kinds) pairs.
+    pub fn all_embeddings_extra_kinds(&self) -> Vec<(String, Vec<String>)> {
+        self.configs
+            .iter()
+            .filter(|(_, cfg)| !cfg.embeddings.extra_kinds.is_empty())
+            .map(|(lang, cfg)| (lang.clone(), cfg.embeddings.extra_kinds.clone()))
+            .collect()
+    }
+
     /// Build per-language test role configs from the annotation classes in each
     /// language TOML. Used by `classify_symbols_by_role` in the indexing pipeline.
     pub fn build_test_role_configs(

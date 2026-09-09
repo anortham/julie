@@ -117,16 +117,28 @@ async fn test_stdio_mode_no_workspace_returns_cleanly() {
 struct NoopProvider;
 
 impl crate::embeddings::EmbeddingProvider for NoopProvider {
-    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+    fn embed_query(
+        &self,
+        _text: &str,
+        _budget: &crate::embeddings::EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<f32>> {
         Ok(Vec::new())
     }
 
-    fn embed_batch(&self, _texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+    fn embed_batch(
+        &self,
+        _texts: &[String],
+        _budget: &crate::embeddings::EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<Vec<f32>>> {
         Ok(Vec::new())
     }
 
     fn dimensions(&self) -> usize {
         0
+    }
+
+    fn encoder_identity(&self) -> anyhow::Result<crate::embeddings::EncoderIdentity> {
+        Ok(crate::embeddings::EncoderIdentity::mock("test-noop", 0))
     }
 
     fn device_info(&self) -> crate::embeddings::DeviceInfo {

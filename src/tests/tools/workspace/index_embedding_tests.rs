@@ -155,7 +155,9 @@ fn test_embedding_count_reflects_total_vectors_not_run_count() {
 /// construction) is visible to the watcher's background tasks.
 #[test]
 fn test_shared_provider_container_propagates_updates() {
-    use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+    use crate::embeddings::{
+        DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+    };
     use std::sync::{Arc, RwLock};
 
     type SharedProvider = Arc<RwLock<Option<Arc<dyn EmbeddingProvider>>>>;
@@ -172,14 +174,25 @@ fn test_shared_provider_container_propagates_updates() {
     // Simulate lazy init by writing a provider into the shared container.
     struct DummyProvider;
     impl EmbeddingProvider for DummyProvider {
-        fn embed_query(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+        fn embed_query(
+            &self,
+            _: &str,
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<f32>> {
             Ok(vec![1.0, 2.0, 3.0, 4.0])
         }
-        fn embed_batch(&self, _: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            _: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<Vec<f32>>> {
             Ok(vec![])
         }
         fn dimensions(&self) -> usize {
             4
+        }
+        fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("dummy", 4))
         }
         fn device_info(&self) -> DeviceInfo {
             DeviceInfo {
@@ -203,7 +216,9 @@ fn test_shared_provider_container_propagates_updates() {
     assert_eq!(provider.dimensions(), 4);
 
     // Verify the provider actually works through the shared reference.
-    let result = provider.embed_query("test").unwrap();
+    let result = provider
+        .embed_query("test", &EmbeddingRequestBudget::default())
+        .unwrap();
     assert_eq!(result, vec![1.0, 2.0, 3.0, 4.0]);
 }
 
@@ -252,7 +267,9 @@ fn test_reference_workspace_gets_path_derived_id() {
 #[test]
 fn test_pipeline_cancel_flag_stops_run_with_acquire_ordering() {
     use crate::embeddings::pipeline::run_embedding_pipeline_cancellable;
-    use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+    use crate::embeddings::{
+        DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -263,14 +280,25 @@ fn test_pipeline_cancel_flag_stops_run_with_acquire_ordering() {
 
     struct NoopProvider;
     impl EmbeddingProvider for NoopProvider {
-        fn embed_query(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+        fn embed_query(
+            &self,
+            _: &str,
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<f32>> {
             Ok(vec![0.0; 4])
         }
-        fn embed_batch(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<Vec<f32>>> {
             Ok(texts.iter().map(|_| vec![0.0_f32; 4]).collect())
         }
         fn dimensions(&self) -> usize {
             4
+        }
+        fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("noop-model", 4))
         }
         fn device_info(&self) -> DeviceInfo {
             DeviceInfo {
@@ -283,10 +311,10 @@ fn test_pipeline_cancel_flag_stops_run_with_acquire_ordering() {
     }
 
     // Set cancel=true with Release ordering before calling the pipeline.
-    let cancel = AtomicBool::new(false);
+    let cancel = Arc::new(AtomicBool::new(false));
     cancel.store(true, Ordering::Release);
 
-    let result = run_embedding_pipeline_cancellable(&db_arc, &NoopProvider, None, Some(&cancel));
+    let result = run_embedding_pipeline_cancellable(&db_arc, &NoopProvider, None, Some(cancel));
     assert!(
         result.is_ok(),
         "Pipeline failed: {:?}",
@@ -313,7 +341,9 @@ fn test_pipeline_cancel_flag_stops_run_with_acquire_ordering() {
 #[test]
 fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
     use crate::embeddings::pipeline::run_embedding_pipeline_cancellable;
-    use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+    use crate::embeddings::{
+        DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -355,10 +385,18 @@ fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
         calls: Arc<Mutex<usize>>,
     }
     impl EmbeddingProvider for CancelOnSecondBatch {
-        fn embed_query(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+        fn embed_query(
+            &self,
+            _: &str,
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<f32>> {
             Ok(vec![0.0; 4])
         }
-        fn embed_batch(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<Vec<f32>>> {
             let mut n = self.calls.lock().unwrap();
             *n += 1;
             if *n == 1 {
@@ -369,6 +407,9 @@ fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
         }
         fn dimensions(&self) -> usize {
             4
+        }
+        fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("cancel-model", 4))
         }
         fn device_info(&self) -> DeviceInfo {
             DeviceInfo {
@@ -386,7 +427,7 @@ fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
     };
     let db_arc = Arc::new(Mutex::new(db));
 
-    let result = run_embedding_pipeline_cancellable(&db_arc, &provider, None, Some(&cancel));
+    let result = run_embedding_pipeline_cancellable(&db_arc, &provider, None, Some(cancel));
     assert!(
         result.is_ok(),
         "Pipeline failed: {:?}",
@@ -399,13 +440,8 @@ fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
         batch_count, 1,
         "provider should only be called once before cancel stops the pipeline"
     );
-    assert!(
-        stats.symbols_embedded <= 250,
-        "pipeline cancelled after first batch must embed at most one batch of symbols, got {}",
-        stats.symbols_embedded
-    );
-    assert!(
-        stats.symbols_embedded > 0,
-        "first batch should have been stored before cancel was detected"
+    assert_eq!(
+        stats.symbols_embedded, 0,
+        "pipeline cancelled during inference must not store embeddings in DB"
     );
 }

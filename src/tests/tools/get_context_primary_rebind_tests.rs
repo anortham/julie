@@ -111,6 +111,7 @@ async fn test_get_context_primary_uses_rebound_current_primary_store() -> Result
         failing_test: None,
         max_hops: None,
         prefer_tests: None,
+        semantics: None,
     }
     .call_tool(&handler)
     .await?;
@@ -142,6 +143,7 @@ async fn test_get_context_primary_rejects_swap_gap() -> Result<()> {
         failing_test: None,
         max_hops: None,
         prefer_tests: None,
+        semantics: None,
     }
     .call_tool(&handler)
     .await

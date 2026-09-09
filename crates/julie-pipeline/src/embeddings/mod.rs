@@ -16,8 +16,10 @@ pub mod host_transport;
 pub mod init;
 pub mod log_fields;
 pub mod metadata;
+pub mod native;
 pub mod pipeline;
 pub mod rpc_client;
+pub mod rpc_client_types;
 // Pure-serde envelope contracts — always compiled (no torch/Python deps) so the
 // thin RPC client works in binaries built WITHOUT the `embeddings-sidecar`
 // feature (a session process that only talks to the resident host, Phase 3b).
@@ -36,7 +38,8 @@ pub mod sidecar_supervisor;
 // depending on the full `julie` crate. All existing `crate::embeddings::*`
 // import paths remain valid through these re-exports.
 pub use julie_core::embeddings_contract::{
-    DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus,
+    DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRequestBudget,
+    EmbeddingRuntimeStatus, EncoderIdentity,
 };
 
 // Re-exports
@@ -47,6 +50,7 @@ pub use factory::{
 };
 pub use host_transport::{HostAddress, HostClientConn, HostListener, HostServerConn};
 pub use init::create_embedding_provider;
+pub use native::NativeEmbeddingProvider;
 pub use sidecar_protocol::{
     DeviceBackendCapabilities, DeviceBackendCapability, DeviceLoadPolicy, EmbedBatchRequest,
     EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, HealthResult, ProtocolError,

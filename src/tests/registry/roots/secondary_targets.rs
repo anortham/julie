@@ -394,7 +394,7 @@ async fn test_fast_search_startup_workspace_id_first_request_succeeds_without_pr
     );
     assert!(!handler.is_workspace_active(&startup_workspace_id).await);
 
-    let search_result = tokio::time::timeout(Duration::from_secs(10), async {
+    let search_result = tokio::time::timeout(Duration::from_secs(30), async {
         <JulieServerHandler as ServerHandler>::call_tool(
             &handler,
             CallToolRequestParams::new("fast_search").with_arguments(

@@ -522,6 +522,7 @@ while True:
         let config = EmbeddingConfig {
             provider: "not-a-real-provider".to_string(),
             cache_dir: None,
+            ..Default::default()
         };
 
         let err = match EmbeddingProviderFactory::create(&config) {
@@ -539,6 +540,7 @@ while True:
         let config = EmbeddingConfig {
             provider: "ort".to_string(),
             cache_dir: None,
+            ..Default::default()
         };
 
         let err = match EmbeddingProviderFactory::create(&config) {

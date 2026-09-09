@@ -61,6 +61,7 @@ impl RenameSymbolTool {
             limit: 1000,
             workspace: workspace.clone(),
             reference_kind: None,
+            semantics: None,
         };
         let workspace_target = handler
             .resolve_workspace_target(refs_tool.workspace.as_deref())

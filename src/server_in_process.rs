@@ -65,16 +65,28 @@ pub async fn acquire_in_process_embedding_provider(
     // as create_embedding_provider() (crates/julie-pipeline/src/embeddings/init.rs).
     // Do NOT invent a new env name — same knob, consistent behaviour.
     if let Ok(v) = std::env::var("JULIE_EMBEDDING_PROVIDER") {
-        if matches!(
-            v.trim().to_ascii_lowercase().as_str(),
-            "none" | "disabled" | "off"
-        ) {
+        let trimmed = v.trim().to_ascii_lowercase();
+        if matches!(trimmed.as_str(), "none" | "disabled" | "off") {
             info!(
                 provider = %v,
                 "In-process embedding disabled via JULIE_EMBEDDING_PROVIDER; \
                  degrading to keyword-only"
             );
             return None;
+        }
+        if trimmed == "native" {
+            let result = tokio::task::spawn_blocking(|| {
+                let (provider, _status) = crate::embeddings::create_embedding_provider();
+                provider
+            })
+            .await;
+            return match result {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("In-process native embedding init panicked: {e}");
+                    None
+                }
+            };
         }
     }
 

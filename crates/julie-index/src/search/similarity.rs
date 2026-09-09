@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use julie_core::Symbol;
 use julie_core::database::SymbolDatabase;
+use julie_core::embeddings_contract::{SemanticMode, TaggedQueryEmbedding};
 
 /// Minimum similarity score (1.0 - cosine_distance) to include in results.
 /// Below this threshold, matches are likely noise.
@@ -23,47 +24,74 @@ pub struct SimilarEntry {
     pub score: f32,
 }
 
-/// Find symbols semantically similar to a query vector.
+/// Find symbols semantically similar to a tagged query vector.
 ///
-/// Use this when you don't have a stored symbol — e.g., embedding a search term
-/// on the fly via `provider.embed_query()`. No self-filtering is applied since
-/// the query isn't a stored symbol.
-pub fn find_similar_by_query(
+/// Verifies that the tagged query embedding's encoder key and source revision
+/// match an active ready generation and match current canonical revision inside
+/// the read transaction before issuing KNN.
+pub fn find_similar_by_tagged_query(
     db: &SymbolDatabase,
-    query_vector: &[f32],
+    tagged: &TaggedQueryEmbedding,
     limit: usize,
     min_score: f32,
+    semantic_mode: SemanticMode,
 ) -> Result<Vec<SimilarEntry>> {
-    let knn_results = db.knn_search(query_vector, limit)?;
-
-    let filtered: Vec<(String, f64)> = knn_results
-        .into_iter()
-        .filter(|(_, distance)| (1.0 - distance) as f32 >= min_score)
-        .take(limit)
-        .collect();
-
-    if filtered.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let distances: HashMap<String, f64> = filtered.iter().cloned().collect();
-    let symbol_ids: Vec<String> = filtered.iter().map(|(id, _)| id.clone()).collect();
-
-    let symbols = db.get_symbols_by_ids(&symbol_ids)?;
-    let symbol_map: HashMap<&str, &Symbol> = symbols.iter().map(|s| (s.id.as_str(), s)).collect();
-
-    let mut entries = Vec::new();
-    for id in &symbol_ids {
-        if let Some(sym) = symbol_map.get(id.as_str()) {
-            let distance = distances.get(id).copied().unwrap_or(1.0);
-            entries.push(SimilarEntry {
-                symbol: (*sym).clone(),
-                score: (1.0 - distance) as f32,
-            });
+    db.with_read_transaction(|tx_db| {
+        let current_rev = tx_db.get_latest_canonical_revision_number()?.unwrap_or(0);
+        if tagged.source_revision != current_rev {
+            if semantic_mode == SemanticMode::Required {
+                anyhow::bail!(
+                    "SEMANTICS_NOT_READY: query revision {} differs from current canonical revision {}",
+                    tagged.source_revision,
+                    current_rev
+                );
+            }
+            return Ok(vec![]);
         }
-    }
 
-    Ok(entries)
+        if !tx_db.embedding_generation_ready(&tagged.encoder_key, tagged.source_revision)? {
+            if semantic_mode == SemanticMode::Required {
+                anyhow::bail!(
+                    "SEMANTICS_NOT_READY: generation for encoder '{}' at rev {} is not ready",
+                    tagged.encoder_key,
+                    tagged.source_revision
+                );
+            }
+            return Ok(vec![]);
+        }
+
+        let knn_results = tx_db.knn_search(&tagged.vector, limit)?;
+
+        let filtered: Vec<(String, f64)> = knn_results
+            .into_iter()
+            .filter(|(_, distance)| (1.0 - distance) as f32 >= min_score)
+            .take(limit)
+            .collect();
+
+        if filtered.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let distances: HashMap<String, f64> = filtered.iter().cloned().collect();
+        let symbol_ids: Vec<String> = filtered.iter().map(|(id, _)| id.clone()).collect();
+
+        let symbols = tx_db.get_symbols_by_ids(&symbol_ids)?;
+        let symbol_map: HashMap<&str, &Symbol> =
+            symbols.iter().map(|s| (s.id.as_str(), s)).collect();
+
+        let mut entries = Vec::new();
+        for id in &symbol_ids {
+            if let Some(sym) = symbol_map.get(id.as_str()) {
+                let distance = distances.get(id).copied().unwrap_or(1.0);
+                entries.push(SimilarEntry {
+                    symbol: (*sym).clone(),
+                    score: (1.0 - distance) as f32,
+                });
+            }
+        }
+
+        Ok(entries)
+    })
 }
 
 /// Find symbols semantically similar to `symbol` via KNN on stored embeddings.
@@ -76,47 +104,64 @@ pub fn find_similar_symbols(
     limit: usize,
     min_score: f32,
 ) -> Result<Vec<SimilarEntry>> {
-    // Step 1: Get the symbol's own embedding
-    let embedding = match db.get_embedding(&symbol.id)? {
-        Some(vec) => vec,
-        None => return Ok(vec![]),
-    };
+    db.with_read_transaction(|tx_db| {
+        let Some(ready_gen) = tx_db.get_latest_ready_generation()? else {
+            return Ok(vec![]);
+        };
 
-    // Step 2: KNN search (fetch extra to account for self + threshold filtering)
-    let knn_results = db.knn_search(&embedding, limit + 1)?;
-
-    // Step 3: Filter out self, apply threshold, collect IDs
-    let filtered: Vec<(String, f64)> = knn_results
-        .into_iter()
-        .filter(|(id, _)| id != &symbol.id)
-        .filter(|(_, distance)| (1.0 - distance) as f32 >= min_score)
-        .take(limit)
-        .collect();
-
-    if filtered.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let distances: HashMap<String, f64> = filtered.iter().cloned().collect();
-    let symbol_ids: Vec<String> = filtered.iter().map(|(id, _)| id.clone()).collect();
-
-    // Step 4: Fetch full symbols
-    let symbols = db.get_symbols_by_ids(&symbol_ids)?;
-    let symbol_map: HashMap<&str, &Symbol> = symbols.iter().map(|s| (s.id.as_str(), s)).collect();
-
-    // Step 5: Build entries in KNN order
-    let mut entries = Vec::new();
-    for id in &symbol_ids {
-        if let Some(sym) = symbol_map.get(id.as_str()) {
-            let distance = distances.get(id).copied().unwrap_or(1.0);
-            entries.push(SimilarEntry {
-                symbol: (*sym).clone(),
-                score: (1.0 - distance) as f32,
-            });
+        let rev = tx_db.get_latest_canonical_revision_number()?.unwrap_or(0);
+        if ready_gen.source_revision != rev {
+            return Ok(vec![]);
         }
-    }
 
-    Ok(entries)
+        if ready_gen.eligible_symbols > 0 && ready_gen.embedded_symbols < ready_gen.eligible_symbols
+        {
+            return Ok(vec![]);
+        }
+
+        // Step 1: Get the symbol's own embedding
+        let embedding = match tx_db.get_embedding(&symbol.id)? {
+            Some(vec) => vec,
+            None => return Ok(vec![]),
+        };
+
+        // Step 2: KNN search (fetch extra to account for self + threshold filtering)
+        let knn_results = tx_db.knn_search(&embedding, limit + 1)?;
+
+        // Step 3: Filter out self, apply threshold, collect IDs
+        let filtered: Vec<(String, f64)> = knn_results
+            .into_iter()
+            .filter(|(id, _)| id != &symbol.id)
+            .filter(|(_, distance)| (1.0 - distance) as f32 >= min_score)
+            .take(limit)
+            .collect();
+
+        if filtered.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let distances: HashMap<String, f64> = filtered.iter().cloned().collect();
+        let symbol_ids: Vec<String> = filtered.iter().map(|(id, _)| id.clone()).collect();
+
+        // Step 4: Fetch full symbols
+        let symbols = tx_db.get_symbols_by_ids(&symbol_ids)?;
+        let symbol_map: HashMap<&str, &Symbol> =
+            symbols.iter().map(|s| (s.id.as_str(), s)).collect();
+
+        // Step 5: Build entries in KNN order
+        let mut entries = Vec::new();
+        for id in &symbol_ids {
+            if let Some(sym) = symbol_map.get(id.as_str()) {
+                let distance = distances.get(id).copied().unwrap_or(1.0);
+                entries.push(SimilarEntry {
+                    symbol: (*sym).clone(),
+                    score: (1.0 - distance) as f32,
+                });
+            }
+        }
+
+        Ok(entries)
+    })
 }
 
 #[cfg(test)]
@@ -129,7 +174,8 @@ mod tests {
     fn setup_db() -> (TempDir, SymbolDatabase) {
         let tmp = TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
+        db.publish_test_generation("test-encoder", 0, 384).unwrap();
 
         // FK constraint requires file records before symbols
         for file in &["src/a.rs", "src/b.rs"] {

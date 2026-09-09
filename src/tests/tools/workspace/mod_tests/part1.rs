@@ -2,7 +2,10 @@
 
 #[cfg(feature = "embeddings-sidecar")]
 use crate::registry::embedding_service::EmbeddingService;
-use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
+use crate::embeddings::{
+    DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRequestBudget, EmbeddingRuntimeStatus,
+    EncoderIdentity,
+};
 use crate::handler::JulieServerHandler;
 use crate::startup::run_primary_workspace_repair;
 use crate::tests::helpers::mcp::answer_next_list_roots_request;
@@ -35,16 +38,20 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 struct NoopEmbeddingProvider;
 
 impl EmbeddingProvider for NoopEmbeddingProvider {
-    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+    fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> anyhow::Result<Vec<f32>> {
         Ok(vec![0.1_f32; 384])
     }
 
-    fn embed_batch(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+    fn embed_batch(&self, texts: &[String], _budget: &EmbeddingRequestBudget) -> anyhow::Result<Vec<Vec<f32>>> {
         Ok(texts.iter().map(|_| vec![0.1_f32; 384]).collect())
     }
 
     fn dimensions(&self) -> usize {
         384
+    }
+
+    fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+        Ok(EncoderIdentity::mock("noop", 384))
     }
 
     fn device_info(&self) -> DeviceInfo {
@@ -63,11 +70,11 @@ struct BatchMarkerEmbeddingProvider {
 }
 
 impl EmbeddingProvider for BatchMarkerEmbeddingProvider {
-    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+    fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> anyhow::Result<Vec<f32>> {
         Ok(vec![0.0_f32; 384])
     }
 
-    fn embed_batch(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+    fn embed_batch(&self, texts: &[String], _budget: &EmbeddingRequestBudget) -> anyhow::Result<Vec<Vec<f32>>> {
         let marker = (self.calls.fetch_add(1, Ordering::SeqCst) + 1) as f32;
         Ok(texts
             .iter()
@@ -81,6 +88,10 @@ impl EmbeddingProvider for BatchMarkerEmbeddingProvider {
 
     fn dimensions(&self) -> usize {
         384
+    }
+
+    fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+        Ok(EncoderIdentity::mock("batch-marker", 384))
     }
 
     fn device_info(&self) -> DeviceInfo {

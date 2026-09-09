@@ -26,10 +26,12 @@ impl ManageWorkspaceTool {
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         }
 
-        let report = HealthChecker::system_snapshot(handler)
-            .await?
-            .render_report(detailed);
+        let snapshot = HealthChecker::system_snapshot(handler).await?;
+        let report = snapshot.render_report(detailed);
+        let structured = serde_json::to_value(&snapshot)?;
 
-        Ok(CallToolResult::text_content(vec![Content::text(report)]))
+        let mut result = CallToolResult::text_content(vec![Content::text(report)]);
+        result.structured_content = Some(structured);
+        Ok(result)
     }
 }

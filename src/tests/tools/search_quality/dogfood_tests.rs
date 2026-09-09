@@ -735,6 +735,7 @@ async fn test_fast_refs_finds_identifier_based_references() {
             limit: 50,
             workspace: Some("primary".to_string()),
             reference_kind: None,
+            semantics: None,
         };
 
         let result = tool
@@ -822,6 +823,7 @@ async fn test_fast_refs_reference_kind_filter_with_identifiers() {
             limit: 50,
             workspace: Some("primary".to_string()),
             reference_kind: Some("call".to_string()),
+            semantics: None,
         };
 
         let result = tool

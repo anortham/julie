@@ -45,9 +45,9 @@ mod unix {
 
     use crate::embedding_host_launch::connect_or_spawn_host;
     use crate::paths::RegistryPaths;
-    use julie_pipeline::embeddings::EmbeddingProvider;
     use julie_pipeline::embeddings::host_server::run_embedding_host_default;
     use julie_pipeline::embeddings::host_transport::{HostAddress, HostClientConn};
+    use julie_pipeline::embeddings::{EmbeddingProvider, EmbeddingRequestBudget};
 
     /// Dimensionality the stub sidecar advertises.
     const STUB_DIMS: usize = 4;
@@ -303,9 +303,12 @@ while True:
             tokio::task::spawn_blocking({
                 let p = Arc::clone(&provider1);
                 move || {
-                    let q = p.embed_query("hello").expect("session1 embed_query");
+                    let budget = EmbeddingRequestBudget::default();
+                    let q = p
+                        .embed_query("hello", &budget)
+                        .expect("session1 embed_query");
                     let b = p
-                        .embed_batch(&["a".to_string(), "bb".to_string()])
+                        .embed_batch(&["a".to_string(), "bb".to_string()], &budget)
                         .expect("session1 embed_batch");
                     (q, b)
                 }
@@ -313,9 +316,12 @@ while True:
             tokio::task::spawn_blocking({
                 let p = Arc::clone(&provider2);
                 move || {
-                    let q = p.embed_query("hello").expect("session2 embed_query");
+                    let budget = EmbeddingRequestBudget::default();
+                    let q = p
+                        .embed_query("hello", &budget)
+                        .expect("session2 embed_query");
                     let b = p
-                        .embed_batch(&["a".to_string(), "bb".to_string()])
+                        .embed_batch(&["a".to_string(), "bb".to_string()], &budget)
                         .expect("session2 embed_batch");
                     (q, b)
                 }
@@ -323,9 +329,12 @@ while True:
             tokio::task::spawn_blocking({
                 let p = Arc::clone(&provider3);
                 move || {
-                    let q = p.embed_query("hello").expect("session3 embed_query");
+                    let budget = EmbeddingRequestBudget::default();
+                    let q = p
+                        .embed_query("hello", &budget)
+                        .expect("session3 embed_query");
                     let b = p
-                        .embed_batch(&["a".to_string(), "bb".to_string()])
+                        .embed_batch(&["a".to_string(), "bb".to_string()], &budget)
                         .expect("session3 embed_batch");
                     (q, b)
                 }

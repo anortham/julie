@@ -62,3 +62,6 @@ pub mod tantivy_path_prior_tests;
 
 // Standalone formatting (T2b.6)
 pub mod formatting_tests;
+
+// Milestone M1 empirical challenges
+pub mod m1_challenger_tests;

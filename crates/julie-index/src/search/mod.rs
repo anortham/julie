@@ -13,11 +13,14 @@ pub mod projection;
 pub mod query;
 pub mod query_parse;
 pub mod reranker;
+pub mod rrf;
 pub mod schema;
 pub mod scoring;
 pub mod similarity;
 pub mod tokenizer;
 pub mod weights;
+
+pub use rrf::{rrf_merge, weighted_rrf_merge};
 
 pub use error::{Result, SearchError};
 #[cfg(test)]

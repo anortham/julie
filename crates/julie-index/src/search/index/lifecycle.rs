@@ -154,11 +154,10 @@ impl SearchIndex {
                 }
             }
         } else {
-            let index = Index::builder()
-                .schema(expected_schema.clone())
-                .create_in_dir(path)?;
-            Self::write_compat_marker(path, &expected_marker)?;
-            (index, SearchIndexOpenDisposition::Compatible)
+            (
+                Self::recreate_index_with_lock(path, &expected_schema, &expected_marker)?,
+                SearchIndexOpenDisposition::Compatible,
+            )
         };
 
         let search_index = Self::build_search_index(

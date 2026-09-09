@@ -100,7 +100,12 @@ pub(crate) async fn wait_for_embedding_provider_settled(
     let should_attempt_init = {
         let workspace_guard = handler.workspace.read().await;
         match workspace_guard.as_ref() {
-            Some(workspace) => workspace.embedding_runtime_status.is_none(),
+            Some(workspace) => match &workspace.embedding_runtime_status {
+                None => true,
+                Some(status) => status.degraded_reason.as_deref().map_or(false, |r| {
+                    r.contains("timeout") || r.contains("unavailable") || r.contains("starting")
+                }),
+            },
             None => false,
         }
     };
@@ -120,8 +125,13 @@ pub(crate) async fn wait_for_embedding_provider_settled(
         let workspace_guard = handler.workspace.read().await;
         match workspace_guard.as_ref() {
             Some(workspace) => {
-                if workspace.embedding_runtime_status.is_some() {
-                    return None;
+                if let Some(ref status) = workspace.embedding_runtime_status {
+                    let retryable = status.degraded_reason.as_deref().map_or(false, |r| {
+                        r.contains("timeout") || r.contains("unavailable") || r.contains("starting")
+                    });
+                    if !retryable {
+                        return None;
+                    }
                 }
                 (workspace.root.clone(), workspace.clone())
             }
@@ -170,16 +180,14 @@ pub(crate) async fn wait_for_embedding_provider_settled(
         return None;
     }
 
-    if workspace.embedding_provider.is_none() {
+    if initialized_provider.is_some() || workspace.embedding_provider.is_none() {
         workspace.embedding_provider = initialized_provider;
         // Propagate to file watcher so incremental updates use the new provider
         if let Some(ref watcher) = workspace.watcher {
             watcher.update_embedding_provider(workspace.embedding_provider.clone());
         }
     }
-    if workspace.embedding_runtime_status.is_none() {
-        workspace.embedding_runtime_status = initialized_runtime_status;
-    }
+    workspace.embedding_runtime_status = initialized_runtime_status;
 
     provider_for_return
 }

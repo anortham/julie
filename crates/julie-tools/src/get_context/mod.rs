@@ -91,6 +91,10 @@ pub struct GetContextTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_option_bool_lenient"
     )]
     pub prefer_tests: Option<bool>,
+
+    /// Optional semantic mode override (Auto, Off, Required)
+    #[serde(default)]
+    pub semantics: Option<julie_core::embeddings_contract::SemanticMode>,
 }
 
 impl GetContextTool {
@@ -107,7 +111,20 @@ impl GetContextTool {
         handler: &dyn ToolContext,
         workspace_target: crate::navigation::resolution::WorkspaceTarget,
     ) -> Result<CallToolResult> {
-        let result = pipeline::run_with_target(self, handler, workspace_target).await?;
+        self.call_tool_with_target_and_budget(handler, workspace_target, None)
+            .await
+    }
+
+    /// Same as `call_tool_with_target`, but accepts an optional `EmbeddingRequestBudget`
+    /// for request-level timeout and cancellation enforcement.
+    pub async fn call_tool_with_target_and_budget(
+        &self,
+        handler: &dyn ToolContext,
+        workspace_target: crate::navigation::resolution::WorkspaceTarget,
+        budget: Option<julie_core::embeddings_contract::EmbeddingRequestBudget>,
+    ) -> Result<CallToolResult> {
+        let result =
+            pipeline::run_with_target_and_budget(self, handler, workspace_target, budget).await?;
         Ok(CallToolResult::success(vec![Content::text(result)]))
     }
 }

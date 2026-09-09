@@ -115,6 +115,7 @@ fn search_tool(query: &str, _search_target: &str) -> FastSearchTool {
         backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
+        semantics: None,
     }
 }
 
@@ -271,6 +272,7 @@ fn test_fast_refs_metadata_captures_result_shaping_fields() {
         limit: 25,
         workspace: Some("target-workspace".to_string()),
         reference_kind: Some("call".to_string()),
+        semantics: None,
     };
 
     let metadata = tool_targets::fast_refs_metadata(&params);
@@ -741,6 +743,7 @@ fn test_deep_dive_metadata_carries_symbol_and_context_file_target() {
         depth: DeepDiveDepth::Context,
         context_file: Some("src/dashboard/routes/search.rs".to_string()),
         workspace: Some("primary".to_string()),
+        semantics: None,
     };
 
     let metadata = tool_targets::deep_dive_metadata(&params);
@@ -783,6 +786,7 @@ fn test_get_context_metadata_carries_format_and_task_inputs() {
         failing_test: Some("get_context_metadata".to_string()),
         max_hops: Some(2),
         prefer_tests: Some(true),
+        semantics: None,
     };
 
     let metadata = tool_targets::get_context_metadata(&params);

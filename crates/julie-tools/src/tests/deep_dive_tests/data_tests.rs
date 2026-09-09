@@ -11,7 +11,8 @@ use tempfile::TempDir;
 fn setup_db() -> (TempDir, SymbolDatabase) {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    db.publish_test_generation("test-encoder", 0, 384).unwrap();
 
     // Store file info (FK constraint requires this)
     for file in &[

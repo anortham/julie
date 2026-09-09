@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
-use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+use crate::embeddings::{DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::registry::embedding_service::EmbeddingService;
@@ -64,16 +64,24 @@ fn semantic_unrelated_vector() -> Vec<f32> {
 }
 
 impl EmbeddingProvider for StaticProvider {
-    fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+    fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
         Ok(semantic_target_vector())
     }
 
-    fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+    fn embed_batch(
+        &self,
+        texts: &[String],
+        _budget: &EmbeddingRequestBudget,
+    ) -> Result<Vec<Vec<f32>>> {
         Ok(texts.iter().map(|_| semantic_target_vector()).collect())
     }
 
     fn dimensions(&self) -> usize {
         768
+    }
+
+    fn encoder_identity(&self) -> Result<EncoderIdentity> {
+        Ok(EncoderIdentity::mock("static-fast-search-backend", 768))
     }
 
     fn device_info(&self) -> DeviceInfo {
@@ -102,7 +110,7 @@ async fn semantic_workspace_with_embeddings() -> Result<(TempDir, JulieServerHan
     let mut handler = index_workspace(workspace_path).await?;
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(StaticProvider);
     handler.embedding_service = Some(Arc::new(EmbeddingService::initialize_for_test(Some(
-        provider,
+        Arc::clone(&provider),
     ))));
 
     let mut db = handler.primary_pooled_database().await?;
@@ -117,6 +125,9 @@ async fn semantic_workspace_with_embeddings() -> Result<(TempDir, JulieServerHan
         .find(|symbol| symbol.name == "unrelated_backend_symbol")
         .map(|symbol| symbol.id.clone())
         .expect("indexed unrelated symbol");
+    let key = provider.encoder_identity()?.storage_key()?;
+    let rev = db.get_latest_canonical_revision_number()?.unwrap_or(0);
+    db.publish_test_generation(&key, rev, 768)?;
     db.store_embeddings(&[
         (target_id, semantic_target_vector()),
         (unrelated_id, semantic_unrelated_vector()),

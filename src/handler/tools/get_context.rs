@@ -38,6 +38,18 @@ impl JulieServerHandler {
         &self,
         params: GetContextTool,
     ) -> Result<CallToolResult, anyhow::Error> {
+        self.execute_get_context_with_budget(
+            params,
+            julie_core::embeddings_contract::EmbeddingRequestBudget::default(),
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_get_context_with_budget(
+        &self,
+        params: GetContextTool,
+        budget: julie_core::embeddings_contract::EmbeddingRequestBudget,
+    ) -> Result<CallToolResult, anyhow::Error> {
         debug!("📦 Get context: {:?}", params);
         let start = std::time::Instant::now();
         let metadata = tool_targets::get_context_metadata(&params);
@@ -67,7 +79,10 @@ impl JulieServerHandler {
         let workspace_snapshot = self
             .metrics_workspace_binding_for_target(&workspace_target)
             .await;
-        let result = match params.call_tool_with_target(self, workspace_target).await {
+        let result = match params
+            .call_tool_with_target_and_budget(self, workspace_target, Some(budget))
+            .await
+        {
             Ok(result) => result,
             Err(e) => {
                 let message = format!("get_context failed: {}", e);

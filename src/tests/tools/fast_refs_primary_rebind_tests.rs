@@ -313,6 +313,7 @@ async fn test_fast_refs_primary_uses_rebound_current_primary_store() -> Result<(
         limit: 10,
         workspace: Some("primary".to_string()),
         reference_kind: None,
+        semantics: None,
     }
     .call_tool(&handler)
     .await?;
@@ -337,6 +338,7 @@ async fn test_fast_refs_primary_rejects_swap_gap() -> Result<()> {
         limit: 10,
         workspace: Some("primary".to_string()),
         reference_kind: None,
+        semantics: None,
     }
     .call_tool(&handler)
     .await
@@ -361,6 +363,7 @@ async fn test_fast_refs_primary_keeps_rebound_source_name_resolution_after_rebin
         limit: 10,
         workspace: Some("primary".to_string()),
         reference_kind: Some("call".to_string()),
+        semantics: None,
     }
     .call_tool(&handler)
     .await?;
@@ -490,6 +493,7 @@ async fn test_fast_refs_primary_qualified_identifier_fallback_respects_parent_fi
         limit: 10,
         workspace: Some("primary".to_string()),
         reference_kind: None,
+        semantics: None,
     }
     .call_tool(&handler)
     .await?;
@@ -592,6 +596,7 @@ async fn test_fast_refs_primary_identifier_fallback_dedupes_within_batch() -> Re
         limit: 2,
         workspace: Some("primary".to_string()),
         reference_kind: None,
+        semantics: None,
     }
     .call_tool(&handler)
     .await?;

@@ -7,7 +7,11 @@
 pub mod connection_pool;
 pub mod cross_language_intelligence;
 pub mod database;
+pub use database::{EmbeddingGeneration, EmbeddingGenerationStatus};
 pub mod embeddings_contract;
+pub use embeddings_contract::CURRENT_EMBEDDING_FORMAT_VERSION;
+pub mod embeddings_identity;
+pub use embeddings_identity::EncoderIdentity;
 pub mod external_extract_paths;
 pub mod file_policy;
 pub mod file_utils;
