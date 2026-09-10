@@ -316,12 +316,7 @@ async fn test_incremental_index_triggers_catch_up_embedding_when_none_exist() {
         .await
         .unwrap();
 
-    // Inject provider so embedding can run
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     // First index with force: creates symbols and spawns background embedding
     let tool = ManageWorkspaceTool {
