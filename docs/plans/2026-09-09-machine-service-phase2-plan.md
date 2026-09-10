@@ -260,10 +260,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** Evidence for the leak, recorded 2026-09-09: after `cargo xtask test dev` on this branch, `ps` showed about fifty `mock-broker.py` and `mock-broker-bin` processes from `/tmp/.tmp*` directories, some four hours old, plus a `julie-embedding-host` with a `python -m sidecar.main` child. Their spawners are `crates/julie-pipeline/src/tests/native_broker_replacement_challenge.rs` and `native_provider_challenges.rs` (grep `mock-broker`). Wrap each spawned `Child` in a guard whose `Drop` calls `kill()` and `wait()`. The `[env]` default in `.cargo/config.toml` is the reason only ten test files needed `JULIE_EMBEDDING_PROVIDER=none` before; after this task those ten set nothing. Delete the `embeddings-sidecar` feature entirely rather than leaving it off. Delete `include_dir` from `Cargo.toml` and `Cargo.lock`.
 
 **Acceptance criteria:**
-- [ ] `grep -rn 'sidecar_bootstrap\|sidecar_supervisor\|julie-embedding-host\|embedding_host\|embeddings-sidecar\|include_dir' src crates xtask Cargo.toml crates/*/Cargo.toml --include='*.rs' --include='*.toml'` returns nothing.
-- [ ] `.cargo/config.toml` sets `JULIE_EMBEDDING_PROVIDER = "none"` under `[env]`, and a test in `src/tests/core/` asserts `create_embedding_provider()` returns `(None, None)` with no variable set by the test.
-- [ ] After `cargo nextest run -p julie-pipeline --lib tests::native_broker_replacement_challenge` and `tests::native_provider_challenges`, `ps -eo cmd | grep -c '[m]ock-broker'` prints `0` (record the output in the commit message).
-- [ ] `cargo nextest run -p julie-pipeline --lib tests::native_provider`, `cargo nextest run --lib tests::semantic_request_contract`, `cargo nextest run -p xtask` pass; `cargo build` green; committed per commit mode.
+- [x] `grep -rn 'sidecar_bootstrap\|sidecar_supervisor\|julie-embedding-host\|embedding_host\|embeddings-sidecar\|include_dir' src crates xtask Cargo.toml crates/*/Cargo.toml --include='*.rs' --include='*.toml'` returns nothing.
+- [x] `.cargo/config.toml` sets `JULIE_EMBEDDING_PROVIDER = "none"` under `[env]`, and a test in `src/tests/core/` asserts `create_embedding_provider()` returns `(None, None)` with no variable set by the test.
+- [x] After `cargo nextest run -p julie-pipeline --lib tests::native_broker_replacement_challenge` and `tests::native_provider_challenges`, `ps -eo cmd | grep -c '[m]ock-broker'` prints `0` (record the output in the commit message).
+- [x] `cargo nextest run -p julie-pipeline --lib tests::native_provider`, `cargo nextest run --lib tests::semantic_request_contract`, `cargo nextest run -p xtask` pass; `cargo build` green; committed per commit mode.
 
 ---
 
