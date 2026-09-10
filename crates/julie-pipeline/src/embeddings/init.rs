@@ -21,6 +21,21 @@ use crate::embeddings::{
 ///
 /// This is a pure function with no workspace dependency. Callers assign the
 /// results to whatever owns the provider (workspace, daemon service, etc.).
+/// True when `JULIE_EMBEDDING_PROVIDER` turns embeddings off, so no provider
+/// will ever exist in this process and missing vectors are not a repair.
+pub fn embeddings_disabled_by_env() -> bool {
+    std::env::var("JULIE_EMBEDDING_PROVIDER")
+        .map(|provider| provider_name_disables_embeddings(&provider))
+        .unwrap_or(false)
+}
+
+fn provider_name_disables_embeddings(provider: &str) -> bool {
+    matches!(
+        provider.trim().to_ascii_lowercase().as_str(),
+        "none" | "disabled" | "off"
+    )
+}
+
 pub fn create_embedding_provider() -> (
     Option<Arc<dyn EmbeddingProvider>>,
     Option<EmbeddingRuntimeStatus>,
@@ -58,11 +73,7 @@ pub fn create_embedding_provider() -> (
         .map(std::path::PathBuf::from);
     config.native_model = std::env::var("JULIE_NATIVE_SIDECAR_MODEL").ok();
 
-    // Allow explicit disabling (e.g. CI, tests, offline environments)
-    if matches!(
-        config.provider.trim().to_ascii_lowercase().as_str(),
-        "none" | "disabled" | "off"
-    ) {
+    if provider_name_disables_embeddings(&config.provider) {
         info!(
             "Embedding disabled via JULIE_EMBEDDING_PROVIDER={}",
             config.provider

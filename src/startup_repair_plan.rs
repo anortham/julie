@@ -159,7 +159,11 @@ pub(crate) async fn plan_primary_workspace_repair(
                 }
             }
 
-            if reasons.is_empty() {
+            let embeddings_possible = !handler
+                .semantics_disabled
+                .load(std::sync::atomic::Ordering::Acquire)
+                && !julie_pipeline::embeddings::init::embeddings_disabled_by_env();
+            if reasons.is_empty() && embeddings_possible {
                 let embedding_count = match db_arc.lock() {
                     Ok(db) => db.embedding_count().unwrap_or(0),
                     Err(poisoned) => poisoned.into_inner().embedding_count().unwrap_or(0),

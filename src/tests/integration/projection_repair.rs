@@ -68,7 +68,6 @@ fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     }
 }
 
-
 #[test]
 fn test_search_projection_rebuilds_empty_index_from_canonical_sqlite() -> Result<()> {
     let temp_dir = TempDir::new()?;
