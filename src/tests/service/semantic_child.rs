@@ -24,17 +24,12 @@ async fn two_checkouts_share_one_embedding_child() {
             .await;
         assert_eq!(response.status(), 200);
     }
-    let pid = running
-        .engine()
-        .semantic_runtime
-        .child_pid()
-        .expect("child spawned");
-    let after_pid = running
-        .engine()
-        .semantic_runtime
-        .child_pid()
-        .expect("child still running");
-    assert_eq!(after_pid, pid, "one child, one pid");
+    let status = running.status().await;
+    let child = &status["embedding_child"];
+    assert_eq!(child["state"], "ready", "got {status}");
+    let pid = child["pid"].as_u64().unwrap();
+    let after = running.status().await;
+    assert_eq!(after["embedding_child"]["pid"].as_u64().unwrap(), pid, "one child, one pid");
 }
 
 #[tokio::test]
@@ -60,5 +55,5 @@ async fn lexical_only_mode_never_spawns_the_child() {
         )
         .await;
     assert_eq!(search.status(), 200);
-    assert_eq!(running.engine().semantic_runtime.child_pid(), None);
+    assert_eq!(running.status().await["embedding_child"]["state"], "absent");
 }

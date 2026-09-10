@@ -1,3 +1,4 @@
+use crate::request_engine::semantic::EmbeddingChildStatus;
 use crate::tools::workspace::commands::registry::CheckoutStatus;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -43,6 +44,7 @@ pub struct StatusDocument {
     pub uptime_seconds: u64,
     pub in_flight: usize,
     pub rss_bytes: Option<u64>,
+    pub embedding_child: EmbeddingChildStatus,
     pub checkouts: Vec<CheckoutStatus>,
     pub requests: Vec<RequestRecord>,
     pub errors: Vec<ErrorRecord>,
@@ -89,7 +91,11 @@ impl StatusLog {
         (inner.in_flight == 0).then(|| inner.last_activity.elapsed())
     }
 
-    pub fn document(&self, checkouts: Vec<CheckoutStatus>) -> StatusDocument {
+    pub fn document(
+        &self,
+        checkouts: Vec<CheckoutStatus>,
+        embedding_child: EmbeddingChildStatus,
+    ) -> StatusDocument {
         let inner = self.guard();
         StatusDocument {
             version: env!("CARGO_PKG_VERSION"),
@@ -97,6 +103,7 @@ impl StatusLog {
             uptime_seconds: self.started.elapsed().as_secs(),
             in_flight: inner.in_flight,
             rss_bytes: rss_bytes(),
+            embedding_child,
             checkouts,
             requests: inner.requests.iter().cloned().collect(),
             errors: inner.errors.iter().cloned().collect(),

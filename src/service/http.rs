@@ -164,7 +164,8 @@ async fn require_token(
 }
 
 async fn status(State(state): State<AppState>) -> Json<crate::service::status::StatusDocument> {
-    Json(state.status.document(checkouts(&state).await))
+    let embedding_child = state.engine.semantic_runtime().child_status();
+    Json(state.status.document(checkouts(&state).await, embedding_child))
 }
 
 async fn checkouts(state: &AppState) -> Vec<CheckoutStatus> {

@@ -59,6 +59,10 @@ impl RequestEngine {
         self.service_url.read().ok().and_then(|g| g.clone())
     }
 
+    pub fn semantic_runtime(&self) -> &Arc<dyn SemanticRuntime> {
+        &self.semantic_runtime
+    }
+
     pub async fn execute(
         &self,
         request: ToolRequest,

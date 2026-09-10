@@ -581,9 +581,9 @@ In `src/tests/service/http_api.rs`, in the existing status test (find it with `g
 **Step 5.** Commit: `feat(status): report the embedding child and vector scan latency`.
 
 **Acceptance criteria:**
-- [ ] `GET /status` carries `embedding_child` with the four states and `checkouts[].vector_scan_millis`.
-- [ ] The dashboard renders both fields.
-- [ ] Tests above pass.
+- [x] `GET /status` carries `embedding_child` with the four states and `checkouts[].vector_scan_millis`.
+- [x] The dashboard renders both fields.
+- [x] Tests above pass.
 
 ---
 

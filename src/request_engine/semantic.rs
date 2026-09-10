@@ -191,6 +191,29 @@ pub trait SemanticRuntime: Send + Sync {
     fn child_pid(&self) -> Option<u32> {
         None
     }
+
+    /// Status of the background embedding child, if any.
+    fn child_status(&self) -> EmbeddingChildStatus {
+        EmbeddingChildStatus::Absent
+    }
+}
+
+/// Status of the background embedding child process.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum EmbeddingChildStatus {
+    Absent,
+    Starting,
+    Ready {
+        pid: u32,
+        model_id: String,
+        dimensions: usize,
+        executable_sha256: String,
+    },
+    Degraded {
+        reason: String,
+        retryable: bool,
+    },
 }
 
 
@@ -263,7 +286,12 @@ impl DefaultSemanticRuntime {
     }
 
     pub fn from_registry_paths(paths: RegistryPaths) -> Self {
-        Self::with_parts(Some(paths), None, RuntimeProviderState::Starting)
+        let state = if julie_pipeline::embeddings::init::embeddings_disabled_by_env() {
+            RuntimeProviderState::Disabled
+        } else {
+            RuntimeProviderState::Starting
+        };
+        Self::with_parts(Some(paths), None, state)
     }
 
     pub fn provider(&self) -> Option<Arc<dyn EmbeddingProvider>> {
@@ -272,6 +300,42 @@ impl DefaultSemanticRuntime {
 
     pub fn child_pid(&self) -> Option<u32> {
         self.provider().and_then(|p| p.child_pid())
+    }
+
+    pub fn child_status(&self) -> EmbeddingChildStatus {
+        if julie_pipeline::embeddings::init::embeddings_disabled_by_env() {
+            return EmbeddingChildStatus::Absent;
+        }
+        if let Some(provider) = self.provider() {
+            if let Some(pid) = provider.child_pid() {
+                let dev = provider.device_info();
+                return EmbeddingChildStatus::Ready {
+                    pid,
+                    model_id: dev.model_name,
+                    dimensions: provider.dimensions(),
+                    executable_sha256: provider.running_executable_sha().unwrap_or_default(),
+                };
+            }
+        }
+        let in_flight = self
+            .in_flight_init
+            .try_lock()
+            .map(|g| g.is_some())
+            .unwrap_or(false);
+        if in_flight {
+            return EmbeddingChildStatus::Starting;
+        }
+        let state = self
+            .state
+            .try_read()
+            .map(|g| g.clone())
+            .unwrap_or(RuntimeProviderState::Disabled);
+        match state {
+            RuntimeProviderState::Degraded { reason, retryable } => {
+                EmbeddingChildStatus::Degraded { reason, retryable }
+            }
+            _ => EmbeddingChildStatus::Absent,
+        }
     }
 
 
@@ -307,6 +371,10 @@ impl DefaultSemanticRuntime {
         deadline: Instant,
         cancellation: &CancellationToken,
     ) -> Result<Option<Arc<dyn EmbeddingProvider>>, RequestFailure> {
+        if julie_pipeline::embeddings::init::embeddings_disabled_by_env() {
+            return Ok(None);
+        }
+
         // 1. Fast path: check cached provider and probe health
         {
             let cache = self.provider_cache.read().await;
@@ -441,8 +509,11 @@ impl SemanticRuntime for DefaultSemanticRuntime {
             ));
         }
 
-        // Rule 1 & 2: Off mode or Requirement None performs zero work
-        if mode == SemanticMode::Off || requirement.is_none() {
+        // Rule 1 & 2: Off mode, Requirement None, or env-disabled performs zero work
+        if mode == SemanticMode::Off
+            || requirement.is_none()
+            || julie_pipeline::embeddings::init::embeddings_disabled_by_env()
+        {
             return Ok(SemanticReadiness::Disabled);
         }
 
@@ -506,6 +577,10 @@ impl SemanticRuntime for DefaultSemanticRuntime {
 
     fn child_pid(&self) -> Option<u32> {
         self.child_pid()
+    }
+
+    fn child_status(&self) -> EmbeddingChildStatus {
+        self.child_status()
     }
 }
 

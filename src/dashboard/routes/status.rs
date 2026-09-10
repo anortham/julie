@@ -35,6 +35,10 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
         "embedding_initializing",
         &health.runtime_plane.embedding_initializing,
     );
+    context.insert(
+        "embedding_child",
+        &health.runtime_plane.embedding_child,
+    );
     context.insert("health", &health);
     context.insert("errors", &errors);
 
@@ -62,6 +66,7 @@ pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, St
         "workspace_count": workspace_count,
         "embedding_available": health.runtime_plane.embedding_available,
         "embedding_initializing": health.runtime_plane.embedding_initializing,
+        "embedding_child": health.runtime_plane.embedding_child,
         "health": health,
         // A1.7: surface recovery markers from the previous unclean shutdown
         // so operators can see how many in-flight requests were aborted and

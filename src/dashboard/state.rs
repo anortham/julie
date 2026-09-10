@@ -90,6 +90,7 @@ pub struct DashboardRuntimePlaneHealth {
     pub detail: String,
     pub embeddings: EmbeddingRuntimeHealth,
     pub runtime_status: Option<DashboardEmbeddingRuntimeStatus>,
+    pub embedding_child: Option<crate::request_engine::semantic::EmbeddingChildStatus>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -321,6 +322,7 @@ impl DashboardState {
             detail: "embedding service not configured".to_string(),
             embeddings,
             runtime_status: None,
+            embedding_child: None,
         };
 
         let overall =

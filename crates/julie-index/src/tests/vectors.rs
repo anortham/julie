@@ -446,3 +446,11 @@ fn hybrid_search_fails_closed_in_required_mode_when_the_encoder_differs() {
     .unwrap();
     assert!(degraded.results.iter().all(|r| r.name != "load_config"));
 }
+
+#[test]
+fn scan_records_its_last_duration() {
+    let set = VectorSet::from_rows(None, &[], |_| None);
+    assert_eq!(set.last_scan_micros(), None);
+    let _ = set.scan(&[1.0, 0.0], 5);
+    assert!(set.last_scan_micros().is_some());
+}

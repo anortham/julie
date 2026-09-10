@@ -30,6 +30,7 @@ pub struct CheckoutStatus {
     pub graph_load_millis: u64,
     pub graph_resident_bytes: u64,
     pub vector_count: i64,
+    pub vector_scan_millis: Option<u64>,
     pub last_write_at: Option<String>,
 }
 
@@ -106,16 +107,18 @@ async fn checkout_status(
     let index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
     let facts_path = index_dir.join(FACTS_FILE);
     let facts_mtime = mtime(&facts_path);
-    let (store_status, file_count) = if facts_path.exists() {
+    let (store_status, file_count, vector_scan_millis) = if facts_path.exists() {
         match store_for_workspace(handler, &workspace_id, &root).await {
             Ok(store) => {
-                let file_count = store.current().graph().paths().len() as i64;
-                (Some(store.status()), file_count)
+                let snapshot = store.current();
+                let file_count = snapshot.graph().paths().len() as i64;
+                let vector_scan_millis = snapshot.vectors().last_scan_micros().map(|m| m / 1000);
+                (Some(store.status()), file_count, vector_scan_millis)
             }
-            Err(_) => (None, 0),
+            Err(_) => (None, 0, None),
         }
     } else {
-        (None, 0)
+        (None, 0, None)
     };
     let (watcher, last_file_event_at) = watcher_state(handler, &root).await;
     Ok(status_from_store(
@@ -126,6 +129,7 @@ async fn checkout_status(
         store_status,
         file_count,
         facts_mtime,
+        vector_scan_millis,
     ))
 }
 
@@ -137,6 +141,7 @@ fn status_from_store(
     store_status: Option<StoreStatus>,
     file_count: i64,
     facts_mtime: Option<SystemTime>,
+    vector_scan_millis: Option<u64>,
 ) -> CheckoutStatus {
     let root_exists = root.exists();
     let Some(status) = store_status else {
@@ -156,6 +161,7 @@ fn status_from_store(
             graph_load_millis: 0,
             graph_resident_bytes: 0,
             vector_count: 0,
+            vector_scan_millis: None,
             last_write_at: None,
         };
     };
@@ -175,6 +181,7 @@ fn status_from_store(
         graph_load_millis: status.graph.load_millis,
         graph_resident_bytes: status.graph.resident_bytes as u64,
         vector_count: status.vector_count as i64,
+        vector_scan_millis,
         last_write_at: status.last_write_at.or(facts_mtime).map(rfc3339),
     }
 }
@@ -219,8 +226,12 @@ fn render(checkouts: &[CheckoutStatus]) -> String {
             .tantivy_age_seconds
             .map(|s| format!(" ({s}s old)"))
             .unwrap_or_default();
+        let scan = c
+            .vector_scan_millis
+            .map(|ms| format!(" (last scan: {ms}ms)"))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "\n{} {}{}\n  watcher: {} | files: {} | symbols: {} | blobs: {} | vectors: {} | facts: {} bytes | tantivy: {}{}\n  graph: {} symbols, {} ms, {} bytes | last write: {} | last file event: {}\n",
+            "\n{} {}{}\n  watcher: {} | files: {} | symbols: {} | blobs: {} | vectors: {}{} | facts: {} bytes | tantivy: {}{}\n  graph: {} symbols, {} ms, {} bytes | last write: {} | last file event: {}\n",
             c.workspace_id,
             c.root,
             missing,
@@ -229,6 +240,7 @@ fn render(checkouts: &[CheckoutStatus]) -> String {
             c.symbol_count,
             c.blob_count,
             c.vector_count,
+            scan,
             c.facts_bytes,
             c.tantivy,
             age,

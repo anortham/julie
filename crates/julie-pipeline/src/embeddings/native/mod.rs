@@ -60,7 +60,8 @@ impl NativeEmbeddingProvider {
         expected: Option<&EncoderIdentity>,
     ) -> Result<(SidecarChild, EncoderIdentity, NativeRuntimeFacts)> {
         let mut child = SidecarChild::spawn(&config.executable_path, &config.model_id)?;
-        let (health, identity, device_info) = query_and_validate_health(&mut child, budget)?;
+        let (health, identity, device_info) =
+            query_and_validate_health(&mut child, budget, Some(&config.model_id))?;
         if let Some(expected) = expected {
             if identity != *expected {
                 bail!("sidecar restarted with a different encoder identity");
@@ -106,7 +107,13 @@ impl NativeEmbeddingProvider {
 
     /// Returns the OS process ID of the active sidecar child, if running.
     pub fn child_pid(&self) -> Option<u32> {
-        self.child.lock().ok()?.as_ref().map(SidecarChild::pid)
+        let mut guard = self.child.lock().ok()?;
+        let child = guard.as_mut()?;
+        if child.is_alive() {
+            Some(child.pid())
+        } else {
+            None
+        }
     }
 
     /// Kills or drops the active sidecar child to test recovery (test only).

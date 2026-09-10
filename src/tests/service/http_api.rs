@@ -126,6 +126,7 @@ async fn status_with_header_or_query_token_reports_version_and_uptime() {
     assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
     assert!(body["uptime_seconds"].is_number());
     assert!(body["requests"].is_array());
+    assert_eq!(body["embedding_child"]["state"], "absent");
     let by_query = running
         .client()
         .get(format!("{}/status?token={}", running.base, running.token))
@@ -241,6 +242,7 @@ async fn status_carries_every_checkout() {
     assert_eq!(checkout["tantivy"], "present");
     assert!(checkout["facts_bytes"].as_u64().unwrap() > 0);
     assert_eq!(checkout["vector_count"], 0);
+    assert!(checkout.get("vector_scan_millis").is_some());
     assert!(checkout["last_write_at"].is_string());
 }
 

@@ -113,8 +113,9 @@ pub fn validate_native_health(
 pub fn query_and_validate_health(
     child: &mut SidecarChild,
     budget: &EmbeddingRequestBudget,
+    expected_model_id: Option<&str>,
 ) -> Result<(HealthResult, EncoderIdentity, DeviceInfo)> {
     let health = child.health(budget)?;
-    let (identity, device_info) = validate_native_health(&health, None)?;
+    let (identity, device_info) = validate_native_health(&health, expected_model_id)?;
     Ok((health, identity, device_info))
 }

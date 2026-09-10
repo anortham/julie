@@ -160,6 +160,17 @@ setInterval(async () => {
     if (el('runtime-accelerated')) el('runtime-accelerated').textContent = formatBool(d.health.runtime_plane.embeddings.accelerated);
     if (el('runtime-degraded-reason')) el('runtime-degraded-reason').textContent = d.health.runtime_plane.embeddings.detail;
     if (el('runtime-query-fallback')) el('runtime-query-fallback').textContent = d.health.runtime_plane.embeddings.query_fallback;
+    if (el('embedding-child') && d.embedding_child) {
+      if (d.embedding_child.state === 'ready') {
+        el('embedding-child').textContent = `Ready (PID ${d.embedding_child.pid}, ${d.embedding_child.model_id})`;
+      } else if (d.embedding_child.state === 'starting') {
+        el('embedding-child').textContent = 'Starting';
+      } else if (d.embedding_child.state === 'degraded') {
+        el('embedding-child').textContent = `Degraded: ${d.embedding_child.reason}`;
+      } else {
+        el('embedding-child').textContent = 'Absent';
+      }
+    }
   } catch (_) {}
 }, 5000);
 </script>

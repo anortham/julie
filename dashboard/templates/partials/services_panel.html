@@ -202,6 +202,24 @@
         <td id="runtime-state">{{ health.runtime_plane.embeddings.state | upper | replace(from="_", to=" ") }}</td>
       </tr>
       <tr>
+        <td>Embedding Child</td>
+        <td id="embedding-child">
+          {% if embedding_child %}
+            {% if embedding_child.state == "ready" %}
+              Ready (PID {{ embedding_child.pid }}, {{ embedding_child.model_id }})
+            {% elif embedding_child.state == "starting" %}
+              Starting
+            {% elif embedding_child.state == "degraded" %}
+              Degraded: {{ embedding_child.reason }}
+            {% else %}
+              Absent
+            {% endif %}
+          {% else %}
+            Absent
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
         <td>Embedding Runtime</td>
         <td id="runtime-name">{{ health.runtime_plane.embeddings.runtime }}</td>
       </tr>

@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use julie_core::embeddings_identity::EncoderIdentity;
 use julie_facts::rows::{EncoderRow, VectorRow};
@@ -18,6 +19,7 @@ pub struct VectorSet {
     dims: usize,
     ids: Vec<Option<SymbolId>>,
     by_id: HashMap<SymbolId, usize>,
+    last_scan_micros: AtomicU64,
 }
 
 /// The `encoder` row for an identity: its storage key plus the fields that
@@ -82,6 +84,7 @@ impl VectorSet {
             dims,
             ids: Vec::new(),
             by_id: HashMap::new(),
+            last_scan_micros: AtomicU64::new(0),
         }
         .bind(resolve)
     }
@@ -102,6 +105,7 @@ impl VectorSet {
             dims: self.dims,
             ids,
             by_id,
+            last_scan_micros: AtomicU64::new(self.last_scan_micros.load(Ordering::Relaxed)),
         }
     }
 
@@ -133,9 +137,25 @@ impl VectorSet {
             .map(|index| &self.matrix[index * self.dims..(index + 1) * self.dims])
     }
 
+    /// Most recent scan duration in microseconds, or `None` if `scan` has never run.
+    pub fn last_scan_micros(&self) -> Option<u64> {
+        match self.last_scan_micros.load(Ordering::Relaxed) {
+            0 => None,
+            n => Some(n - 1),
+        }
+    }
+
     /// The `limit` bound rows nearest to `query` by cosine similarity, best
     /// first. Scores are in `-1.0..=1.0`.
     pub fn scan(&self, query: &[f32], limit: usize) -> Vec<(SymbolId, f32)> {
+        let start = std::time::Instant::now();
+        let result = self.scan_inner(query, limit);
+        let elapsed = start.elapsed().as_micros() as u64;
+        self.last_scan_micros.store(elapsed + 1, Ordering::Relaxed);
+        result
+    }
+
+    fn scan_inner(&self, query: &[f32], limit: usize) -> Vec<(SymbolId, f32)> {
         if self.by_id.is_empty() || limit == 0 || query.len() != self.dims {
             return Vec::new();
         }

@@ -77,3 +77,20 @@ fn child_request_respects_the_deadline() {
     assert!(child.health(&budget).is_err());
     assert!(started.elapsed() < Duration::from_secs(2));
 }
+
+#[cfg(unix)]
+#[test]
+fn provider_rejects_child_serving_different_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let exe = fake_sidecar(dir.path());
+    let result = crate::embeddings::native::NativeEmbeddingProvider::try_new(
+        &crate::embeddings::EmbeddingConfig {
+            provider: "native".into(),
+            cache_dir: Some(dir.path().to_path_buf()),
+            native_program: Some(exe),
+            native_model: Some("expected-different-model".into()),
+        },
+    );
+    assert!(result.is_err());
+}
+
