@@ -1,12 +1,6 @@
 use std::fs;
 use std::sync::Arc;
 
-use rmcp::{
-    ServerHandler,
-    model::{CallToolRequestParams, NumberOrString},
-    service::{RequestContext, serve_directly},
-};
-
 use crate::handler::JulieServerHandler;
 use crate::registry::database::DaemonDatabase;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -222,87 +216,6 @@ async fn test_daemon_rebound_primary_storage_anchor_keeps_shared_index_root() {
         db_path,
         indexes_dir.join(&rebound_id).join("db").join("symbols.db"),
         "daemon rebound primary should keep the shared daemon index root instead of falling back to the rebound workspace's local .julie store"
-    );
-}
-
-#[tokio::test]
-async fn test_roots_list_error_falls_back_to_startup_hint() {
-    let temp_dir = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
-
-    let startup_root = make_isolated_workspace_root(temp_dir.path(), "startup-primary");
-    fs::create_dir_all(startup_root.join("src")).unwrap();
-    fs::write(
-        startup_root.join("src/lib.rs"),
-        "pub fn startup_hint_fallback_marker() {}\n",
-    )
-    .unwrap();
-
-    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
-
-    let startup_path = startup_root.canonicalize().unwrap();
-    let startup_path_str = startup_path.to_string_lossy().to_string();
-    let startup_id = generate_workspace_id(&startup_path_str).unwrap();
-    let startup_ws = Arc::new(
-        crate::workspace::JulieWorkspace::initialize(startup_path.clone())
-            .await
-            .expect("startup workspace should initialize"),
-    );
-
-    let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
-        startup_ws,
-        crate::workspace::startup_hint::WorkspaceStartupHint {
-            path: startup_path.clone(),
-            source: Some(crate::workspace::startup_hint::WorkspaceStartupSource::Cwd),
-        },
-        Some(Arc::clone(&daemon_db)),
-        Some(startup_id.clone()),
-        None,
-        None,
-    )
-    .await
-    .expect("handler should initialize");
-
-    handler.set_client_supports_workspace_roots_for_test(true);
-    assert_eq!(
-        handler.current_workspace_id(),
-        None,
-        "cwd startup hint should start without a bound current primary"
-    );
-
-    let (server_transport, client_transport) = tokio::io::duplex(64);
-    drop(client_transport);
-    let service =
-        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
-
-    let result = <JulieServerHandler as ServerHandler>::call_tool(
-        &handler,
-        CallToolRequestParams::new("manage_workspace").with_arguments(
-            serde_json::json!({ "operation": "list" })
-                .as_object()
-                .expect("manage_workspace list args")
-                .clone(),
-        ),
-        RequestContext::new(NumberOrString::Number(1), service.peer().clone()),
-    )
-    .await
-    .expect("roots/list failure should fall back to the startup hint");
-
-    let text = extract_text_from_result(&result);
-    assert!(
-        text.contains(&startup_id),
-        "manage_workspace list should still succeed after fallback: {text}"
-    );
-    assert_eq!(
-        handler.current_workspace_id().as_deref(),
-        Some(startup_id.as_str()),
-        "roots/list failure should bind the startup hint as the current primary"
-    );
-    assert_eq!(
-        handler.current_workspace_root(),
-        startup_path,
-        "roots/list failure should fall back to the startup hint root"
     );
 }
 

@@ -202,6 +202,7 @@ impl RequestEngine {
         );
 
         let handler = runtime.handler();
+        let tool_name = decoded.name();
 
         let core_mode = match semantics_mode {
             SemanticMode::Auto => julie_core::embeddings_contract::SemanticMode::Auto,
@@ -264,6 +265,10 @@ impl RequestEngine {
         result.map_err(|e| {
             if let Some(failure) = e.downcast_ref::<RequestFailure>() {
                 failure.clone()
+            } else if crate::tools::navigation::resolution::workspace_resolution_failure_kind(&e)
+                .is_some()
+            {
+                RequestFailure::invalid_arguments(format!("{tool_name} failed: {e}"))
             } else if context.cancellation.is_cancelled()
                 || e.to_string().to_lowercase().contains("cancelled")
             {

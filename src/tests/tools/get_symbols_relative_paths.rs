@@ -4,19 +4,11 @@
 //! after Phase 2 implementation (relative Unix-style path storage).
 
 use crate::handler::JulieServerHandler;
-use crate::tests::helpers::mcp::{answer_next_list_roots_request, call_tool_result_text};
 use crate::tools::symbols::GetSymbolsTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
-use rmcp::{
-    ServerHandler,
-    model::{CallToolRequestParams, NumberOrString},
-    service::{RequestContext, serve_directly},
-};
 use std::fs;
-use std::sync::Arc;
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, BufReader};
 
 /// Test that get_symbols can find symbols when given a relative path
 ///
@@ -378,136 +370,6 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
         result_text
     );
 
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Result<()> {
-    use crate::registry::database::DaemonDatabase;
-    use crate::workspace::registry::generate_workspace_id;
-
-    let temp_dir = TempDir::new()?;
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir)?;
-
-    let startup_root = temp_dir.path().join("startup-primary");
-    let roots_root = temp_dir.path().join("roots-primary");
-    fs::create_dir_all(startup_root.join("src"))?;
-    fs::create_dir_all(roots_root.join("src"))?;
-    fs::write(startup_root.join("src/old.rs"), "fn old_root_only() {}\n")?;
-    fs::write(
-        roots_root.join("src/rebound.rs"),
-        "pub fn rebound_primary_symbol() {}\n",
-    )?;
-
-    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-
-    let startup_path = startup_root.canonicalize()?;
-    let startup_id = generate_workspace_id(&startup_path.to_string_lossy())?;
-    let startup_ws =
-        Arc::new(crate::workspace::JulieWorkspace::initialize(startup_path.clone()).await?);
-
-    let roots_path = roots_root.canonicalize()?;
-    let roots_id = generate_workspace_id(&roots_path.to_string_lossy())?;
-    daemon_db.upsert_workspace(&startup_id, &startup_path.to_string_lossy(), "ready")?;
-    daemon_db.upsert_workspace(&roots_id, &roots_path.to_string_lossy(), "ready")?;
-    let roots_ws =
-        Arc::new(crate::workspace::JulieWorkspace::initialize(roots_path.clone()).await?);
-    {
-        let rebound_db = roots_ws.db.as_ref().unwrap().clone();
-        let mut rebound_db = rebound_db.lock().unwrap();
-        let file_info = crate::database::types::FileInfo {
-            path: "src/rebound.rs".to_string(),
-            language: "rust".to_string(),
-            hash: "roots-wrapper-hash".to_string(),
-            size: 1,
-            last_modified: 1,
-            last_indexed: 1,
-            symbol_count: 1,
-            line_count: 1,
-            content: Some("pub fn rebound_primary_symbol() {}\n".to_string()),
-        };
-        let symbol = julie_core::Symbol {
-            extracted: julie_extractors::Symbol {
-                id: "roots-wrapper-symbol-id".to_string(),
-                name: "rebound_primary_symbol".to_string(),
-                kind: crate::extractors::SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: "src/rebound.rs".to_string(),
-                start_line: 1,
-                start_column: 0,
-                end_line: 1,
-                end_column: 32,
-                start_byte: 0,
-                end_byte: 32,
-                signature: Some("fn rebound_primary_symbol()".to_string()),
-                doc_comment: None,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: Some("pub fn rebound_primary_symbol() {}".to_string()),
-        };
-        rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &roots_id)?;
-    }
-
-    let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
-        startup_ws,
-        crate::workspace::startup_hint::WorkspaceStartupHint {
-            path: startup_path.clone(),
-            source: Some(crate::workspace::startup_hint::WorkspaceStartupSource::Cwd),
-        },
-        Some(Arc::clone(&daemon_db)),
-        Some(startup_id.clone()),
-        None,
-        None,
-    )
-    .await?;
-    handler.set_client_supports_workspace_roots_for_test(true);
-
-    let (server_transport, client_transport) = tokio::io::duplex(256);
-    let service =
-        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
-    let (read_half, mut write_half) = tokio::io::split(client_transport);
-    let mut lines = BufReader::new(read_half).lines();
-
-    let roots = [roots_path.as_path()];
-    let roots_reply = answer_next_list_roots_request(&mut lines, &mut write_half, &roots);
-
-    let get_symbols = <JulieServerHandler as ServerHandler>::call_tool(
-        &handler,
-        CallToolRequestParams::new("get_symbols").with_arguments(
-            serde_json::json!({
-                "file_path": "src/rebound.rs",
-                "workspace": "primary",
-                "max_depth": 1,
-                "mode": "structure",
-                "limit": 10
-            })
-            .as_object()
-            .expect("get_symbols args")
-            .clone(),
-        ),
-        RequestContext::new(NumberOrString::Number(21), service.peer().clone()),
-    );
-    let (_, result) = tokio::join!(roots_reply, get_symbols);
-    let text = call_tool_result_text(&result?);
-
-    assert!(
-        text.contains("rebound_primary_symbol"),
-        "get_symbols should read from roots-bound primary: {text}"
-    );
-    assert_eq!(handler.current_workspace_id(), Some(roots_id));
-
-    drop(write_half);
-    drop(lines);
-    let _ = service.cancel().await;
     Ok(())
 }
 

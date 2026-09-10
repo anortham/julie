@@ -12,9 +12,6 @@ pub struct PrimaryWorkspaceBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionWorkspaceState {
     pub startup_hint: WorkspaceStartupHint,
-    pub client_supports_workspace_roots: bool,
-    pub roots_dirty: bool,
-    pub last_roots_snapshot: Option<Vec<PathBuf>>,
     primary_binding: Option<PrimaryWorkspaceBinding>,
     secondary_workspace_ids: HashSet<String>,
 }
@@ -23,9 +20,6 @@ impl SessionWorkspaceState {
     pub fn new(startup_hint: WorkspaceStartupHint) -> Self {
         Self {
             startup_hint,
-            client_supports_workspace_roots: false,
-            roots_dirty: false,
-            last_roots_snapshot: None,
             primary_binding: None,
             secondary_workspace_ids: HashSet::new(),
         }
@@ -35,14 +29,6 @@ impl SessionWorkspaceState {
         self.primary_binding.clone()
     }
 
-    pub fn roots_dirty(&self) -> bool {
-        self.roots_dirty
-    }
-
-    pub fn mark_roots_dirty(&mut self) {
-        self.roots_dirty = true;
-    }
-
     pub fn bind_primary(&mut self, workspace_id: impl Into<String>, workspace_root: PathBuf) {
         let workspace_id = workspace_id.into();
         self.secondary_workspace_ids.remove(&workspace_id);
@@ -50,20 +36,6 @@ impl SessionWorkspaceState {
             workspace_id,
             workspace_root,
         });
-    }
-
-    pub fn apply_root_snapshot(
-        &mut self,
-        primary: PrimaryWorkspaceBinding,
-        secondary_workspace_ids: HashSet<String>,
-        roots: Vec<PathBuf>,
-    ) {
-        let primary_workspace_id = primary.workspace_id.clone();
-        self.primary_binding = Some(primary);
-        self.secondary_workspace_ids = secondary_workspace_ids;
-        self.secondary_workspace_ids.remove(&primary_workspace_id);
-        self.last_roots_snapshot = Some(roots);
-        self.roots_dirty = false;
     }
 
     pub fn current_workspace_root(&self) -> PathBuf {
@@ -92,10 +64,6 @@ impl SessionWorkspaceState {
     pub fn is_workspace_active(&self, workspace_id: &str) -> bool {
         self.current_workspace_id().as_deref() == Some(workspace_id)
             || self.secondary_workspace_ids.contains(workspace_id)
-    }
-
-    pub fn has_secondary_workspace(&self, workspace_id: &str) -> bool {
-        self.secondary_workspace_ids.contains(workspace_id)
     }
 
     pub fn mark_workspace_active(&mut self, workspace_id: impl Into<String>) -> bool {

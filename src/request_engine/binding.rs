@@ -1,6 +1,7 @@
 //! Workspace binding resolution, conflict detection, and sensitive root safeguards.
 
 use crate::paths::RegistryPaths;
+use crate::registry::database::WorkspaceRow;
 use crate::request_engine::types::{RequestFailure, WorkspaceBinding};
 use julie_core::workspace::registry::generate_workspace_id;
 use julie_core::workspace::root_safety::reject_sensitive_workspace_root;
@@ -56,6 +57,11 @@ impl BindingResolver {
             Some(ref p) if p.to_string_lossy() == "resume" || p.to_string_lossy() == "rollback" => {
                 None
             }
+            Some(ref p) if self.is_unknown_selector(p) => None,
+            other => other,
+        };
+        let envelope_workspace = match envelope_workspace {
+            Some(ref p) if argument_workspace.is_none() && self.is_unknown_selector(p) => None,
             other => other,
         };
 
@@ -184,26 +190,38 @@ impl BindingResolver {
         }))
     }
 
+    fn registry_row(&self, selector: &str) -> Option<WorkspaceRow> {
+        if let Some(ref db) = self.daemon_db {
+            db.get_workspace(selector)
+                .ok()
+                .flatten()
+                .or_else(|| db.get_workspace_by_path(selector).ok().flatten())
+        } else if let Ok(db) =
+            crate::registry::database::DaemonDatabase::open(&self.registry_paths.registry_db())
+        {
+            db.get_workspace(selector)
+                .ok()
+                .flatten()
+                .or_else(|| db.get_workspace_by_path(selector).ok().flatten())
+        } else {
+            None
+        }
+    }
+
+    /// A selector that names no registry row and no path on disk is a workspace id
+    /// the tool layer resolves itself (with typed "not found" suggestions), so the
+    /// engine binds the process workspace instead of rejecting the request.
+    fn is_unknown_selector(&self, selector: &Path) -> bool {
+        !selector.is_absolute()
+            && !selector.exists()
+            && self.registry_row(&selector.to_string_lossy()).is_none()
+    }
+
     fn resolve_target_path(
         &self,
         candidate: &Path,
     ) -> Result<(PathBuf, Option<String>), RequestFailure> {
-        let candidate_str = candidate.to_string_lossy();
-        let from_db = if let Some(ref db) = self.daemon_db {
-            db.get_workspace(&candidate_str)
-                .ok()
-                .flatten()
-                .or_else(|| db.get_workspace_by_path(&candidate_str).ok().flatten())
-        } else if let Ok(db) =
-            crate::registry::database::DaemonDatabase::open(&self.registry_paths.registry_db())
-        {
-            db.get_workspace(&candidate_str)
-                .ok()
-                .flatten()
-                .or_else(|| db.get_workspace_by_path(&candidate_str).ok().flatten())
-        } else {
-            None
-        };
+        let from_db = self.registry_row(&candidate.to_string_lossy());
 
         if let Some(row) = from_db {
             let p = PathBuf::from(row.path);

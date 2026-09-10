@@ -7,15 +7,12 @@ use rmcp::{
     model::{CallToolRequestParams, ErrorCode, NumberOrString},
     service::{RequestContext, serve_directly},
 };
-use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::handler::JulieServerHandler;
 use crate::handler::workspace_resolution::resolve_workspace_filter;
 use crate::paths::RegistryPaths;
 use crate::registry::database::DaemonDatabase;
-use crate::tests::helpers::mcp::{
-    answer_next_list_roots_request, call_tool_result_text as extract_text_from_result,
-};
+use crate::tests::helpers::mcp::call_tool_result_text as extract_text_from_result;
 use crate::tools::FastSearchTool;
 use crate::tools::navigation::resolution::{
     WorkspaceResolutionFailureKind, workspace_resolution_failure_kind,
@@ -131,7 +128,6 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
     (temp_dir, handler, target_id)
 }
 
-mod deferred_explicit_targets;
 mod global_remove;
 mod list_stats;
 mod open_lifecycle;

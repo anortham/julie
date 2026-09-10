@@ -8,7 +8,6 @@ use crate::embeddings::{
 };
 use crate::handler::JulieServerHandler;
 use crate::startup::run_primary_workspace_repair;
-use crate::tests::helpers::mcp::answer_next_list_roots_request;
 use crate::tools::workspace::ManageWorkspaceTool;
 #[cfg(feature = "embeddings-sidecar")]
 use crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding;
@@ -16,11 +15,6 @@ use crate::tools::workspace::indexing::engine_version::{
     SEMANTIC_INDEX_ENGINE_COMPONENT, SEMANTIC_INDEX_ENGINE_VERSION,
 };
 use crate::workspace::JulieWorkspace;
-use rmcp::{
-    ServerHandler,
-    model::{CallToolRequestParams, NumberOrString},
-    service::{RequestContext, serve_directly},
-};
 #[cfg(feature = "embeddings-sidecar")]
 use serial_test::serial;
 #[cfg(feature = "embeddings-sidecar")]
@@ -33,7 +27,6 @@ use std::sync::{Arc, atomic::AtomicUsize};
 #[cfg(feature = "embeddings-sidecar")]
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, BufReader};
 
 struct NoopEmbeddingProvider;
 

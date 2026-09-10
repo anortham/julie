@@ -6,14 +6,10 @@
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
-use crate::workspace::startup_hint::WorkspaceStartupSource;
 use anyhow::Result;
 use std::time::Duration;
 use tracing::{info, warn};
 
-pub(crate) fn startup_source_prefers_request_roots(source: Option<WorkspaceStartupSource>) -> bool {
-    matches!(source, Some(WorkspaceStartupSource::Cwd))
-}
 pub(crate) use crate::startup_repair_plan::{
     PrimaryWorkspaceRepairPlan, plan_primary_workspace_repair,
 };

@@ -201,17 +201,6 @@ impl ManageWorkspaceTool {
             .await?
         {
             RefreshWorkspaceOutcome::Success(success) => {
-                if handler.current_workspace_id().as_deref() == Some(workspace_id)
-                    && handler.loaded_workspace_id().as_deref() != Some(workspace_id)
-                {
-                    handler
-                        .initialize_workspace_with_force(
-                            Some(success.workspace_path.clone()),
-                            false,
-                        )
-                        .await?;
-                }
-
                 let mut message = format!(
                     "Workspace Refresh: {}\n\
                     {}\n\
