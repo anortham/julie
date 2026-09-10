@@ -91,6 +91,14 @@ impl JulieServerHandler {
             }
         };
 
+        if prepared.is_empty() {
+            let msg = format!(
+                "rename_symbol: no references found or no changes needed for '{}'",
+                params.old_name
+            );
+            return Ok(CallToolResult::text_content(vec![Content::text(msg)]));
+        }
+
         // 2. Handle dry-run preview: 0 writes, 0 locks, 0 journals
         if params.dry_run {
             let result = params.format_preview(&prepared);
@@ -112,14 +120,6 @@ impl JulieServerHandler {
                 workspace_snapshot.as_ref(),
             );
             return Ok(result);
-        }
-
-        if prepared.is_empty() {
-            let msg = format!(
-                "rename_symbol: no references found or no changes needed for '{}'",
-                params.old_name
-            );
-            return Ok(CallToolResult::text_content(vec![Content::text(msg)]));
         }
 
         // 3. Pre-Commit Whole-File AST Syntax Regression Validation

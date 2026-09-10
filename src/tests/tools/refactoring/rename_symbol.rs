@@ -62,7 +62,7 @@ async fn test_rename_symbol_basic() -> Result<()> {
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await?;
+    let result = handler.execute_rename_symbol(tool).await?;
 
     // Debug: Print result
     eprintln!("Rename result: {:?}", result);
@@ -135,7 +135,7 @@ public:
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await?;
+    let result = handler.execute_rename_symbol(tool).await?;
     let result_text = extract_text(&result);
     assert!(
         !result_text.contains("parse error"),
@@ -189,8 +189,11 @@ async fn test_rename_symbol_reports_parse_error_without_modifying_file() -> Resu
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = handler
+        .execute_rename_symbol(tool)
+        .await
+        .expect_err("rename_symbol should refuse a file with parse errors")
+        .to_string();
 
     assert!(
         text.contains("parse error"),
@@ -385,7 +388,7 @@ async fn test_rename_symbol_file_scope_accepts_absolute_path() -> Result<()> {
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await?;
+    let result = handler.execute_rename_symbol(tool).await?;
     let result_text = format!("{:?}", result);
     let content = fs::read_to_string(&test_file)?;
 
@@ -454,7 +457,7 @@ fn caller(target: Target, other: Other) {
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await?;
+    let result = handler.execute_rename_symbol(tool).await?;
     let result_text = format!("{:?}", result);
     let content = fs::read_to_string(&test_file)?;
 
@@ -516,7 +519,7 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await?;
+    let result = handler.execute_rename_symbol(tool).await?;
 
     // Verify both files modified
     let content1 = fs::read_to_string(&file1)?;

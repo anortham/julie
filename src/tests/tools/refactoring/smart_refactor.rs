@@ -198,7 +198,7 @@ class UserService {
         };
 
         let handler = fixture.new_handler().await.unwrap();
-        let result = tool.call_tool(&handler).await.unwrap();
+        let result = handler.execute_rename_symbol(tool).await.unwrap();
 
         let response = extract_text_from_result(&result);
 
@@ -378,7 +378,7 @@ export type ServiceFactory = () => UserService;
         };
 
         // Execute the rename
-        let result = rename_tool.call_tool(&handler).await.unwrap();
+        let result = handler.execute_rename_symbol(rename_tool).await.unwrap();
         let response = extract_text_from_result(&result);
         let response_lower = response.to_lowercase();
 
