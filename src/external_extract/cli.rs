@@ -30,7 +30,7 @@ impl ExternalExtractRawArgs {
         let Some(db) = self.db else {
             return Err(clap::Error::raw(
                 clap::error::ErrorKind::MissingRequiredArgument,
-                "the following required arguments were not provided: --db",
+                "the following required arguments were not provided: --out",
             ));
         };
 
@@ -72,7 +72,7 @@ struct ExternalExtractParser {
 
 #[derive(Debug, Clone, Args, PartialEq, Eq)]
 pub struct ExternalExtractRawArgs {
-    #[arg(long, global = true)]
+    #[arg(long = "out", visible_alias = "db", global = true)]
     db: Option<PathBuf>,
 
     #[arg(long, global = true)]

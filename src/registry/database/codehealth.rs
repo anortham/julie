@@ -1,8 +1,6 @@
 use anyhow::Result;
 use rusqlite::params;
 
-use crate::database::SymbolDatabase;
-
 use super::{DaemonDatabase, now_unix};
 
 impl DaemonDatabase {
@@ -61,38 +59,20 @@ impl DaemonDatabase {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Query aggregate codehealth metrics from a symbols database and store
-    /// a snapshot. Called automatically after each indexing pass completes.
-    ///
-    /// LOCK ORDERING: callers must acquire `symbol_db` lock before calling this
-    /// function, which then acquires the internal `DaemonDatabase` lock. Always
-    /// lock symbol_db first, then daemon_db — never in the reverse order.
-    pub fn snapshot_codehealth_from_db(
+    /// Persist codehealth counts from the checkout store.
+    pub fn snapshot_codehealth_from_counts(
         &self,
         workspace_id: &str,
-        symbols_db: &SymbolDatabase,
+        total_symbols: i64,
+        total_files: i64,
     ) -> Result<()> {
-        let conn = &symbols_db.conn;
-
-        let total_symbols: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM symbols WHERE kind NOT IN ('import', 'export') \
-                 AND (content_type IS NULL OR content_type != 'documentation')",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap_or(0);
-
-        let total_files: i64 = conn
-            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
-            .unwrap_or(0);
-
-        let snapshot = CodehealthSnapshot {
-            total_symbols,
-            total_files,
-        };
-
-        self.insert_codehealth_snapshot(workspace_id, &snapshot)
+        self.insert_codehealth_snapshot(
+            workspace_id,
+            &CodehealthSnapshot {
+                total_symbols,
+                total_files,
+            },
+        )
     }
 }
 

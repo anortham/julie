@@ -1,18 +1,14 @@
-//! SQL query engine and output formatting for metrics queries.
-//!
-//! Queries the symbols table with ORDER BY on analysis-derived fields
-//! (change_risk, test_linkage, reference_score) stored in the metadata JSON
-//! blob and the reference_score column.
+//! Metrics queries over the snapshot graph.
 
 use anyhow::Result;
+use julie_extractors::SymbolKind;
+use julie_index::graph::{Graph, SymbolId};
+use julie_index::search::scoring::is_test_path;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::analysis::test_linkage::test_linkage_entry;
-use crate::database::SymbolDatabase;
 use crate::tools::search::matches_glob_pattern;
-
-const TEST_COUNT_SQL: &str = "COALESCE(json_extract(metadata, '$.test_linkage.test_count'), json_extract(metadata, '$.test_coverage.test_count'), 0)";
 
 /// A single metrics query result row.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,12 +26,8 @@ pub struct MetricsResult {
 }
 
 /// Query symbols ordered by the requested metric.
-///
-/// Builds a SQL query against the symbols table, using `json_extract` for
-/// metadata-derived fields and `reference_score` for centrality.
-/// Post-filters by `file_pattern` using glob matching.
 pub fn query_by_metrics(
-    db: &SymbolDatabase,
+    graph: &Graph,
     sort_by: &str,
     order: &str,
     min_risk: Option<&str>,
@@ -46,189 +38,120 @@ pub fn query_by_metrics(
     exclude_tests: bool,
     limit: u32,
 ) -> Result<Vec<MetricsResult>> {
-    // Build ORDER BY clause based on sort_by field
-    let order_dir = if order.eq_ignore_ascii_case("asc") {
-        "ASC"
-    } else {
-        "DESC"
-    };
-
-    let order_clause = match sort_by {
-        "change_risk" => {
-            format!("COALESCE(json_extract(metadata, '$.change_risk.score'), 0.0) {order_dir}")
-        }
-        "centrality" => format!("reference_score {order_dir}"),
-        "test_linkage" | "test_coverage" => {
-            format!("{TEST_COUNT_SQL} {order_dir}")
-        }
-        _ => format!("reference_score {order_dir}"),
-    };
-
-    // Build WHERE clauses
-    let mut conditions: Vec<String> = Vec::new();
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-
-    // Exclude imports/exports (never interesting for metrics)
-    conditions.push("kind NOT IN ('import', 'export')".to_string());
-
-    // Exclude test symbols by metadata flag
-    if exclude_tests {
-        conditions.push(
-            "(json_extract(metadata, '$.is_test') IS NULL OR json_extract(metadata, '$.is_test') != 1)"
-                .to_string(),
-        );
-    }
-
-    // min_risk filter applies to the remaining risk label stored in metadata.
-    if let Some(min_risk) = min_risk {
-        let risk_path = "$.change_risk.label";
-        match min_risk.to_uppercase().as_str() {
-            "HIGH" => {
-                conditions.push(format!("json_extract(metadata, '{risk_path}') = 'HIGH'"));
-            }
-            "MEDIUM" => {
-                conditions.push(format!(
-                    "json_extract(metadata, '{risk_path}') IN ('HIGH', 'MEDIUM')"
-                ));
-            }
-            "LOW" => {
-                conditions.push(format!(
-                    "json_extract(metadata, '{risk_path}') IN ('HIGH', 'MEDIUM', 'LOW')"
-                ));
-            }
-            _ => {}
-        }
-    }
-
-    // has_tests filter
-    if let Some(has_tests) = has_tests {
-        if has_tests {
-            conditions.push(format!("{TEST_COUNT_SQL} > 0"));
-        } else {
-            conditions.push(format!("{TEST_COUNT_SQL} = 0"));
-        }
-    }
-
-    // kind filter
-    if let Some(kind) = kind {
-        conditions.push(format!("kind = ?{}", params.len() + 1));
-        params.push(Box::new(kind.to_string()));
-    }
-
-    // language filter
-    if let Some(language) = language {
-        conditions.push(format!("language = ?{}", params.len() + 1));
-        params.push(Box::new(language.to_string()));
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
-
-    // When file_pattern is set, omit the SQL LIMIT so post-filtering can reach the
-    // user's requested count even for narrow globs. A fixed multiplier (e.g. 5x)
-    // fails when the glob matches only a small fraction of the total rows.
-    let use_sql_limit = file_pattern.is_none();
-
-    let sql = format!(
-        "SELECT name, file_path, COALESCE(start_line, 0), kind, reference_score, metadata
-         FROM symbols
-         {where_clause}
-         ORDER BY {order_clause}{}",
-        if use_sql_limit {
-            format!(" LIMIT ?{}", params.len() + 1)
-        } else {
-            String::new()
-        }
-    );
-
-    debug!("Metrics query SQL: {}", sql);
-
-    if use_sql_limit {
-        params.push(Box::new(limit));
-    }
-
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-    let mut stmt = db.conn.prepare(&sql)?;
-    let rows = stmt.query_map(param_refs.as_slice(), |row| {
-        let name: String = row.get(0)?;
-        let file_path: String = row.get(1)?;
-        let start_line: u32 = row.get(2)?;
-        let kind: String = row.get(3)?;
-        let reference_score: f64 = row.get(4)?;
-        let metadata_str: Option<String> = row.get(5)?;
-        Ok((
-            name,
-            file_path,
-            start_line,
-            kind,
-            reference_score,
-            metadata_str,
-        ))
-    })?;
-
+    let descending = !order.eq_ignore_ascii_case("asc");
     let mut results = Vec::new();
-    for row in rows {
-        let (name, file_path, start_line, kind, reference_score, metadata_str) = row?;
+    for index in 0..graph.len() {
+        let id = SymbolId(index as u32);
+        let row = graph.symbol(id);
+        if matches!(row.kind, SymbolKind::Import | SymbolKind::Export) {
+            continue;
+        }
+        let raw_metadata = row
+            .metadata
+            .as_ref()
+            .map(|metadata| serde_json::to_value(metadata).unwrap_or(serde_json::Value::Null));
+        if exclude_tests {
+            let is_test = raw_metadata
+                .as_ref()
+                .and_then(|value| value.get("is_test"))
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+                || is_test_path(&row.path);
+            if is_test {
+                continue;
+            }
+        }
+        if let Some(kind) = kind {
+            let kind_name = format!("{:?}", row.kind).to_lowercase();
+            if kind_name != kind.to_lowercase() {
+                continue;
+            }
+        }
+        if let Some(language) = language
+            && row.language != language
+        {
+            continue;
+        }
+        if let Some(pattern) = file_pattern
+            && !matches_glob_pattern(&row.path, pattern)
+        {
+            continue;
+        }
 
-        // Post-filter by file_pattern (glob match)
-        if let Some(pattern) = file_pattern {
-            if !matches_glob_pattern(&file_path, pattern) {
+        let change_risk_score = raw_metadata
+            .as_ref()
+            .and_then(|value| value.get("change_risk"))
+            .and_then(|value| value.get("score"))
+            .and_then(|value| value.as_f64());
+        let change_risk_label = raw_metadata
+            .as_ref()
+            .and_then(|value| value.get("change_risk"))
+            .and_then(|value| value.get("label"))
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        if let Some(min_risk) = min_risk {
+            let rank = match change_risk_label.as_deref() {
+                Some("HIGH") => 3,
+                Some("MEDIUM") => 2,
+                Some("LOW") => 1,
+                _ => 0,
+            };
+            let needed = match min_risk.to_uppercase().as_str() {
+                "HIGH" => 3,
+                "MEDIUM" => 2,
+                "LOW" => 1,
+                _ => 0,
+            };
+            if rank < needed {
                 continue;
             }
         }
 
-        // Parse metadata JSON
-        let raw_metadata = metadata_str
-            .as_deref()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
-
-        let change_risk_score = raw_metadata
-            .as_ref()
-            .and_then(|v| v.get("change_risk"))
-            .and_then(|v| v.get("score"))
-            .and_then(|v| v.as_f64());
-
-        let change_risk_label = raw_metadata
-            .as_ref()
-            .and_then(|v| v.get("change_risk"))
-            .and_then(|v| v.get("label"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
         let test_linkage = raw_metadata.as_ref().and_then(test_linkage_entry);
-
-        let test_linkage_tier = test_linkage
-            .and_then(|v| v.get("best_tier"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
         let test_count = test_linkage
-            .and_then(|v| v.get("test_count"))
-            .and_then(|v| v.as_u64())
+            .and_then(|value| value.get("test_count"))
+            .and_then(|value| value.as_u64())
             .map(|n| n as u32);
+        if let Some(has_tests) = has_tests {
+            let linked = test_count.unwrap_or(0) > 0;
+            if has_tests != linked {
+                continue;
+            }
+        }
 
         results.push(MetricsResult {
-            name,
-            file_path,
-            start_line,
-            kind,
-            reference_score,
+            name: row.name.clone(),
+            file_path: row.path.clone(),
+            start_line: row.span.start_line,
+            kind: format!("{:?}", row.kind).to_lowercase(),
+            reference_score: graph.reference_score(id),
             change_risk_score,
             change_risk_label,
-            test_linkage_tier,
+            test_linkage_tier: test_linkage
+                .and_then(|value| value.get("best_tier"))
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
             test_count,
             raw_metadata,
         });
-
-        if results.len() >= limit as usize {
-            break;
-        }
     }
 
+    results.sort_by(|left, right| {
+        let cmp = match sort_by {
+            "change_risk" => left
+                .change_risk_score
+                .unwrap_or(0.0)
+                .partial_cmp(&right.change_risk_score.unwrap_or(0.0)),
+            "test_linkage" | "test_coverage" => left
+                .test_count
+                .unwrap_or(0)
+                .partial_cmp(&right.test_count.unwrap_or(0)),
+            _ => left.reference_score.partial_cmp(&right.reference_score),
+        }
+        .unwrap_or(std::cmp::Ordering::Equal);
+        if descending { cmp.reverse() } else { cmp }
+    });
+    results.truncate(limit as usize);
     debug!("Metrics query returned {} results", results.len());
     Ok(results)
 }

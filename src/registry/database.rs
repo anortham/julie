@@ -21,8 +21,7 @@ pub use workspaces::{WorkspaceCleanupEventRow, WorkspaceRow};
 /// Thread-safe daemon database. Shared across sessions as `Arc<DaemonDatabase>`.
 ///
 /// Uses an internal `Mutex<Connection>` so callers don't need to lock externally.
-/// This is the same pattern used by `SymbolDatabase`, which is held externally as
-/// `Arc<Mutex<SymbolDatabase>>`. Here the lock is internal for ergonomics.
+/// The lock is internal so callers do not lock a connection mutex themselves.
 pub struct DaemonDatabase {
     conn: std::sync::Mutex<Connection>,
 }

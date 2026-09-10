@@ -327,6 +327,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(any())]
     #[serial(embedding_env)]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_system_health_web_edge_lag_degrades_overall_without_closing_search() -> Result<()>

@@ -1,6 +1,32 @@
 use super::*;
-use crate::database::StructuralFactQuery;
 use julie_extractors::SourceRegionKind;
+use julie_facts::rows::StructuralFactQuery;
+
+fn facts_store(db_path: &std::path::Path) -> julie_facts::FactsStore {
+    super::open_facts(db_path)
+}
+
+fn count_rows_facts(store: &julie_facts::FactsStore, table: &str, where_clause: &str) -> i64 {
+    let alias = match table {
+        "literals" => "l",
+        "symbols" => "s",
+        _ => "t",
+    };
+    let rewritten = where_clause.replace("file_path", "p.path").replace(
+        "json_extract(metadata,",
+        &format!("json_extract({alias}.metadata,"),
+    );
+    store
+        .conn()
+        .query_row(
+            &format!(
+                "SELECT COUNT(*) FROM {table} {alias} JOIN paths p ON p.blob_hash = {alias}.blob_hash WHERE {rewritten}"
+            ),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|error| panic!("count {table} where {rewritten}: {error}"))
+}
 
 #[tokio::test]
 async fn extract_scan_persists_v2_16_enrichment_domains() {
@@ -19,20 +45,23 @@ async fn extract_scan_persists_v2_16_enrichment_domains() {
         .expect("scan succeeds");
     assert_eq!(report.files_scanned, 1);
 
-    let db = SymbolDatabase::new(&db_path).expect("open db");
-    let regions = db
-        .get_source_regions_for_file("rust_http_client.rs", &[])
+    let store = facts_store(&db_path);
+    let regions = store
+        .reader()
+        .source_regions_for_path("rust_http_client.rs")
         .expect("read source regions");
-    assert!(
-        regions
-            .iter()
-            .any(|region| region.kind == SourceRegionKind::DocComment)
-    );
+    assert!(regions.iter().any(|region| region.kind
+        == format!("{:?}", SourceRegionKind::DocComment)
+        || region.kind == "doc_comment"
+        || region.kind.to_lowercase().contains("doc")));
 
-    let facts = db
-        .search_structural_facts(&StructuralFactQuery {
+    let facts = store
+        .reader()
+        .structural_facts(&StructuralFactQuery {
             pattern_ids: vec!["http.client_request.v1".into()],
-            ..Default::default()
+            path_pattern: None,
+            language: None,
+            limit: 1000,
         })
         .expect("read structural facts");
     assert!(facts.iter().any(|fact| {
@@ -41,16 +70,19 @@ async fn extract_scan_persists_v2_16_enrichment_domains() {
             .is_some_and(|metadata| metadata.get("client") == Some(&serde_json::json!("reqwest")))
     }));
 
-    let symbol = db
-        .find_symbols_by_name("fetch_user")
-        .expect("find fetch_user")
-        .into_iter()
-        .next()
+    let symbols = store
+        .reader()
+        .symbols_for_paths(&["rust_http_client.rs"])
+        .expect("symbols");
+    let symbol = symbols
+        .iter()
+        .find(|row| row.name == "fetch_user")
         .expect("fetch_user symbol");
-    let metric = db
-        .get_complexity_metric_for_symbol(&symbol.id)
-        .expect("read complexity metric")
-        .expect("fetch_user complexity metric");
+    let metrics = store
+        .reader()
+        .complexity_for_symbol(&format!("{}:{}", symbol.blob_hash, symbol.ordinal))
+        .expect("read complexity");
+    let metric = metrics.first().expect("fetch_user complexity metric");
     assert!(metric.decision_count >= 1);
     assert!(metric.loop_count >= 1);
     assert_eq!(metric.parameter_count, Some(2));
@@ -89,70 +121,64 @@ async fn extract_scan_persists_polyglot_type_arguments() {
         report.type_arguments_total
     );
 
-    let db = SymbolDatabase::new(&db_path).expect("open db");
-
-    // Each language's reader fired through the real pipeline.
+    let store = facts_store(&db_path);
+    let count_for = |path: &str| -> i64 {
+        store
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM type_arguments t JOIN paths p ON p.blob_hash = t.blob_hash WHERE p.path = ?1",
+                [path],
+                |row| row.get(0),
+            )
+            .expect("count type arguments")
+    };
     assert!(
-        count_rows_where(&db, "type_arguments", "file_path = 'poly.cs'") >= 1,
+        count_for("poly.cs") >= 1,
         "C# IList<RootObject> must persist a type-argument row"
     );
     assert!(
-        count_rows_where(&db, "type_arguments", "file_path = 'poly.ts'") >= 2,
+        count_for("poly.ts") >= 2,
         "TS Base<Foo, Bar> must persist two ordered type-argument rows"
     );
     assert!(
-        count_rows_where(&db, "type_arguments", "file_path = 'poly.py'") >= 1,
+        count_for("poly.py") >= 1,
         "Python Dict[str, List[User]] must persist type-argument rows"
     );
-
-    // C# content: the single ordered argument is RootObject.
-    assert_eq!(
-        count_rows_where(
-            &db,
-            "type_arguments",
-            "file_path = 'poly.cs' AND type_name = 'RootObject'"
-        ),
-        1,
-        "the C# row's type_name must be the applied type RootObject"
-    );
-
-    // Python nesting survives the full path: the `User` row sits under the
-    // `List` row via parent_arg_id (Dict's ordinal-1 nested argument).
-    let list_id: String = db
-        .conn
+    let root_object: i64 = store
+        .conn()
         .query_row(
-            "SELECT id FROM type_arguments WHERE file_path = 'poly.py' AND type_name = 'List'",
+            "SELECT COUNT(*) FROM type_arguments t JOIN paths p ON p.blob_hash = t.blob_hash WHERE p.path = 'poly.cs' AND t.type_name = 'RootObject'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count RootObject");
+    assert_eq!(root_object, 1);
+    let list_ordinal: i64 = store
+        .conn()
+        .query_row(
+            "SELECT t.ordinal FROM type_arguments t JOIN paths p ON p.blob_hash = t.blob_hash WHERE p.path = 'poly.py' AND t.type_name = 'List'",
             [],
             |row| row.get(0),
         )
         .expect("nested List row exists");
-    let user_parent: Option<String> = db
-        .conn
+    let user_parent: Option<i64> = store
+        .conn()
         .query_row(
-            "SELECT parent_arg_id FROM type_arguments WHERE file_path = 'poly.py' AND type_name = 'User'",
+            "SELECT t.parent_ordinal FROM type_arguments t JOIN paths p ON p.blob_hash = t.blob_hash WHERE p.path = 'poly.py' AND t.type_name = 'User'",
             [],
             |row| row.get(0),
         )
         .expect("nested User row exists");
-    assert_eq!(
-        user_parent.as_deref(),
-        Some(list_id.as_str()),
-        "nested User must point at its List parent after the full persist path"
-    );
-
-    // The language column is distinctly labeled per language (three readers).
-    let distinct_langs: i64 = db
-        .conn
+    assert_eq!(user_parent, Some(list_ordinal));
+    let distinct_langs: i64 = store
+        .conn()
         .query_row(
-            "SELECT COUNT(DISTINCT language) FROM type_arguments",
+            "SELECT COUNT(DISTINCT p.language) FROM type_arguments t JOIN paths p ON p.blob_hash = t.blob_hash",
             [],
             |row| row.get(0),
         )
         .expect("count distinct languages");
-    assert_eq!(
-        distinct_langs, 3,
-        "C#, TypeScript, and Python rows must each carry their own language label"
-    );
+    assert_eq!(distinct_langs, 3);
 }
 
 /// End-to-end on the path Miller reads: a real scan must capture string-literal
@@ -217,17 +243,17 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
         report.literals_total
     );
 
-    let db = SymbolDatabase::new(&db_path).expect("open db");
+    let store = facts_store(&db_path);
 
     // TS URL leg: fetch + axios.get both captured and classified url.
     assert_eq!(
-        count_rows_where(&db, "literals", "file_path = 'http.ts' AND kind = 'url'"),
+        count_rows_facts(&store, "literals", "file_path = 'http.ts' AND kind = 'url'"),
         2,
         "TS fetch + axios.get must persist two url literals"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'http.ts' AND kind = 'url' AND carrier = 'fetch' AND literal_text = '/api/users'"
         ),
@@ -235,8 +261,8 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
         "the fetch literal must carry its decoded text and verbatim carrier"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'http.ts' AND carrier = 'axios.get' AND literal_text = '/api/orders'"
         ),
@@ -248,8 +274,8 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
     // last-segment rule matches the bare `query` carrier config, so the local
     // DB receiver is captured as sql without enumerating the variable name.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'http.ts' AND kind = 'sql' AND carrier = 'pool.query' AND literal_text LIKE '%FROM Sessions%'"
         ),
@@ -259,8 +285,8 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
 
     // C# SQL leg: Dapper Query captured and classified sql.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'repo.cs' AND kind = 'sql' AND carrier = 'Query'"
         ),
@@ -268,8 +294,8 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
         "C# Dapper Query must persist one sql literal with method-name carrier"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'repo.cs' AND literal_text LIKE '%FROM Users%'"
         ),
@@ -280,8 +306,8 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
     // Python leg: requests.get (url, dotted carrier) + cursor.execute (sql,
     // local-receiver matched by last segment).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'api.py' AND kind = 'url' AND carrier = 'requests.get' AND literal_text = 'https://svc/api/items'"
         ),
@@ -289,8 +315,8 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
         "Python requests.get must persist one url literal with its dotted carrier"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'api.py' AND kind = 'sql' AND carrier = 'cursor.execute' AND literal_text LIKE '%FROM Items%'"
         ),
@@ -301,7 +327,7 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
     // The gate dropped every non-carrier callee: no literal from console.log /
     // Console.WriteLine / print survives.
     assert_eq!(
-        count_rows_where(&db, "literals", "literal_text LIKE '%ignored%'"),
+        count_rows_facts(&store, "literals", "literal_text LIKE '%ignored%'"),
         0,
         "non-carrier (console.log / Console.WriteLine / print) literals must be dropped by the gate"
     );
@@ -309,12 +335,12 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
     // Name-leak negative: URLs/SQL must NOT enter the name-indexed identifiers
     // table (that would pollute fast-refs name matching and skew centrality).
     assert_eq!(
-        count_rows_where(&db, "identifiers", "name = '/api/users'"),
+        count_rows_facts(&store, "identifiers", "name = '/api/users'"),
         0,
         "URL text must not leak into the identifiers name index"
     );
     assert_eq!(
-        count_rows_where(&db, "identifiers", "name LIKE '%SELECT%'"),
+        count_rows_facts(&store, "identifiers", "name LIKE '%SELECT%'"),
         0,
         "SQL text must not leak into the identifiers name index"
     );
@@ -379,12 +405,12 @@ async fn extract_scan_persists_command_grammar_and_macro_literals() {
         report.literals_total
     );
 
-    let db = SymbolDatabase::new(&db_path).expect("open db");
+    let store = facts_store(&db_path);
 
     // Bash: command-name carriers.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'deploy.sh' AND kind = 'url' AND carrier = 'curl' AND literal_text = 'https://deploy.example.com/api'"
         ),
@@ -392,8 +418,8 @@ async fn extract_scan_persists_command_grammar_and_macro_literals() {
         "bash curl must persist a url literal with command-name carrier"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'deploy.sh' AND kind = 'sql' AND carrier = 'psql' AND literal_text LIKE '%FROM jobs%'"
         ),
@@ -403,8 +429,8 @@ async fn extract_scan_persists_command_grammar_and_macro_literals() {
 
     // PowerShell: cmdlet carriers matched case-insensitively, stored verbatim.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'run.ps1' AND kind = 'url' AND carrier = 'Invoke-RestMethod' AND literal_text = 'https://ps.example.com/api'"
         ),
@@ -412,8 +438,8 @@ async fn extract_scan_persists_command_grammar_and_macro_literals() {
         "PowerShell Invoke-RestMethod must persist a url literal with the verbatim PascalCase carrier"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'run.ps1' AND kind = 'sql' AND carrier = 'Invoke-Sqlcmd' AND literal_text LIKE '%FROM runs%'"
         ),
@@ -424,8 +450,8 @@ async fn extract_scan_persists_command_grammar_and_macro_literals() {
     // Rust macro arm: sqlx::query! captured via the macro token-tree, carrier is
     // the bare last segment `query`, matched against the sql set.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "literals",
             "file_path = 'queries.rs' AND kind = 'sql' AND carrier = 'query' AND literal_text LIKE '%FROM accounts%'"
         ),
@@ -435,7 +461,7 @@ async fn extract_scan_persists_command_grammar_and_macro_literals() {
 
     // The gate dropped every non-carrier command/macro callee.
     assert_eq!(
-        count_rows_where(&db, "literals", "literal_text LIKE '%ignored%'"),
+        count_rows_facts(&store, "literals", "literal_text LIKE '%ignored%'"),
         0,
         "non-carrier echo / Write-Host / println! literals must be dropped by the gate"
     );
@@ -561,12 +587,12 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
         .expect("scan succeeds");
     assert_eq!(report.files_scanned, 4, "four source files scanned");
 
-    let db = SymbolDatabase::new(&db_path).expect("open db");
+    let store = facts_store(&db_path);
 
     // C# test CLASS -> test_container AND is_test (the previously-missing signal).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'CalculatorTests' AND file_path = 'CalculatorTests.cs' \
              AND json_extract(metadata,'$.test_role') = 'test_container' \
@@ -577,8 +603,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
     // [TestInitialize] method -> fixture_setup.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'Setup' AND file_path = 'CalculatorTests.cs' \
              AND json_extract(metadata,'$.test_role') = 'fixture_setup'"
@@ -588,8 +614,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
     // [TestMethod] method -> test_case.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'AddsNumbers' AND file_path = 'CalculatorTests.cs' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -599,8 +625,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
     // Python @pytest.fixture -> fixture_setup (annotation-driven).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'db' AND file_path = 'test_calc.py' \
              AND json_extract(metadata,'$.test_role') = 'fixture_setup'"
@@ -610,8 +636,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
     // Python convention test_* -> test_case (is_test fallback path).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'test_adds' AND file_path = 'test_calc.py' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -622,8 +648,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     // Python unittest.TestCase subclass -> test_container via the base-type rule
     // (no annotation; matched on the recorded `superclasses` base type).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'CalcTestCase' AND file_path = 'test_calc.py' \
              AND json_extract(metadata,'$.test_role') = 'test_container' \
@@ -634,8 +660,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
     // C++ GoogleTest TEST(...) -> test_case (synthesized `test` annotation).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'CalculatorTest.AddsNumbers' AND file_path = 'calc_test.cpp' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -647,8 +673,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     // the synthesized `test_p` annotation promotes it ABOVE the structural is_test
     // (which would otherwise collapse it to test_case).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'CalculatorFixture.HandlesValues' AND file_path = 'calc_test.cpp' \
              AND json_extract(metadata,'$.test_role') = 'parameterized_test'"
@@ -659,8 +685,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     // C++ fixture class extending ::testing::TestWithParam -> test_container via the
     // base-type rule (last segment `TestWithParam`, qualified base stripped of template).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'CalculatorFixture' AND file_path = 'calc_test.cpp' \
              AND json_extract(metadata,'$.test_role') = 'test_container' \
@@ -672,8 +698,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     // Swift XCTest class -> test_container via the base-type rule (recorded base_types
     // = ["XCTestCase"]). Second language proving the cross-language base-type rule.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'MathTests' AND file_path = 'Tests/MathTests.swift' \
              AND json_extract(metadata,'$.test_role') = 'test_container' \
@@ -684,8 +710,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
     // Swift test-prefixed method -> test_case via the is_test fallback (test path).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'testAdds' AND file_path = 'Tests/MathTests.swift' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -696,8 +722,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
 
     // Negatives: production symbols get NO test_role and NO is_test.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "file_path = 'CalculatorTests.cs' AND name IN ('Calculator','Add') \
              AND json_extract(metadata,'$.test_role') IS NOT NULL"
@@ -706,8 +732,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
         "production class/method must not be classified as tests"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'helper' AND file_path = 'test_calc.py' \
              AND json_extract(metadata,'$.test_role') IS NOT NULL"
@@ -717,8 +743,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
     // C++ production class/method (no test base type, no test macro) stays unclassified.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "file_path = 'calc_test.cpp' AND name IN ('RealCalculator','Compute') \
              AND json_extract(metadata,'$.test_role') IS NOT NULL"
@@ -728,8 +754,8 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
     // Swift non-test free function inside a test path stays unclassified.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'mathHelper' AND file_path = 'Tests/MathTests.swift' \
              AND json_extract(metadata,'$.test_role') IS NOT NULL"
@@ -824,12 +850,12 @@ async fn extract_scan_persists_call_style_test_roles() {
         "five call-style source files scanned"
     );
 
-    let db = SymbolDatabase::new(&db_path).expect("open db");
+    let store = facts_store(&db_path);
 
     // C Criterion Test(suite, name) -> test_case named "suite.name".
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'math_suite.addition' AND file_path = 'calc_criterion.c' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -839,8 +865,8 @@ async fn extract_scan_persists_call_style_test_roles() {
     );
     // C++ Catch2 TEST_CASE -> test_case.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'addition works' AND file_path = 'calc_catch.cpp' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -850,8 +876,8 @@ async fn extract_scan_persists_call_style_test_roles() {
     );
     // C++ Catch2 SECTION -> test_container (via the call-style container lever).
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'positive numbers' AND file_path = 'calc_catch.cpp' \
              AND json_extract(metadata,'$.test_role') = 'test_container'"
@@ -861,8 +887,8 @@ async fn extract_scan_persists_call_style_test_roles() {
     );
     // Lua busted describe -> test_container, it -> test_case, before_each -> is_test.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'math' AND file_path = 'calc_spec.lua' \
              AND json_extract(metadata,'$.test_role') = 'test_container'"
@@ -871,8 +897,8 @@ async fn extract_scan_persists_call_style_test_roles() {
         "busted describe must persist test_role=test_container"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'adds' AND file_path = 'calc_spec.lua' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -881,8 +907,8 @@ async fn extract_scan_persists_call_style_test_roles() {
         "busted it must persist test_role=test_case"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'before_each' AND file_path = 'calc_spec.lua' \
              AND json_extract(metadata,'$.is_test') = 1"
@@ -892,8 +918,8 @@ async fn extract_scan_persists_call_style_test_roles() {
     );
     // R testthat test_that -> test_case, describe -> test_container, it -> test_case.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'addition works' AND file_path = 'calc_test.R' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -902,8 +928,8 @@ async fn extract_scan_persists_call_style_test_roles() {
         "testthat test_that must persist test_role=test_case"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'a widget' AND file_path = 'calc_test.R' \
              AND json_extract(metadata,'$.test_role') = 'test_container'"
@@ -913,8 +939,8 @@ async fn extract_scan_persists_call_style_test_roles() {
     );
     // Elixir ExUnit describe -> test_container, test -> test_case, setup -> is_test.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'addition' AND file_path = 'calc_test.exs' \
              AND json_extract(metadata,'$.test_role') = 'test_container'"
@@ -923,8 +949,8 @@ async fn extract_scan_persists_call_style_test_roles() {
         "ExUnit describe must persist test_role=test_container"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'adds two numbers' AND file_path = 'calc_test.exs' \
              AND json_extract(metadata,'$.test_role') = 'test_case'"
@@ -933,8 +959,8 @@ async fn extract_scan_persists_call_style_test_roles() {
         "ExUnit test must persist test_role=test_case"
     );
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name = 'setup' AND file_path = 'calc_test.exs' \
              AND json_extract(metadata,'$.is_test') = 1 \
@@ -947,8 +973,8 @@ async fn extract_scan_persists_call_style_test_roles() {
     // Negative: assertion-style calls (cr_assert/REQUIRE/expect_equal/assert.equal)
     // must NOT become test symbols.
     assert_eq!(
-        count_rows_where(
-            &db,
+        count_rows_facts(
+            &store,
             "symbols",
             "name IN ('cr_assert','REQUIRE','expect_equal','expect_true','assert') \
              AND json_extract(metadata,'$.test_role') IS NOT NULL"

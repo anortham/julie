@@ -430,39 +430,10 @@ mod tests {
 
     #[test]
     fn test_snapshot_codehealth_from_symbols_db() {
-        use crate::database::SymbolDatabase;
-
         let (daemon_db, _tmp) = create_test_db();
         daemon_db.upsert_workspace("ws1", "/path", "ready").unwrap();
-
-        // Create a symbols.db with minimal test data
-        let sym_tmp = TempDir::new().unwrap();
-        let symbols_db = SymbolDatabase::new(sym_tmp.path().join("symbols.db")).unwrap();
-
-        // Insert a file
-        symbols_db
-            .conn
-            .execute(
-                "INSERT INTO files (path, language, hash, size, last_modified) \
-                 VALUES ('foo.rs', 'rust', 'abc', 100, 0)",
-                [],
-            )
-            .unwrap();
-
-        // Insert a symbol with metadata used by snapshot aggregation
-        symbols_db
-            .conn
-            .execute(
-                "INSERT INTO symbols \
-                 (id, name, kind, file_path, start_line, end_line, start_col, end_col, language, metadata) \
-                 VALUES ('s1', 'foo', 'Function', 'foo.rs', 1, 10, 0, 0, 'rust', \
-                 '{\"change_risk\":{\"label\":\"HIGH\",\"score\":0.9}}')",
-                [],
-            )
-            .unwrap();
-
         daemon_db
-            .snapshot_codehealth_from_db("ws1", &symbols_db)
+            .snapshot_codehealth_from_counts("ws1", 1, 1)
             .unwrap();
 
         let snapshot = daemon_db.get_latest_snapshot("ws1").unwrap().unwrap();

@@ -190,7 +190,12 @@ impl JulieServerHandler {
         }
 
         // 4. Atomic Coordinator Apply with Durable Journal
-        let coordinator = SourceEditCoordinator::new(workspace_root)?;
+        let workspace_id = self.require_primary_workspace_identity()?;
+        let store = self
+            .checkout_store_for_workspace(&workspace_id, &workspace_root)
+            .await?;
+        let coordinator =
+            SourceEditCoordinator::new(workspace_root)?.with_store(store, workspace_id);
         let before_hash = blake3::hash(original_content.as_bytes())
             .to_hex()
             .to_string();

@@ -84,7 +84,23 @@ pub(crate) fn analyze_batch(
                     poisoned.into_inner()
                 }
             };
-            if let Err(e) = daemon_db.snapshot_codehealth_from_db(snapshot_ws_id, &db_lock) {
+            let total_symbols = db_lock
+                .conn
+                .query_row(
+                    "SELECT COUNT(*) FROM symbols WHERE kind NOT IN ('import', 'export')",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap_or(0);
+            let total_files = db_lock
+                .conn
+                .query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
+                .unwrap_or(0);
+            if let Err(e) = daemon_db.snapshot_codehealth_from_counts(
+                snapshot_ws_id,
+                total_symbols,
+                total_files,
+            ) {
                 warn!("Failed to capture codehealth snapshot: {}", e);
             } else {
                 info!(workspace_id = %snapshot_ws_id, "Codehealth snapshot captured");

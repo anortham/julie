@@ -7,19 +7,13 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
+use julie_facts::version::FACTS_SCHEMA_VERSION;
+use julie_facts::{FactsStore, Opened};
 
 /// Version of the `julie-server extract` output contract consumed by the Miller
 /// bridge (`~/source/codesearch`), which gates ingestion with an exact-equality
 /// check on this value. Bump ONLY in lockstep with a coordinated Miller-gate
 /// update.
-///
-/// - v1: symbols, identifiers, relationships, types, type_arguments.
-/// - v2 (Phase 3b): adds carrier-gated string-literal records (`literals` table,
-///   migration 028 → schema 28) — URL/SQL/route literals passed to HTTP/DB-client
-///   calls across all applicable languages, with interpolation normalized to `{}`.
-/// - v3: adds required `hash_algorithm=blake3` metadata/reporting while keeping
-///   schema 28 unchanged.
 pub const EXTRACT_CONTRACT_VERSION: i32 = 3;
 
 pub const EXTRACT_HASH_ALGORITHM: &str = "blake3";
@@ -51,76 +45,63 @@ pub struct ExternalExtractMetadata {
     pub analyzed_revision: Option<i64>,
 }
 
-pub fn open_external_extract_database<P: AsRef<Path>>(
-    db_path: P,
-    strict_schema: bool,
-) -> Result<SymbolDatabase> {
-    validate_external_extract_schema_policy(db_path.as_ref(), strict_schema)?;
-    SymbolDatabase::new(db_path)
-}
-
-pub struct ExternalExtractDatabaseOperation {
-    db: SymbolDatabase,
-}
-
-impl ExternalExtractDatabaseOperation {
-    pub fn db(&self) -> &SymbolDatabase {
-        &self.db
-    }
-
-    pub fn db_mut(&mut self) -> &mut SymbolDatabase {
-        &mut self.db
+pub fn open_facts_store(db_path: &Path, strict_schema: bool) -> Result<FactsStore> {
+    validate_facts_schema_policy(db_path, strict_schema)?;
+    match FactsStore::open(db_path)? {
+        Opened::Ready(store) => Ok(store),
+        Opened::VersionMismatch {
+            found_schema,
+            found_engine,
+        } => Err(anyhow!(
+            "facts.sqlite version mismatch: schema {found_schema}, engine {found_engine}"
+        )),
     }
 }
 
-pub fn open_external_extract_database_for_operation<P: AsRef<Path>>(
-    db_path: P,
-    strict_schema: bool,
-) -> Result<ExternalExtractDatabaseOperation> {
-    validate_external_extract_schema_policy(db_path.as_ref(), strict_schema)?;
-    let db = SymbolDatabase::new(db_path)?;
-    Ok(ExternalExtractDatabaseOperation { db })
-}
-
-pub fn validate_external_extract_schema_policy(db_path: &Path, strict_schema: bool) -> Result<()> {
+pub fn validate_facts_schema_policy(db_path: &Path, strict_schema: bool) -> Result<()> {
     if !db_path.exists() {
         return Ok(());
     }
-
-    let schema_version =
-        crate::external_extract::info::read_schema_version_read_only(db_path)?.unwrap_or(0);
-
-    if schema_version > LATEST_SCHEMA_VERSION {
-        return Err(anyhow!(
-            "database schema version ({schema_version}) is newer than current binary ({LATEST_SCHEMA_VERSION})"
-        ));
+    match FactsStore::open(db_path)? {
+        Opened::Ready(_) => Ok(()),
+        Opened::VersionMismatch {
+            found_schema,
+            found_engine,
+        } => {
+            if strict_schema {
+                Err(anyhow!(
+                    "facts.sqlite version mismatch: schema {found_schema}, engine {found_engine}"
+                ))
+            } else {
+                Err(anyhow!(
+                    "facts.sqlite version mismatch: schema {found_schema}, engine {found_engine}; delete the file and rerun extract"
+                ))
+            }
+        }
     }
-
-    if strict_schema && schema_version < LATEST_SCHEMA_VERSION {
-        return Err(anyhow!(
-            "database schema version ({schema_version}) is older than current binary ({LATEST_SCHEMA_VERSION}); rerun without --strict-schema to migrate"
-        ));
-    }
-
-    Ok(())
 }
 
 pub fn ensure_external_extract_metadata(
-    db: &SymbolDatabase,
+    store: &FactsStore,
     root_path: &Path,
     requested_workspace_id: Option<&str>,
 ) -> Result<ExternalExtractMetadata> {
-    ensure_external_extract_metadata_with_root_policy(db, root_path, requested_workspace_id, false)
+    ensure_external_extract_metadata_with_root_policy(
+        store,
+        root_path,
+        requested_workspace_id,
+        false,
+    )
 }
 
 pub fn ensure_external_extract_metadata_with_root_policy(
-    db: &SymbolDatabase,
+    store: &FactsStore,
     root_path: &Path,
     requested_workspace_id: Option<&str>,
     allow_root_rebuild: bool,
 ) -> Result<ExternalExtractMetadata> {
     let now = unix_timestamp()?;
-    let existing = load_metadata_map(db)?;
+    let existing = load_metadata_map(store)?;
     let normalized_root_path = normalized_root_path(root_path);
     let workspace_id = match (existing.get("workspace_id"), requested_workspace_id) {
         (Some(existing), Some(requested)) if existing != requested && !allow_root_rebuild => {
@@ -153,7 +134,7 @@ pub fn ensure_external_extract_metadata_with_root_policy(
 
     let metadata = ExternalExtractMetadata {
         julie_version: env!("CARGO_PKG_VERSION").to_string(),
-        sqlite_schema_version: db.get_schema_version()?,
+        sqlite_schema_version: FACTS_SCHEMA_VERSION,
         extract_contract_version: EXTRACT_CONTRACT_VERSION,
         hash_algorithm: EXTRACT_HASH_ALGORITHM.to_string(),
         workspace_id,
@@ -167,67 +148,52 @@ pub fn ensure_external_extract_metadata_with_root_policy(
         analyzed_revision,
     };
 
-    write_metadata(db, &metadata)?;
+    write_metadata(store, &metadata)?;
     Ok(metadata)
 }
 
 pub fn load_external_extract_metadata(
-    db: &SymbolDatabase,
+    store: &FactsStore,
 ) -> Result<Option<ExternalExtractMetadata>> {
-    metadata_from_map(&load_metadata_map(db)?)
+    metadata_from_map(&load_metadata_map(store)?)
 }
 
-pub fn mark_external_extract_analysis_stale(db: &SymbolDatabase) -> Result<()> {
+pub fn mark_external_extract_analysis_stale(store: &FactsStore) -> Result<()> {
     let now = unix_timestamp()?;
-    let tx = db.conn.unchecked_transaction()?;
-    write_analysis_metadata_tx(&tx, "stale", None, now)?;
-    tx.commit()?;
+    store.conn().execute(
+        "INSERT INTO meta (key, value) VALUES ('analysis_state', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        ["stale"],
+    )?;
+    store.conn().execute(
+        "INSERT INTO meta (key, value) VALUES ('updated_at', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [now.to_string()],
+    )?;
     Ok(())
 }
 
 pub fn mark_external_extract_analysis_current(
-    db: &SymbolDatabase,
+    store: &FactsStore,
     analyzed_revision: Option<i64>,
 ) -> Result<()> {
     let now = unix_timestamp()?;
-    let tx = db.conn.unchecked_transaction()?;
-    write_analysis_metadata_tx(&tx, "current", analyzed_revision, now)?;
-    tx.commit()?;
-    Ok(())
-}
-
-fn write_analysis_metadata_tx(
-    tx: &rusqlite::Transaction<'_>,
-    analysis_state: &str,
-    analyzed_revision: Option<i64>,
-    now: i64,
-) -> Result<()> {
-    tx.execute(
-        "INSERT INTO external_extract_metadata (key, value, updated_at)
-         VALUES ('analysis_state', ?1, ?2)
-         ON CONFLICT(key) DO UPDATE SET
-            value = excluded.value,
-            updated_at = excluded.updated_at",
-        params![analysis_state, now],
+    store.conn().execute(
+        "INSERT INTO meta (key, value) VALUES ('analysis_state', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        ["current"],
     )?;
-    tx.execute(
-        "INSERT INTO external_extract_metadata (key, value, updated_at)
-         VALUES ('analyzed_revision', ?1, ?2)
-         ON CONFLICT(key) DO UPDATE SET
-            value = excluded.value,
-            updated_at = excluded.updated_at",
-        params![
-            analyzed_revision
-                .map(|revision| revision.to_string())
-                .unwrap_or_default(),
-            now
-        ],
+    store.conn().execute(
+        "INSERT INTO meta (key, value) VALUES ('analyzed_revision', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [analyzed_revision
+            .map(|revision| revision.to_string())
+            .unwrap_or_default()],
     )?;
-    tx.execute(
-        "UPDATE external_extract_metadata
-         SET value = ?1, updated_at = ?1
-         WHERE key = 'updated_at'",
-        params![now],
+    store.conn().execute(
+        "INSERT INTO meta (key, value) VALUES ('updated_at', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [now.to_string()],
     )?;
     Ok(())
 }
@@ -260,14 +226,11 @@ pub(crate) fn metadata_from_map(
     }))
 }
 
-fn load_metadata_map(db: &SymbolDatabase) -> Result<HashMap<String, String>> {
-    let mut stmt = db
-        .conn
-        .prepare("SELECT key, value FROM external_extract_metadata")?;
+fn load_metadata_map(store: &FactsStore) -> Result<HashMap<String, String>> {
+    let mut stmt = store.conn().prepare("SELECT key, value FROM meta")?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })?;
-
     let mut values = HashMap::new();
     for row in rows {
         let (key, value) = row?;
@@ -276,7 +239,7 @@ fn load_metadata_map(db: &SymbolDatabase) -> Result<HashMap<String, String>> {
     Ok(values)
 }
 
-fn write_metadata(db: &SymbolDatabase, metadata: &ExternalExtractMetadata) -> Result<()> {
+fn write_metadata(store: &FactsStore, metadata: &ExternalExtractMetadata) -> Result<()> {
     for (key, value) in [
         ("julie_version", metadata.julie_version.clone()),
         (
@@ -301,46 +264,38 @@ fn write_metadata(db: &SymbolDatabase, metadata: &ExternalExtractMetadata) -> Re
                 .unwrap_or_default(),
         ),
     ] {
-        db.conn.execute(
-            "INSERT INTO external_extract_metadata (key, value, updated_at)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = excluded.updated_at",
-            params![key, value, metadata.updated_at],
+        store.conn().execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
         )?;
     }
-
     Ok(())
-}
-
-fn normalized_root_path(root_path: &Path) -> String {
-    root_path
-        .canonicalize()
-        .unwrap_or_else(|_| root_path.to_path_buf())
-        .to_string_lossy()
-        .into_owned()
 }
 
 fn parse_required_i32(values: &HashMap<String, String>, key: &str) -> Result<i32> {
     values
         .get(key)
-        .ok_or_else(|| anyhow!("missing external extract metadata key '{key}'"))?
-        .parse::<i32>()
-        .map_err(|error| anyhow!("invalid external extract metadata key '{key}': {error}"))
+        .ok_or_else(|| anyhow!("missing metadata key {key}"))?
+        .parse()
+        .map_err(|error| anyhow!("invalid {key}: {error}"))
 }
 
 fn parse_required_i64(values: &HashMap<String, String>, key: &str) -> Result<i64> {
     values
         .get(key)
-        .ok_or_else(|| anyhow!("missing external extract metadata key '{key}'"))?
-        .parse::<i64>()
-        .map_err(|error| anyhow!("invalid external extract metadata key '{key}': {error}"))
+        .ok_or_else(|| anyhow!("missing metadata key {key}"))?
+        .parse()
+        .map_err(|error| anyhow!("invalid {key}: {error}"))
+}
+
+fn normalized_root_path(root: &Path) -> String {
+    root.to_string_lossy().replace('\\', "/")
 }
 
 fn unix_timestamp() -> Result<i64> {
     Ok(SystemTime::now()
-        .duration_since(UNIX_EPOCH)?
-        .as_secs()
-        .try_into()?)
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| anyhow!("clock error: {error}"))?
+        .as_secs() as i64)
 }

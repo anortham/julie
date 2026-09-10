@@ -14,11 +14,12 @@ use tracing::debug;
 use crate::navigation::resolution::{WorkspaceTarget, file_path_matches_suffix};
 use julie_context::ToolContext;
 use julie_core::Symbol;
-use julie_core::database::SymbolDatabase;
 use julie_core::file_utils::secure_path_resolution;
 use julie_core::mcp_compat::CallToolResultExt;
 use julie_core::mcp_compat::{CallToolResult, Content};
 use julie_extractors::ParseDiagnostic;
+use julie_facts::rows::PathRow;
+use julie_index::snapshot::Snapshot;
 use tree_sitter::{Node, Tree};
 
 use super::EditingTransaction;
@@ -106,16 +107,7 @@ pub struct RewriteSymbolTool {
 }
 
 struct WorkspaceEditTarget {
-    workspace_id: String,
     workspace_root: std::path::PathBuf,
-}
-
-impl WorkspaceEditTarget {
-    async fn pooled_db(&self, handler: &dyn ToolContext) -> Result<SymbolDatabase> {
-        handler
-            .get_pooled_database_for_workspace(&self.workspace_id)
-            .await
-    }
 }
 
 struct LiveSymbolContext {
@@ -245,13 +237,23 @@ fn validate_operation(operation: &str) -> bool {
     )
 }
 
+fn blob_hash_for_path(snapshot: &Snapshot, file_path: &str) -> Result<Option<String>> {
+    Ok(snapshot
+        .facts()?
+        .reader()
+        .paths()?
+        .into_iter()
+        .find(|row: &PathRow| row.path == file_path)
+        .map(|row| row.blob_hash))
+}
+
 fn check_file_freshness(
-    db: &julie_core::database::SymbolDatabase,
+    indexed_hash: Option<&str>,
     file_path: &str,
     current_hash: &str,
 ) -> Result<()> {
-    match db.get_file_hash(file_path)? {
-        Some(indexed_hash) if indexed_hash == current_hash => Ok(()),
+    match indexed_hash {
+        Some(hash) if hash == current_hash => Ok(()),
         Some(_) => Err(anyhow!(
             "File '{}' has changed since last indexing. Run manage_workspace(operation=\"index\") or wait for the file watcher to catch up, then retry.",
             file_path
@@ -616,19 +618,12 @@ impl RewriteSymbolTool {
             .await?
         {
             WorkspaceTarget::Primary => {
-                let workspace_id = handler.require_primary_workspace_identity()?;
                 let workspace_root = handler.require_primary_workspace_root()?;
-                Ok(WorkspaceEditTarget {
-                    workspace_id,
-                    workspace_root,
-                })
+                Ok(WorkspaceEditTarget { workspace_root })
             }
             WorkspaceTarget::Target(workspace_id) => {
                 let workspace_root = handler.get_workspace_root_for_target(&workspace_id).await?;
-                Ok(WorkspaceEditTarget {
-                    workspace_id,
-                    workspace_root,
-                })
+                Ok(WorkspaceEditTarget { workspace_root })
             }
         }
     }
@@ -657,33 +652,31 @@ impl RewriteSymbolTool {
         }
 
         let target = self.resolve_workspace_target(handler).await?;
+        let workspace_target = handler
+            .resolve_workspace_target(self.workspace.as_deref())
+            .await?;
+        let snapshot = handler.snapshot(&workspace_target).await?;
 
         let symbol_name = parsed_symbol_name.to_string();
-        let symbol_name_for_lookup = symbol_name.clone();
         let file_path_filter = self.file_path.clone();
         let file_path_for_error = self.file_path.clone();
-        let lookup_db = target.pooled_db(handler).await?;
-        let matches = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
-            let symbols =
-                super::symbol_lookup::find_symbol(&lookup_db, &symbol_name_for_lookup, None)?;
-            let filtered = if let Some(ref filter) = file_path_filter {
-                symbols
-                    .into_iter()
-                    .filter(|symbol| file_path_matches_suffix(&symbol.file_path, filter))
-                    .collect()
-            } else {
-                symbols
-            };
-            Ok(if let Some(line) = line_hint {
-                filtered
-                    .into_iter()
-                    .filter(|symbol| symbol_matches_line(symbol, line))
-                    .collect()
-            } else {
-                filtered
-            })
-        })
-        .await??;
+        let symbols = super::symbol_lookup::find_symbol(snapshot.graph(), &symbol_name, None);
+        let filtered: Vec<Symbol> = if let Some(ref filter) = file_path_filter {
+            symbols
+                .into_iter()
+                .filter(|symbol| file_path_matches_suffix(&symbol.file_path, filter))
+                .collect()
+        } else {
+            symbols
+        };
+        let matches: Vec<Symbol> = if let Some(line) = line_hint {
+            filtered
+                .into_iter()
+                .filter(|symbol| symbol_matches_line(symbol, line))
+                .collect()
+        } else {
+            filtered
+        };
 
         if matches.is_empty() {
             if let Some(line) = line_hint {
@@ -793,13 +786,13 @@ impl RewriteSymbolTool {
         let current_hash = blake3::hash(original_content.as_bytes())
             .to_hex()
             .to_string();
-        {
-            let freshness_db = target.pooled_db(handler).await?;
-            if let Err(error) =
-                check_file_freshness(&freshness_db, &indexed_symbol.file_path, &current_hash)
-            {
-                return Err(rewrite_symbol_error("stale_index", error.to_string()));
-            }
+        let indexed_hash = blob_hash_for_path(&snapshot, &indexed_symbol.file_path)?;
+        if let Err(error) = check_file_freshness(
+            indexed_hash.as_deref(),
+            &indexed_symbol.file_path,
+            &current_hash,
+        ) {
+            return Err(rewrite_symbol_error("stale_index", error.to_string()));
         }
         let live = live_symbol_context(
             &indexed_symbol,

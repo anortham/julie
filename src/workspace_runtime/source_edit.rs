@@ -1,19 +1,27 @@
 //! Dedicated Coordinator for Follower & Leader Source Edits.
 //!
 //! Enforces OS-level advisory locking at `<canonical-root>/.julie/locks/source-edit.lock`,
-//! bounded source reads, hash precondition validation, and durable atomic journaling.
+//! bounded source reads, hash precondition validation, and in-memory last-write
+//! records for `recover_edit`. After a write, the checkout store is applied
+//! under the mutation gate; the snapshot swap is the publication.
 
 pub use super::edit_journal::{EditDisposition, RecoveryAction};
 use super::edit_journal::{EditJournal, JournalFileEntry, JournalFileState, JournalState};
 pub use super::source_edit_ops::*;
+use julie_core::file_policy::detect_language_for_indexing;
+use julie_core::workspace::mutation_gate::acquire_gate;
+use julie_index::checkout_store::{CheckoutStore, PathChange};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 pub struct SourceEditCoordinator {
     canonical_root: PathBuf,
     config: SourceEditConfig,
+    store: Option<Arc<CheckoutStore>>,
+    workspace_id: Option<String>,
 }
 
 impl SourceEditCoordinator {
@@ -29,7 +37,15 @@ impl SourceEditCoordinator {
         Ok(Self {
             canonical_root,
             config,
+            store: None,
+            workspace_id: None,
         })
+    }
+
+    pub fn with_store(mut self, store: Arc<CheckoutStore>, workspace_id: String) -> Self {
+        self.store = Some(store);
+        self.workspace_id = Some(workspace_id);
+        self
     }
 
     pub fn canonical_root(&self) -> &Path {
@@ -227,6 +243,8 @@ impl SourceEditCoordinator {
         journal.state = JournalState::Applied;
         let _ = journal.save(&journal_path);
 
+        self.publish_applied_paths(&applied_paths).await?;
+
         Ok(EditDisposition {
             edit_id: edit_id.to_string(),
             recovery_action: None,
@@ -235,6 +253,35 @@ impl SourceEditCoordinator {
             conflicted_paths: Vec::new(),
             index_refresh_pending: false,
         })
+    }
+
+    async fn publish_applied_paths(
+        &self,
+        applied_paths: &[PathBuf],
+    ) -> Result<(), SourceEditError> {
+        let (Some(store), Some(workspace_id)) = (&self.store, &self.workspace_id) else {
+            return Ok(());
+        };
+        if applied_paths.is_empty() {
+            return Ok(());
+        }
+        let mut changes = Vec::with_capacity(applied_paths.len());
+        for path in applied_paths {
+            let relative = path.to_string_lossy().replace('\\', "/");
+            let full_path = self.resolve_path(path)?;
+            let bytes = fs::read(&full_path)?;
+            let language = detect_language_for_indexing(&full_path);
+            changes.push(PathChange::Upsert {
+                path: relative,
+                bytes,
+                language,
+            });
+        }
+        let guard = acquire_gate(workspace_id).await;
+        store
+            .apply(&changes, &guard)
+            .map_err(|error| SourceEditError::InvalidArguments(error.to_string()))?;
+        Ok(())
     }
 
     pub async fn recover(
@@ -408,6 +455,8 @@ impl SourceEditCoordinator {
             JournalState::RolledBack
         };
         let _ = journal.save(&journal_path);
+
+        self.publish_applied_paths(&applied_paths).await?;
 
         let disposition = EditDisposition {
             edit_id: edit_id.to_string(),

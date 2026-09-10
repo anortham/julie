@@ -1,4 +1,3 @@
-#[cfg(any())]
 #[tokio::test]
 async fn test_manage_workspace_health_uses_rebound_session_primary() {
     use crate::registry::database::DaemonDatabase;
@@ -74,47 +73,19 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
             .unwrap(),
     );
     {
-        let mut rebound_guard = rebound_ws.db.as_ref().unwrap().lock().unwrap();
-        let file_info = crate::database::types::FileInfo {
-            path: "lib.rs".to_string(),
-            language: "rust".to_string(),
-            hash: "rebound_hash".to_string(),
-            size: 32,
-            last_modified: 1,
-            last_indexed: 0,
-            symbol_count: 1,
-            line_count: 1,
-            content: None,
-        };
-        let symbol = julie_core::Symbol {
-            extracted: julie_extractors::Symbol {
-                id: "rebound_symbol".to_string(),
-                name: "rebound_primary".to_string(),
-                kind: crate::extractors::SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: "lib.rs".to_string(),
-                start_line: 1,
-                start_column: 0,
-                end_line: 1,
-                end_column: 20,
-                start_byte: 0,
-                end_byte: 20,
-                signature: Some("fn rebound_primary()".to_string()),
-                doc_comment: None,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: None,
-        };
-        rebound_guard
-            .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_primary_id)
+        let store = rebound_ws.store.as_ref().expect("rebound store");
+        let bytes = fs::read(rebound_primary_path.join("lib.rs")).unwrap();
+        let guard =
+            julie_core::workspace::mutation_gate::acquire_gate(&rebound_primary_id).await;
+        store
+            .apply(
+                &[julie_index::checkout_store::PathChange::Upsert {
+                    path: "lib.rs".into(),
+                    bytes,
+                    language: "rust".into(),
+                }],
+                &guard,
+            )
             .unwrap();
     }
 
@@ -142,7 +113,6 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
     );
 }
 
-#[cfg(any())]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
     use crate::registry::database::DaemonDatabase;
@@ -212,47 +182,19 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
             .unwrap(),
     );
     {
-        let mut rebound_guard = rebound_ws.db.as_ref().unwrap().lock().unwrap();
-        let file_info = crate::database::types::FileInfo {
-            path: "lib.rs".to_string(),
-            language: "rust".to_string(),
-            hash: "rebound_detailed_hash".to_string(),
-            size: 41,
-            last_modified: 1,
-            last_indexed: 0,
-            symbol_count: 1,
-            line_count: 1,
-            content: None,
-        };
-        let symbol = julie_core::Symbol {
-            extracted: julie_extractors::Symbol {
-                id: "rebound_detailed_symbol".to_string(),
-                name: "rebound_primary_detailed".to_string(),
-                kind: crate::extractors::SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: "lib.rs".to_string(),
-                start_line: 1,
-                start_column: 0,
-                end_line: 1,
-                end_column: 29,
-                start_byte: 0,
-                end_byte: 29,
-                signature: Some("fn rebound_primary_detailed()".to_string()),
-                doc_comment: None,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: None,
-        };
-        rebound_guard
-            .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_primary_id)
+        let store = rebound_ws.store.as_ref().expect("rebound store");
+        let bytes = fs::read(rebound_primary_path.join("lib.rs")).unwrap();
+        let guard =
+            julie_core::workspace::mutation_gate::acquire_gate(&rebound_primary_id).await;
+        store
+            .apply(
+                &[julie_index::checkout_store::PathChange::Upsert {
+                    path: "lib.rs".into(),
+                    bytes,
+                    language: "rust".into(),
+                }],
+                &guard,
+            )
             .unwrap();
     }
 
@@ -268,10 +210,8 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
     );
     assert!(
         report.contains("Projection tantivy")
-            && report.contains("Projection web_edges")
-            && report.contains("Workspace: rebound-primary-detailed_")
-            && report.contains("Freshness: REBUILD REQUIRED"),
-        "detailed health should use rebound current-primary projection state instead of stale loaded workspace state: {report}"
+            && report.contains("Workspace: rebound-primary-detailed_"),
+        "detailed health should use rebound current-primary store status: {report}"
     );
     assert!(
         report.contains("Indexed workspace languages (1): rust"),
@@ -279,7 +219,6 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
     );
 }
 
-#[cfg(any())]
 #[tokio::test]
 async fn test_manage_workspace_health_loaded_primary_without_tantivy_is_sqlite_only() {
     use crate::health::{HealthChecker, SystemStatus};

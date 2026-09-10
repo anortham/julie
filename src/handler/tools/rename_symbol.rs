@@ -176,7 +176,12 @@ impl JulieServerHandler {
         }
 
         // 4. Atomic Multi-File Journaled Commit
-        let coordinator = SourceEditCoordinator::new(workspace_root.clone())?;
+        let workspace_id = self.require_primary_workspace_identity()?;
+        let store = self
+            .checkout_store_for_workspace(&workspace_id, &workspace_root)
+            .await?;
+        let coordinator =
+            SourceEditCoordinator::new(workspace_root.clone())?.with_store(store, workspace_id);
         let changes: Vec<PreparedSourceChange> = prepared
             .files
             .iter()

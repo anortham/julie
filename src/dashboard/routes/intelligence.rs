@@ -11,8 +11,12 @@ use tera::Context;
 
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
-use crate::database::SymbolDatabase;
 use crate::database::analytics::{AggregateStats, CentralitySymbol, FileHotspot};
+use julie_index::checkout_store::{CheckoutStore, STORE_DIR};
+use julie_index::graph::{Graph, SymbolId};
+use julie_index::search::scoring::is_test_path;
+use julie_index::snapshot::Snapshot;
+use std::sync::Arc;
 
 /// SVG donut chart circumference: 2 * pi * r where r = 0.7.
 const CIRCUMFERENCE: f64 = 2.0 * PI * 0.7;
@@ -195,17 +199,10 @@ pub fn format_duration_ms(ms: i64) -> String {
 // Route handlers
 // ---------------------------------------------------------------------------
 
-/// Open a workspace's SymbolDatabase directly from disk.
-///
-/// Opens the DB file at `$JULIE_HOME/indexes/{id}/db/symbols.db` (default
-/// `~/.julie/indexes/{id}/db/symbols.db`) without going through WorkspacePool,
-/// avoiding session side-effects (count increment, watcher attachment). Works
-/// for any registered workspace, even those without an active session.
-pub(crate) fn open_workspace_db(
+pub(crate) fn require_registered_workspace(
     state: &AppState,
     workspace_id: &str,
-) -> Result<SymbolDatabase, StatusCode> {
-    // Reject path traversal attempts (workspace IDs are alphanumeric + underscore)
+) -> Result<crate::registry::database::WorkspaceRow, StatusCode> {
     if workspace_id.contains('/')
         || workspace_id.contains('\\')
         || workspace_id.contains("..")
@@ -213,28 +210,142 @@ pub(crate) fn open_workspace_db(
     {
         return Err(StatusCode::BAD_REQUEST);
     }
-
-    let has_workspace = state
+    state
         .dashboard
         .daemon_db()
         .and_then(|db| db.get_workspace(workspace_id).ok().flatten())
-        .is_some();
+        .ok_or(StatusCode::NOT_FOUND)
+}
 
-    if !has_workspace {
+pub(crate) fn open_workspace_snapshot(
+    state: &AppState,
+    workspace_id: &str,
+) -> Result<Arc<Snapshot>, StatusCode> {
+    let workspace = require_registered_workspace(state, workspace_id)?;
+    let paths =
+        crate::paths::RegistryPaths::try_new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let store_dir = paths.workspace_index_dir(workspace_id).join(STORE_DIR);
+    if !store_dir.join("facts.sqlite").exists() {
         return Err(StatusCode::NOT_FOUND);
     }
+    let root = std::path::PathBuf::from(&workspace.path);
+    let store =
+        CheckoutStore::open(&store_dir, &root).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(store.current())
+}
 
-    let db_path = {
-        let paths = crate::paths::RegistryPaths::try_new()
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        paths.workspace_db_path(workspace_id)
-    };
+pub fn top_symbols_by_centrality(graph: &Graph, limit: usize) -> Vec<CentralitySymbol> {
+    let mut symbols: Vec<CentralitySymbol> = (0..graph.len())
+        .map(|index| SymbolId(index as u32))
+        .filter(|id| !is_test_path(&graph.symbol(*id).path))
+        .map(|id| {
+            let row = graph.symbol(id);
+            CentralitySymbol {
+                name: row.name.clone(),
+                kind: format!("{:?}", row.kind).to_lowercase(),
+                language: row.language.clone(),
+                file_path: row.path.clone(),
+                signature: row.signature.clone(),
+                reference_score: graph.reference_score(id),
+            }
+        })
+        .filter(|symbol| symbol.reference_score > 0.0)
+        .collect();
+    symbols.sort_by(|left, right| {
+        right
+            .reference_score
+            .partial_cmp(&left.reference_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    symbols.truncate(limit);
+    symbols
+}
 
-    if !db_path.exists() {
-        return Err(StatusCode::NOT_FOUND);
+pub fn file_hotspots(snapshot: &Snapshot, limit: usize) -> Vec<FileHotspot> {
+    let graph = snapshot.graph();
+    let languages: HashMap<String, String> = snapshot
+        .facts()
+        .ok()
+        .and_then(|facts| facts.reader().paths().ok())
+        .into_iter()
+        .flatten()
+        .map(|row| (row.path, row.language))
+        .collect();
+    let mut by_path: HashMap<String, FileHotspot> = HashMap::new();
+    for index in 0..graph.len() {
+        let row = graph.symbol(SymbolId(index as u32));
+        let entry = by_path
+            .entry(row.path.clone())
+            .or_insert_with(|| FileHotspot {
+                path: row.path.clone(),
+                language: languages.get(&row.path).cloned().unwrap_or_default(),
+                line_count: 0,
+                size: 0,
+                symbol_count: 0,
+            });
+        entry.symbol_count += 1;
+        entry.line_count = entry.line_count.max(row.span.end_line as i32);
     }
+    let mut hotspots: Vec<FileHotspot> = by_path.into_values().collect();
+    hotspots.sort_by(|left, right| {
+        let left_score = left.line_count as f64 + left.symbol_count as f64 * 10.0;
+        let right_score = right.line_count as f64 + right.symbol_count as f64 * 10.0;
+        right_score
+            .partial_cmp(&left_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    hotspots.truncate(limit);
+    hotspots
+}
 
-    SymbolDatabase::new(&db_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+pub fn aggregate_stats(snapshot: &Snapshot) -> AggregateStats {
+    let graph = snapshot.graph();
+    let stats = graph.stats();
+    let languages: std::collections::BTreeSet<String> = snapshot
+        .facts()
+        .ok()
+        .and_then(|facts| facts.reader().paths().ok())
+        .into_iter()
+        .flatten()
+        .map(|row| row.language)
+        .filter(|language| !language.is_empty())
+        .collect();
+    let total_lines = file_hotspots(snapshot, usize::MAX)
+        .into_iter()
+        .map(|hotspot| hotspot.line_count as i64)
+        .sum();
+    AggregateStats {
+        total_files: graph.paths().len() as i64,
+        total_symbols: stats.symbols as i64,
+        total_lines,
+        total_relationships: stats.edges as i64,
+        language_count: languages.len() as i64,
+    }
+}
+
+pub fn symbol_kind_counts(graph: &Graph) -> HashMap<String, usize> {
+    let mut by_kind = HashMap::new();
+    for index in 0..graph.len() {
+        let kind = format!("{:?}", graph.symbol(SymbolId(index as u32)).kind).to_lowercase();
+        *by_kind.entry(kind).or_default() += 1;
+    }
+    by_kind
+}
+
+pub fn language_file_counts(snapshot: &Snapshot) -> Vec<(String, i64)> {
+    let mut counts: HashMap<String, i64> = HashMap::new();
+    if let Ok(facts) = snapshot.facts()
+        && let Ok(paths) = facts.reader().paths()
+    {
+        for row in paths {
+            if !row.language.is_empty() {
+                *counts.entry(row.language).or_default() += 1;
+            }
+        }
+    }
+    let mut lang_counts: Vec<(String, i64)> = counts.into_iter().collect();
+    lang_counts.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
+    lang_counts
 }
 
 /// Main intelligence page for a workspace.
@@ -242,16 +353,13 @@ pub async fn index(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> Result<Html<String>, StatusCode> {
-    let db = open_workspace_db(&state, &workspace_id)?;
-
-    let (top_symbols, hotspots, stats, by_kind, lang_counts) = {
-        let top_symbols = db.get_top_symbols_by_centrality(15).unwrap_or_default();
-        let hotspots = db.get_file_hotspots(10).unwrap_or_default();
-        let stats = db.get_aggregate_stats().unwrap_or_default();
-        let (by_kind, _by_language) = db.get_symbol_statistics().unwrap_or_default();
-        let lang_counts = db.count_files_by_language().unwrap_or_default();
-        (top_symbols, hotspots, stats, by_kind, lang_counts)
-    };
+    let snapshot = open_workspace_snapshot(&state, &workspace_id)?;
+    let graph = snapshot.graph();
+    let top_symbols = top_symbols_by_centrality(graph, 15);
+    let hotspots = file_hotspots(&snapshot, 10);
+    let stats = aggregate_stats(&snapshot);
+    let by_kind = symbol_kind_counts(graph);
+    let lang_counts = language_file_counts(&snapshot);
 
     let donut_segments = compute_donut_segments(&by_kind);
 
@@ -289,19 +397,16 @@ pub async fn story_cards(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> Result<Html<String>, StatusCode> {
-    let db = match open_workspace_db(&state, &workspace_id) {
-        Ok(db) => db,
+    let snapshot = match open_workspace_snapshot(&state, &workspace_id) {
+        Ok(snapshot) => snapshot,
         Err(_) => return Ok(Html(String::new())),
     };
-
-    let (top_symbols, hotspots, stats, by_kind, lang_counts) = {
-        let top_symbols = db.get_top_symbols_by_centrality(1).unwrap_or_default();
-        let hotspots = db.get_file_hotspots(1).unwrap_or_default();
-        let stats = db.get_aggregate_stats().unwrap_or_default();
-        let (by_kind, _by_language) = db.get_symbol_statistics().unwrap_or_default();
-        let lang_counts = db.count_files_by_language().unwrap_or_default();
-        (top_symbols, hotspots, stats, by_kind, lang_counts)
-    };
+    let graph = snapshot.graph();
+    let top_symbols = top_symbols_by_centrality(graph, 1);
+    let hotspots = file_hotspots(&snapshot, 1);
+    let stats = aggregate_stats(&snapshot);
+    let by_kind = symbol_kind_counts(graph);
+    let lang_counts = language_file_counts(&snapshot);
 
     let cards = generate_story_cards(&top_symbols, &hotspots, &by_kind, &stats, &lang_counts);
 

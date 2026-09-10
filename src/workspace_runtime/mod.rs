@@ -6,8 +6,6 @@ pub mod dirty_queue;
 pub mod edit_journal;
 pub mod manager;
 pub mod owner;
-pub mod publication;
-pub mod recovery;
 pub mod scheduler;
 pub mod shutdown;
 pub mod source_edit;
@@ -28,8 +26,6 @@ pub use edit_journal::{
 };
 pub use manager::{RuntimeKey, WorkspaceRuntimeManager};
 pub use owner::WorkspaceRuntime;
-pub use publication::{SnapshotError, WorkspaceReadSnapshot};
-pub use recovery::ProjectionRecoveryCoordinator;
 pub use scheduler::{
     DEFAULT_MAX_SOURCE_SIZE_BYTES, DEFAULT_SCHEDULING_QUANTUM, FileCommitter, ProcessFairScheduler,
     QuantumReport, SchedulerConfig, SchedulerError, WorkspaceScheduler,

@@ -149,7 +149,12 @@ impl JulieServerHandler {
         let root = self.require_primary_workspace_root()?;
         let resolved_path =
             julie_core::file_utils::secure_path_resolution(&params.file_path, &root)?;
-        let coordinator = crate::workspace_runtime::SourceEditCoordinator::new(root)?;
+        let workspace_id = self.require_primary_workspace_identity()?;
+        let store = self
+            .checkout_store_for_workspace(&workspace_id, &root)
+            .await?;
+        let coordinator = crate::workspace_runtime::SourceEditCoordinator::new(root)?
+            .with_store(store, workspace_id);
         let original_bytes =
             match coordinator.read_source_bounded(&resolved_path, deadline, cancellation) {
                 Ok(b) => b,

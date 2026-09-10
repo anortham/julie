@@ -1,5 +1,5 @@
 pub mod cli;
-mod data_loss_guard;
+mod extract_write;
 pub mod info;
 pub mod metadata;
 pub mod operations;
@@ -11,11 +11,9 @@ pub use info::{
     ExternalExtractCounts, ExternalExtractInfo, ExternalInfoSchemaState, read_external_extract_info,
 };
 pub use metadata::{
-    EXTRACT_CONTRACT_VERSION, ExternalExtractDatabaseOperation, ExternalExtractMetadata,
-    ensure_external_extract_metadata, ensure_external_extract_metadata_with_root_policy,
-    load_external_extract_metadata, mark_external_extract_analysis_current,
-    mark_external_extract_analysis_stale, open_external_extract_database,
-    open_external_extract_database_for_operation,
+    EXTRACT_CONTRACT_VERSION, ExternalExtractMetadata, ensure_external_extract_metadata,
+    ensure_external_extract_metadata_with_root_policy, load_external_extract_metadata,
+    mark_external_extract_analysis_current, mark_external_extract_analysis_stale, open_facts_store,
 };
 pub use operations::run_external_extract;
 pub use paths::{

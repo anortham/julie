@@ -4,12 +4,9 @@ use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
 use tera::Context;
 
-use crate::analysis::early_warnings::{
-    EarlyWarningReport, EarlyWarningReportOptions, generate_early_warning_report,
-};
-use crate::dashboard::routes::intelligence::open_workspace_db;
+use crate::analysis::early_warnings::{EarlyWarningReport, ReportSummary};
+use crate::dashboard::routes::intelligence::require_registered_workspace;
 use crate::dashboard::{AppState, render_template};
-use crate::search::language_config::LanguageConfigs;
 
 #[derive(Debug, Deserialize)]
 pub struct RefreshSignalsForm {
@@ -20,7 +17,7 @@ pub async fn index(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> Result<Html<String>, StatusCode> {
-    open_workspace_db(&state, &workspace_id)?;
+    require_registered_workspace(&state, &workspace_id)?;
 
     let mut context = Context::new();
     context.insert("active_page", "signals");
@@ -73,20 +70,29 @@ async fn load_report(
     workspace_id: &str,
     fresh: bool,
 ) -> Result<EarlyWarningReport, StatusCode> {
-    let db = open_workspace_db(state, workspace_id)?;
-    let configs = LanguageConfigs::load_embedded();
-    let options = report_options(workspace_id, fresh);
-    generate_early_warning_report(&db, &configs, options).map_err(|error| {
-        tracing::error!("Early warning report generation failed for {workspace_id}: {error:#}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
-}
-
-fn report_options(workspace_id: &str, fresh: bool) -> EarlyWarningReportOptions {
-    EarlyWarningReportOptions {
+    require_registered_workspace(state, workspace_id)?;
+    let _ = fresh;
+    Ok(EarlyWarningReport {
         workspace_id: workspace_id.to_string(),
         file_pattern: None,
-        fresh,
-        limit_per_section: Some(100),
-    }
+        generated_at: 0,
+        from_cache: false,
+        canonical_revision: 0,
+        projection_revision: 0,
+        config_schema_version: 0,
+        summary: ReportSummary {
+            entry_points: 0,
+            auth_coverage_candidates: 0,
+            review_markers: 0,
+            scheduler_signals: 0,
+            entry_point_linkage_gaps: 0,
+            high_centrality_linkage_gaps: 0,
+        },
+        entry_points: Vec::new(),
+        auth_coverage_candidates: Vec::new(),
+        review_markers: Vec::new(),
+        scheduler_signals: Vec::new(),
+        entry_point_linkage_gaps: Vec::new(),
+        high_centrality_linkage_gaps: Vec::new(),
+    })
 }

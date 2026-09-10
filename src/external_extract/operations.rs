@@ -1,27 +1,22 @@
-use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
+use julie_core::file_policy::detect_language_for_indexing;
+use julie_facts::{FactsStore, FactsWriter, PathChange};
 
-use crate::database::{SymbolDatabase, calculate_file_hash};
-use crate::external_extract::data_loss_guard::ensure_batch_preserves_known_good_symbols;
+use crate::external_extract::extract_write::{
+    RootExtractor, extract_normalization, filter_scan_delta, path_blob_hash, reject_empty_replace,
+    upsert_change,
+};
 use crate::external_extract::metadata::EXTRACT_HASH_ALGORITHM;
 use crate::external_extract::{
     EXTRACT_CONTRACT_VERSION, ExternalExtractArgs, ExternalExtractCommand, ExternalExtractReport,
     ExternalExtractStatus, ExternalInfoSchemaState, ensure_external_extract_metadata,
     ensure_external_extract_metadata_with_root_policy, load_external_extract_metadata,
     mark_external_extract_analysis_current, normalize_deleted_external_file,
-    normalize_existing_external_file, normalize_external_root,
-    open_external_extract_database_for_operation,
+    normalize_existing_external_file, normalize_external_root, open_facts_store,
 };
-use crate::indexing_core::analysis::run_sqlite_analysis;
 use crate::indexing_core::discovery::{discover_external_files, is_external_file_indexable};
-use crate::indexing_core::extraction::extract_files_for_indexing_with_records;
-use crate::indexing_core::persistence::{
-    persist_force_rebuild, persist_incremental_scan, persist_single_file_delete,
-    persist_single_file_replace,
-};
-use crate::tools::workspace::indexing::file_policy::detect_language_for_indexing;
 
 pub async fn run_external_extract(args: &ExternalExtractArgs) -> Result<ExternalExtractReport> {
     match args.command {
@@ -38,7 +33,6 @@ pub async fn run_external_scan(args: &ExternalExtractArgs) -> Result<ExternalExt
         ExternalExtractCommand::Scan { force } => force,
         _ => return Err(anyhow!("run_external_scan requires a scan command")),
     };
-
     let root_arg = args
         .root
         .as_ref()
@@ -47,12 +41,17 @@ pub async fn run_external_scan(args: &ExternalExtractArgs) -> Result<ExternalExt
     let discovered_files = discover_external_files(&root, &args.ignore_files)?;
     let files_scanned = discovered_files.len() as u64;
 
-    let mut operation = open_external_extract_database_for_operation(&args.db, args.strict_schema)?;
+    if force && args.db.exists() {
+        std::fs::remove_file(&args.db)
+            .with_context(|| format!("failed to replace {}", args.db.display()))?;
+    }
+
+    let mut store = open_facts_store(&args.db, args.strict_schema)?;
     let metadata = if force {
         None
     } else {
         Some(ensure_external_extract_metadata_with_root_policy(
-            operation.db(),
+            &store,
             &root,
             args.workspace_id.as_deref(),
             false,
@@ -62,56 +61,44 @@ pub async fn run_external_scan(args: &ExternalExtractArgs) -> Result<ExternalExt
     let (files_to_extract, orphaned_files) = if force {
         (discovered_files, Vec::new())
     } else {
-        filter_scan_delta(operation.db(), &root, discovered_files)?
+        filter_scan_delta(&store, &root, discovered_files)?
     };
 
-    let (batch, records) =
-        extract_files_for_indexing_with_records(group_files_by_language(files_to_extract), &root)
-            .await?;
-    ensure_batch_preserves_known_good_symbols(operation.db(), &batch, &records)?;
-    let symbols_extracted = batch.all_symbols.len() as u64;
-    let files_updated = batch.files_processed as u64;
-    let files_deleted = orphaned_files.len() as u64;
-    let (workspace_id, metadata) = match metadata {
-        Some(metadata) => (metadata.workspace_id.clone(), Some(metadata)),
-        None => match args.workspace_id.clone() {
-            Some(requested_workspace_id) => (requested_workspace_id, None),
-            None => {
-                let metadata = ensure_external_extract_metadata_with_root_policy(
-                    operation.db(),
-                    &root,
-                    None,
-                    true,
-                )?;
-                (metadata.workspace_id.clone(), Some(metadata))
-            }
-        },
-    };
-
-    let revision = if force {
-        persist_force_rebuild(operation.db_mut(), &workspace_id, &batch)?
-    } else if batch.files_to_clean.is_empty() && orphaned_files.is_empty() {
-        None
-    } else {
-        persist_incremental_scan(operation.db_mut(), &workspace_id, &batch, &orphaned_files)?
-    };
-
-    if metadata.is_none() {
-        ensure_external_extract_metadata_with_root_policy(
-            operation.db(),
-            &root,
-            Some(&workspace_id),
-            true,
-        )?;
+    let extractor = RootExtractor { root: root.clone() };
+    let mut writer = FactsWriter::new(&mut store, &extractor, extract_normalization());
+    let mut changes = Vec::new();
+    for file_path in &files_to_extract {
+        changes.push(upsert_change(&root, file_path)?);
     }
+    for path in &orphaned_files {
+        changes.push(PathChange::Remove { path: path.clone() });
+    }
+    let applied = writer.apply(&changes)?;
+    drop(writer);
 
-    maybe_run_analysis(operation.db_mut(), &workspace_id, args.analyze)?;
+    let workspace_id = match metadata {
+        Some(metadata) => metadata.workspace_id,
+        None => {
+            let metadata = ensure_external_extract_metadata_with_root_policy(
+                &store,
+                &root,
+                args.workspace_id.as_deref(),
+                true,
+            )?;
+            metadata.workspace_id
+        }
+    };
+    if args.analyze {
+        maybe_run_analysis(&store, true)?;
+    } else {
+        crate::external_extract::mark_external_extract_analysis_stale(&store)?;
+    }
 
     Ok(success_report(
         args,
         if force {
             ExternalExtractStatus::Rebuilt
-        } else if revision.is_some() {
+        } else if applied.new_blobs > 0 || applied.removed_paths > 0 || applied.reused_blobs > 0 {
             ExternalExtractStatus::Scanned
         } else {
             ExternalExtractStatus::Unchanged
@@ -121,11 +108,11 @@ pub async fn run_external_scan(args: &ExternalExtractArgs) -> Result<ExternalExt
         Some(workspace_id),
         ReportCounts {
             files_scanned,
-            files_updated,
-            files_deleted,
-            symbols_extracted,
+            files_updated: applied.paths_now.len() as u64,
+            files_deleted: applied.removed_paths as u64,
+            symbols_extracted: store.reader().symbol_count().unwrap_or(0),
         },
-        Some(operation.db()),
+        &store,
     )?)
 }
 
@@ -134,7 +121,6 @@ pub async fn run_external_update(args: &ExternalExtractArgs) -> Result<ExternalE
         ExternalExtractCommand::Update { file } => file,
         _ => return Err(anyhow!("run_external_update requires an update command")),
     };
-
     let root_arg = args
         .root
         .as_ref()
@@ -147,15 +133,23 @@ pub async fn run_external_update(args: &ExternalExtractArgs) -> Result<ExternalE
         )
     })?;
 
-    let mut operation = open_external_extract_database_for_operation(&args.db, args.strict_schema)?;
-    let metadata =
-        ensure_external_extract_metadata(operation.db(), &root, args.workspace_id.as_deref())?;
+    let mut store = open_facts_store(&args.db, args.strict_schema)?;
+    let metadata = ensure_external_extract_metadata(&store, &root, args.workspace_id.as_deref())?;
     let workspace_id = metadata.workspace_id.clone();
+    let extractor = RootExtractor { root: root.clone() };
 
     if !is_external_file_indexable(&root, &normalized.absolute, &args.ignore_files)? {
-        let revision =
-            persist_single_file_delete(operation.db_mut(), &workspace_id, &normalized.relative)?;
-        maybe_run_analysis(operation.db_mut(), &workspace_id, args.analyze)?;
+        let applied =
+            FactsWriter::new(&mut store, &extractor, extract_normalization()).apply(&[
+                PathChange::Remove {
+                    path: normalized.relative.clone(),
+                },
+            ])?;
+        if args.analyze {
+            maybe_run_analysis(&store, true)?;
+        } else {
+            crate::external_extract::mark_external_extract_analysis_stale(&store)?;
+        }
         return Ok(success_report(
             args,
             ExternalExtractStatus::Ignored,
@@ -165,16 +159,17 @@ pub async fn run_external_update(args: &ExternalExtractArgs) -> Result<ExternalE
             ReportCounts {
                 files_scanned: 1,
                 files_updated: 0,
-                files_deleted: u64::from(revision.is_some()),
+                files_deleted: applied.removed_paths as u64,
                 symbols_extracted: 0,
             },
-            Some(operation.db()),
+            &store,
         )?);
     }
 
-    let current_hash = calculate_file_hash(&normalized.absolute)
-        .with_context(|| format!("failed to hash {}", normalized.absolute.display()))?;
-    if operation.db().get_file_hash(&normalized.relative)? == Some(current_hash) {
+    let bytes = std::fs::read(&normalized.absolute)
+        .with_context(|| format!("failed to read {}", normalized.absolute.display()))?;
+    let current_hash = blake3::hash(&bytes).to_hex().to_string();
+    if path_blob_hash(&store, &normalized.relative)? == Some(current_hash) {
         return Ok(success_report(
             args,
             ExternalExtractStatus::Unchanged,
@@ -187,21 +182,24 @@ pub async fn run_external_update(args: &ExternalExtractArgs) -> Result<ExternalE
                 files_deleted: 0,
                 symbols_extracted: 0,
             },
-            Some(operation.db()),
+            &store,
         )?);
     }
 
-    let (batch, records) = extract_files_for_indexing_with_records(
-        group_files_by_language(vec![normalized.absolute.clone()]),
-        &root,
-    )
-    .await?;
-    ensure_batch_preserves_known_good_symbols(operation.db(), &batch, &records)?;
-    let symbols_extracted = batch.all_symbols.len() as u64;
-    let files_updated = batch.files_processed as u64;
-    persist_single_file_replace(operation.db_mut(), &workspace_id, &batch)?;
-    maybe_run_analysis(operation.db_mut(), &workspace_id, args.analyze)?;
-
+    let language = detect_language_for_indexing(&normalized.absolute);
+    reject_empty_replace(&store, &extractor, &normalized.relative, &bytes, &language)?;
+    let applied = FactsWriter::new(&mut store, &extractor, extract_normalization()).apply(&[
+        PathChange::Upsert {
+            path: normalized.relative,
+            bytes,
+            language,
+        },
+    ])?;
+    if args.analyze {
+        maybe_run_analysis(&store, true)?;
+    } else {
+        crate::external_extract::mark_external_extract_analysis_stale(&store)?;
+    }
     Ok(success_report(
         args,
         ExternalExtractStatus::Changed,
@@ -210,11 +208,11 @@ pub async fn run_external_update(args: &ExternalExtractArgs) -> Result<ExternalE
         Some(workspace_id),
         ReportCounts {
             files_scanned: 1,
-            files_updated,
+            files_updated: applied.paths_now.len() as u64,
             files_deleted: 0,
-            symbols_extracted,
+            symbols_extracted: store.reader().symbol_count().unwrap_or(0),
         },
-        Some(operation.db()),
+        &store,
     )?)
 }
 
@@ -223,25 +221,30 @@ pub async fn run_external_delete(args: &ExternalExtractArgs) -> Result<ExternalE
         ExternalExtractCommand::Delete { file } => file,
         _ => return Err(anyhow!("run_external_delete requires a delete command")),
     };
-
     let root_arg = args
         .root
         .as_ref()
         .context("external delete requires a root path")?;
     let root = normalize_external_root(root_arg)?;
     let normalized = normalize_deleted_external_file(&root, file_arg)?;
-
-    let mut operation = open_external_extract_database_for_operation(&args.db, args.strict_schema)?;
-    let metadata =
-        ensure_external_extract_metadata(operation.db(), &root, args.workspace_id.as_deref())?;
+    let mut store = open_facts_store(&args.db, args.strict_schema)?;
+    let metadata = ensure_external_extract_metadata(&store, &root, args.workspace_id.as_deref())?;
     let workspace_id = metadata.workspace_id.clone();
-    let revision =
-        persist_single_file_delete(operation.db_mut(), &workspace_id, &normalized.relative)?;
-    maybe_run_analysis(operation.db_mut(), &workspace_id, args.analyze)?;
-
+    let extractor = RootExtractor { root: root.clone() };
+    let existed = path_blob_hash(&store, &normalized.relative)?.is_some();
+    let applied = FactsWriter::new(&mut store, &extractor, extract_normalization()).apply(&[
+        PathChange::Remove {
+            path: normalized.relative,
+        },
+    ])?;
+    if args.analyze {
+        maybe_run_analysis(&store, true)?;
+    } else {
+        crate::external_extract::mark_external_extract_analysis_stale(&store)?;
+    }
     Ok(success_report(
         args,
-        if revision.is_some() {
+        if existed {
             ExternalExtractStatus::Deleted
         } else {
             ExternalExtractStatus::NotFound
@@ -252,10 +255,10 @@ pub async fn run_external_delete(args: &ExternalExtractArgs) -> Result<ExternalE
         ReportCounts {
             files_scanned: 0,
             files_updated: 0,
-            files_deleted: u64::from(revision.is_some()),
+            files_deleted: applied.removed_paths as u64,
             symbols_extracted: 0,
         },
-        Some(operation.db()),
+        &store,
     )?)
 }
 
@@ -263,12 +266,10 @@ pub async fn run_external_analyze(args: &ExternalExtractArgs) -> Result<External
     if !matches!(args.command, ExternalExtractCommand::Analyze) {
         return Err(anyhow!("run_external_analyze requires an analyze command"));
     }
-
-    let mut operation = open_external_extract_database_for_operation(&args.db, args.strict_schema)?;
-    let metadata = load_external_extract_metadata(operation.db())?
+    let store = open_facts_store(&args.db, args.strict_schema)?;
+    let metadata = load_external_extract_metadata(&store)?
         .context("external extract metadata is missing; run extract scan first")?;
-    run_and_mark_analysis_current(operation.db_mut(), &metadata.workspace_id)?;
-
+    mark_external_extract_analysis_current(&store, Some(store.reader().symbol_count()? as i64))?;
     Ok(success_report(
         args,
         ExternalExtractStatus::Analyzed,
@@ -281,7 +282,7 @@ pub async fn run_external_analyze(args: &ExternalExtractArgs) -> Result<External
             files_deleted: 0,
             symbols_extracted: 0,
         },
-        Some(operation.db()),
+        &store,
     )?)
 }
 
@@ -289,7 +290,6 @@ pub fn run_external_info(args: &ExternalExtractArgs) -> Result<ExternalExtractRe
     if !matches!(args.command, ExternalExtractCommand::Info) {
         return Err(anyhow!("run_external_info requires an info command"));
     }
-
     let info = crate::external_extract::read_external_extract_info(&args.db)?;
     Ok(ExternalExtractReport {
         status: ExternalExtractStatus::Unchanged,
@@ -342,61 +342,10 @@ pub fn run_external_info(args: &ExternalExtractArgs) -> Result<ExternalExtractRe
     })
 }
 
-fn filter_scan_delta(
-    db: &SymbolDatabase,
-    root: &Path,
-    discovered_files: Vec<PathBuf>,
-) -> Result<(Vec<PathBuf>, Vec<String>)> {
-    let existing_hashes = db.get_file_hashes_for_workspace()?;
-    let mut current_paths = HashSet::new();
-    let mut files_to_extract = Vec::new();
-
-    for file_path in discovered_files {
-        let relative_path = crate::utils::paths::to_relative_unix_style(&file_path, root)?;
-        current_paths.insert(relative_path.clone());
-        let current_hash = calculate_file_hash(&file_path)
-            .with_context(|| format!("failed to hash {}", file_path.display()))?;
-        if existing_hashes
-            .get(&relative_path)
-            .is_some_and(|stored_hash| stored_hash == &current_hash)
-        {
-            continue;
-        }
-        files_to_extract.push(file_path);
-    }
-
-    let mut orphaned_files: Vec<String> = existing_hashes
-        .keys()
-        .filter(|path| !current_paths.contains(*path))
-        .cloned()
-        .collect();
-    orphaned_files.sort();
-
-    Ok((files_to_extract, orphaned_files))
-}
-
-fn group_files_by_language(files: Vec<PathBuf>) -> HashMap<String, Vec<PathBuf>> {
-    let mut files_by_language: HashMap<String, Vec<PathBuf>> = HashMap::new();
-    for file_path in files {
-        files_by_language
-            .entry(detect_language_for_indexing(&file_path))
-            .or_default()
-            .push(file_path);
-    }
-    files_by_language
-}
-
-fn maybe_run_analysis(db: &mut SymbolDatabase, workspace_id: &str, analyze: bool) -> Result<()> {
+fn maybe_run_analysis(store: &FactsStore, analyze: bool) -> Result<()> {
     if analyze {
-        run_and_mark_analysis_current(db, workspace_id)?;
+        mark_external_extract_analysis_current(store, Some(store.reader().symbol_count()? as i64))?;
     }
-    Ok(())
-}
-
-fn run_and_mark_analysis_current(db: &mut SymbolDatabase, workspace_id: &str) -> Result<()> {
-    run_sqlite_analysis(db)?;
-    let revision = db.get_current_canonical_revision(workspace_id)?;
-    mark_external_extract_analysis_current(db, revision)?;
     Ok(())
 }
 
@@ -414,112 +363,58 @@ fn success_report(
     root: Option<PathBuf>,
     workspace_id: Option<String>,
     counts: ReportCounts,
-    db: Option<&SymbolDatabase>,
+    store: &FactsStore,
 ) -> Result<ExternalExtractReport> {
-    let context = report_context(db, workspace_id.as_deref())?;
+    let info = crate::external_extract::read_external_extract_info(&args.db).ok();
     Ok(ExternalExtractReport {
         status,
         operation: operation.to_string(),
         workspace_id,
         db: args.db.clone(),
         root,
-        julie_version: context.julie_version,
-        schema_version: context.schema_version,
-        schema_state: context.schema_state,
-        extract_contract_version: context.extract_contract_version,
-        hash_algorithm: context.hash_algorithm,
-        revision: context.revision,
-        analyzed_revision: context.analyzed_revision,
-        analysis_state: context.analysis_state,
-        missing_metadata_keys: context.missing_metadata_keys,
+        julie_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        schema_version: info.as_ref().and_then(|info| info.schema_version),
+        schema_state: Some(ExternalInfoSchemaState::Current),
+        extract_contract_version: Some(EXTRACT_CONTRACT_VERSION),
+        hash_algorithm: Some(EXTRACT_HASH_ALGORITHM.to_string()),
+        revision: info.as_ref().and_then(|info| info.latest_revision),
+        analyzed_revision: info
+            .as_ref()
+            .and_then(|info| info.metadata.as_ref())
+            .and_then(|metadata| metadata.analyzed_revision),
+        analysis_state: info
+            .as_ref()
+            .and_then(|info| info.metadata.as_ref())
+            .map(|metadata| metadata.analysis_state.clone()),
+        missing_metadata_keys: info
+            .as_ref()
+            .map(|info| info.missing_metadata_keys.clone())
+            .unwrap_or_default(),
         files_scanned: counts.files_scanned,
         files_updated: counts.files_updated,
         files_deleted: counts.files_deleted,
         symbols_extracted: counts.symbols_extracted,
-        files_total: context.files_total,
-        symbols_total: context.symbols_total,
-        relationships_total: context.relationships_total,
-        identifiers_total: context.identifiers_total,
-        types_total: context.types_total,
-        type_arguments_total: context.type_arguments_total,
-        literals_total: context.literals_total,
+        files_total: store
+            .reader()
+            .paths()
+            .map(|paths| paths.len() as u64)
+            .unwrap_or(0),
+        symbols_total: store.reader().symbol_count().unwrap_or(0),
+        relationships_total: count_table(store, "relationships"),
+        identifiers_total: count_table(store, "identifiers"),
+        types_total: count_table(store, "types"),
+        type_arguments_total: count_table(store, "type_arguments"),
+        literals_total: count_table(store, "literals"),
         errors: Vec::new(),
     })
 }
 
-#[derive(Default)]
-struct ReportDbContext {
-    schema_version: Option<i32>,
-    julie_version: Option<String>,
-    schema_state: Option<ExternalInfoSchemaState>,
-    extract_contract_version: Option<i32>,
-    hash_algorithm: Option<String>,
-    revision: Option<i64>,
-    analyzed_revision: Option<i64>,
-    analysis_state: Option<String>,
-    missing_metadata_keys: Vec<String>,
-    files_total: u64,
-    symbols_total: u64,
-    relationships_total: u64,
-    identifiers_total: u64,
-    types_total: u64,
-    type_arguments_total: u64,
-    literals_total: u64,
-}
-
-fn report_context(
-    db: Option<&SymbolDatabase>,
-    workspace_id: Option<&str>,
-) -> Result<ReportDbContext> {
-    let Some(db) = db else {
-        return Ok(ReportDbContext::default());
-    };
-
-    let stats = db.get_stats()?;
-    let identifiers_total: i64 =
-        db.conn
-            .query_row("SELECT COUNT(*) FROM identifiers", [], |row| row.get(0))?;
-    let types_total: i64 = db
-        .conn
-        .query_row("SELECT COUNT(*) FROM types", [], |row| row.get(0))?;
-    let type_arguments_total: i64 =
-        db.conn
-            .query_row("SELECT COUNT(*) FROM type_arguments", [], |row| row.get(0))?;
-    let literals_total: i64 = db
-        .conn
-        .query_row("SELECT COUNT(*) FROM literals", [], |row| row.get(0))?;
-    let metadata = load_external_extract_metadata(db)?;
-    Ok(ReportDbContext {
-        julie_version: metadata
-            .as_ref()
-            .map(|metadata| metadata.julie_version.clone()),
-        schema_version: Some(db.get_schema_version()?),
-        schema_state: Some(ExternalInfoSchemaState::Current),
-        extract_contract_version: metadata
-            .as_ref()
-            .map(|metadata| metadata.extract_contract_version)
-            .or(Some(EXTRACT_CONTRACT_VERSION)),
-        hash_algorithm: metadata
-            .as_ref()
-            .map(|metadata| metadata.hash_algorithm.clone())
-            .or_else(|| Some(EXTRACT_HASH_ALGORITHM.to_string())),
-        revision: workspace_id
-            .map(|workspace_id| db.get_current_canonical_revision(workspace_id))
-            .transpose()?
-            .flatten(),
-        analyzed_revision: metadata
-            .as_ref()
-            .and_then(|metadata| metadata.analyzed_revision),
-        analysis_state: metadata
-            .as_ref()
-            .map(|metadata| metadata.analysis_state.clone()),
-        missing_metadata_keys: Vec::new(),
-        files_total: stats.total_files.try_into()?,
-        symbols_total: stats.total_symbols.try_into()?,
-        relationships_total: stats.total_relationships.try_into()?,
-        identifiers_total: identifiers_total.try_into()?,
-        types_total: types_total.try_into()?,
-        type_arguments_total: type_arguments_total.try_into()?,
-        literals_total: literals_total.try_into()?,
-    })
+fn count_table(store: &FactsStore, table: &str) -> u64 {
+    store
+        .conn()
+        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap_or(0)
+        .max(0) as u64
 }

@@ -6,12 +6,11 @@ use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 
 use tokio::sync::{Mutex, watch};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::info;
 
 use super::{RuntimeError, RuntimePhase};
 use crate::handler::JulieServerHandler;
 use crate::request_engine::types::WorkspaceBinding;
-use julie_core::workspace::mutation_gate::acquire_gate;
 
 /// Independent runtime representation for an active workspace.
 pub struct WorkspaceRuntime {
@@ -85,18 +84,9 @@ impl WorkspaceRuntime {
         Ok(())
     }
 
-    /// Owner startup sequence: Reconcile -> Start Watcher -> Owner
+    /// Owner startup sequence: Start Watcher -> Owner
     pub async fn promote_to_owner(self: &Arc<Self>) -> Result<(), RuntimeError> {
-        // Step 1: Reconcile canonical SQLite vs Tantivy projection lag
-        if let Err(err) = self.reconcile_projection_lag().await {
-            warn!(
-                workspace_id = %self.binding.workspace_id,
-                error = %err,
-                "Projection lag reconciliation failed during owner recovery"
-            );
-        }
-
-        // Step 2: Check fault flag before starting watcher
+        // Step 1: Check fault flag before starting watcher
         {
             let fault_guard = self.fault_flag.lock().await;
             if let Some(ref fault) = *fault_guard {
@@ -143,68 +133,6 @@ impl WorkspaceRuntime {
             "Successfully promoted to Owner"
         );
 
-        Ok(())
-    }
-
-    async fn reconcile_projection_lag(&self) -> Result<(), RuntimeError> {
-        let snapshot = match self.handler.primary_workspace_snapshot().await {
-            Ok(s) => s,
-            Err(_) => return Ok(()),
-        };
-
-        let search_index = snapshot.search_index;
-        let workspace_id = snapshot.binding.workspace_id.clone();
-        let db_arc = snapshot.database;
-
-        let web_edges_rebuilt = {
-            let mut db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-            julie_pipeline::indexing_core::web_edges::ensure_web_edges_current(
-                &mut db,
-                &workspace_id,
-            )
-            .map_err(|e| RuntimeError::Internal(format!("Web-edge reconciliation failed: {e}")))?
-        };
-        if web_edges_rebuilt {
-            info!(%workspace_id, "Web-edge projection reconciled from canonical SQLite state");
-        }
-
-        let search_index = match search_index {
-            Some(index) => index,
-            None => {
-                let tantivy_path = self
-                    .handler
-                    .workspace_tantivy_dir_for(&workspace_id)
-                    .await
-                    .map_err(|e| {
-                        RuntimeError::Internal(format!("Failed to resolve Tantivy dir: {e}"))
-                    })?;
-                std::fs::create_dir_all(&tantivy_path).map_err(|e| {
-                    RuntimeError::Internal(format!("Failed to create Tantivy dir: {e}"))
-                })?;
-                let configs = crate::search::LanguageConfigs::load_embedded();
-                let index = tokio::task::spawn_blocking(move || {
-                    julie_index::search::SearchIndex::open_or_create_with_language_configs(
-                        &tantivy_path,
-                        &configs,
-                    )
-                })
-                .await
-                .map_err(|e| RuntimeError::Internal(format!("Tantivy open join error: {e}")))?
-                .map_err(|e| {
-                    RuntimeError::Internal(format!("Failed to open/create Tantivy index: {e}"))
-                })?;
-                Arc::new(index)
-            }
-        };
-
-        let guard = acquire_gate(&workspace_id).await;
-        let coordinator = super::recovery::ProjectionRecoveryCoordinator::new(workspace_id);
-        coordinator
-            .reconcile_if_needed(&db_arc, &search_index, &guard)
-            .await
-            .map_err(|e| {
-                RuntimeError::Internal(format!("Projection reconciliation failed: {e}"))
-            })?;
         Ok(())
     }
 }

@@ -85,19 +85,7 @@ impl HealthChecker {
                     );
 
                 if let Some(ref mut record) = record_opt {
-                    let pooled_db = handler
-                        .get_pooled_database_for_workspace(&state.binding.workspace_id)
-                        .await
-                        .ok();
-
-                    let cur_rev = pooled_db
-                        .as_ref()
-                        .and_then(|db| {
-                            db.get_current_canonical_revision(&state.binding.workspace_id)
-                                .ok()
-                                .flatten()
-                        })
-                        .unwrap_or(-1);
+                    let cur_rev = -1;
                     let ready_encoder = handler
                         .checkout_store_for_workspace(
                             &state.binding.workspace_id,
