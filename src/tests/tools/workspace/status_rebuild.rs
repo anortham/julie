@@ -183,7 +183,7 @@ async fn rebuild_recreates_the_index_dir_with_the_same_symbol_count() {
         !stale_marker.exists(),
         "rebuild must delete the old index dir"
     );
-    assert!(index_dir.join("store/facts.sqlite").exists());
+    assert!(index_dir.join("facts.sqlite").exists());
 
     let after = checkouts(&handler, Some(&target)).await;
     assert_eq!(after[0].symbol_count, before);
