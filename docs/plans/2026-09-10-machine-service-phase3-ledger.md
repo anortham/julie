@@ -15,5 +15,6 @@ HEAD at last recorded row: see table. Reuse only when SHA matches current HEAD e
 | Trimmed full under 120s | `cargo xtask test full` ×3 | lead-full | 255f9b59 | pass, median 93.2s warm | 2026-09-10T18:30:00Z | no |
 | Miller `/status` | temp `JULIE_HOME`; index `/home/murphy/source/miller`; `service status --json` | lead-status | 255f9b59 | pass. rss 939,204,608; graph 330,214,728 bytes; 220,334 symbols | 2026-09-10T18:28:00Z | no |
 | Julie `/status` | temp `JULIE_HOME`; index machine-service worktree; `service status --json` | lead-status | 255f9b59 | pass. rss 257,634,304; graph 85,980,600 bytes; 56,230 symbols | 2026-09-10T18:30:00Z | no |
+| `cargo xtask test dev` at finding commit | `cargo xtask test dev` | lead-dev | cdefbcd8 | pass, 30 buckets, 49.7s warm | 2026-09-10T18:32:00Z | no |
 | Net lines vs `63cefbcf` | `tokei src crates xtask --exclude 'src/tests' --exclude '*/tests/*' -t Rust` | lead-tokei | fd707d9e | 145,367 → 106,940 (net −38,427) | 2026-09-10T17:20:00Z | no |
 | Complexity words | `sh scripts/complexity-words.sh main` | lead-complexity | ca8b7149 | SourceEditCoordinator only (ADR-0004) | 2026-09-10T17:00:00Z | no |

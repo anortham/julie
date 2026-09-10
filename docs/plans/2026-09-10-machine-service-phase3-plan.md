@@ -481,8 +481,8 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Acceptance criteria:**
 - [x] The finding states the verdict and every section 12 measurement with its command.
 - [x] `CLAUDE.md`, `AGENTS.md`, `docs/WORKSPACE_ARCHITECTURE.md`, `docs/SEARCH_FLOW.md` no longer describe `symbols.db`, `projection_states`, `canonical_revisions`, repairs, or embedding generations as product behavior (`rg -n` in the finding).
-- [ ] The ledger has rows for `dev`, `system`, `service-process`, `dogfood`, and `full` at the final HEAD, all `pass`.
-- [ ] `cargo xtask test dev` green at the final commit.
+- [x] The ledger has rows for `dev`, `system`, `service-process`, `dogfood`, and `full` at the final HEAD, all `pass`.
+- [x] `cargo xtask test dev` green at the final commit.
 
 ## Execution handoff
 
