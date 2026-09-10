@@ -621,10 +621,7 @@ async fn test_identifiers_query_returns_results() {
     let workspace = handler.get_workspace().await.unwrap().expect("workspace");
     let snapshot = workspace.store.current();
     let graph = snapshot.graph();
-    assert!(
-        graph.len() > 0,
-        "fixture snapshot should contain symbols"
-    );
+    assert!(graph.len() > 0, "fixture snapshot should contain symbols");
     let sample = graph.symbol(julie_index::graph::SymbolId(0));
     assert!(
         !graph.find_by_name(&sample.name).is_empty(),

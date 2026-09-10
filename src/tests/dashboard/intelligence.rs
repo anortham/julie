@@ -1,6 +1,6 @@
 use crate::dashboard::routes::intelligence::{
-    compute_donut_segments, format_duration_ms, format_number, generate_story_cards, kind_css_var,
-    AggregateStats, CentralitySymbol, FileHotspot,
+    AggregateStats, CentralitySymbol, FileHotspot, compute_donut_segments, format_duration_ms,
+    format_number, generate_story_cards, kind_css_var,
 };
 use std::collections::HashMap;
 

@@ -303,7 +303,6 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
     assert_eq!(file_info.language, "rust");
     assert_eq!(file_info.symbol_count, 0);
     assert_eq!(file_info.content.as_deref(), Some(content));
-
 }
 
 #[tokio::test]

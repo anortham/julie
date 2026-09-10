@@ -5,15 +5,13 @@ use anyhow::Result;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::workspace::JulieWorkspace;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::FastSearchTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::pipeline::run_indexing_pipeline;
 use crate::tools::workspace::indexing::route::IndexRoute;
-use crate::tools::workspace::indexing::state::{
-    IndexingOperation, IndexingStage,
-};
+use crate::tools::workspace::indexing::state::{IndexingOperation, IndexingStage};
+use crate::workspace::JulieWorkspace;
 use crate::workspace::mutation_gate::acquire_gate;
 
 fn workspace_tool() -> ManageWorkspaceTool {
@@ -380,6 +378,3 @@ void health_probe() {
 
     Ok(())
 }
-
-
-

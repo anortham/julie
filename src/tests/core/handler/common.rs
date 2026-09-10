@@ -4,8 +4,8 @@
 
 pub(crate) use crate::dashboard::state::DashboardEvent;
 pub(crate) use crate::handler::{JulieServerHandler, metrics_db_path_for_workspace};
-pub(crate) use crate::registry::database::DaemonDatabase;
 pub(crate) use crate::mcp_compat::CallToolResponseExt;
+pub(crate) use crate::registry::database::DaemonDatabase;
 pub(crate) use crate::tools::metrics::session::ToolCallReport;
 pub(crate) use anyhow::Result;
 pub(crate) use rmcp::ServerHandler;

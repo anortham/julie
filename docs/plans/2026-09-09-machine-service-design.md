@@ -336,7 +336,7 @@ These are gates in CI and in review. A red gate is a failed build.
 | Full suite, Linux | under 120 s wall; excludes model download, real-repo fixtures, and Windows | CI timing gate |
 | Multi-process tests | one bucket, under 20 s | CI timing gate |
 | Coordination words in new code | zero without a written exception | `scripts/complexity-words.sh` on the diff, reviewed |
-| Module size | 500 lines per file, excluding tests | a script gate |
+| Module size | no limit (removed 2026-09-10; see CLAUDE.md File Size) | none |
 | Dependencies | new crate needs a one-line justification in the PR | `cargo deny` plus review |
 | Net lines, phases 2 and 3 | each phase negative against what it deletes | `tokei` before and after, gate at phase exit |
 | Clean build time | reported after phase 1, gated at that number plus 20% afterwards | CI timing |
@@ -450,7 +450,7 @@ different then, and what is different now:
 | Hangs never root-caused | Every request has a deadline and appears on the status page with its outcome |
 
 Budget: the process model in `julie-service` (start, `service.json`, token, idle exit, shim spawn and
-forward) follows the project's 500-line per-file rule and is reported per release. The June daemon's
+forward) is reported per release (the per-file line limit was removed on 2026-09-10). The June daemon's
 equivalent was over 4,000 lines; phase 1 landed at about 740 formatted lines. The user removed the
 earlier 600-line total on 2026-09-09: the file limit exists so agents read files through the tools, not
 to cap a subsystem, and a total gamed with `#[rustfmt::skip]` proved nothing.

@@ -41,11 +41,7 @@ async fn test_tool_failure_metrics_records_failed_handler_call() -> Result<()> {
     .await;
     assert!(result.is_err(), "get_symbols should fail for invalid mode");
 
-    let db = handler
-        .daemon_db
-        .as_ref()
-        .expect("registry.db")
-        .clone();
+    let db = handler.daemon_db.as_ref().expect("registry.db").clone();
 
     let recorded = tokio::time::timeout(Duration::from_secs(1), async {
         loop {
@@ -201,11 +197,7 @@ async fn test_deep_dive_failure_metrics_records_failed_handler_call() -> Result<
         "deep_dive should fail for unknown workspace id"
     );
 
-    let db = handler
-        .daemon_db
-        .as_ref()
-        .expect("registry.db")
-        .clone();
+    let db = handler.daemon_db.as_ref().expect("registry.db").clone();
 
     let recorded = tokio::time::timeout(Duration::from_secs(1), async {
         loop {

@@ -196,10 +196,7 @@ async fn test_documentation_update_on_change() -> Result<()> {
         .await?
         .expect("Workspace initialized");
     let initial = documentation_in_path(&workspace, "API.md");
-    let initial_content = initial[0]
-        .doc_comment
-        .clone()
-        .unwrap_or_default();
+    let initial_content = initial[0].doc_comment.clone().unwrap_or_default();
     assert!(
         initial_content.contains("Version 1.0 API"),
         "Initial content should contain 'Version 1.0 API'"
@@ -302,7 +299,9 @@ async fn index_workspace(
     Ok(())
 }
 
-fn graph_symbols(workspace: &crate::workspace::JulieWorkspace) -> Vec<julie_facts::rows::SymbolRow> {
+fn graph_symbols(
+    workspace: &crate::workspace::JulieWorkspace,
+) -> Vec<julie_facts::rows::SymbolRow> {
     let snapshot = workspace.store.current();
     let graph = snapshot.graph();
     (0..graph.len())

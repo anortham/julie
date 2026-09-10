@@ -233,17 +233,8 @@ cargo test --lib build_julie_fixture -- --ignored --nocapture
 
 ## 🚨 PROJECT ORGANIZATION STANDARDS (NON-NEGOTIABLE)
 
-### File Size Limits
-**MANDATORY**: No implementation file shall exceed **500 lines**.
-
-- Implementation files: **≤ 500 lines** (target; some legacy files exceed this — refactor when touching them)
-- Test files: **≤ 1000 lines** (acceptable for comprehensive test suites)
-- **New files MUST respect these limits; existing violations should be refactored opportunistically**
-
-**Rationale**: Files larger than 500 lines:
-- Cannot be fully read by AI agents (token limits)
-- Are difficult to understand and maintain
-- Violate single responsibility principle
+### File Size
+There is no line limit on implementation or test files. The old 500-line limit (and the 600-line limit before it) existed only to keep whole-file reads small for AI agents. Julie's tools read symbols, not files, so the limit is gone. Split a file only when it mixes responsibilities, never to hit a line count.
 
 ### Test Organization
 **All tests in `src/tests/`, all fixture data in `fixtures/`**
