@@ -1,15 +1,15 @@
-use std::collections::{HashMap, HashSet};
-
-use anyhow::Result;
+use std::collections::HashMap;
 
 use super::graph::GraphExpansion;
 use super::scoring::Pivot;
+use crate::snapshot_rows::symbol_from_row;
 use julie_core::Symbol;
-use julie_core::database::SymbolDatabase;
 use julie_core::shared::NOISE_CALLEE_NAMES;
+use julie_index::graph::EdgeKind;
 use julie_index::search::scoring::is_test_path;
+use julie_index::snapshot::Snapshot;
 
-/// Pre-fetched data for building pivot entries without N+1 DB queries.
+/// Pre-fetched data for building pivot entries in one pass over the graph.
 struct PivotBatchData {
     full_symbols: HashMap<String, Symbol>,
     related_symbols: HashMap<String, (String, String)>,
@@ -17,44 +17,17 @@ struct PivotBatchData {
     outgoing_by_pivot: HashMap<String, Vec<String>>,
 }
 
-/// Batch-fetch all data needed to build pivot entries.
+/// Gather the pivot rows, their code text, and their non-structural edges.
 fn fetch_pivot_batch_data(
     pivot_ids: &[String],
     expansion: &GraphExpansion,
-    db: &SymbolDatabase,
-) -> Result<PivotBatchData> {
-    let full_symbols: HashMap<String, Symbol> = db
-        .get_symbols_by_ids(pivot_ids)?
-        .into_iter()
-        .map(|symbol| (symbol.id.clone(), symbol))
-        .collect();
-
-    let incoming_rels = db.get_relationships_to_symbols(pivot_ids)?;
-    let outgoing_rels = db.get_outgoing_relationships_for_symbols(pivot_ids)?;
-    let pivot_id_set: HashSet<String> = pivot_ids.iter().cloned().collect();
-    let pivot_symbols: Vec<Symbol> = pivot_ids
-        .iter()
-        .filter_map(|pivot_id| full_symbols.get(pivot_id).cloned())
-        .collect();
-    let identifier_edges = julie_core::database::impact_graph::identifier_incoming_edges(
-        db,
-        &pivot_symbols,
-        &pivot_id_set,
-    )?;
-
-    let mut related_ids: Vec<String> = incoming_rels
-        .iter()
-        .map(|rel| rel.from_symbol_id.clone())
-        .collect();
-    related_ids.extend(outgoing_rels.iter().map(|rel| rel.to_symbol_id.clone()));
-    related_ids.extend(
-        identifier_edges
-            .iter()
-            .map(|edge| edge.container_id.clone()),
-    );
-    related_ids.sort();
-    related_ids.dedup();
-
+    snapshot: &Snapshot,
+) -> PivotBatchData {
+    let graph = snapshot.graph();
+    let mut texts: HashMap<String, Option<String>> = HashMap::new();
+    let mut full_symbols = HashMap::new();
+    let mut incoming_by_pivot: HashMap<String, Vec<String>> = HashMap::new();
+    let mut outgoing_by_pivot: HashMap<String, Vec<String>> = HashMap::new();
     let mut related_symbols: HashMap<String, (String, String)> = expansion
         .neighbors
         .iter()
@@ -69,61 +42,67 @@ fn fetch_pivot_batch_data(
         })
         .collect();
 
-    if !related_ids.is_empty() {
-        for symbol in db.get_symbols_by_ids(&related_ids)? {
-            related_symbols
-                .entry(symbol.id.clone())
-                .or_insert((symbol.extracted.name, symbol.extracted.file_path));
-        }
-    }
+    for pivot_id in pivot_ids {
+        let Some(id) = graph.symbol_by_row_id(pivot_id) else {
+            continue;
+        };
+        let row = graph.symbol(id);
+        let text = texts
+            .entry(row.path.clone())
+            .or_insert_with(|| snapshot.file_text(&row.path).ok().flatten());
+        full_symbols.insert(pivot_id.clone(), symbol_from_row(row, text.as_deref()));
 
-    let mut incoming_by_pivot: HashMap<String, Vec<String>> = HashMap::new();
-    for rel in &incoming_rels {
-        incoming_by_pivot
-            .entry(rel.to_symbol_id.clone())
-            .or_default()
-            .push(rel.from_symbol_id.clone());
-    }
-    for edge in &identifier_edges {
-        if let Some(target_symbol_id) = &edge.target_symbol_id {
+        for &(from, kind) in graph.incoming(id) {
+            if kind == EdgeKind::Contains {
+                continue;
+            }
+            let related = graph.symbol(from);
             incoming_by_pivot
-                .entry(target_symbol_id.clone())
+                .entry(pivot_id.clone())
                 .or_default()
-                .push(edge.container_id.clone());
+                .push(related.id.clone());
+            related_symbols
+                .entry(related.id.clone())
+                .or_insert_with(|| (related.name.clone(), related.path.clone()));
+        }
+        for &(to, kind) in graph.outgoing(id) {
+            if kind == EdgeKind::Contains {
+                continue;
+            }
+            let related = graph.symbol(to);
+            outgoing_by_pivot
+                .entry(pivot_id.clone())
+                .or_default()
+                .push(related.id.clone());
+            related_symbols
+                .entry(related.id.clone())
+                .or_insert_with(|| (related.name.clone(), related.path.clone()));
         }
     }
 
-    let mut outgoing_by_pivot: HashMap<String, Vec<String>> = HashMap::new();
-    for rel in &outgoing_rels {
-        outgoing_by_pivot
-            .entry(rel.from_symbol_id.clone())
-            .or_default()
-            .push(rel.to_symbol_id.clone());
-    }
-
-    Ok(PivotBatchData {
+    PivotBatchData {
         full_symbols,
         related_symbols,
         incoming_by_pivot,
         outgoing_by_pivot,
-    })
+    }
 }
 
 /// Build PivotEntry structs from pivots, selecting content based on PivotMode.
 pub fn build_pivot_entries(
     pivots: &[Pivot],
     expansion: &GraphExpansion,
-    db: &SymbolDatabase,
+    snapshot: &Snapshot,
     allocation: &super::allocation::Allocation,
     reference_scores: &HashMap<String, f64>,
-) -> Result<Vec<super::formatting::PivotEntry>> {
+) -> Vec<super::formatting::PivotEntry> {
     use super::allocation::PivotMode;
     use super::content::{abbreviate_code, truncate_to_token_budget_with_hint};
     use super::formatting::PivotEntry;
 
     let pivot_ids: Vec<String> = pivots.iter().map(|pivot| pivot.result.id.clone()).collect();
     let per_pivot_tokens = allocation.pivot_tokens as usize / pivots.len().max(1);
-    let batch = fetch_pivot_batch_data(&pivot_ids, expansion, db)?;
+    let batch = fetch_pivot_batch_data(&pivot_ids, expansion, snapshot);
 
     let mut entries = Vec::with_capacity(pivots.len());
     for pivot in pivots {
@@ -180,7 +159,7 @@ pub fn build_pivot_entries(
         });
     }
 
-    Ok(entries)
+    entries
 }
 
 fn get_pivot_relationship_names_batched(

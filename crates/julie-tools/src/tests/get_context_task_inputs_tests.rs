@@ -2,16 +2,14 @@
 mod tests {
     use std::collections::HashMap;
 
-    use tempfile::TempDir;
+    use julie_extractors::SymbolKind;
+    use julie_facts::rows::{Span, SymbolRow};
+    use julie_index::search::index::SymbolSearchResult;
 
     use crate::get_context::pipeline::run_pipeline_with_options;
     use crate::get_context::scoring::select_pivots_with_task_signals_for_query;
     use crate::get_context::task_signals::{TaskSignals, hydrate_failing_test_links};
-    use julie_core::Symbol;
-    use julie_core::database::{FileInfo, SymbolDatabase};
-    use julie_extractors::{Relationship, RelationshipKind, SymbolKind, Visibility};
-    use julie_index::search::index::{SearchDocument, SearchIndex, SymbolSearchResult};
-    use julie_test_support::db::identifier_builder;
+    use crate::tests::get_context_tests::snapshot_fixture;
 
     fn make_result(id: &str, name: &str, file_path: &str, score: f32) -> SymbolSearchResult {
         SymbolSearchResult {
@@ -29,107 +27,40 @@ mod tests {
         }
     }
 
-    fn make_file(path: &str) -> FileInfo {
-        FileInfo {
+    fn make_row(
+        id: &str,
+        name: &str,
+        path: &str,
+        metadata: Option<serde_json::Value>,
+    ) -> SymbolRow {
+        SymbolRow {
+            id: id.to_string(),
+            blob_hash: format!("blob_{id}"),
+            ordinal: 0,
             path: path.to_string(),
             language: "rust".to_string(),
-            hash: format!("hash_{path}"),
-            size: 512,
-            last_modified: 1_700_000_000,
-            last_indexed: 0,
-            symbol_count: 1,
-            line_count: 20,
-            content: None,
-        }
-    }
-
-    fn make_symbol(id: &str, name: &str, file_path: &str, body: &str) -> Symbol {
-        Symbol {
-            extracted: julie_extractors::Symbol {
-                id: id.to_string(),
-                name: name.to_string(),
-                kind: SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: file_path.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            span: Span {
                 start_line: 1,
+                start_col: 0,
                 end_line: 6,
-                start_column: 0,
-                end_column: 0,
+                end_col: 0,
                 start_byte: 0,
-                end_byte: body.len() as u32,
-                parent_id: None,
-                signature: Some(format!("fn {}()", name)),
-                doc_comment: Some(format!("{} docs", name)),
-                visibility: Some(Visibility::Public),
-                metadata: None,
-                semantic_group: None,
-                confidence: Some(1.0),
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
+                end_byte: 0,
             },
-            code_context: Some(body.to_string()),
+            body_span: None,
+            body_hash: None,
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: None,
+            visibility: None,
+            parent_ordinal: None,
+            annotations: Vec::new(),
+            metadata: metadata.map(|value| serde_json::from_value(value).unwrap()),
+            semantic_group: None,
+            confidence: None,
+            content_type: None,
         }
-    }
-
-    fn make_relationship(
-        id: &str,
-        from_symbol_id: &str,
-        to_symbol_id: &str,
-        file_path: &str,
-    ) -> Relationship {
-        Relationship {
-            id: id.to_string(),
-            from_symbol_id: from_symbol_id.to_string(),
-            to_symbol_id: to_symbol_id.to_string(),
-            kind: RelationshipKind::Calls,
-            file_path: file_path.to_string(),
-            line_number: 2,
-            span: None,
-            reference_site_is_exact: false,
-            confidence: 1.0,
-            metadata: None,
-        }
-    }
-
-    fn setup_env(
-        symbols: &[Symbol],
-        relationships: &[Relationship],
-    ) -> (TempDir, TempDir, SymbolDatabase, SearchIndex) {
-        let db_dir = TempDir::new().unwrap();
-        let index_dir = TempDir::new().unwrap();
-        let db_path = db_dir.path().join("test.db");
-        let mut db = SymbolDatabase::new(&db_path).unwrap();
-        let index = SearchIndex::create(index_dir.path()).unwrap();
-
-        let mut seen_files = HashMap::new();
-        for symbol in symbols {
-            seen_files
-                .entry(symbol.file_path.clone())
-                .or_insert_with(|| make_file(&symbol.file_path));
-        }
-        for file in seen_files.into_values() {
-            db.store_file_info(&file).unwrap();
-        }
-
-        db.store_symbols(symbols).unwrap();
-        db.store_relationships(relationships).unwrap();
-        db.compute_reference_scores().unwrap();
-
-        for symbol in symbols {
-            index
-                .add_search_doc(&SearchDocument::for_symbol(
-                    symbol,
-                    vec![],
-                    String::new(),
-                    String::new(),
-                ))
-                .unwrap();
-        }
-        index.commit().unwrap();
-
-        (db_dir, index_dir, db, index)
     }
 
     #[test]
@@ -161,31 +92,18 @@ mod tests {
 
     #[test]
     fn test_run_pipeline_with_task_signals_adds_second_hop_when_requested() {
-        let symbols = vec![
-            make_symbol(
-                "process",
-                "process_request",
+        let (_dir, fixture) = snapshot_fixture(&[
+            (
                 "src/handler.rs",
-                "fn process_request() {\n    validate_input();\n}",
+                "fn process_request() {\n    validate_input();\n}\n",
             ),
-            make_symbol(
-                "validate",
-                "validate_input",
+            (
                 "src/validation.rs",
-                "fn validate_input() {\n    parse_payload();\n}",
+                "fn validate_input() {\n    parse_payload();\n}\n",
             ),
-            make_symbol(
-                "parse",
-                "parse_payload",
-                "src/parser.rs",
-                "fn parse_payload() {\n    true\n}",
-            ),
-        ];
-        let relationships = vec![
-            make_relationship("r1", "process", "validate", "src/handler.rs"),
-            make_relationship("r2", "validate", "parse", "src/validation.rs"),
-        ];
-        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &relationships);
+            ("src/parser.rs", "fn parse_payload() {\n    true\n}\n"),
+        ]);
+        let snapshot = fixture.snapshot();
         let signals = TaskSignals {
             entry_symbols: vec!["process_request".to_string()],
             max_hops: 2,
@@ -198,10 +116,8 @@ mod tests {
             None,
             None,
             Some("readable".to_string()),
-            &db,
-            &index,
+            &snapshot,
             None,
-            None, // precomputed_embedding
             Some(&signals),
         )
         .unwrap();
@@ -218,25 +134,24 @@ mod tests {
 
     #[test]
     fn test_run_pipeline_with_task_signals_seeds_entry_symbol_missing_from_search_results() {
-        let mut symbols = Vec::new();
-        for idx in 0..35 {
-            let name = format!("router_noise_{idx}");
-            let body = format!("fn {name}() {{\n    route_request();\n}}");
-            symbols.push(make_symbol(
-                &format!("noise_{idx}"),
-                &name,
-                &format!("src/noise_{idx}.rs"),
-                &body,
-            ));
-        }
-        symbols.push(make_symbol(
-            "target_entry",
-            "critical_entry",
-            "src/critical.rs",
-            "fn critical_entry() {\n    handle_critical_path();\n}",
+        let mut files: Vec<(String, String)> = (0..35)
+            .map(|idx| {
+                (
+                    format!("src/noise_{idx}.rs"),
+                    format!("fn router_noise_{idx}() {{\n    route_request();\n}}\n"),
+                )
+            })
+            .collect();
+        files.push((
+            "src/critical.rs".to_string(),
+            "fn critical_entry() {\n    handle_critical_path();\n}\n".to_string(),
         ));
-
-        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &[]);
+        let borrowed: Vec<(&str, &str)> = files
+            .iter()
+            .map(|(path, content)| (path.as_str(), content.as_str()))
+            .collect();
+        let (_dir, fixture) = snapshot_fixture(&borrowed);
+        let snapshot = fixture.snapshot();
         let signals = TaskSignals {
             entry_symbols: vec!["crate::critical_entry".to_string()],
             ..TaskSignals::default()
@@ -248,10 +163,8 @@ mod tests {
             None,
             None,
             Some("readable".to_string()),
-            &db,
-            &index,
+            &snapshot,
             None,
-            None, // precomputed_embedding
             Some(&signals),
         )
         .unwrap();
@@ -264,21 +177,17 @@ mod tests {
 
     #[test]
     fn test_run_pipeline_applies_file_pattern_to_task_seeded_symbols() {
-        let symbols = vec![
-            make_symbol(
-                "target_entry",
-                "critical_entry",
+        let (_dir, fixture) = snapshot_fixture(&[
+            (
                 "src/critical.rs",
-                "fn critical_entry() {\n    handle_critical_path();\n}",
+                "fn critical_entry() {\n    handle_critical_path();\n}\n",
             ),
-            make_symbol(
-                "excluded_entry",
-                "critical_entry",
+            (
                 "src/generated/critical.rs",
-                "fn critical_entry() {\n    generated_path();\n}",
+                "fn critical_entry() {\n    generated_path();\n}\n",
             ),
-        ];
-        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &[]);
+        ]);
+        let snapshot = fixture.snapshot();
         let signals = TaskSignals {
             entry_symbols: vec!["critical_entry".to_string()],
             ..TaskSignals::default()
@@ -290,10 +199,8 @@ mod tests {
             None,
             Some("src/critical.rs".to_string()),
             Some("readable".to_string()),
-            &db,
-            &index,
+            &snapshot,
             None,
-            None, // precomputed_embedding
             Some(&signals),
         )
         .unwrap();
@@ -310,13 +217,11 @@ mod tests {
 
     #[test]
     fn test_run_pipeline_seeds_edited_file_by_indexed_path_suffix() {
-        let symbols = vec![make_symbol(
-            "target_entry",
-            "critical_entry",
+        let (_dir, fixture) = snapshot_fixture(&[(
             "src/critical.rs",
-            "fn critical_entry() {\n    handle_critical_path();\n}",
-        )];
-        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &[]);
+            "fn critical_entry() {\n    handle_critical_path();\n}\n",
+        )]);
+        let snapshot = fixture.snapshot();
         let signals = TaskSignals {
             edited_files: vec!["critical.rs".to_string()],
             ..TaskSignals::default()
@@ -328,10 +233,8 @@ mod tests {
             None,
             None,
             Some("readable".to_string()),
-            &db,
-            &index,
+            &snapshot,
             None,
-            None, // precomputed_embedding
             Some(&signals),
         )
         .unwrap();
@@ -344,36 +247,17 @@ mod tests {
 
     #[test]
     fn test_run_pipeline_reports_identifier_callers_in_pivot_summary() {
-        let symbols = vec![
-            make_symbol(
-                "target",
-                "BuildPipeline",
+        let (_dir, fixture) = snapshot_fixture(&[
+            (
                 "src/pipeline.rs",
-                "fn BuildPipeline() {\n    compile_steps();\n}",
+                "fn BuildPipeline() {\n    compile_steps();\n}\n",
             ),
-            make_symbol(
-                "caller",
-                "setup_handler",
+            (
                 "src/handler.rs",
-                "fn setup_handler() {\n    BuildPipeline();\n}",
+                "fn setup_handler() {\n    BuildPipeline();\n}\n",
             ),
-        ];
-        let (_db_dir, _index_dir, mut db, index) = setup_env(&symbols, &[]);
-        db.bulk_store_identifiers(
-            &[
-                identifier_builder("ident_call", "BuildPipeline", "src/handler.rs")
-                    .line(2)
-                    .column(4, 17)
-                    .bytes(0, 100)
-                    .containing_symbol_id("caller")
-                    .target_symbol_id("target")
-                    .confidence(0.95)
-                    .build(),
-            ],
-            "",
-        )
-        .unwrap();
-
+        ]);
+        let snapshot = fixture.snapshot();
         let signals = TaskSignals {
             entry_symbols: vec!["BuildPipeline".to_string()],
             ..TaskSignals::default()
@@ -385,10 +269,8 @@ mod tests {
             None,
             None,
             Some("readable".to_string()),
-            &db,
-            &index,
+            &snapshot,
             None,
-            None, // precomputed_embedding
             Some(&signals),
         )
         .unwrap();
@@ -401,39 +283,30 @@ mod tests {
 
     #[test]
     fn test_run_pipeline_with_task_signals_ends_with_truncation_line_for_overflow_neighbors() {
-        let mut symbols = vec![make_symbol(
-            "pivot",
-            "process_request",
-            "src/handler.rs",
-            "fn process_request() {\n    validate_0();\n}",
+        let calls: String = (0..24)
+            .map(|idx| format!("    validate_{idx}();\n"))
+            .collect();
+        let mut files: Vec<(String, String)> = vec![(
+            "src/handler.rs".to_string(),
+            format!("fn process_request() {{\n{calls}}}\n"),
         )];
-        let mut relationships = Vec::new();
-
         for idx in 0..24 {
-            let name = format!("validate_{}", idx);
-            let symbol_id = format!("neighbor_{}", idx);
-            let long_body = format!(
-                "fn {}() {{\n    // {}\n    // {}\n    // {}\n}}",
-                name,
-                "x".repeat(120),
-                "y".repeat(120),
-                "z".repeat(120)
-            );
-            symbols.push(make_symbol(
-                &symbol_id,
-                &name,
-                &format!("src/validation_{}.rs", idx),
-                &long_body,
-            ));
-            relationships.push(make_relationship(
-                &format!("r{}", idx),
-                "pivot",
-                &symbol_id,
-                "src/handler.rs",
+            files.push((
+                format!("src/validation_{idx}.rs"),
+                format!(
+                    "fn validate_{idx}() {{\n    // {}\n    // {}\n    // {}\n}}\n",
+                    "x".repeat(120),
+                    "y".repeat(120),
+                    "z".repeat(120)
+                ),
             ));
         }
-
-        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &relationships);
+        let borrowed: Vec<(&str, &str)> = files
+            .iter()
+            .map(|(path, content)| (path.as_str(), content.as_str()))
+            .collect();
+        let (_dir, fixture) = snapshot_fixture(&borrowed);
+        let snapshot = fixture.snapshot();
         let signals = TaskSignals {
             entry_symbols: vec!["process_request".to_string()],
             max_hops: 1,
@@ -446,10 +319,8 @@ mod tests {
             None,
             None,
             Some("readable".to_string()),
-            &db,
-            &index,
+            &snapshot,
             None,
-            None, // precomputed_embedding
             Some(&signals),
         )
         .unwrap();
@@ -468,14 +339,11 @@ mod tests {
 
     #[test]
     fn test_hydrate_failing_test_links_matches_linked_test_paths() {
-        let mut payment = make_symbol(
+        let payment = make_row(
             "payment",
             "process_payment",
             "src/payment.rs",
-            "fn process_payment() {\n    true\n}",
-        );
-        payment.metadata = Some(
-            serde_json::from_value(serde_json::json!({
+            Some(serde_json::json!({
                 "test_linkage": {
                     "test_count": 1,
                     "best_tier": "thorough",
@@ -484,24 +352,15 @@ mod tests {
                     "linked_test_paths": ["tests/payment_service_tests.rs"],
                     "evidence_sources": ["relationship"]
                 }
-            }))
-            .unwrap(),
+            })),
         );
-
-        let helper = make_symbol(
-            "helper",
-            "render_invoice",
-            "src/invoice.rs",
-            "fn render_invoice() {\n    true\n}",
-        );
-
-        let (_db_dir, _index_dir, db, _index) = setup_env(&[payment, helper], &[]);
+        let helper = make_row("helper", "render_invoice", "src/invoice.rs", None);
         let mut signals = TaskSignals {
             failing_test: Some("tests/payment_service_tests.rs".to_string()),
             ..TaskSignals::default()
         };
 
-        hydrate_failing_test_links(&db, &mut signals).unwrap();
+        hydrate_failing_test_links([&payment, &helper], &mut signals);
 
         assert!(
             signals.failing_test_linked_symbol_ids.contains("payment"),
@@ -515,19 +374,11 @@ mod tests {
 
     #[test]
     fn test_hydrate_failing_test_links_treats_underscores_as_literals() {
-        let mut unrelated = make_symbol(
+        let unrelated = make_row(
             "unrelated",
             "unrelated_symbol",
             "src/unrelated.rs",
-            "fn unrelated_symbol() {}",
-        );
-        // Path uses literal 'X' chars at the positions where the failing test
-        // path has '_'. Without ESCAPE on the LIKE patterns, SQLite treats the
-        // '_' in the failing-test parameter as a single-char wildcard and the
-        // 'X's would match it — a false positive. The escape pass should make
-        // the underscore a literal so this row stays unmatched.
-        unrelated.metadata = Some(
-            serde_json::from_value(serde_json::json!({
+            Some(serde_json::json!({
                 "test_linkage": {
                     "test_count": 1,
                     "best_tier": "thorough",
@@ -536,17 +387,14 @@ mod tests {
                     "linked_test_paths": ["tests/paymentXserviceXtests.rs"],
                     "evidence_sources": ["relationship"]
                 }
-            }))
-            .unwrap(),
+            })),
         );
-
-        let (_db_dir, _index_dir, db, _index) = setup_env(&[unrelated], &[]);
         let mut signals = TaskSignals {
             failing_test: Some("tests/payment_service_tests.rs".to_string()),
             ..TaskSignals::default()
         };
 
-        hydrate_failing_test_links(&db, &mut signals).unwrap();
+        hydrate_failing_test_links([&unrelated], &mut signals);
 
         assert!(
             !signals.failing_test_linked_symbol_ids.contains("unrelated"),

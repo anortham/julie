@@ -1,100 +1,22 @@
+//! `GetContextTool` over the primary snapshot served for the current primary root.
+
 use std::fs;
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use anyhow::Result;
 use tempfile::TempDir;
 
-use crate::handler::JulieServerHandler;
-use crate::registry::database::DaemonDatabase;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::get_context::GetContextTool;
-use crate::tools::workspace::ManageWorkspaceTool;
-use crate::workspace::registry::generate_workspace_id;
-
-async fn mark_index_ready(handler: &JulieServerHandler) {
-    handler
-        .indexing_status
-        .search_ready
-        .store(true, Ordering::Relaxed);
-    *handler.is_indexed.write().await = true;
-}
-
-async fn setup_rebound_primary_get_context_handler()
--> Result<(JulieServerHandler, String, std::path::PathBuf)> {
-    let temp_dir = TempDir::new()?;
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir)?;
-
-    let original_root = temp_dir.path().join("original-primary");
-    let rebound_root = temp_dir.path().join("rebound-primary");
-    fs::create_dir_all(original_root.join("src"))?;
-    fs::create_dir_all(rebound_root.join("src"))?;
-    fs::write(
-        original_root.join("src").join("old.rs"),
-        "fn old_root_only() {}\n",
-    )?;
-    fs::write(
-        rebound_root.join("src").join("rebound.rs"),
-        "/// rebound context phrase\npub fn rebound_primary_symbol() {}\n",
-    )?;
-
-    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
-
-    let original_path = original_root.canonicalize()?;
-    let original_path_str = original_path.to_string_lossy().to_string();
-    let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws =
-        Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
-
-    let handler = JulieServerHandler::new_with_shared_workspace(
-        original_ws,
-        original_path.clone(),
-        Some(Arc::clone(&daemon_db)),
-        Some(original_id.clone()),
-        None,
-    )
-    .await?;
-
-    daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
-
-    let rebound_path = rebound_root.canonicalize()?;
-    let rebound_path_str = rebound_path.to_string_lossy().to_string();
-    let rebound_id = generate_workspace_id(&rebound_path_str)?;
-    daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
-
-    let rebound_ws =
-        Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
-    let seed_handler = JulieServerHandler::new_with_shared_workspace(
-        rebound_ws,
-        rebound_path.clone(),
-        Some(Arc::clone(&daemon_db)),
-        Some(rebound_id.clone()),
-        None,
-    )
-    .await?;
-
-    ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(rebound_path_str.clone()),
-        force: Some(true),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    }
-    .call_tool(&seed_handler)
-    .await?;
-
-    handler.set_current_primary_binding(rebound_id.clone(), rebound_path.clone());
-    mark_index_ready(&handler).await;
-
-    std::mem::forget(temp_dir);
-
-    Ok((handler, rebound_id, rebound_path))
-}
 
 #[tokio::test]
 async fn test_get_context_primary_uses_rebound_current_primary_store() -> Result<()> {
-    let (handler, _rebound_id, _rebound_path) = setup_rebound_primary_get_context_handler().await?;
+    let dir = TempDir::new()?;
+    fs::create_dir_all(dir.path().join("src"))?;
+    fs::write(
+        dir.path().join("src").join("rebound.rs"),
+        "/// rebound context phrase\npub fn rebound_primary_symbol() {}\n",
+    )?;
+    let context = snapshot_context(dir.path())?;
 
     let result = GetContextTool {
         query: "rebound context phrase".to_string(),
@@ -111,7 +33,7 @@ async fn test_get_context_primary_uses_rebound_current_primary_store() -> Result
         prefer_tests: None,
         semantics: None,
     }
-    .call_tool(&handler)
+    .call_tool(&context)
     .await?;
 
     let result_text = format!("{:?}", result);

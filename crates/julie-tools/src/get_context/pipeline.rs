@@ -1,5 +1,8 @@
 //! Main pipeline: search -> rank -> expand -> allocate -> format
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use anyhow::Result;
 use tracing::debug;
 
@@ -16,8 +19,9 @@ use super::task_signals::{
 };
 use crate::navigation::resolution::WorkspaceTarget;
 use julie_context::ToolContext;
-use julie_core::database::SymbolDatabase;
 use julie_core::embeddings_contract::{EmbeddingRequestBudget, SemanticMode, TaggedQueryEmbedding};
+use julie_index::graph::{Graph, SymbolId};
+use julie_index::snapshot::Snapshot;
 
 /// Run the full get_context pipeline: search → rank → expand → allocate → format.
 pub fn run_pipeline(
@@ -26,9 +30,7 @@ pub fn run_pipeline(
     language: Option<String>,
     file_pattern: Option<String>,
     format: Option<String>,
-    db: &SymbolDatabase,
-    search_index: &julie_index::search::SearchIndex,
-    embedding_provider: Option<&dyn julie_pipeline::embeddings::EmbeddingProvider>,
+    snapshot: &Snapshot,
 ) -> Result<String> {
     run_pipeline_with_options(
         query,
@@ -36,21 +38,17 @@ pub fn run_pipeline(
         language,
         file_pattern,
         format,
-        db,
-        search_index,
-        embedding_provider,
-        None, // precomputed_embedding: caller doesn't hold the index lock
+        snapshot,
+        None,
         None,
     )
 }
 
 /// Run the get_context pipeline with full option control.
 ///
-/// `precomputed_embedding`: when the caller holds the `SearchIndex` lock it MUST
-/// call [`julie_index::search::hybrid::compute_query_embedding_for_hybrid`] before
-/// acquiring the lock and pass the result here.  This keeps the sidecar round-trip
-/// (up to 30 s) outside the locked region, preventing index starvation.  Callers
-/// that do NOT hold the lock pass `None`; the embedding is then computed on-demand.
+/// `precomputed_embedding` is the query embedding computed before the search
+/// (see [`julie_index::search::hybrid::compute_tagged_query_embedding_for_hybrid`])
+/// so the sidecar round-trip (up to 30 s) never sits on the search path.
 #[allow(clippy::too_many_arguments)]
 pub fn run_pipeline_with_options(
     query: &str,
@@ -58,9 +56,7 @@ pub fn run_pipeline_with_options(
     language: Option<String>,
     file_pattern: Option<String>,
     format: Option<String>,
-    db: &SymbolDatabase,
-    search_index: &julie_index::search::SearchIndex,
-    embedding_provider: Option<&dyn julie_pipeline::embeddings::EmbeddingProvider>,
+    snapshot: &Snapshot,
     precomputed_embedding: Option<TaggedQueryEmbedding>,
     task_signals: Option<&TaskSignals>,
 ) -> Result<String> {
@@ -70,13 +66,24 @@ pub fn run_pipeline_with_options(
         language,
         file_pattern,
         format,
-        db,
-        search_index,
-        embedding_provider,
+        snapshot,
         precomputed_embedding,
         task_signals,
         SemanticMode::Auto,
     )
+}
+
+fn reference_scores<'a>(
+    graph: &Graph,
+    ids: impl IntoIterator<Item = &'a str>,
+) -> HashMap<String, f64> {
+    ids.into_iter()
+        .filter_map(|id| {
+            graph
+                .symbol_by_row_id(id)
+                .map(|symbol| (id.to_string(), graph.reference_score(symbol)))
+        })
+        .collect()
 }
 
 /// Run the get_context pipeline with explicit semantic mode control.
@@ -87,9 +94,7 @@ pub fn run_pipeline_with_mode(
     language: Option<String>,
     file_pattern: Option<String>,
     format: Option<String>,
-    db: &SymbolDatabase,
-    search_index: &julie_index::search::SearchIndex,
-    embedding_provider: Option<&dyn julie_pipeline::embeddings::EmbeddingProvider>,
+    snapshot: &Snapshot,
     precomputed_embedding: Option<TaggedQueryEmbedding>,
     task_signals: Option<&TaskSignals>,
     semantic_mode: SemanticMode,
@@ -99,8 +104,12 @@ pub fn run_pipeline_with_mode(
     use super::formatting::{ContextData, format_context_with_mode};
     use julie_index::search::index::SearchFilter;
 
+    let graph = snapshot.graph();
     let mut resolved_signals = task_signals.cloned().unwrap_or_default();
-    hydrate_failing_test_links(db, &mut resolved_signals)?;
+    hydrate_failing_test_links(
+        (0..graph.len() as u32).map(|index| graph.symbol(SymbolId(index))),
+        &mut resolved_signals,
+    );
 
     let filter = SearchFilter {
         language,
@@ -109,30 +118,21 @@ pub fn run_pipeline_with_mode(
         exclude_tests: false,
     };
     let profile = julie_index::search::weights::SearchWeightProfile::get_context();
-    let effective_embedding = match precomputed_embedding {
-        Some(t) => Some(t),
-        None if semantic_mode != SemanticMode::Off => {
-            julie_index::search::hybrid::compute_tagged_query_embedding_for_hybrid(
-                query,
-                embedding_provider,
-                &EmbeddingRequestBudget::default(),
-                db,
-                semantic_mode,
-            )?
-        }
-        None => None,
-    };
     let mut search_results = julie_index::search::hybrid::hybrid_search_with_tagged_embedding(
+        snapshot,
         query,
         &filter,
         30,
-        search_index,
-        db,
-        effective_embedding,
+        precomputed_embedding,
         Some(profile),
         semantic_mode,
     )?;
-    merge_task_signal_seed_results(&mut search_results.results, db, &filter, &resolved_signals)?;
+    merge_task_signal_seed_results(
+        &mut search_results.results,
+        graph,
+        &filter,
+        &resolved_signals,
+    );
     let output_format = super::formatting::OutputFormat::from_option(format.as_deref());
 
     if search_results.results.is_empty() {
@@ -146,12 +146,13 @@ pub fn run_pipeline_with_mode(
         return Ok(format_context_with_mode(&empty_data, output_format));
     }
 
-    let result_ids: Vec<&str> = search_results
-        .results
-        .iter()
-        .map(|result| result.id.as_str())
-        .collect();
-    let ref_scores = db.get_reference_scores(&result_ids)?;
+    let ref_scores = reference_scores(
+        graph,
+        search_results
+            .results
+            .iter()
+            .map(|result| result.id.as_str()),
+    );
     let pivots = if resolved_signals.is_empty() {
         super::scoring::select_pivots_with_code_fallback_for_query(
             query,
@@ -167,7 +168,7 @@ pub fn run_pipeline_with_mode(
         )
     };
 
-    let expansion = expand_graph(&pivots, db)?;
+    let expansion = expand_graph(&pivots, graph);
     let pivot_id_set: std::collections::HashSet<&str> = pivots
         .iter()
         .map(|pivot| pivot.result.id.as_str())
@@ -177,7 +178,10 @@ pub fn run_pipeline_with_mode(
         if second_hop_seeds.is_empty() {
             expansion
         } else {
-            merge_expansions(expansion, expand_graph_from_symbols(&second_hop_seeds, db)?)
+            merge_expansions(
+                expansion,
+                expand_graph_from_symbols(&second_hop_seeds, graph),
+            )
         }
     } else {
         expansion
@@ -192,13 +196,15 @@ pub fn run_pipeline_with_mode(
     };
     let allocation = budget.allocate(pivots.len(), expansion.neighbors.len());
 
-    let pivot_ids: Vec<&str> = pivots
-        .iter()
-        .map(|pivot| pivot.result.id.as_str())
-        .collect();
-    let pivot_ref_scores = db.get_reference_scores(&pivot_ids)?;
-    let pivot_entries =
-        build_pivot_entries(&pivots, &expansion, db, &allocation, &pivot_ref_scores)?;
+    let pivot_ref_scores =
+        reference_scores(graph, pivots.iter().map(|pivot| pivot.result.id.as_str()));
+    let pivot_entries = build_pivot_entries(
+        &pivots,
+        &expansion,
+        snapshot,
+        &allocation,
+        &pivot_ref_scores,
+    );
 
     let neighbor_output = build_neighbor_entries(
         &expansion,
@@ -216,7 +222,7 @@ pub fn run_pipeline_with_mode(
     Ok(format_context_with_mode(&context_data, output_format))
 }
 
-/// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
+/// Handler entry point: resolves the workspace, takes its snapshot, delegates to run_pipeline.
 pub async fn run(tool: &GetContextTool, handler: &dyn ToolContext) -> Result<String> {
     let workspace_target = handler
         .resolve_workspace_target(tool.workspace.as_deref())
@@ -251,102 +257,37 @@ pub async fn run_with_target_and_budget(
     let file_pattern = tool.file_pattern.clone();
     let format = tool.format.clone();
     let task_signals = TaskSignals::from_tool(tool);
-
     let semantic_mode = tool.semantics.unwrap_or(SemanticMode::Auto);
 
-    match workspace_target {
-        WorkspaceTarget::Target(target_workspace_id) => {
-            debug!("get_context: using workspace {}", target_workspace_id);
-
-            // Pooled DB: read-only, no mutation gate required.
-            let pooled_db = handler
-                .get_pooled_database_for_workspace(&target_workspace_id)
-                .await?;
-            let si_arc = handler
-                .get_search_index_for_workspace(&target_workspace_id)
-                .await?;
-            let embedding_provider = handler.embedding_provider().await;
-            let budget_clone = budget.clone();
-
-            let result = tokio::task::spawn_blocking(move || -> Result<String> {
-                let pooled_db = pooled_db.into_read_snapshot()?;
-                let si = si_arc.ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "No search index for workspace. Run manage_workspace(operation=\"refresh\") first."
-                    )
-                })?;
-                // Compute embedding before searching.
-                // The sidecar RPC can take up to 30 s; hybrid search must not
-                // serialize readers behind an outer SearchIndex mutex.
-                let precomputed_embedding = if semantic_mode == SemanticMode::Off {
-                    None
-                } else {
-                    julie_index::search::hybrid::compute_tagged_query_embedding_for_hybrid(
-                        &query,
-                        embedding_provider.as_deref(),
-                        &budget_clone,
-                        &pooled_db,
-                        semantic_mode,
-                    )?
-                };
-                let index = si;
-                run_pipeline_with_mode(
-                    &query,
-                    max_tokens,
-                    language,
-                    file_pattern,
-                    format,
-                    &pooled_db,
-                    &index,
-                    None, // provider already consumed above; precomputed_embedding carries the result
-                    precomputed_embedding,
-                    Some(&task_signals),
-                    semantic_mode,
-                )
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
-
-            Ok(result)
-        }
-        WorkspaceTarget::Primary => {
-            let (db, search_index) = handler.primary_pooled_database_and_search_index().await?;
-            let embedding_provider = handler.embedding_provider().await;
-            let budget_clone = budget.clone();
-
-            let result = tokio::task::spawn_blocking(move || -> Result<String> {
-                let db = db.into_read_snapshot()?;
-                // Compute embedding before searching (sidecar RPC can take tens of seconds).
-                let precomputed_embedding = if semantic_mode == SemanticMode::Off {
-                    None
-                } else {
-                    julie_index::search::hybrid::compute_tagged_query_embedding_for_hybrid(
-                        &query,
-                        embedding_provider.as_deref(),
-                        &budget_clone,
-                        &db,
-                        semantic_mode,
-                    )?
-                };
-                let index = search_index;
-                run_pipeline_with_mode(
-                    &query,
-                    max_tokens,
-                    language,
-                    file_pattern,
-                    format,
-                    &db,
-                    &index,
-                    None, // provider already consumed above; precomputed_embedding carries the result
-                    precomputed_embedding,
-                    Some(&task_signals),
-                    semantic_mode,
-                )
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
-
-            Ok(result)
-        }
+    if let WorkspaceTarget::Target(target_workspace_id) = &workspace_target {
+        debug!("get_context: using workspace {}", target_workspace_id);
     }
+    let snapshot: Arc<Snapshot> = handler.snapshot(&workspace_target).await?;
+    let embedding_provider = handler.embedding_provider().await;
+
+    tokio::task::spawn_blocking(move || -> Result<String> {
+        let precomputed_embedding = if semantic_mode == SemanticMode::Off {
+            None
+        } else {
+            julie_index::search::hybrid::compute_tagged_query_embedding_for_hybrid(
+                &query,
+                embedding_provider.as_deref(),
+                &budget,
+                semantic_mode,
+            )?
+        };
+        run_pipeline_with_mode(
+            &query,
+            max_tokens,
+            language,
+            file_pattern,
+            format,
+            &snapshot,
+            precomputed_embedding,
+            Some(&task_signals),
+            semantic_mode,
+        )
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))?
 }

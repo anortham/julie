@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::{Result, anyhow};
-
 use super::scoring::Pivot;
+use crate::snapshot_rows::to_symbol;
 use julie_core::Symbol;
-use julie_core::database::SymbolDatabase;
-use julie_extractors::{RelationshipKind, SymbolKind};
+use julie_extractors::RelationshipKind;
+use julie_index::graph::{EdgeKind, Graph, SymbolId};
 
 /// Direction of a neighbor relative to the pivot symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,128 +29,64 @@ pub struct GraphExpansion {
 }
 
 /// Expand pivots into a graph of related neighbor symbols.
-pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpansion> {
-    let pivot_symbols: Vec<Symbol> = pivots
+pub fn expand_graph(pivots: &[Pivot], graph: &Graph) -> GraphExpansion {
+    let ids: Vec<SymbolId> = pivots
         .iter()
-        .map(|pivot| {
-            let kind = SymbolKind::try_from_string(&pivot.result.kind).ok_or_else(|| {
-                anyhow!(
-                    "unknown pivot symbol kind in get_context graph: {}",
-                    pivot.result.kind
-                )
-            })?;
-            Ok(Symbol {
-                extracted: julie_extractors::Symbol {
-                    id: pivot.result.id.clone(),
-                    name: pivot.result.name.clone(),
-                    kind,
-                    language: pivot.result.language.clone(),
-                    file_path: pivot.result.file_path.clone(),
-                    start_line: pivot.result.start_line,
-                    end_line: pivot.result.start_line,
-                    start_column: 0,
-                    end_column: 0,
-                    start_byte: 0,
-                    end_byte: 0,
-                    parent_id: None,
-                    signature: Some(pivot.result.signature.clone()),
-                    doc_comment: None,
-                    visibility: None,
-                    metadata: None,
-                    semantic_group: None,
-                    confidence: None,
-                    content_type: None,
-                    body_span: None,
-                    body_hash: None,
-                    annotations: Vec::new(),
-                },
-                code_context: None,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    expand_graph_from_symbols(&pivot_symbols, db)
+        .filter_map(|pivot| graph.symbol_by_row_id(&pivot.result.id))
+        .collect();
+    expand_graph_from_ids(&ids, graph)
 }
 
-pub fn expand_graph_from_symbols(
-    symbols: &[Symbol],
-    db: &SymbolDatabase,
-) -> Result<GraphExpansion> {
-    if symbols.is_empty() {
-        return Ok(GraphExpansion {
-            neighbors: Vec::new(),
-        });
-    }
-
-    let pivot_ids_vec: Vec<String> = symbols.iter().map(|symbol| symbol.id.clone()).collect();
-    expand_graph_from_ids(symbols, &pivot_ids_vec, db)
+pub fn expand_graph_from_symbols(symbols: &[Symbol], graph: &Graph) -> GraphExpansion {
+    let ids: Vec<SymbolId> = symbols
+        .iter()
+        .filter_map(|symbol| graph.symbol_by_row_id(&symbol.id))
+        .collect();
+    expand_graph_from_ids(&ids, graph)
 }
 
-fn expand_graph_from_ids(
-    symbols: &[Symbol],
-    pivot_ids_vec: &[String],
-    db: &SymbolDatabase,
-) -> Result<GraphExpansion> {
-    if symbols.is_empty() {
-        return Ok(GraphExpansion {
-            neighbors: Vec::new(),
-        });
+fn relationship_kind(kind: EdgeKind) -> RelationshipKind {
+    match kind {
+        EdgeKind::Calls => RelationshipKind::Calls,
+        EdgeKind::Imports => RelationshipKind::Imports,
+        EdgeKind::Implements => RelationshipKind::Implements,
+        EdgeKind::Extends => RelationshipKind::Extends,
+        EdgeKind::References | EdgeKind::Contains | EdgeKind::WebRoute | EdgeKind::SqlQuery => {
+            RelationshipKind::References
+        }
     }
+}
 
-    let pivot_ids: HashSet<String> = pivot_ids_vec.iter().cloned().collect();
-    let mut neighbor_map: HashMap<String, (RelationshipKind, NeighborDirection)> = HashMap::new();
+fn expand_graph_from_ids(pivot_ids: &[SymbolId], graph: &Graph) -> GraphExpansion {
+    let pivot_set: HashSet<SymbolId> = pivot_ids.iter().copied().collect();
+    let mut neighbor_map: HashMap<SymbolId, (RelationshipKind, NeighborDirection)> = HashMap::new();
 
-    let incoming = db.get_relationships_to_symbols(pivot_ids_vec)?;
-    for rel in incoming {
-        let neighbor_id = &rel.from_symbol_id;
-        if !pivot_ids.contains(neighbor_id) {
-            neighbor_map
-                .entry(neighbor_id.clone())
-                .or_insert_with(|| (rel.kind, NeighborDirection::Incoming));
+    for &pivot in pivot_ids {
+        for &(from, kind) in graph.incoming(pivot) {
+            if kind != EdgeKind::Contains && !pivot_set.contains(&from) {
+                neighbor_map
+                    .entry(from)
+                    .or_insert_with(|| (relationship_kind(kind), NeighborDirection::Incoming));
+            }
+        }
+    }
+    for &pivot in pivot_ids {
+        for &(to, kind) in graph.outgoing(pivot) {
+            if kind != EdgeKind::Contains && !pivot_set.contains(&to) {
+                neighbor_map
+                    .entry(to)
+                    .or_insert_with(|| (relationship_kind(kind), NeighborDirection::Outgoing));
+            }
         }
     }
 
-    let outgoing = db.get_outgoing_relationships_for_symbols(pivot_ids_vec)?;
-    for rel in outgoing {
-        let neighbor_id = &rel.to_symbol_id;
-        if !pivot_ids.contains(neighbor_id) {
-            neighbor_map
-                .entry(neighbor_id.clone())
-                .or_insert_with(|| (rel.kind, NeighborDirection::Outgoing));
-        }
-    }
-
-    // Identifier-based neighbor expansion fills in languages whose calls and
-    // type usages live in the identifiers table instead of relationships.
-    let identifier_edges =
-        julie_core::database::impact_graph::identifier_incoming_edges(db, symbols, &pivot_ids)?;
-    for edge in identifier_edges {
-        neighbor_map
-            .entry(edge.container_id)
-            .or_insert((edge.relationship_kind, NeighborDirection::Incoming));
-    }
-
-    if neighbor_map.is_empty() {
-        return Ok(GraphExpansion {
-            neighbors: Vec::new(),
-        });
-    }
-
-    let neighbor_ids: Vec<String> = neighbor_map.keys().cloned().collect();
-    let symbols = db.get_symbols_by_ids(&neighbor_ids)?;
-    let id_refs: Vec<&str> = neighbor_ids.iter().map(|s| s.as_str()).collect();
-    let ref_scores = db.get_reference_scores(&id_refs)?;
-
-    let mut neighbors: Vec<Neighbor> = symbols
+    let mut neighbors: Vec<Neighbor> = neighbor_map
         .into_iter()
-        .filter_map(|sym| {
-            let (kind, direction) = neighbor_map.remove(&sym.id)?;
-            let reference_score = ref_scores.get(&sym.id).copied().unwrap_or(0.0);
-            Some(Neighbor {
-                symbol: sym,
-                relationship_kind: kind,
-                direction,
-                reference_score,
-            })
+        .map(|(id, (kind, direction))| Neighbor {
+            symbol: to_symbol(graph, id),
+            relationship_kind: kind,
+            direction,
+            reference_score: graph.reference_score(id),
         })
         .collect();
 
@@ -165,5 +100,5 @@ fn expand_graph_from_ids(
             .then_with(|| a.symbol.id.cmp(&b.symbol.id))
     });
 
-    Ok(GraphExpansion { neighbors })
+    GraphExpansion { neighbors }
 }

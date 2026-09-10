@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::Result;
+use serde_json::Value;
 
+use crate::snapshot_rows::to_symbol;
 use julie_core::Symbol;
-use julie_core::database::SymbolDatabase;
+use julie_facts::rows::SymbolRow;
+use julie_index::graph::Graph;
 use julie_index::search::index::{SearchFilter, SymbolSearchResult};
 
 #[derive(Debug, Clone, Default)]
@@ -195,12 +197,12 @@ pub fn path_matches_signal(actual_path: &str, signal_path: &str) -> bool {
 
 pub fn merge_task_signal_seed_results(
     results: &mut Vec<SymbolSearchResult>,
-    db: &SymbolDatabase,
+    graph: &Graph,
     filter: &SearchFilter,
     signals: &TaskSignals,
-) -> Result<()> {
+) {
     if signals.is_empty() {
-        return Ok(());
+        return;
     }
 
     let top_score = results
@@ -214,7 +216,7 @@ pub fn merge_task_signal_seed_results(
         .map(|(index, result)| (result.id.clone(), index))
         .collect();
 
-    for seed in collect_task_signal_seed_symbols(db, signals)? {
+    for seed in collect_task_signal_seed_symbols(graph, signals) {
         let score = score_for_seed(seed.priority, top_score, had_search_results);
         let result = symbol_to_search_result(seed.symbol, score);
         if filter.matches_symbol_result(&result) {
@@ -227,8 +229,6 @@ pub fn merge_task_signal_seed_results(
             results.push(result);
         }
     }
-
-    Ok(())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -243,16 +243,13 @@ struct SeededSymbol {
     priority: SeedPriority,
 }
 
-fn collect_task_signal_seed_symbols(
-    db: &SymbolDatabase,
-    signals: &TaskSignals,
-) -> Result<Vec<SeededSymbol>> {
+fn collect_task_signal_seed_symbols(graph: &Graph, signals: &TaskSignals) -> Vec<SeededSymbol> {
     const MAX_FILE_SIGNAL_SEEDS_PER_FILE: usize = 12;
 
     let mut seeds: HashMap<String, SeededSymbol> = HashMap::new();
 
     for path in &signals.edited_files {
-        for symbol in symbols_for_signal_path(db, path)?
+        for symbol in symbols_for_signal_path(graph, path)
             .into_iter()
             .take(MAX_FILE_SIGNAL_SEEDS_PER_FILE)
         {
@@ -267,7 +264,7 @@ fn collect_task_signal_seed_symbols(
             .find(|(signal_path, _)| path_matches_signal(path, signal_path))
             .map(|(_, lines)| lines.as_slice())
             .unwrap_or(&[]);
-        for symbol in symbols_for_signal_path(db, path)?
+        for symbol in symbols_for_signal_path(graph, path)
             .into_iter()
             .take(MAX_FILE_SIGNAL_SEEDS_PER_FILE)
         {
@@ -286,22 +283,16 @@ fn collect_task_signal_seed_symbols(
     let mut names = signal_symbol_names(signals);
     names.sort();
     names.dedup();
-    let by_name = db.find_symbols_by_names_batch(&names)?;
     for name in &names {
-        if let Some(name_symbols) = by_name.get(name) {
-            for symbol in name_symbols {
-                merge_seed(&mut seeds, symbol.clone(), SeedPriority::Explicit);
-            }
+        for &id in graph.find_by_name(name) {
+            merge_seed(&mut seeds, to_symbol(graph, id), SeedPriority::Explicit);
         }
     }
 
-    let linked_symbol_ids: Vec<String> = signals
-        .failing_test_linked_symbol_ids
-        .iter()
-        .cloned()
-        .collect();
-    for symbol in db.get_symbols_by_ids(&linked_symbol_ids)? {
-        merge_seed(&mut seeds, symbol, SeedPriority::Explicit);
+    for linked_id in &signals.failing_test_linked_symbol_ids {
+        if let Some(id) = graph.symbol_by_row_id(linked_id) {
+            merge_seed(&mut seeds, to_symbol(graph, id), SeedPriority::Explicit);
+        }
     }
 
     let mut seed_list: Vec<SeededSymbol> = seeds.into_values().collect();
@@ -313,7 +304,7 @@ fn collect_task_signal_seed_symbols(
             .then_with(|| a.symbol.name.cmp(&b.symbol.name))
             .then_with(|| a.symbol.id.cmp(&b.symbol.id))
     });
-    Ok(seed_list)
+    seed_list
 }
 
 fn merge_seed(seeds: &mut HashMap<String, SeededSymbol>, symbol: Symbol, priority: SeedPriority) {
@@ -338,14 +329,15 @@ fn score_for_seed(priority: SeedPriority, top_score: f32, had_search_results: bo
     }
 }
 
-fn symbols_for_signal_path(db: &SymbolDatabase, path: &str) -> Result<Vec<Symbol>> {
+fn symbols_for_signal_path(graph: &Graph, path: &str) -> Vec<Symbol> {
     let mut symbols = Vec::new();
     let mut seen_ids = HashSet::new();
 
-    let mut candidate_paths: Vec<String> = db
-        .get_all_indexed_files()?
-        .into_iter()
+    let mut candidate_paths: Vec<String> = graph
+        .paths()
+        .iter()
         .filter(|indexed_path| path_matches_signal(indexed_path, path))
+        .cloned()
         .collect();
 
     if candidate_paths.is_empty() {
@@ -355,14 +347,15 @@ fn symbols_for_signal_path(db: &SymbolDatabase, path: &str) -> Result<Vec<Symbol
     candidate_paths.dedup();
 
     for candidate_path in candidate_paths {
-        for symbol in db.get_symbols_for_file(&candidate_path)? {
+        for &id in graph.symbols_in_path(&candidate_path) {
+            let symbol = to_symbol(graph, id);
             if seen_ids.insert(symbol.id.clone()) {
                 symbols.push(symbol);
             }
         }
     }
 
-    Ok(symbols)
+    symbols
 }
 
 fn signal_path_variants(path: &str) -> Vec<String> {
@@ -426,63 +419,40 @@ fn symbol_to_search_result(symbol: Symbol, score: f32) -> SymbolSearchResult {
 ///
 /// Called from the pipeline before scoring so that scoring can boost symbols
 /// whose linked tests match the failing test signal.
-pub fn hydrate_failing_test_links(db: &SymbolDatabase, signals: &mut TaskSignals) -> Result<()> {
+pub fn hydrate_failing_test_links<'a>(
+    rows: impl IntoIterator<Item = &'a SymbolRow>,
+    signals: &mut TaskSignals,
+) {
     let Some(failing_test) = signals.failing_test.clone() else {
-        return Ok(());
+        return;
     };
     let normalized_failing_test = failing_test.replace('\\', "/");
-
     let failing_test_name = failing_test
         .rsplit_once("::")
         .map(|(_, leaf)| leaf)
         .unwrap_or(failing_test.as_str());
 
-    // LIKE patterns must escape `%` and `_` so path or name segments containing
-    // those characters (e.g. `payment_service_tests.rs`) match literally instead
-    // of as wildcards. The escape convention matches `build_name_match_clause`
-    // in `src/database/identifiers.rs` and `relationships.rs`.
-    let mut stmt = db.conn.prepare(
-        "SELECT id
-         FROM symbols
-         WHERE (
-             json_extract(metadata, '$.test_linkage') IS NOT NULL
-             OR json_extract(metadata, '$.test_coverage') IS NOT NULL
-         )
-         AND (
-             EXISTS (
-                 SELECT 1
-                 FROM json_each(
-                     COALESCE(
-                         json_extract(metadata, '$.test_linkage.linked_test_paths'),
-                         json_extract(metadata, '$.test_coverage.linked_test_paths'),
-                         '[]'
-                     )
-                 ) AS linked_path
-                 WHERE linked_path.value = ?1
-                    OR linked_path.value LIKE '%' || REPLACE(REPLACE(REPLACE(?1, '\\', '\\\\'), '%', '\\%'), '_', '\\_') ESCAPE '\\'
-                    OR ?1 LIKE '%' || REPLACE(REPLACE(REPLACE(linked_path.value, '\\', '\\\\'), '%', '\\%'), '_', '\\_') ESCAPE '\\'
-             )
-             OR EXISTS (
-                 SELECT 1
-                 FROM json_each(
-                     COALESCE(
-                         json_extract(metadata, '$.test_linkage.linked_tests'),
-                         json_extract(metadata, '$.test_coverage.linked_tests'),
-                         '[]'
-                     )
-                 ) AS linked_test
-                 WHERE linked_test.value = ?2
-             )
-         )",
-    )?;
-    let rows = stmt.query_map(
-        rusqlite::params![normalized_failing_test, failing_test_name],
-        |row| row.get::<_, String>(0),
-    )?;
-
     for row in rows {
-        signals.failing_test_linked_symbol_ids.insert(row?);
+        let Some(metadata) = row.metadata.as_ref() else {
+            continue;
+        };
+        let linked = |field: &str| -> Vec<&str> {
+            ["test_linkage", "test_coverage"]
+                .iter()
+                .find_map(|key| metadata.get(*key)?.get(field)?.as_array())
+                .map(|values| values.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default()
+        };
+        let path_matches = linked("linked_test_paths")
+            .into_iter()
+            .any(|linked_path| path_matches_signal(linked_path, &normalized_failing_test));
+        let name_matches = linked("linked_tests")
+            .into_iter()
+            .any(|linked_test| linked_test == failing_test_name);
+        if path_matches || name_matches {
+            signals
+                .failing_test_linked_symbol_ids
+                .insert(row.id.clone());
+        }
     }
-
-    Ok(())
 }

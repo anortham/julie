@@ -1,5 +1,20 @@
 //! Tests for the get_context tool — pivot selection, graph expansion, and token allocation.
 
+use julie_test_support::SnapshotFixture;
+use tempfile::TempDir;
+
+/// A snapshot fixture over `files` written into a fresh temp tree.
+pub(crate) fn snapshot_fixture(files: &[(&str, &str)]) -> (TempDir, SnapshotFixture) {
+    let dir = TempDir::new().unwrap();
+    for (path, content) in files {
+        let full = dir.path().join(path);
+        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+        std::fs::write(full, content).unwrap();
+    }
+    let fixture = SnapshotFixture::from_tree(dir.path()).unwrap();
+    (dir, fixture)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
