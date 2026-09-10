@@ -163,6 +163,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "cli".to_string(),
                 "xtask-runner".to_string(),
                 "core-database".to_string(),
+                "core-facts".to_string(),
                 "core-embeddings".to_string(),
                 "core-index".to_string(),
                 "core-pipeline".to_string(),
@@ -202,6 +203,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
             "fast".to_string(),
             vec![
                 "core-database".to_string(),
+                "core-facts".to_string(),
                 "core-fast".to_string(),
                 "service".to_string(),
             ],
@@ -213,6 +215,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "xtask-runner".to_string(),
                 "xtask-eval".to_string(),
                 "core-database".to_string(),
+                "core-facts".to_string(),
                 "core-embeddings".to_string(),
                 "core-index".to_string(),
                 "core-pipeline".to_string(),
@@ -264,13 +267,18 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
         ),
         (
             "nano".to_string(),
-            vec!["core-database".to_string(), "core-fast".to_string()],
+            vec![
+                "core-database".to_string(),
+                "core-facts".to_string(),
+                "core-fast".to_string(),
+            ],
         ),
         (
             "smoke".to_string(),
             vec![
                 "cli".to_string(),
                 "core-database".to_string(),
+                "core-facts".to_string(),
                 "core-embeddings".to_string(),
                 "service".to_string(),
                 "tools-get-context-pipeline".to_string(),

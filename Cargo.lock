@@ -1715,6 +1715,7 @@ dependencies = [
  "julie-context",
  "julie-core",
  "julie-extractors",
+ "julie-facts",
  "julie-index",
  "julie-pipeline",
  "julie-runtime",
@@ -1845,6 +1846,19 @@ dependencies = [
  "tree-sitter-xml",
  "tree-sitter-yaml",
  "tree-sitter-zig",
+]
+
+[[package]]
+name = "julie-facts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "julie-extractors",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

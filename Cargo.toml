@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "xtask", "xtask-eval", "crates/julie-core", "crates/julie-index", "crates/julie-pipeline", "crates/julie-runtime", "crates/julie-context", "crates/julie-test-support", "crates/julie-tools"]
+members = [".", "xtask", "xtask-eval", "crates/julie-core", "crates/julie-facts", "crates/julie-index", "crates/julie-pipeline", "crates/julie-runtime", "crates/julie-context", "crates/julie-test-support", "crates/julie-tools"]
 resolver = "2"
 
 [workspace.package]
@@ -35,6 +35,9 @@ julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag =
 
 # Julie leaf crate (bottom of the workspace DAG — no handler/tools/daemon deps)
 julie-core = { path = "crates/julie-core" }
+
+# Blob-keyed facts store (facts.sqlite); owns SEMANTIC_INDEX_ENGINE_VERSION
+julie-facts = { path = "crates/julie-facts" }
 
 # Julie search+analysis layer (above julie-core, below the top-level tools/handler)
 julie-index = { path = "crates/julie-index" }

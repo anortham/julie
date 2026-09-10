@@ -57,6 +57,14 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "core-facts",
+            ExpectedBucket {
+                expected_seconds: 2,
+                timeout_seconds: 60,
+                commands: &["cargo nextest run -p julie-facts"],
+            },
+        ),
+        (
             "core-embeddings",
             ExpectedBucket {
                 expected_seconds: 15,
@@ -650,6 +658,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("core database layer"),
+            },
+        ),
+        (
+            "core-facts",
+            ExpectedBucketMetadata {
+                scope_label: "core",
+                owner: "lead",
+                expensive: false,
+                notes: Some("facts store crate"),
             },
         ),
         (

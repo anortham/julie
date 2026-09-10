@@ -1,0 +1,18 @@
+[package]
+name = "julie-facts"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Blob-keyed extraction facts store (facts.sqlite): schema, one writer, one reader"
+
+[dependencies]
+julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.42.0" }
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+blake3 = "1.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3.13"
