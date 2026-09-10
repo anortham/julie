@@ -286,16 +286,11 @@ fn annotation_text_search_hydrates_hits_without_sqlite_prepend_pollution() {
             Vec::new(),
         ),
     ];
-    let (_db_dir, _index_dir, db, index) = projected_index_with_db(&symbols);
+    let (_db_dir, _index_dir, _db, index) = projected_index_with_db(&symbols);
 
-    let (results, _relaxed, pre_trunc) = definition_search_with_index_for_test(
-        "@Test",
-        &SearchFilter::default(),
-        10,
-        &index,
-        Some(&db),
-    )
-    .unwrap();
+    let (results, _relaxed, pre_trunc) =
+        definition_search_with_index_for_test("@Test", &SearchFilter::default(), 10, &index)
+            .unwrap();
 
     assert_eq!(pre_trunc, 1);
     assert_eq!(
@@ -304,9 +299,5 @@ fn annotation_text_search_hydrates_hits_without_sqlite_prepend_pollution() {
             .map(|symbol| symbol.name.as_str())
             .collect::<Vec<_>>(),
         vec!["plain_handler"]
-    );
-    assert_eq!(
-        results[0].code_context.as_deref(),
-        Some("fn plain_handler() {}")
     );
 }

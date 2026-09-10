@@ -106,10 +106,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Start from `julie_extractors::ExtractionResults` and `crates/julie-pipeline/src/indexing_core/batch.rs:46-59` (the ten collections) to define the row set. Copy `SymbolDatabase::new` pragmas (`crates/julie-core/src/database/mod.rs:120-183`: WAL, `busy_timeout(5000)`, `synchronous=NORMAL`, `foreign_keys=ON`) without sqlite-vec. Tests: `writer.rs` proves that applying the same bytes under two paths extracts once (`reused_blobs == 1`), that a second `apply` with changed bytes leaves the old blob's rows in place and repoints `paths`, that `Remove` deletes only the `paths` row, and that ordinals are stable across a reopen; `version.rs` proves `open` on a store with a different `meta.engine_version` returns `VersionMismatch` without touching the file. Follow razorback:test-driven-development.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run -p julie-facts` passes; every table in design 6.1 except `vectors` and `encoder` exists after `FactsStore::in_memory()`; no `UPDATE` or `DELETE` statement in `writer.rs` targets a table other than `paths`.
-- [ ] `FactsStore::open` on a mismatched `meta` row returns `VersionMismatch` and does not alter the file (blake3 of the file before and after is equal in the test).
-- [ ] `cargo xtask test list` shows `core-facts` in `nano`, `fast`, `smoke`, `dev`, `full`; `cargo nextest run -p xtask` passes.
-- [ ] `cargo build` green; worker scope green; committed per commit mode.
+- [x] `cargo nextest run -p julie-facts` passes; every table in design 6.1 except `vectors` and `encoder` exists after `FactsStore::in_memory()`; no `UPDATE` or `DELETE` statement in `writer.rs` targets a table other than `paths`.
+- [x] `FactsStore::open` on a mismatched `meta` row returns `VersionMismatch` and does not alter the file (blake3 of the file before and after is equal in the test).
+- [x] `cargo xtask test list` shows `core-facts` in `nano`, `fast`, `smoke`, `dev`, `full`; `cargo nextest run -p xtask` passes.
+- [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
 
@@ -136,10 +136,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Read `impact_graph.rs`, `navigation/resolution.rs`, `navigation/call_path.rs:120-224`, `deep_dive/data/graph.rs`, and `web_edges.rs` first; each contributes rules, not code. Build the graph from vectors, not hash maps of structs: `names: Vec<String>`, `by_name: HashMap<String, Vec<SymbolId>>`, CSR-style `edge_offsets: Vec<u32>` + `edges: Vec<(SymbolId, EdgeKind)>` per direction. Tests feed hand-written rows (no extractor): a three-file fixture with a definition, a call, a qualified call, an ambiguous name, a route handler; assert the edge list. Incremental test: change one file's rows, assert only edges touching it changed and the rest are pointer-equal. No `petgraph`; no new dependency.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run -p julie-index --lib tests::graph` passes with tests named for each kept rule (exact match, suffix match, ambiguity drop, priority, web route, score propagation, incremental re-resolution).
-- [ ] `Graph::load` on `fixtures/seed/a` extracted through the real extractor (one integration test in `load.rs`, under two seconds) yields at least one `Calls` edge and stats with `load_millis > 0`.
-- [ ] No file under `crates/julie-index/src/graph/` exceeds 500 lines; no section 4 word appears in the new code.
-- [ ] `cargo build` green; worker scope green; committed per commit mode.
+- [x] `cargo nextest run -p julie-index --lib tests::graph` passes with tests named for each kept rule (exact match, suffix match, ambiguity drop, priority, web route, score propagation, incremental re-resolution).
+- [x] `Graph::load` on `fixtures/seed/a` extracted through the real extractor (one integration test in `load.rs`, under two seconds) yields at least one `Calls` edge and stats with `load_millis > 0`.
+- [x] No file under `crates/julie-index/src/graph/` exceeds 500 lines; no section 4 word appears in the new code.
+- [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
 
@@ -166,10 +166,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** `CheckoutStore::apply` order: `FactsWriter::apply` (commit) -> `Graph::apply_paths` -> `from_facts::project(paths)` -> `IndexWriter::commit` -> `searcher` reload -> `Arc` swap. Readers never wait; the previous `Arc<Snapshot>` stays valid for in-flight tool calls. Test `checkout_store.rs`: apply three files, assert the snapshot's graph has their symbols and the searcher finds a name; apply a change, assert the old `Arc` still answers the old bytes and the new one answers the new; delete `tantivy/`, reopen, assert `rebuild_tantivy_if_needed` restores the document count from facts. `durable_roots.rs` lists `indexes/<id>/` after an index and accepts only `facts.sqlite`, `facts.sqlite-wal`, `facts.sqlite-shm`, `tantivy/`, and, until Task 13, `db/`. Follow razorback:test-driven-development.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run -p julie-index --lib tests::checkout_store` and `cargo nextest run -p julie-test-support` pass; `SnapshotFixture::from_tree("fixtures/seed/a")` builds in under two seconds.
-- [ ] `cargo nextest run --lib tests::service::durable_roots` passes with `facts.sqlite` and `tantivy/julie.meta.json` present after a full index.
-- [ ] `cargo nextest run -p julie-runtime --lib tests::watcher_handlers` passes with the watcher writing both stores.
-- [ ] `cargo build` green; worker scope green; committed per commit mode.
+- [x] `cargo nextest run -p julie-index --lib tests::checkout_store` and `cargo nextest run -p julie-test-support` pass; `SnapshotFixture::from_tree("fixtures/seed/a")` builds in under two seconds.
+- [x] `cargo nextest run --lib tests::service::durable_roots` passes with `facts.sqlite` and `tantivy/julie.meta.json` present after a full index.
+- [x] `cargo nextest run -p julie-runtime --lib tests::watcher_handlers` passes with the watcher writing both stores.
+- [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
 
@@ -366,7 +366,7 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Acceptance criteria:**
 - [ ] `rg -n 'embedding_generation|symbol_vectors|sqlite_vec|sqlite-vec|knn_search' crates src --glob '!**/tests/**'` returns nothing.
 - [ ] `cargo nextest run -p julie-index --lib tests::vectors`, `cargo nextest run -p julie-pipeline --lib tests::embedding`, and `cargo nextest run --lib tests::core::embedding_provider` pass.
-- [ ] `cargo build` green; worker scope green; committed per commit mode.
+- [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
 
@@ -394,7 +394,7 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Acceptance criteria:**
 - [ ] `cargo nextest run --lib tests::tools::workspace` and `cargo nextest run --lib tests::core::workspace_init` pass; the seed test copies 6 blobs and extracts 2 on `fixtures/seed/{a,b}`.
 - [ ] `rg -n 'incremental_update_atomic|bulk_store_fresh_atomic|record_indexing_repair|upsert_projection_state' src/tools/workspace src/startup*.rs src/request_engine` returns nothing.
-- [ ] `cargo build` green; worker scope green; committed per commit mode.
+- [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
 
@@ -422,7 +422,7 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Acceptance criteria:**
 - [ ] `rg -l 'SymbolDatabase|pooled_database|get_database_for_workspace|primary_pooled_database' src crates --glob '!**/tests/**' --glob '!crates/julie-core/src/database/**'` lists only `crates/julie-runtime/src/workspace/mod.rs` and `crates/julie-context/src/tool_context.rs`.
 - [ ] `cargo nextest run --lib tests::tools::editing tests::tools::refactoring tests::external_extract tests::dashboard tests::health` passes; `cargo nextest run -p julie-tools --lib tests::editing` passes.
-- [ ] `cargo build` green; worker scope green; committed per commit mode.
+- [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
 
@@ -452,7 +452,7 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 - [ ] `crates/julie-core/src/database/` does not exist; `rg -n 'SymbolDatabase|canonical_revision|projection_state|indexing_repair|index_engine_state' src crates xtask --glob '!docs/**'` returns nothing.
 - [ ] `src/tests/service/durable_roots.rs` passes with only `facts.sqlite*` and `tantivy/` under `indexes/<id>/`.
 - [ ] `cargo nextest run -p julie-core -p julie-facts -p julie-index -p julie-pipeline -p julie-runtime -p julie-tools` passes; `cargo nextest run -p xtask` passes with the bucket changes.
-- [ ] `cargo build` green; worker scope green; committed per commit mode.
+- [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
 

@@ -1957,6 +1957,7 @@ dependencies = [
  "julie-context",
  "julie-core",
  "julie-extractors",
+ "julie-facts",
  "julie-index",
  "julie-pipeline",
  "julie-test-support",

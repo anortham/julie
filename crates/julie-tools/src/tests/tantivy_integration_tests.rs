@@ -308,7 +308,6 @@ mod tests {
             &SearchFilter::default(),
             2,
             &index,
-            None,
         )
         .unwrap();
 
@@ -379,7 +378,6 @@ mod tests {
             &SearchFilter::default(),
             1,
             &index,
-            None,
         )
         .unwrap();
 

@@ -1,19 +1,12 @@
-use super::{ensure_primary_projection_current, mark_index_ready};
-use crate::handler::JulieServerHandler;
 use crate::tests::helpers::mcp::call_tool_result_text as extract_text_from_result;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::search::FastSearchTool;
-use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
-use tokio::time::{Duration, sleep};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_basic() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -37,25 +30,7 @@ println!("Processing payment");
 "#,
     )?;
 
-    // Initialize handler and index
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    sleep(Duration::from_millis(500)).await;
-    mark_index_ready(&handler).await;
-    ensure_primary_projection_current(&handler).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Post-T8: the unified path searches indexed symbol fields (name,
     // signature, doc_comment, code_body, etc.).  Plain "//" line
@@ -99,10 +74,6 @@ println!("Processing payment");
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_respects_workspace_filter() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -122,23 +93,7 @@ async fn test_fast_search_line_mode_respects_workspace_filter() -> Result<()> {
         "fn function_beta() { println!(\"beta_marker\"); }\n",
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-    sleep(Duration::from_millis(500)).await;
-    mark_index_ready(&handler).await;
-    ensure_primary_projection_current(&handler).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Test 1: Search primary workspace explicitly - should find results
     let search_primary = FastSearchTool {
@@ -186,11 +141,12 @@ async fn test_fast_search_line_mode_respects_workspace_filter() -> Result<()> {
         ..Default::default()
     };
 
-    let result = search_invalid.call_tool(&handler).await;
-    // Stdio mode silently accepts unknown workspace ids: the search
-    // then either errors at the database probe (workspace dir missing)
-    // OR returns the neutral missing-index text.  Either is acceptable
-    // — both communicate that the workspace cannot be searched.
+    let unknown_workspace = julie_test_support::FakeToolContext::new()
+        .with_workspace_id("snapshot-fixture")
+        .with_resolved_target(julie_context::WorkspaceTarget::Target(
+            "nonexistent_workspace_id".to_string(),
+        ));
+    let result = search_invalid.call_tool(&unknown_workspace).await;
     match result {
         Err(_) => { /* daemon mode would surface "no such workspace" */ }
         Ok(call_result) => {
@@ -209,10 +165,6 @@ async fn test_fast_search_line_mode_respects_workspace_filter() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_symbols_mode_default() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -228,24 +180,7 @@ User { name: "test" }
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    sleep(Duration::from_millis(500)).await;
-    mark_index_ready(&handler).await;
-    ensure_primary_projection_current(&handler).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     let search_tool = FastSearchTool {
         query: "getUserData".to_string(),

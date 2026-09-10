@@ -8,6 +8,7 @@
 // This test verifies that fast_search correctly recognizes an indexed primary workspace
 
 use crate::handler::JulieServerHandler;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::text_search::text_search_impl;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -35,37 +36,7 @@ async fn test_fast_search_recognizes_indexed_primary_workspace() -> Result<()> {
         "#,
     )?;
 
-    // Initialize the Julie server handler
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Index the workspace using ManageWorkspaceTool
-    // 🔥 CRITICAL: Must pass workspace_path explicitly - path: None uses current_dir()!
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        workspace_id: None,
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        name: None,
-        force: Some(false),
-        detailed: None,
-    };
-
-    index_tool.call_tool(&handler).await?;
-
-    // Verify workspace is actually indexed
-    if let Some(workspace) = handler.get_workspace().await? {
-        if let Some(db) = &workspace.db {
-            let db_lock = db.lock().unwrap();
-            let symbol_count = db_lock.get_symbol_count_for_workspace()?;
-            assert!(
-                symbol_count > 0,
-                "Test setup failed: workspace should have symbols indexed, got {}",
-                symbol_count
-            );
-        }
-    }
+    let handler = snapshot_context(workspace_path)?;
 
     // THE BUG: This should work but may return "Workspace not indexed yet!"
     let search_tool = FastSearchTool {
@@ -123,32 +94,8 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
         "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Index the workspace
-    // 🔥 CRITICAL: Must pass workspace_path explicitly - path: None uses current_dir()!
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        workspace_id: None,
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        name: None,
-        force: Some(false),
-        detailed: None,
-    };
-
-    index_tool.call_tool(&handler).await?;
-
-    // Get the actual workspace ID — compute directly from path (index.rs no longer
-    // writes registry.json in stdio mode; it uses generate_workspace_id for embeddings)
-    let workspace_id = if let Some(workspace) = handler.get_workspace().await? {
-        crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
-            .expect("Should be able to generate workspace ID from path")
-    } else {
-        panic!("No workspace found");
-    };
+    let handler = snapshot_context(workspace_path)?;
+    let workspace_id = "snapshot-fixture".to_string();
 
     // Search using the explicit workspace ID
     let search_tool = FastSearchTool {

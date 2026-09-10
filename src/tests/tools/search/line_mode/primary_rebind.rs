@@ -342,7 +342,8 @@ async fn test_fast_search_reference_indexing_uses_rebound_primary_storage_root()
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_primary_cold_start_reports_index_first_instead_of_swap_gap() -> Result<()>
 {
-    let handler = JulieServerHandler::new_for_test().await?;
+    let handler = julie_test_support::FakeToolContext::new()
+        .with_system_status(julie_core::health_types::SystemStatus::NotReady);
 
     let search_tool = FastSearchTool {
         query: "cold_start_primary_search_target".to_string(),

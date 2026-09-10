@@ -10,6 +10,7 @@ description = "Handler-free MCP tool implementations for Julie (search, navigati
 # Julie workspace crates
 julie-core    = { path = "../julie-core" }
 julie-index   = { path = "../julie-index" }
+julie-facts   = { path = "../julie-facts" }
 julie-pipeline = { path = "../julie-pipeline" }
 julie-context  = { path = "../julie-context" }
 

@@ -219,7 +219,7 @@ fn expansion_cap_applies_to_high_alias_nl_queries() {
 /// Acceptance criterion from Phase 1 plan: < 1.5s in debug daemon mode.
 #[test]
 fn nl_three_token_definition_search_completes_within_latency_bound() -> Result<()> {
-    let (_idx_dir, _db_dir, index, db) = build_fixture()?;
+    let (_idx_dir, _db_dir, index, _db) = build_fixture()?;
 
     let filter = SearchFilter {
         language: None,
@@ -229,17 +229,12 @@ fn nl_three_token_definition_search_completes_within_latency_bound() -> Result<(
     };
 
     // Warm up: one ignored call to open any lazy internal Tantivy readers.
-    let _ = definition_search_with_index_for_test("session", &filter, 10, &index, Some(&db))?;
+    let _ = definition_search_with_index_for_test("session", &filter, 10, &index)?;
 
     // Measured call: the NL path.
     let start = Instant::now();
-    let (results, _relaxed, _total) = definition_search_with_index_for_test(
-        "function display template",
-        &filter,
-        10,
-        &index,
-        Some(&db),
-    )?;
+    let (results, _relaxed, _total) =
+        definition_search_with_index_for_test("function display template", &filter, 10, &index)?;
     let elapsed = start.elapsed();
 
     // Correctness: the pipeline returns results (not a zero-hit crash).
@@ -369,7 +364,7 @@ fn and_or_fallback_does_not_blow_up_latency() -> Result<()> {
     // OR fallback returns both.
     let start = Instant::now();
     let (results, relaxed, _) =
-        definition_search_with_index_for_test("alpha bravo", &filter, 10, &index, Some(&db))?;
+        definition_search_with_index_for_test("alpha bravo", &filter, 10, &index)?;
     let elapsed = start.elapsed();
 
     assert!(

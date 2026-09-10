@@ -2,6 +2,7 @@ pub mod cleanup;
 pub mod db;
 pub mod env;
 pub mod mcp;
+pub mod snapshot;
 pub mod tempdir;
 pub mod workspace;
 

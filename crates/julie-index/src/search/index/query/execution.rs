@@ -1,17 +1,19 @@
 use tantivy::Term;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, TermQuery};
-use tantivy::schema::{IndexRecordOption, TantivyDocument, Value};
+use tantivy::schema::{IndexRecordOption, TantivyDocument};
 
-use super::super::{SearchFilter, SearchIndex, UnifiedHit, is_test_symbol_result};
-use super::NL_RERANK_OVERFETCH_FACTOR;
+use super::super::{SearchFilter, UnifiedHit, is_test_symbol_result};
 use super::files::promote_exact_unified_hits;
+use super::{
+    NL_RERANK_OVERFETCH_FACTOR, SearchView, filter_compound_tokens, get_text_field, get_u64_field,
+};
 use crate::search::error::Result;
 use crate::search::expansion::expand_query_terms;
 use crate::search::query::{UnifiedQueryFieldSet, build_unified_query, parse_annotation_query};
 use julie_core::glob::matches_glob_pattern;
 
-impl SearchIndex {
+impl SearchView<'_> {
     pub(super) fn search_unified_full(
         &self,
         query_str: &str,
@@ -24,7 +26,7 @@ impl SearchIndex {
         use crate::search::scoring::{classify_role, is_source_language, test_subrole};
         use julie_extractors::SymbolKind;
 
-        let f = &self.schema_fields;
+        let f = self.fields;
 
         if files_only != Some(true) {
             let parsed_annotation = parse_annotation_query(query_str);
@@ -83,7 +85,7 @@ impl SearchIndex {
         let raw_alias = self.tokenize_terms(&expanded.alias_terms);
         let raw_normalized = self.tokenize_terms(&expanded.normalized_terms);
 
-        let original_terms = Self::filter_compound_tokens(raw_original.clone());
+        let original_terms = filter_compound_tokens(raw_original.clone());
         // The compound tokens themselves: tokens that were in raw_original
         // but got stripped by `filter_compound_tokens` (i.e. snake_case
         // compounds whose parts are all present).  Add them to alias_terms
@@ -93,9 +95,9 @@ impl SearchIndex {
             .into_iter()
             .filter(|t| !original_terms.contains(t))
             .collect();
-        let mut alias_terms = Self::filter_compound_tokens(raw_alias);
+        let mut alias_terms = filter_compound_tokens(raw_alias);
         alias_terms.extend(compound_overflow);
-        let normalized_terms = Self::filter_compound_tokens(raw_normalized);
+        let normalized_terms = filter_compound_tokens(raw_normalized);
 
         if original_terms.is_empty() {
             return Ok((Vec::new(), false, 0, 0));
@@ -161,7 +163,7 @@ impl SearchIndex {
         );
         let and_query = wrap_with_doc_type(Box::new(and_inner));
 
-        let searcher = self.reader.searcher();
+        let searcher = self.searcher;
         let top_docs = searcher.search(
             &*and_query,
             &TopDocs::with_limit(candidate_limit).order_by_score(),
@@ -235,22 +237,22 @@ impl SearchIndex {
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
             hits.push(UnifiedHit {
-                id: Self::get_text_field(&doc, f.id),
-                kind: Self::get_text_field(&doc, f.kind),
-                name: Self::get_text_field(&doc, f.name),
-                path_text: Self::get_text_field(&doc, f.path_text),
-                file_path: Self::get_text_field(&doc, f.file_path),
-                basename: Self::get_text_field(&doc, f.basename),
-                signature: Self::get_text_field(&doc, f.signature),
-                doc_comment: Self::get_text_field(&doc, f.doc_comment),
-                code_body: Self::get_text_field(&doc, f.code_body),
-                pretokenized_code: Self::get_text_field(&doc, f.pretokenized_code),
-                relationship_text: Self::get_text_field(&doc, f.relationship_text),
-                language: Self::get_text_field(&doc, f.language),
-                start_line: Self::get_u64_field(&doc, f.start_line) as u32,
-                role: Self::get_text_field(&doc, f.role),
-                test_role: Self::get_text_field(&doc, f.test_role),
-                declaration_role: Self::get_text_field(&doc, f.declaration_role),
+                id: get_text_field(&doc, f.id),
+                kind: get_text_field(&doc, f.kind),
+                name: get_text_field(&doc, f.name),
+                path_text: get_text_field(&doc, f.path_text),
+                file_path: get_text_field(&doc, f.file_path),
+                basename: get_text_field(&doc, f.basename),
+                signature: get_text_field(&doc, f.signature),
+                doc_comment: get_text_field(&doc, f.doc_comment),
+                code_body: get_text_field(&doc, f.code_body),
+                pretokenized_code: get_text_field(&doc, f.pretokenized_code),
+                relationship_text: get_text_field(&doc, f.relationship_text),
+                language: get_text_field(&doc, f.language),
+                start_line: get_u64_field(&doc, f.start_line) as u32,
+                role: get_text_field(&doc, f.role),
+                test_role: get_text_field(&doc, f.test_role),
+                declaration_role: get_text_field(&doc, f.declaration_role),
                 tantivy_score: score,
             });
         }
@@ -376,16 +378,5 @@ impl SearchIndex {
 
         hits.truncate(limit);
         Ok((hits, relaxed, and_candidate_count, or_candidate_count))
-    }
-    pub(super) fn get_text_field(doc: &TantivyDocument, field: tantivy::schema::Field) -> String {
-        doc.get_first(field)
-            .and_then(|value| value.as_str().map(ToOwned::to_owned))
-            .unwrap_or_default()
-    }
-
-    pub(super) fn get_u64_field(doc: &TantivyDocument, field: tantivy::schema::Field) -> u64 {
-        doc.get_first(field)
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0)
     }
 }

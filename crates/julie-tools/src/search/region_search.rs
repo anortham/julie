@@ -61,15 +61,15 @@ impl FastSearchParams {
         }
 
         let region_filter = regions::SourceRegionFilter::parse(regions)?;
-        let line_result = line_mode::line_mode_matches_in_regions(
+        let snapshot = handler.snapshot(&workspace_target).await?;
+        let line_result = line_mode::line_mode_matches_in_snapshot(
             &self.search.query,
             &self.search.language,
             &self.search.file_pattern,
             self.search.effective_limit(),
             self.search.exclude_tests,
-            &workspace_target,
-            handler,
-            &region_filter,
+            snapshot,
+            Some(region_filter),
         )
         .await?;
         let workspace_label = match &workspace_target {

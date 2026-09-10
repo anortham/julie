@@ -8,12 +8,11 @@ use std::sync::Arc;
 use tracing::debug;
 
 use crate::navigation::resolution::WorkspaceTarget;
-use julie_core::database::SymbolDatabase;
-use julie_extractors::SourceRegion;
 use julie_index::search::SearchFilter;
-use julie_index::search::index::SearchIndex;
+use julie_index::search::index::SearchView;
 use julie_index::search::query_parse::{QueryIntent, parse_query};
 use julie_index::search::scoring::{is_nl_like_query, is_test_path};
+use julie_index::snapshot::Snapshot;
 
 use julie_context::ToolContext;
 
@@ -233,8 +232,24 @@ where
     }
 }
 
+fn allowed_line_ranges(
+    snapshot: &Snapshot,
+    path: &str,
+    filter: &SourceRegionFilter,
+) -> Result<Vec<(u32, u32)>> {
+    Ok(snapshot
+        .facts()?
+        .reader()
+        .source_regions_for_path(path)?
+        .into_iter()
+        .filter(|region| filter.0.iter().any(|kind| kind.as_str() == region.kind))
+        .map(|region| (region.span.start_line, region.span.end_line))
+        .collect())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn collect_matches_from_file_results(
-    db: &julie_core::database::SymbolDatabase,
+    snapshot: &Snapshot,
     file_results: &[julie_index::search::index::UnifiedHit],
     file_pattern: Option<&str>,
     language: Option<&str>,
@@ -276,11 +291,11 @@ fn collect_matches_from_file_results(
             continue;
         }
 
-        match db.get_file_content(&file_result.file_path)? {
+        match snapshot.file_text(&file_result.file_path)? {
             Some(content) => {
                 let before = matches.len();
                 let allowed_regions = region_filter
-                    .map(|filter| db.get_source_regions_for_file(&file_result.file_path, &filter.0))
+                    .map(|filter| allowed_line_ranges(snapshot, &file_result.file_path, filter))
                     .transpose()?;
                 let region_filtered = collect_line_matches_filtered(
                     &mut matches,
@@ -381,9 +396,9 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_line_mode_workspace_fetch(
-    db: &SymbolDatabase,
-    search_index: &Arc<SearchIndex>,
+    snapshot: &Snapshot,
     query: String,
     match_strategy: LineMatchStrategy,
     file_pattern: Option<String>,
@@ -408,12 +423,11 @@ fn run_line_mode_workspace_fetch(
 
     let (matches, stage_counts, file_pattern_diagnostic) = run_line_mode_fetch_loop(
         |fetch_limit| {
-            let index = search_index;
             // Ask Tantivy for file rows only. Filtering a mixed unified result
             // after the fact lets symbol-heavy workspaces starve line mode of
             // file candidates before scoped widening can do its job.
-            let (file_hits, _relaxed) =
-                index.search_unified_kind_filtered(&query, &filter, fetch_limit, true)?;
+            let (file_hits, _relaxed) = SearchView::new(snapshot.searcher(), snapshot.fields())
+                .search_unified_kind_filtered(&query, &filter, fetch_limit, true)?;
             let saturated = file_hits.len() >= fetch_limit;
             Ok(LineModeCandidateWindow {
                 file_results: file_hits,
@@ -422,7 +436,7 @@ fn run_line_mode_workspace_fetch(
         },
         |file_results| {
             collect_matches_from_file_results(
-                db,
+                snapshot,
                 file_results,
                 file_pattern.as_deref(),
                 language.as_deref(),
@@ -444,9 +458,9 @@ fn run_line_mode_workspace_fetch(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_line_mode_with_scope_rescue(
-    db: &SymbolDatabase,
-    search_index: &Arc<SearchIndex>,
+    snapshot: &Snapshot,
     query: String,
     match_strategy: LineMatchStrategy,
     file_pattern: Option<String>,
@@ -456,8 +470,7 @@ fn run_line_mode_with_scope_rescue(
     region_filter: Option<&SourceRegionFilter>,
 ) -> Result<LineModeScopedOutcome> {
     let first = run_line_mode_workspace_fetch(
-        db,
-        search_index,
+        snapshot,
         query.clone(),
         match_strategy.clone(),
         file_pattern.clone(),
@@ -480,8 +493,7 @@ fn run_line_mode_with_scope_rescue(
 
     if should_rescue {
         let fallback = run_line_mode_workspace_fetch(
-            db,
-            search_index,
+            snapshot,
             query,
             match_strategy,
             None,
@@ -599,50 +611,28 @@ pub async fn line_mode_matches(
     workspace_target: &WorkspaceTarget,
     handler: &dyn ToolContext,
 ) -> Result<LineModeSearchResult> {
-    line_mode_matches_with_regions(
+    let snapshot = handler.snapshot(workspace_target).await?;
+    line_mode_matches_in_snapshot(
         query,
         language,
         file_pattern,
         limit,
         exclude_tests,
-        workspace_target,
-        handler,
+        snapshot,
         None,
     )
     .await
 }
 
-pub async fn line_mode_matches_in_regions(
+/// Grep-style line search over one snapshot. `region_filter` keeps only lines
+/// inside the requested source regions (comments, strings, ...).
+pub async fn line_mode_matches_in_snapshot(
     query: &str,
     language: &Option<String>,
     file_pattern: &Option<String>,
     limit: u32,
     exclude_tests: Option<bool>,
-    workspace_target: &WorkspaceTarget,
-    handler: &dyn ToolContext,
-    region_filter: &SourceRegionFilter,
-) -> Result<LineModeSearchResult> {
-    line_mode_matches_with_regions(
-        query,
-        language,
-        file_pattern,
-        limit,
-        exclude_tests,
-        workspace_target,
-        handler,
-        Some(region_filter.clone()),
-    )
-    .await
-}
-
-async fn line_mode_matches_with_regions(
-    query: &str,
-    language: &Option<String>,
-    file_pattern: &Option<String>,
-    limit: u32,
-    exclude_tests: Option<bool>,
-    workspace_target: &WorkspaceTarget,
-    handler: &dyn ToolContext,
+    snapshot: Arc<Snapshot>,
     region_filter: Option<SourceRegionFilter>,
 ) -> Result<LineModeSearchResult> {
     debug!("📄 Line-level search for: '{}'", query);
@@ -651,75 +641,23 @@ async fn line_mode_matches_with_regions(
     let match_strategy = line_match_strategy(query);
     let base_limit = limit.max(1) as usize;
 
-    let scoped_outcome = match workspace_target {
-        WorkspaceTarget::Primary => {
-            // Pooled DB: read-only, no mutation gate required.
-            let (pooled_db, search_index) =
-                handler.primary_pooled_database_and_search_index().await?;
-
-            let query = query.to_string();
-            let match_strategy = match_strategy.clone();
-            let file_pattern_clone = file_pattern.clone();
-            let language_clone = language.clone();
-            let region_filter_clone = region_filter.clone();
-
-            tokio::task::spawn_blocking(move || {
-                run_line_mode_with_scope_rescue(
-                    &pooled_db,
-                    &search_index,
-                    query,
-                    match_strategy,
-                    file_pattern_clone,
-                    language_clone,
-                    exclude_test_files,
-                    base_limit,
-                    region_filter_clone.as_ref(),
-                )
-            })
-            .await??
-        }
-        WorkspaceTarget::Target(workspace_id) => {
-            // Pooled DB: read-only, no mutation gate required.
-            let pooled_db = handler
-                .get_pooled_database_for_workspace(workspace_id)
-                .await?;
-            let si_arc = handler.get_search_index_for_workspace(workspace_id).await?;
-            let target_workspace_id = workspace_id.clone();
-
-            let query_clone = query.to_string();
-            let strategy = match_strategy.clone();
-            let ref_file_pattern = file_pattern.clone();
-            let ref_language = language.clone();
-            let region_filter_clone = region_filter.clone();
-
-            tokio::task::spawn_blocking(move || -> Result<LineModeScopedOutcome> {
-                let search_index = match si_arc {
-                    Some(si) => si,
-                    None => {
-                        return Err(anyhow::anyhow!(
-                            "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
-                            target_workspace_id,
-                            target_workspace_id
-                        ));
-                    }
-                };
-
-                run_line_mode_with_scope_rescue(
-                    &pooled_db,
-                    &search_index,
-                    query_clone,
-                    strategy,
-                    ref_file_pattern,
-                    ref_language,
-                    exclude_test_files,
-                    base_limit,
-                    region_filter_clone.as_ref(),
-                )
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to spawn target workspace search: {}", e))??
-        }
-    };
+    let query = query.to_string();
+    let strategy = match_strategy.clone();
+    let file_pattern = file_pattern.clone();
+    let language = language.clone();
+    let scoped_outcome = tokio::task::spawn_blocking(move || {
+        run_line_mode_with_scope_rescue(
+            &snapshot,
+            query,
+            strategy,
+            file_pattern,
+            language,
+            exclude_test_files,
+            base_limit,
+            region_filter.as_ref(),
+        )
+    })
+    .await??;
     let LineModeFetchOutcome {
         matches: all_line_matches,
         stage_counts,
@@ -730,17 +668,6 @@ async fn line_mode_matches_with_regions(
     } else {
         None
     };
-
-    // Task 5: the second-pass filter that used to live here re-ran the
-    // caller's `file_pattern`, `language`, and `exclude_tests` checks on
-    // `line_match.file_path`. That was redundant with the per-file loop
-    // above — every file reaching `collect_line_matches` has already
-    // passed those same three checks, and `collect_line_matches` copies
-    // `file_result.file_path` verbatim into each `LineMatch`. So the
-    // second pass had nothing to drop. See
-    // `tests::tools::search::line_mode_second_pass_tests` for the
-    // invariant; reintroduce a second pass only if the per-file loop
-    // ever starts producing matches from files it didn't fully validate.
 
     Ok(LineModeSearchResult {
         matches: all_line_matches,
@@ -773,11 +700,11 @@ pub fn collect_line_matches(
     collect_line_matches_filtered(destination, content, file_path, strategy, max_results, None);
 }
 
-fn line_is_in_allowed_region(line_number: usize, regions: &[SourceRegion]) -> bool {
+fn line_is_in_allowed_region(line_number: usize, regions: &[(u32, u32)]) -> bool {
     let line_number = line_number as u32;
     regions
         .iter()
-        .any(|region| region.start_line <= line_number && line_number <= region.end_line)
+        .any(|(start_line, end_line)| *start_line <= line_number && line_number <= *end_line)
 }
 
 fn collect_line_matches_filtered(
@@ -786,7 +713,7 @@ fn collect_line_matches_filtered(
     file_path: &str,
     strategy: &LineMatchStrategy,
     max_results: usize,
-    allowed_regions: Option<&[SourceRegion]>,
+    allowed_regions: Option<&[(u32, u32)]>,
 ) -> bool {
     if destination.len() >= max_results {
         return false;

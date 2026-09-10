@@ -23,45 +23,15 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::handler::JulieServerHandler;
+    use crate::tests::helpers::snapshot::snapshot_context;
     use crate::tools::navigation::resolution::WorkspaceTarget;
     use crate::tools::search::line_mode::line_mode_matches;
     use crate::tools::search::query::matches_glob_pattern;
-    use crate::tools::workspace::ManageWorkspaceTool;
+    use julie_test_support::FakeToolContext;
     use std::fs;
-    use std::sync::atomic::Ordering;
     use tempfile::TempDir;
-    use tokio::time::{Duration, sleep};
 
-    async fn mark_index_ready(handler: &JulieServerHandler) {
-        handler
-            .indexing_status
-            .search_ready
-            .store(true, Ordering::Relaxed);
-        *handler.is_indexed.write().await = true;
-    }
-
-    async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
-        let snapshot = handler
-            .primary_workspace_snapshot()
-            .await
-            .expect("primary snapshot");
-        let search_index = snapshot.search_index.expect("primary search index");
-        let mut db = snapshot
-            .database
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let idx = search_index;
-        crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
-            .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
-            .expect("projection current");
-    }
-
-    async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, JulieServerHandler) {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-        }
-
+    async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, FakeToolContext) {
         let temp_dir = TempDir::new().expect("tempdir");
         let workspace_path = temp_dir.path().to_path_buf();
 
@@ -73,29 +43,7 @@ mod tests {
             fs::write(full, content).expect("write file");
         }
 
-        let handler = JulieServerHandler::new_for_test()
-            .await
-            .expect("handler init");
-        handler
-            .initialize_workspace_with_force(
-                Some(workspace_path.to_string_lossy().to_string()),
-                true,
-            )
-            .await
-            .expect("workspace init");
-
-        let index_tool = ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(workspace_path.to_string_lossy().to_string()),
-            force: Some(false),
-            name: None,
-            workspace_id: None,
-            detailed: None,
-        };
-        index_tool.call_tool(&handler).await.expect("index");
-        sleep(Duration::from_millis(500)).await;
-        mark_index_ready(&handler).await;
-        ensure_primary_projection_current(&handler).await;
+        let handler = snapshot_context(&workspace_path).expect("snapshot fixture");
 
         (temp_dir, handler)
     }

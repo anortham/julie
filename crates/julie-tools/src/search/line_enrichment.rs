@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 
 use julie_context::ToolContext;
 use julie_core::shared::OptimizedResponse;
+use julie_index::snapshot::Snapshot;
 
 use super::formatting;
 use super::hint_formatter;
@@ -16,17 +19,18 @@ pub(crate) async fn try_line_mode_locations(
     tool: &FastSearchTool,
     handler: &dyn ToolContext,
     workspace_target: &WorkspaceTarget,
+    snapshot: &Arc<Snapshot>,
     execution: &mut SearchExecutionResult,
 ) -> Result<Option<String>> {
     let effective_limit = tool.effective_limit();
-    let line_result = line_mode::line_mode_matches(
+    let line_result = line_mode::line_mode_matches_in_snapshot(
         &tool.query,
         &tool.language,
         &tool.file_pattern,
         effective_limit,
         tool.exclude_tests,
-        workspace_target,
-        handler,
+        Arc::clone(snapshot),
+        None,
     )
     .await?;
 
@@ -129,18 +133,17 @@ pub(crate) fn should_try_line_mode_locations(
 
 pub(crate) async fn try_enrich_with_line_mode_snippets(
     tool: &FastSearchTool,
-    handler: &dyn ToolContext,
-    workspace_target: &WorkspaceTarget,
+    snapshot: &Arc<Snapshot>,
     execution: &mut SearchExecutionResult,
 ) -> Result<()> {
-    let line_result = line_mode::line_mode_matches(
+    let line_result = line_mode::line_mode_matches_in_snapshot(
         &tool.query,
         &tool.language,
         &tool.file_pattern,
         tool.effective_limit(),
         tool.exclude_tests,
-        workspace_target,
-        handler,
+        Arc::clone(snapshot),
+        None,
     )
     .await?;
 

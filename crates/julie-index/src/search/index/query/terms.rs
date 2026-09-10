@@ -3,6 +3,7 @@ use tantivy::query::{BooleanQuery, BoostQuery, Occur, TermQuery};
 use tantivy::schema::IndexRecordOption;
 
 use super::super::{SearchFilter, SearchIndex};
+use super::SearchView;
 use crate::search::schema::SchemaFields;
 use crate::search::tokenizer::split_camel_case;
 
@@ -16,7 +17,18 @@ const ANNOTATION_BODY_FIELD_BOOST: f32 = 1.0;
 const ANNOTATION_OWNER_FIELD_BOOST: f32 = 4.0;
 
 impl SearchIndex {
-    fn tokenize_query(&self, query_str: &str) -> Vec<String> {
+    /// Public wrapper around `tokenize_query` for the debug search module.
+    ///
+    /// Shows how the CodeTokenizer splits a query string into individual
+    /// search terms (CamelCase splitting, snake_case splitting, stemming, etc.).
+    pub fn tokenize_query_public(&self, query_str: &str) -> Vec<String> {
+        let searcher = self.reader.searcher();
+        SearchView::new(&searcher, &self.schema_fields).tokenize_query(query_str)
+    }
+}
+
+impl SearchView<'_> {
+    pub(super) fn tokenize_query(&self, query_str: &str) -> Vec<String> {
         use std::collections::HashSet;
 
         let mut tokenizer = self
@@ -35,14 +47,6 @@ impl SearchIndex {
             }
         }
         terms
-    }
-
-    /// Public wrapper around `tokenize_query` for the debug search module.
-    ///
-    /// Shows how the CodeTokenizer splits a query string into individual
-    /// search terms (CamelCase splitting, snake_case splitting, stemming, etc.).
-    pub fn tokenize_query_public(&self, query_str: &str) -> Vec<String> {
-        self.tokenize_query(query_str)
     }
 
     pub(super) fn tokenize_terms(&self, terms: &[String]) -> Vec<String> {
@@ -95,42 +99,42 @@ impl SearchIndex {
             }
         }
 
-        Self::filter_compound_tokens(
+        filter_compound_tokens(
             tokenized_terms
                 .into_iter()
                 .filter(|token| !compound_tokens_to_drop.contains(token))
                 .collect(),
         )
     }
+}
 
-    /// Remove compound tokens whose snake_case sub-parts are all present in the list.
-    ///
-    /// The CodeTokenizer emits the full form plus atomic sub-parts, but never
-    /// partial compounds. For example, `search_term_one` produces tokens
-    /// `[search_term_one, search, term, one]` — there is no `search_term` token.
-    ///
-    /// When a query like `"search_term"` tokenizes to `[search_term, search, term]`,
-    /// requiring ALL tokens via AND would fail because `search_term` doesn't exist
-    /// in documents indexed as `search_term_one`. By filtering out `search_term`
-    /// (whose parts `search` and `term` are already present), we get clean AND
-    /// semantics on just the atomic parts.
-    pub(super) fn filter_compound_tokens(tokens: Vec<String>) -> Vec<String> {
-        use std::collections::HashSet;
-        let token_set: HashSet<String> = tokens.iter().cloned().collect();
-        tokens
-            .into_iter()
-            .filter(|token| {
-                let parts: Vec<&str> = token.split('_').collect();
-                if parts.len() <= 1 {
-                    return true; // Not a snake_case compound, keep it
-                }
-                // Keep if any sub-part is missing from the token set
-                !parts
-                    .iter()
-                    .all(|part| !part.is_empty() && token_set.contains(*part))
-            })
-            .collect()
-    }
+/// Remove compound tokens whose snake_case sub-parts are all present in the list.
+///
+/// The CodeTokenizer emits the full form plus atomic sub-parts, but never
+/// partial compounds. For example, `search_term_one` produces tokens
+/// `[search_term_one, search, term, one]` — there is no `search_term` token.
+///
+/// When a query like `"search_term"` tokenizes to `[search_term, search, term]`,
+/// requiring ALL tokens via AND would fail because `search_term` doesn't exist
+/// in documents indexed as `search_term_one`. By filtering out `search_term`
+/// (whose parts `search` and `term` are already present), we get clean AND
+/// semantics on just the atomic parts.
+pub(super) fn filter_compound_tokens(tokens: Vec<String>) -> Vec<String> {
+    use std::collections::HashSet;
+    let token_set: HashSet<String> = tokens.iter().cloned().collect();
+    tokens
+        .into_iter()
+        .filter(|token| {
+            let parts: Vec<&str> = token.split('_').collect();
+            if parts.len() <= 1 {
+                return true; // Not a snake_case compound, keep it
+            }
+            // Keep if any sub-part is missing from the token set
+            !parts
+                .iter()
+                .all(|part| !part.is_empty() && token_set.contains(*part))
+        })
+        .collect()
 }
 
 pub(super) fn build_annotation_symbol_query(

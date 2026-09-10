@@ -1,19 +1,12 @@
-use super::{ensure_primary_projection_current, mark_index_ready};
-use crate::handler::JulieServerHandler;
 use crate::tests::helpers::mcp::call_tool_result_text as extract_text_from_result;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::search::FastSearchTool;
-use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
-use tokio::time::{Duration, sleep};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_handles_exclusion_queries() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -32,23 +25,7 @@ fn user_preferences_dashboard() {}
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-    sleep(Duration::from_millis(500)).await;
-    mark_index_ready(&handler).await;
-    ensure_primary_projection_current(&handler).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search for the shared prefix `user`.  Unified search will return
     // all three symbol-row matches; this is the post-T8 contract for
@@ -89,10 +66,6 @@ fn user_preferences_dashboard() {}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_language_filter() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -124,23 +97,7 @@ async fn test_fast_search_line_mode_language_filter() -> Result<()> {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-    sleep(Duration::from_millis(500)).await;
-    mark_index_ready(&handler).await;
-    ensure_primary_projection_current(&handler).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Test: Search with rust language filter
     let search_rust = FastSearchTool {
@@ -199,10 +156,6 @@ async fn test_fast_search_line_mode_language_filter() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_file_pattern_filter() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -223,23 +176,7 @@ async fn test_fast_search_line_mode_file_pattern_filter() -> Result<()> {
     let test_file = tests_dir.join("test.rs");
     fs::write(&test_file, "fn fixme_marker_test() {}\n")?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-    sleep(Duration::from_secs(2)).await; // Increased wait for FTS content indexing
-    mark_index_ready(&handler).await;
-    ensure_primary_projection_current(&handler).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Test: Search with src/** file pattern.  The shared prefix
     // `fixme_marker` matches both symbols; the file_pattern filter
@@ -302,10 +239,6 @@ async fn test_fast_search_line_mode_file_pattern_filter() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_exclude_tests() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -339,23 +272,7 @@ assert!(authenticate_user("admin", "secret"));
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-    sleep(Duration::from_secs(2)).await;
-    mark_index_ready(&handler).await;
-    ensure_primary_projection_current(&handler).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Test 1: Search WITHOUT exclude_tests — should find results from BOTH files
     let search_all = FastSearchTool {
@@ -414,10 +331,6 @@ assert!(authenticate_user("admin", "secret"));
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_line_mode_combined_filters() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -438,23 +351,7 @@ async fn test_fast_search_line_mode_combined_filters() -> Result<()> {
         "function combined_filter_marker_ts() { return 1; }\n",
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-    sleep(Duration::from_secs(2)).await; // Increased wait for FTS content indexing
-    mark_index_ready(&handler).await;
-    ensure_primary_projection_current(&handler).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Test: Search with BOTH language AND file_pattern filters
     let search_combined = FastSearchTool {

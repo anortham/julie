@@ -8,8 +8,8 @@ use std::collections::HashSet;
 use std::fs;
 use tempfile::TempDir;
 
-use crate::handler::JulieServerHandler;
-use crate::tools::{FastSearchTool, ManageWorkspaceTool};
+use crate::tests::helpers::snapshot::snapshot_context;
+use crate::tools::FastSearchTool;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn content_hits_have_nonzero_scores_sorted_by_score() {
@@ -30,28 +30,7 @@ async fn content_hits_have_nonzero_scores_sorted_by_score() {
     )
     .unwrap();
 
-    let handler = JulieServerHandler::new_for_test()
-        .await
-        .expect("handler for test");
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await
-        .expect("initialize workspace");
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool
-        .call_tool(&handler)
-        .await
-        .expect("index workspace");
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    let handler = snapshot_context(&workspace_path).expect("snapshot fixture");
 
     let tool = FastSearchTool {
         query: "rankmarker".to_string(),

@@ -8,10 +8,11 @@ pub use files::compact_alnum_lc;
 #[cfg(any(test, feature = "test-support"))]
 pub use files::{apply_reranker_to_content_results, apply_symbol_title_boost_to_file_results};
 pub(super) use files::{basename_for_path, normalize_file_path};
-use terms::build_annotation_symbol_query;
+use terms::{build_annotation_symbol_query, filter_compound_tokens};
 
 use tantivy::collector::TopDocs;
-use tantivy::schema::TantivyDocument;
+use tantivy::schema::{TantivyDocument, Value};
+use tantivy::{Index, Searcher};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::{ContentSearchResult, ContentSearchResults, FileSearchResult, FileSearchResults};
@@ -21,14 +22,40 @@ use super::{
 };
 use crate::search::error::Result;
 use crate::search::expansion::expand_query_terms;
+use crate::search::language_config::LanguageConfigs;
 use crate::search::query::parse_annotation_query;
+use crate::search::schema::SchemaFields;
 use crate::search::scoring::apply_important_patterns_boost;
 use julie_core::glob::matches_glob_pattern;
 
 const NL_RERANK_OVERFETCH_FACTOR: usize = 4;
 
-impl SearchIndex {
-    pub fn search_symbols_via_unified(
+/// Query-side view over one pinned Tantivy searcher. A snapshot builds it from
+/// its own searcher; `SearchIndex` builds one per call from its reader.
+pub struct SearchView<'a> {
+    index: &'a Index,
+    searcher: &'a Searcher,
+    fields: &'a SchemaFields,
+    language_configs: Option<&'a LanguageConfigs>,
+}
+
+impl<'a> SearchView<'a> {
+    pub fn new(searcher: &'a Searcher, fields: &'a SchemaFields) -> Self {
+        Self {
+            index: searcher.index(),
+            searcher,
+            fields,
+            language_configs: None,
+        }
+    }
+
+    /// Enable the per-language important-pattern boost in `search_symbols`.
+    pub fn with_language_configs(mut self, configs: Option<&'a LanguageConfigs>) -> Self {
+        self.language_configs = configs;
+        self
+    }
+
+    pub fn search_symbols(
         &self,
         query_str: &str,
         filter: &SearchFilter,
@@ -70,7 +97,7 @@ impl SearchIndex {
         // unified reranker output.  Pre-T9 this lived inside `search_symbols`;
         // moved here so the adapter preserves the same scoring layer.
         // (The NL path prior is owned by the assembly layer, not here.)
-        if let Some(configs) = &self.language_configs {
+        if let Some(configs) = self.language_configs {
             apply_important_patterns_boost(&mut results, configs);
         }
         Ok(SymbolSearchResults { results, relaxed })
@@ -87,14 +114,14 @@ impl SearchIndex {
         filter: &SearchFilter,
         limit: usize,
     ) -> Result<SymbolSearchResults> {
-        let f = &self.schema_fields;
+        let f = self.fields;
         let parsed = parse_annotation_query(query_str);
         let term_query = parsed.remaining_query.as_str();
         let expanded = expand_query_terms(term_query);
         let original_terms = self.annotation_context_terms(term_query);
-        let alias_terms = Self::filter_compound_tokens(self.tokenize_terms(&expanded.alias_terms));
+        let alias_terms = filter_compound_tokens(self.tokenize_terms(&expanded.alias_terms));
         let normalized_terms =
-            Self::filter_compound_tokens(self.tokenize_terms(&expanded.normalized_terms));
+            filter_compound_tokens(self.tokenize_terms(&expanded.normalized_terms));
 
         let query = build_annotation_symbol_query(
             &original_terms,
@@ -106,7 +133,7 @@ impl SearchIndex {
             true,
         );
 
-        let searcher = self.reader.searcher();
+        let searcher = self.searcher;
         let candidate_limit = limit.saturating_mul(NL_RERANK_OVERFETCH_FACTOR).max(500);
         let top_docs = searcher.search(
             &query,
@@ -137,17 +164,17 @@ impl SearchIndex {
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
             results.push(SymbolSearchResult {
-                id: Self::get_text_field(&doc, f.id),
-                name: Self::get_text_field(&doc, f.name),
-                signature: Self::get_text_field(&doc, f.signature),
-                doc_comment: Self::get_text_field(&doc, f.doc_comment),
-                file_path: Self::get_text_field(&doc, f.file_path),
-                kind: Self::get_text_field(&doc, f.kind),
-                language: Self::get_text_field(&doc, f.language),
-                start_line: Self::get_u64_field(&doc, f.start_line) as u32,
+                id: get_text_field(&doc, f.id),
+                name: get_text_field(&doc, f.name),
+                signature: get_text_field(&doc, f.signature),
+                doc_comment: get_text_field(&doc, f.doc_comment),
+                file_path: get_text_field(&doc, f.file_path),
+                kind: get_text_field(&doc, f.kind),
+                language: get_text_field(&doc, f.language),
+                start_line: get_u64_field(&doc, f.start_line) as u32,
                 score,
-                role: Self::get_text_field(&doc, f.role),
-                test_role: Self::get_text_field(&doc, f.test_role),
+                role: get_text_field(&doc, f.role),
+                test_role: get_text_field(&doc, f.test_role),
             });
         }
         if let Some(pattern) = filter.file_pattern.as_deref() {
@@ -158,6 +185,70 @@ impl SearchIndex {
         }
         results.truncate(limit);
         Ok(SymbolSearchResults { results, relaxed })
+    }
+
+    pub fn search_unified_with_meta(
+        &self,
+        query_str: &str,
+        filter: &SearchFilter,
+        limit: usize,
+    ) -> Result<(Vec<UnifiedHit>, bool)> {
+        let (hits, relaxed, _and, _or) =
+            self.search_unified_full(query_str, filter, limit, None)?;
+        Ok((hits, relaxed))
+    }
+
+    /// `files_only`: `true` keeps file rows, `false` keeps symbol rows. The
+    /// filter applies before reranking so the candidate set is pruned first.
+    pub fn search_unified_kind_filtered(
+        &self,
+        query_str: &str,
+        filter: &SearchFilter,
+        limit: usize,
+        files_only: bool,
+    ) -> Result<(Vec<UnifiedHit>, bool)> {
+        let (hits, relaxed, _and, _or) =
+            self.search_unified_full(query_str, filter, limit, Some(files_only))?;
+        Ok((hits, relaxed))
+    }
+
+    pub fn search_unified_with_stage_counts(
+        &self,
+        query_str: &str,
+        filter: &SearchFilter,
+        limit: usize,
+        files_only: bool,
+    ) -> Result<(Vec<UnifiedHit>, bool, usize, usize)> {
+        self.search_unified_full(query_str, filter, limit, Some(files_only))
+    }
+}
+
+pub(super) fn get_text_field(doc: &TantivyDocument, field: tantivy::schema::Field) -> String {
+    doc.get_first(field)
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .unwrap_or_default()
+}
+
+pub(super) fn get_u64_field(doc: &TantivyDocument, field: tantivy::schema::Field) -> u64 {
+    doc.get_first(field)
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0)
+}
+
+impl SearchIndex {
+    fn with_view<T>(&self, run: impl FnOnce(&SearchView<'_>) -> T) -> T {
+        let searcher = self.reader.searcher();
+        run(&SearchView::new(&searcher, &self.schema_fields)
+            .with_language_configs(self.language_configs.as_ref()))
+    }
+
+    pub fn search_symbols_via_unified(
+        &self,
+        query_str: &str,
+        filter: &SearchFilter,
+        limit: usize,
+    ) -> Result<SymbolSearchResults> {
+        self.with_view(|view| view.search_symbols(query_str, filter, limit))
     }
 
     /// `search_symbols` adapter — routes through [`search_unified`].
@@ -279,7 +370,7 @@ impl SearchIndex {
         filter: &SearchFilter,
         limit: usize,
     ) -> Result<(Vec<UnifiedHit>, bool)> {
-        self.search_unified_internal(query_str, filter, limit, None)
+        self.with_view(|view| view.search_unified_with_meta(query_str, filter, limit))
     }
 
     /// Variant that also accepts an optional kind filter applied BEFORE the
@@ -293,7 +384,9 @@ impl SearchIndex {
         limit: usize,
         files_only: bool,
     ) -> Result<(Vec<UnifiedHit>, bool)> {
-        self.search_unified_internal(query_str, filter, limit, Some(files_only))
+        self.with_view(|view| {
+            view.search_unified_kind_filtered(query_str, filter, limit, files_only)
+        })
     }
 
     /// Variant of [`search_unified`] that also reports per-stage candidate
@@ -307,18 +400,8 @@ impl SearchIndex {
         limit: usize,
         files_only: bool,
     ) -> Result<(Vec<UnifiedHit>, bool, usize, usize)> {
-        self.search_unified_full(query_str, filter, limit, Some(files_only))
-    }
-
-    fn search_unified_internal(
-        &self,
-        query_str: &str,
-        filter: &SearchFilter,
-        limit: usize,
-        files_only: Option<bool>,
-    ) -> Result<(Vec<UnifiedHit>, bool)> {
-        let (hits, relaxed, _and, _or) =
-            self.search_unified_full(query_str, filter, limit, files_only)?;
-        Ok((hits, relaxed))
+        self.with_view(|view| {
+            view.search_unified_with_stage_counts(query_str, filter, limit, files_only)
+        })
     }
 }

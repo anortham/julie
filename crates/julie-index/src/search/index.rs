@@ -18,7 +18,7 @@ pub use lifecycle::{SearchIndexOpenDisposition, SearchIndexOpenOutcome};
 #[cfg(any(test, feature = "test-support"))]
 #[allow(unused_imports)]
 pub(crate) use query::classify_file_match;
-pub use query::compact_alnum_lc;
+pub use query::{SearchView, compact_alnum_lc};
 #[cfg(any(test, feature = "test-support"))]
 pub use query::{apply_reranker_to_content_results, apply_symbol_title_boost_to_file_results};
 #[cfg(any(test, feature = "test-support"))]

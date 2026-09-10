@@ -314,13 +314,8 @@ fn definitions_path_exact_name_still_ranks_first() -> Result<()> {
 
     index.commit().unwrap();
 
-    let (symbols, _relaxed, _total) = definition_search_with_index_for_test(
-        "renderWidget",
-        &SearchFilter::default(),
-        5,
-        &index,
-        None,
-    )?;
+    let (symbols, _relaxed, _total) =
+        definition_search_with_index_for_test("renderWidget", &SearchFilter::default(), 5, &index)?;
 
     assert!(
         !symbols.is_empty(),

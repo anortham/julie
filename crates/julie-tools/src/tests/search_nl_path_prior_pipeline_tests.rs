@@ -151,7 +151,6 @@ fn definition_search_pipeline_applies_nl_path_prior_after_reranker() {
         &SearchFilter::default(),
         10,
         &index,
-        None,
     )
     .unwrap();
 

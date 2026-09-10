@@ -291,8 +291,8 @@ impl CheckoutStore {
         *self.tantivy_state.lock().unwrap_or_else(|p| p.into_inner()) = state;
     }
 
-    /// Run `write` on a fresh writer, commit, and release the writer so the
-    /// directory lock is not held between batches; then reload the reader.
+    /// Run `write` on a fresh writer, commit, and release the writer before
+    /// the next batch; then reload the reader.
     fn write_documents(&self, write: impl FnOnce(&mut IndexWriter) -> Result<()>) -> Result<()> {
         let slot = self.writes.lock().unwrap_or_else(|p| p.into_inner());
         let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;

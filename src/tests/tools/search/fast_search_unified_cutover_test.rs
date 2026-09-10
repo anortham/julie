@@ -6,40 +6,14 @@
 
 use anyhow::Result;
 use std::fs;
-use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
-use crate::handler::JulieServerHandler;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::search::FastSearchTool;
-use crate::tools::workspace::ManageWorkspaceTool;
+use julie_test_support::FakeToolContext;
 
-async fn mark_search_ready(handler: &JulieServerHandler) {
-    handler
-        .indexing_status
-        .search_ready
-        .store(true, Ordering::Relaxed);
-    *handler.is_indexed.write().await = true;
-}
-
-async fn index_workspace(workspace_path: &std::path::Path) -> Result<JulieServerHandler> {
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    mark_search_ready(&handler).await;
-    Ok(handler)
+async fn index_workspace(workspace_path: &std::path::Path) -> Result<FakeToolContext> {
+    snapshot_context(workspace_path)
 }
 
 /// A single `FastSearchTool` call for "BrowserClient" should return both

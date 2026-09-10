@@ -2,11 +2,13 @@ pub mod semantic;
 pub mod types;
 pub mod unified_pass;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 
 use julie_context::ToolContext;
+use julie_index::snapshot::Snapshot;
 
 use crate::search::backend::SearchBackend;
 use crate::search::hint_formatter;
@@ -18,7 +20,7 @@ use crate::search::trace::{
 
 pub use self::types::{SearchExecutionParams, SearchExecutionWorkspace};
 
-use self::semantic::{run_symbol_backend_pass, workspaces_have_embeddings};
+use self::semantic::{run_symbol_backend_pass, snapshot_has_embeddings};
 use self::unified_pass::run_unified_pass;
 
 pub async fn execute_search(
@@ -51,11 +53,11 @@ pub async fn execute_search(
         budget: params.budget,
     };
 
-    // T8 cutover: all traffic routes through the unified path.
-    // The per-target execute_* functions (execute_definition_search,
-    // execute_content_search, execute_file_search) still exist but are
-    // unreachable from production callers; T9 will delete them.
-    execute_search_unified(normalized_params, workspaces, handler).await
+    let workspace = workspaces
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("execute_search needs one workspace"))?;
+    let snapshot = handler.snapshot(&workspace.target).await?;
+    execute_search_unified(normalized_params, workspace, &snapshot, handler).await
 }
 
 // ---------------------------------------------------------------------------
@@ -67,7 +69,8 @@ pub async fn execute_search(
 /// contribute to the result set.
 pub async fn execute_search_unified(
     params: SearchExecutionParams<'_>,
-    workspaces: &[SearchExecutionWorkspace],
+    workspace: &SearchExecutionWorkspace,
+    snapshot: &Arc<Snapshot>,
     handler: &dyn ToolContext,
 ) -> Result<SearchExecutionResult> {
     // Normalize empty/whitespace-only file_pattern to None so callers that
@@ -96,25 +99,9 @@ pub async fn execute_search_unified(
             .ensure_embedding_provider(Duration::from_secs(3))
             .await
         {
-            if workspaces_have_embeddings(workspaces, handler).await? {
-                let mode = params
-                    .semantic_mode
-                    .unwrap_or(julie_core::embeddings_contract::SemanticMode::Auto);
-                let budget = params.budget.clone().unwrap_or_default();
-                let mut execution = run_symbol_backend_pass(
-                    params.backend.value,
-                    params.query,
-                    params.language,
-                    normalized_file_pattern.as_deref(),
-                    params.limit,
-                    effective_exclude_tests,
-                    workspaces,
-                    handler,
-                    provider,
-                    mode,
-                    &budget,
-                )
-                .await?;
+            if snapshot_has_embeddings(snapshot) {
+                drop(provider);
+                let mut execution = run_symbol_backend_pass(params.backend.value, snapshot)?;
                 execution.trace.or_disjunction_detected =
                     query::clean_or_disjunction_terms(params.query).is_some();
                 return Ok(execution);
@@ -149,8 +136,8 @@ pub async fn execute_search_unified(
         normalized_file_pattern.as_deref(),
         params.limit,
         effective_exclude_tests,
-        workspaces,
-        handler,
+        workspace,
+        snapshot,
     )
     .await?;
 
@@ -205,8 +192,8 @@ pub async fn execute_search_unified(
             None,
             params.limit,
             effective_exclude_tests,
-            workspaces,
-            handler,
+            workspace,
+            snapshot,
         )
         .await?;
 
@@ -227,26 +214,10 @@ pub async fn execute_search_unified(
 
     if execution.hits.is_empty()
         && should_try_semantic_zero_hit_fallback(&params, normalized_file_pattern.as_deref())
-        && let Some(provider) = handler.embedding_provider().await
-        && workspaces_have_embeddings(workspaces, handler).await?
+        && handler.embedding_provider().await.is_some()
+        && snapshot_has_embeddings(snapshot)
     {
-        let budget = params.budget.clone().unwrap_or_default();
-        let mut semantic_execution = run_symbol_backend_pass(
-            SearchBackend::Semantic,
-            params.query,
-            params.language,
-            None,
-            params.limit,
-            effective_exclude_tests,
-            workspaces,
-            handler,
-            provider,
-            params
-                .semantic_mode
-                .unwrap_or(julie_core::embeddings_contract::SemanticMode::Auto),
-            &budget,
-        )
-        .await?;
+        let mut semantic_execution = run_symbol_backend_pass(SearchBackend::Semantic, snapshot)?;
         if !semantic_execution.hits.is_empty() {
             semantic_execution.trace.strategy_id = "fast_search_semantic_fallback".to_string();
             semantic_execution.trace.or_disjunction_detected =

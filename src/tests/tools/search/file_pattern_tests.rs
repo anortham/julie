@@ -219,18 +219,16 @@ mod boundary_normalization {
     use std::fs;
     use tempfile::TempDir;
 
-    use crate::handler::JulieServerHandler;
+    use crate::tests::helpers::snapshot::snapshot_context;
+    use crate::tools::FastSearchTool;
     use crate::tools::search::trace::{FilePatternDiagnostic, HintKind, SearchExecutionKind};
-    use crate::tools::{FastSearchTool, ManageWorkspaceTool};
+    use julie_test_support::FakeToolContext;
 
     /// Fingerprint of a search result set. Ignores score (which may shift due
     /// to ties) and keeps a stable, order-sensitive identity for each hit.
     type HitFingerprint = Vec<(String, Option<u32>, String)>;
 
-    async fn run_search(
-        handler: &JulieServerHandler,
-        file_pattern: Option<String>,
-    ) -> HitFingerprint {
+    async fn run_search(handler: &FakeToolContext, file_pattern: Option<String>) -> HitFingerprint {
         let tool = FastSearchTool {
             query: "calculate_total".to_string(),
             language: None,
@@ -273,7 +271,7 @@ mod boundary_normalization {
             .join("\n")
     }
 
-    async fn seed_workspace() -> (TempDir, JulieServerHandler) {
+    async fn seed_workspace() -> (TempDir, FakeToolContext) {
         let temp_dir = TempDir::new().expect("tempdir");
         let workspace_path = temp_dir.path().to_path_buf();
 
@@ -297,31 +295,7 @@ mod boundary_normalization {
         )
         .unwrap();
 
-        let handler = JulieServerHandler::new_for_test()
-            .await
-            .expect("handler for test");
-        handler
-            .initialize_workspace_with_force(
-                Some(workspace_path.to_string_lossy().to_string()),
-                true,
-            )
-            .await
-            .expect("initialize workspace");
-
-        let index_tool = ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(workspace_path.to_string_lossy().to_string()),
-            force: Some(false),
-            name: None,
-            workspace_id: None,
-            detailed: None,
-        };
-        index_tool
-            .call_tool(&handler)
-            .await
-            .expect("index workspace");
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        let handler = snapshot_context(&workspace_path).expect("snapshot fixture");
         (temp_dir, handler)
     }
 
@@ -352,9 +326,7 @@ mod boundary_normalization {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn whitespace_separated_globs_emit_syntax_hint_and_trace_diagnostic() {
-        let handler = JulieServerHandler::new_for_test()
-            .await
-            .expect("handler for test");
+        let handler = FakeToolContext::new();
         let tool = FastSearchTool {
             query: "calculate_total".to_string(),
             language: None,
@@ -413,9 +385,7 @@ mod boundary_normalization {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn whitespace_globs_definitions_target_emit_syntax_hint() {
-        let handler = JulieServerHandler::new_for_test()
-            .await
-            .expect("handler for test");
+        let handler = FakeToolContext::new();
         let tool = FastSearchTool {
             query: "calculate_total".to_string(),
             language: None,

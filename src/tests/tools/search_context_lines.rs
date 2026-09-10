@@ -7,9 +7,9 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
-use crate::handler::JulieServerHandler;
 use crate::tests::helpers::mcp::call_tool_result_text;
-use crate::tools::{FastSearchTool, ManageWorkspaceTool};
+use crate::tests::helpers::snapshot::snapshot_context;
+use crate::tools::FastSearchTool;
 
 /// Count the context lines shown for a match in lean format output.
 /// Lean format looks like:
@@ -70,23 +70,7 @@ pub fn process_user_data(input: &str) -> String {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search with DEFAULT context_lines (should be 1 = 3 total lines)
     let tool = FastSearchTool {
@@ -146,22 +130,7 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search with context_lines=0 (just match line, 1 total)
     let tool = FastSearchTool {
@@ -226,22 +195,7 @@ pub fn validate_input(data: &str) -> bool {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search with context_lines=3 (grep default: 3 before + match + 3 after = 7 total)
     let tool = FastSearchTool {
@@ -295,22 +249,7 @@ pub fn short_func() -> i32 { 42 }
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search with default context_lines (3 total lines max)
     let tool = FastSearchTool {

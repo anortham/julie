@@ -15,6 +15,9 @@ use super::params::{FastSearchExecution, FastSearchTool, clamp_limit};
 use super::trace::SearchExecutionResult;
 use crate::navigation::resolution::WorkspaceTarget;
 
+const NOT_INDEXED_MESSAGE: &str =
+    "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
+
 impl FastSearchTool {
     pub fn effective_limit(&self) -> u32 {
         clamp_limit(self.limit)
@@ -108,61 +111,10 @@ impl FastSearchTool {
 
         match readiness {
             SystemStatus::NotReady => {
-                if let WorkspaceTarget::Primary = &workspace_target {
-                    if handler.require_primary_workspace_identity().is_err() {
-                        let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
-                        return Ok(FastSearchExecution {
-                            result: CallToolResult::text_content(vec![Content::text(message)]),
-                            execution: None,
-                        });
-                    }
-
-                    let primary_id = handler.require_primary_workspace_identity()?;
-                    if handler
-                        .get_database_for_workspace(&primary_id)
-                        .await
-                        .is_ok()
-                        && handler
-                            .get_search_index_for_workspace(&primary_id)
-                            .await?
-                            .is_none()
-                    {
-                        let message = missing_index_message(None);
-                        return Ok(FastSearchExecution {
-                            result: CallToolResult::text_content(vec![Content::text(message)]),
-                            execution: None,
-                        });
-                    }
-                }
-
-                if let Some(ref target_workspace_id) = target_workspace_id {
-                    if handler
-                        .get_database_for_workspace(target_workspace_id)
-                        .await
-                        .is_err()
-                    {
-                        let message =
-                            unknown_target_workspace_message(target_workspace_id.as_str());
-                        return Ok(FastSearchExecution {
-                            result: CallToolResult::text_content(vec![Content::text(message)]),
-                            execution: None,
-                        });
-                    }
-                    if handler
-                        .get_search_index_for_workspace(target_workspace_id)
-                        .await?
-                        .is_none()
-                    {
-                        let message = missing_index_message(Some(target_workspace_id.as_str()));
-                        return Ok(FastSearchExecution {
-                            result: CallToolResult::text_content(vec![Content::text(message)]),
-                            execution: None,
-                        });
-                    }
-                }
-
-                let message =
-                    "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
+                let message = match &workspace_target {
+                    WorkspaceTarget::Primary => NOT_INDEXED_MESSAGE.to_string(),
+                    WorkspaceTarget::Target(id) => unknown_target_workspace_message(id),
+                };
                 return Ok(FastSearchExecution {
                     result: CallToolResult::text_content(vec![Content::text(message)]),
                     execution: None,
@@ -176,65 +128,26 @@ impl FastSearchTool {
             }
         }
 
-        let execution_workspaces = match &workspace_target {
-            WorkspaceTarget::Primary => vec![execution::SearchExecutionWorkspace::primary(
-                handler.require_primary_workspace_identity()?,
-            )],
-            WorkspaceTarget::Target(id) => {
-                vec![execution::SearchExecutionWorkspace::target(id.clone())]
-            }
-        };
-
-        match &workspace_target {
-            WorkspaceTarget::Primary => {
-                let primary_id = handler.require_primary_workspace_identity()?;
-                if handler
-                    .get_search_index_for_workspace(&primary_id)
-                    .await?
-                    .is_none()
-                {
-                    let message = missing_index_message(None);
-                    return Ok(FastSearchExecution {
-                        result: CallToolResult::text_content(vec![Content::text(message)]),
-                        execution: None,
-                    });
-                }
-            }
-            WorkspaceTarget::Target(id) => {
-                if handler.get_database_for_workspace(id).await.is_err() {
-                    let message = unknown_target_workspace_message(id);
-                    return Ok(FastSearchExecution {
-                        result: CallToolResult::text_content(vec![Content::text(message)]),
-                        execution: None,
-                    });
-                }
-                if handler.get_search_index_for_workspace(id).await?.is_none() {
-                    let message = missing_index_message(Some(id));
-                    return Ok(FastSearchExecution {
-                        result: CallToolResult::text_content(vec![Content::text(message)]),
-                        execution: None,
-                    });
-                }
-            }
-        }
-
-        if let Some(ref target_workspace_id) = target_workspace_id {
-            if handler
-                .get_database_for_workspace(target_workspace_id)
-                .await
-                .is_ok()
-                && handler
-                    .get_search_index_for_workspace(target_workspace_id)
-                    .await?
-                    .is_none()
-            {
-                let message = missing_index_message(Some(target_workspace_id));
+        let snapshot = match handler.snapshot(&workspace_target).await {
+            Ok(snapshot) => snapshot,
+            Err(err) => {
+                debug!("No snapshot for {:?}: {}", workspace_target, err);
+                let message = match &workspace_target {
+                    WorkspaceTarget::Primary => NOT_INDEXED_MESSAGE.to_string(),
+                    WorkspaceTarget::Target(id) => unknown_target_workspace_message(id),
+                };
                 return Ok(FastSearchExecution {
                     result: CallToolResult::text_content(vec![Content::text(message)]),
                     execution: None,
                 });
             }
-        }
+        };
+        let workspace = match &workspace_target {
+            WorkspaceTarget::Primary => execution::SearchExecutionWorkspace::primary(
+                handler.require_primary_workspace_identity()?,
+            ),
+            WorkspaceTarget::Target(id) => execution::SearchExecutionWorkspace::target(id.clone()),
+        };
 
         let mut execution = execution::execute_search_unified(
             execution::SearchExecutionParams {
@@ -248,7 +161,8 @@ impl FastSearchTool {
                 semantic_mode: self.semantics,
                 budget,
             },
-            &execution_workspaces,
+            &workspace,
+            &snapshot,
             handler,
         )
         .await?;
@@ -293,13 +207,9 @@ impl FastSearchTool {
         }
 
         if self.return_format != "locations" && !has_exact_name_match && !symbol_backend_active {
-            if let Err(err) = line_enrichment::try_enrich_with_line_mode_snippets(
-                self,
-                handler,
-                &workspace_target,
-                &mut execution,
-            )
-            .await
+            if let Err(err) =
+                line_enrichment::try_enrich_with_line_mode_snippets(self, &snapshot, &mut execution)
+                    .await
             {
                 execution
                     .trace
@@ -318,6 +228,7 @@ impl FastSearchTool {
                     self,
                     handler,
                     &workspace_target,
+                    &snapshot,
                     &mut execution,
                 )
                 .await
@@ -413,15 +324,6 @@ impl FastSearchTool {
         handler
             .resolve_workspace_target(self.workspace.as_deref())
             .await
-    }
-}
-
-fn missing_index_message(workspace_id: Option<&str>) -> String {
-    match workspace_id {
-        Some(id) => format!(
-            "Search requires a Tantivy index for workspace '{id}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{id}\") first."
-        ),
-        None => "Search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.".to_string(),
     }
 }
 

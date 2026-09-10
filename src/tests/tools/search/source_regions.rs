@@ -1,16 +1,11 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use julie_context::WorkspaceTarget;
-use julie_core::database::SymbolDatabase;
-use julie_core::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
-use julie_extractors::{SourceRegion, SourceRegionKind};
-use julie_index::search::index::{SearchDocument, SearchIndex};
+use julie_extractors::SourceRegionKind;
 use julie_test_support::FakeToolContext;
-use julie_test_support::db::file_info_builder;
 use tempfile::TempDir;
 
 use crate::tests::helpers::mcp::call_tool_result_text;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::search::regions::SourceRegionFilter;
 use crate::tools::search::{FastSearchParams, FastSearchTool, SearchBackend};
 
@@ -19,114 +14,11 @@ struct RegionSearchFixture {
     context: FakeToolContext,
 }
 
-fn source_region(
-    id: &str,
-    file_path: &str,
-    kind: SourceRegionKind,
-    start_line: u32,
-    end_line: u32,
-) -> SourceRegion {
-    SourceRegion {
-        id: id.into(),
-        file_path: file_path.into(),
-        language: "rust".into(),
-        kind,
-        containing_symbol_id: None,
-        start_line,
-        start_column: 0,
-        end_line,
-        end_column: 128,
-        start_byte: 0,
-        end_byte: 128,
-        metadata: None,
-    }
-}
-
-fn seed_database(
-    db_path: &std::path::Path,
-    workspace_id: &str,
-    file_path: &str,
-    content: &str,
-    regions: &[SourceRegion],
-) -> Result<()> {
-    let mut db = SymbolDatabase::new(db_path)?;
-    let files = [file_info_builder(file_path)
-        .language("rust")
-        .hash(format!("{workspace_id}-hash"))
-        .line_count(content.lines().count() as i32)
-        .content(content)
-        .build()];
-    db.incremental_update_atomic_with_metadata(
-        &[file_path.into()],
-        &CanonicalWriteSet {
-            files: &files,
-            source_regions: regions,
-            ..Default::default()
-        },
-        workspace_id,
-        AtomicPersistenceMetadata::default(),
-    )?;
-    Ok(())
-}
-
-fn region_search_fixture(
-    primary_content: &str,
-    target_content: Option<&str>,
-) -> Result<RegionSearchFixture> {
+fn region_search_fixture(content: &str) -> Result<RegionSearchFixture> {
     let temp = TempDir::new()?;
-    let primary_db_path = temp.path().join("primary.db");
-    let target_db_path = temp.path().join("target.db");
-    let file_path = "src/lib.rs";
-
-    seed_database(
-        &primary_db_path,
-        "primary-workspace",
-        file_path,
-        primary_content,
-        &[source_region(
-            "primary-comment",
-            file_path,
-            SourceRegionKind::Comment,
-            1,
-            1,
-        )],
-    )?;
-
-    if let Some(target_content) = target_content {
-        seed_database(
-            &target_db_path,
-            "target-workspace",
-            file_path,
-            target_content,
-            &[source_region(
-                "target-comment",
-                file_path,
-                SourceRegionKind::Comment,
-                1,
-                1,
-            )],
-        )?;
-    }
-
-    let index_path = temp.path().join("tantivy");
-    std::fs::create_dir_all(&index_path)?;
-    let index = SearchIndex::create(&index_path)?;
-    index.add_search_doc(&SearchDocument::file_from_parts(
-        file_path,
-        "// region workspace needle\nlet region_workspace_needle = 1;\n",
-        "rust",
-    ))?;
-    index.commit()?;
-
-    let mut context = FakeToolContext::new()
-        .with_workspace_id("primary-workspace")
-        .with_primary_root(temp.path())
-        .with_primary_db_path(&primary_db_path)
-        .with_search_index(Arc::new(index));
-    if target_content.is_some() {
-        context = context.with_workspace_db_path("target-workspace", &target_db_path);
-    }
-
+    std::fs::create_dir_all(temp.path().join("src"))?;
+    std::fs::write(temp.path().join("src/lib.rs"), content)?;
+    let context = snapshot_context(temp.path())?;
     Ok(RegionSearchFixture {
         _temp: temp,
         context,
@@ -135,7 +27,7 @@ fn region_search_fixture(
 
 #[tokio::test]
 async fn fast_search_regions_returns_only_matching_source_region_lines() -> Result<()> {
-    let fixture = region_search_fixture("// region needle\nlet region_needle = 1;\n", None)?;
+    let fixture = region_search_fixture("// region needle\nlet region_needle = 1;\n")?;
 
     let result = FastSearchParams {
         search: FastSearchTool {
@@ -156,7 +48,7 @@ async fn fast_search_regions_returns_only_matching_source_region_lines() -> Resu
 
 #[tokio::test]
 async fn fast_search_regions_rejects_unknown_region_and_symbol_backends() -> Result<()> {
-    let fixture = region_search_fixture("// region needle\n", None)?;
+    let fixture = region_search_fixture("// region needle\n")?;
     let parsed =
         SourceRegionFilter::parse("comment,doc_comment,docstring,string_literal,embedded")?;
     assert_eq!(
@@ -205,10 +97,7 @@ async fn fast_search_regions_rejects_unknown_region_and_symbol_backends() -> Res
 
 #[tokio::test]
 async fn fast_search_regions_respects_target_workspace() -> Result<()> {
-    let fixture = region_search_fixture(
-        "// primary workspace needle\n",
-        Some("// target workspace needle\n"),
-    )?;
+    let fixture = region_search_fixture("// target workspace needle\n")?;
     let context = fixture
         .context
         .with_resolved_target(WorkspaceTarget::Target("target-workspace".into()));

@@ -12,6 +12,7 @@ use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::ManageWorkspaceTool;
 
 async fn mark_search_ready(handler: &JulieServerHandler) {
@@ -78,12 +79,7 @@ pub fn get_user(id: u32) -> User {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    index_workspace_for_search(&handler, &workspace_path).await?;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Now call text_search_impl directly
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -138,12 +134,7 @@ export function process_data(data: string): string {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    index_workspace_for_search(&handler, &workspace_path).await?;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search for Rust only
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -203,12 +194,7 @@ pub fn helper() {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    index_workspace_for_search(&handler, &workspace_path).await?;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search for files matching "src/**" pattern
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -254,12 +240,7 @@ pub fn get_user(id: u32) -> User {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    index_workspace_for_search(&handler, &workspace_path).await?;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search for something that doesn't exist
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -305,12 +286,7 @@ pub fn search_term_six() { }
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    index_workspace_for_search(&handler, &workspace_path).await?;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search with limit of 2
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -350,22 +326,7 @@ pub fn example() {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    // initialize_workspace_with_force calls initialize_all_components() which
-    // includes embedding init that may fail without ONNX model. Once embeddings
-    // are removed (Task 11), this will be clean.
-    if let Err(e) = handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await
-    {
-        eprintln!(
-            "Skipping content test: workspace init failed (likely missing ONNX model): {}",
-            e
-        );
-        return Ok(());
-    }
-
-    index_workspace_for_search(&handler, &workspace_path).await?;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Search for content
     let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
@@ -514,7 +475,7 @@ pub fn lookup_user_profile(id: u32) -> String {
 async fn setup_workspace_with_test_and_prod_symbols() -> Result<(
     std::path::PathBuf,
     TempDir,
-    crate::handler::JulieServerHandler,
+    julie_test_support::FakeToolContext,
 )> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
@@ -551,12 +512,7 @@ mod tests {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    index_workspace_for_search(&handler, &workspace_path).await?;
+    let handler = snapshot_context(&workspace_path)?;
 
     Ok((workspace_path, temp_dir, handler))
 }
@@ -731,11 +687,7 @@ async fn test_exclude_tests_path_based_excludes_interface_from_test_file() -> Re
 }"#,
     )?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-    index_workspace_for_search(&handler, &workspace_path).await?;
+    let handler = snapshot_context(&workspace_path)?;
 
     // Query "PaymentGateway" matches both MockPaymentGateway (test) and PaymentGateway (prod).
     // With exclude_tests=true: only the production symbol should appear.

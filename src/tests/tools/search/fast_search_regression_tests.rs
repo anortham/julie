@@ -1,17 +1,15 @@
 use anyhow::Result;
 use std::fs;
-use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
-use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
-use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::text_search::definition_search_with_index_for_test;
 use crate::tools::search::trace::{LineEnrichmentStatus, ZeroHitReason};
-use crate::tools::workspace::ManageWorkspaceTool;
+use julie_test_support::FakeToolContext;
 
 fn extract_text(result: &CallToolResult) -> String {
     result
@@ -22,54 +20,8 @@ fn extract_text(result: &CallToolResult) -> String {
         .join("\n")
 }
 
-async fn mark_search_ready(handler: &JulieServerHandler) {
-    handler
-        .indexing_status
-        .search_ready
-        .store(true, Ordering::Relaxed);
-    *handler.is_indexed.write().await = true;
-}
-
-async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
-    mark_search_ready(handler).await;
-
-    let snapshot = handler
-        .primary_workspace_snapshot()
-        .await
-        .expect("primary snapshot");
-    let search_index = snapshot.search_index.expect("primary search index");
-    let mut db = snapshot
-        .database
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let idx = search_index;
-    crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
-        .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
-        .expect("projection current");
-}
-
-async fn index_workspace(workspace_path: &std::path::Path) -> Result<JulieServerHandler> {
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-    handler
-        .stop_loaded_workspace_file_watching_for_test()
-        .await
-        .expect("stop file watcher for search-only test");
-
-    ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await?;
-    ensure_primary_projection_current(&handler).await;
-    Ok(handler)
+async fn index_workspace(workspace_path: &std::path::Path) -> Result<FakeToolContext> {
+    snapshot_context(workspace_path)
 }
 
 fn rescued_symbol() -> Symbol {
@@ -169,22 +121,6 @@ fn fast_search_deserializes_limit_with_public_bounds() {
 /// indexed in Tantivy via the unified schema are findable by a partial token.
 #[test]
 fn tantivy_indexed_qualified_name_found_by_partial_token() -> Result<()> {
-    let db_dir = TempDir::new()?;
-    let db_path = db_dir.path().join("symbols.db");
-    let mut db = SymbolDatabase::new(&db_path)?;
-    db.store_file_info(&FileInfo {
-        path: "lib/phoenix/router.ex".to_string(),
-        language: "elixir".to_string(),
-        hash: "hash".to_string(),
-        size: 64,
-        last_modified: 1,
-        last_indexed: 1,
-        symbol_count: 1,
-        line_count: 2,
-        content: Some("defmodule Phoenix.Router do\nend".to_string()),
-    })?;
-    db.store_symbols(&[rescued_symbol()])?;
-
     let index_dir = TempDir::new()?;
     let index = SearchIndex::create(index_dir.path())?;
     // Index the symbol in Tantivy (the unified path requires it).
@@ -209,7 +145,7 @@ fn tantivy_indexed_qualified_name_found_by_partial_token() -> Result<()> {
         exclude_tests: false,
     };
     let (symbols, _relaxed, total) =
-        definition_search_with_index_for_test("Router", &filter, 5, &index, Some(&db))?;
+        definition_search_with_index_for_test("Router", &filter, 5, &index)?;
 
     assert_eq!(
         symbols.len(),
@@ -433,31 +369,8 @@ async fn content_test_intent_keeps_and_ranks_test_files() -> Result<()> {
 
 #[test]
 fn definition_test_intent_uses_metadata_for_inline_test_helpers_before_centrality() -> Result<()> {
-    let db_dir = TempDir::new()?;
-    let db_path = db_dir.path().join("symbols.db");
-    let mut db = SymbolDatabase::new(&db_path)?;
-    db.store_file_info(&FileInfo {
-        path: "src/lib.rs".to_string(),
-        language: "rust".to_string(),
-        hash: "hash".to_string(),
-        size: 100,
-        last_modified: 1,
-        last_indexed: 1,
-        symbol_count: 2,
-        line_count: 6,
-        content: Some(
-            "fn helper_refresh() {}\n#[cfg(test)] mod tests { #[test] fn helper_refresh_case() {} }\n"
-                .to_string(),
-        ),
-    })?;
-
     let source = helper_symbol("source-helper", "helper_refresh", None);
     let test_helper = helper_symbol("test-helper", "helper_refresh_case", Some(test_metadata()));
-    db.store_symbols(&[source.clone(), test_helper.clone()])?;
-    db.conn.execute(
-        "UPDATE symbols SET reference_score = ?1 WHERE id = ?2",
-        rusqlite::params![10.0_f64, "source-helper"],
-    )?;
 
     let index_dir = TempDir::new()?;
     let index = SearchIndex::create(index_dir.path())?;
@@ -477,13 +390,8 @@ fn definition_test_intent_uses_metadata_for_inline_test_helpers_before_centralit
         file_pattern: None,
         exclude_tests: false,
     };
-    let (symbols, _relaxed, _total) = definition_search_with_index_for_test(
-        "test helper refresh",
-        &filter,
-        2,
-        &index,
-        Some(&db),
-    )?;
+    let (symbols, _relaxed, _total) =
+        definition_search_with_index_for_test("test helper refresh", &filter, 2, &index)?;
 
     assert_eq!(
         symbols.first().map(|symbol| symbol.id.as_str()),
@@ -500,10 +408,6 @@ fn definition_test_intent_uses_metadata_for_inline_test_helpers_before_centralit
 
 #[tokio::test(flavor = "multi_thread")]
 async fn content_locations_format_omits_matching_line_text() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
     let src_dir = workspace_path.join("src");
@@ -539,10 +443,6 @@ async fn content_locations_format_omits_matching_line_text() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
     let src_dir = workspace_path.join("src");
@@ -605,10 +505,6 @@ async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> 
 
 #[tokio::test(flavor = "multi_thread")]
 async fn content_locations_cpp_h_language_filter_keeps_line_hits() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
     let include_root = workspace_path.join("include");
@@ -658,10 +554,6 @@ public:
 
 #[tokio::test(flavor = "multi_thread")]
 async fn content_full_format_includes_matching_line_text() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
     let src_dir = workspace_path.join("src");
@@ -693,10 +585,6 @@ async fn content_full_format_includes_matching_line_text() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn content_full_output_trace_records_line_enrichment_success() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
     let src_dir = workspace_path.join("src");
@@ -734,10 +622,6 @@ async fn content_full_output_trace_records_line_enrichment_success() -> Result<(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn content_full_output_trace_records_line_enrichment_no_matches() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
     let src_dir = workspace_path.join("src");
@@ -772,10 +656,6 @@ async fn content_full_output_trace_records_line_enrichment_no_matches() -> Resul
 
 #[tokio::test(flavor = "multi_thread")]
 async fn definition_search_with_zero_limit_still_returns_one_result() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
     let src_dir = workspace_path.join("src");
@@ -806,58 +686,7 @@ async fn definition_search_with_zero_limit_still_returns_one_result() -> Result<
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn file_search_missing_index_names_file_mode() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
-    }
-
-    let temp_dir = TempDir::new()?;
-    let workspace_path = temp_dir.path();
-    let src_dir = workspace_path.join("src");
-    fs::create_dir_all(&src_dir)?;
-    fs::write(src_dir.join("main.rs"), "fn main() {}\n")?;
-
-    let handler = index_workspace(workspace_path).await?;
-    let workspace_id =
-        crate::workspace::registry::generate_workspace_id(&workspace_path.to_string_lossy())?;
-    let tantivy_dir = handler.workspace_tantivy_dir_for(&workspace_id).await?;
-    let meta_path = tantivy_dir.join("meta.json");
-    if meta_path.exists() {
-        fs::remove_file(meta_path)?;
-    }
-
-    let result = FastSearchTool {
-        query: "main.rs".to_string(),
-        context_lines: None,
-        limit: 10,
-        workspace: Some("primary".to_string()),
-        ..Default::default()
-    }
-    .call_tool(&handler)
-    .await?;
-
-    let text = extract_text(&result);
-    // After T8 cutover, the unified surface no longer emits per-mode missing-
-    // index messages.  The neutral "Search requires a Tantivy index..." message
-    // covers all search modes (definition / content / file) uniformly.
-    assert!(
-        text.contains("Search requires a Tantivy index"),
-        "missing-index message should name the search index, got:\n{text}"
-    );
-    assert!(
-        !text.contains("Definition search requires"),
-        "unified path should not report a definition-specific error, got:\n{text}"
-    );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
-    }
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
     fs::create_dir_all(workspace_path.join(".cargo"))?;
@@ -871,7 +700,20 @@ async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Resu
     )?;
     fs::write(workspace_path.join("Cargo.lock"), "version = 4\n")?;
 
-    let handler = index_workspace(workspace_path).await?;
+    let handler = crate::handler::JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await?;
+    crate::tools::workspace::ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
     let execution = FastSearchTool {
         query: ".cargo".to_string(),
         limit: 10,

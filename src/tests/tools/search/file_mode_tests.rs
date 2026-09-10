@@ -5,68 +5,21 @@
 //! `execute_search_unified` path.  The tests below verify that file-name
 //! queries still work correctly via the new path.
 
-use crate::tools::ManageWorkspaceTool;
+use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::trace::{FilePatternDiagnostic, HintKind};
-use crate::{handler::JulieServerHandler, mcp_compat::CallToolResult};
+use julie_test_support::FakeToolContext;
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
     crate::mcp_compat::call_tool_result_text(result)
 }
 
-async fn initialize_indexed_handler(workspace_path: &Path) -> JulieServerHandler {
-    let handler = JulieServerHandler::new_for_test()
-        .await
-        .expect("handler for test");
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await
-        .expect("initialize workspace");
-    handler
-        .stop_loaded_workspace_file_watching_for_test()
-        .await
-        .expect("stop file watcher for search-only test");
-
-    ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect("index workspace");
-
-    ensure_primary_projection_current(&handler).await;
-    handler
-}
-
-async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
-    handler
-        .indexing_status
-        .search_ready
-        .store(true, Ordering::Relaxed);
-    *handler.is_indexed.write().await = true;
-
-    let snapshot = handler
-        .primary_workspace_snapshot()
-        .await
-        .expect("primary snapshot");
-    let search_index = snapshot.search_index.expect("primary search index");
-    let mut db = snapshot
-        .database
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let idx = search_index;
-    crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
-        .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
-        .expect("projection current");
+async fn initialize_indexed_handler(workspace_path: &Path) -> FakeToolContext {
+    snapshot_context(workspace_path).expect("snapshot fixture")
 }
 
 fn seed_scoped_mod_rs_workspace(workspace_path: &Path) {
@@ -130,27 +83,7 @@ async fn fast_search_unified_returns_file_hits_for_filename_query() {
     )
     .unwrap();
 
-    let handler = JulieServerHandler::new_for_test()
-        .await
-        .expect("handler for test");
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await
-        .expect("initialize workspace");
-
-    ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect("index workspace");
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    let handler = snapshot_context(&workspace_path).expect("snapshot fixture");
 
     // After T8 all traffic goes through the unified path — no search_target.
     let execution = FastSearchTool {
@@ -336,9 +269,7 @@ async fn locations_scope_rescue_labels_out_of_scope_results() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn request_level_whitespace_separated_globs_return_syntax_hint() {
-    let handler = JulieServerHandler::new_for_test()
-        .await
-        .expect("handler for test");
+    let handler = FakeToolContext::new();
 
     // A whitespace-separated multi-glob should be caught by the input
     // diagnostic layer regardless of search mode.
