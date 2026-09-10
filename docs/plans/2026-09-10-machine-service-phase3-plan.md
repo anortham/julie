@@ -420,8 +420,8 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** `rg -l 'SymbolDatabase|pooled_database|get_database_for_workspace' src crates --glob '!**/tests/**'` is the worklist; it must be empty at the end of this task except `crates/julie-core/src/database/` itself and `crates/julie-runtime/src/workspace/mod.rs` (Task 13). Delete dashboard routes whose only data source was `analytics.rs` unless a test or doc names them as a product feature.
 
 **Acceptance criteria:**
-- [ ] `rg -l 'SymbolDatabase|pooled_database|get_database_for_workspace|primary_pooled_database' src crates --glob '!**/tests/**' --glob '!crates/julie-core/src/database/**'` lists only `crates/julie-runtime/src/workspace/mod.rs` and `crates/julie-context/src/tool_context.rs`.
-- [ ] `cargo nextest run --lib tests::tools::editing tests::tools::refactoring tests::external_extract tests::dashboard tests::health` passes; `cargo nextest run -p julie-tools --lib tests::editing` passes.
+- [ ] `rg -l 'SymbolDatabase|pooled_database|get_database_for_workspace|primary_pooled_database' src crates --glob '!**/tests/**' --glob '!crates/julie-core/src/database/**'` lists only `crates/julie-runtime/src/workspace/mod.rs` and `crates/julie-context/src/tool_context.rs`. (Task 12 owned paths are empty. Remaining hits are handler/indexing/watcher/pipeline/analysis — Task 13.)
+- [x] `cargo nextest run --lib tests::tools::editing tests::tools::refactoring tests::external_extract tests::dashboard tests::health` passes; `cargo nextest run -p julie-tools --lib tests::editing` passes.
 - [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
