@@ -122,7 +122,7 @@ register_tool_catalog! {
     "blast_radius" => {
         variant: BlastRadius,
         type: crate::tools::BlastRadiusTool,
-        description: "Deterministic impact analysis for changed symbols, files, or revision ranges.",
+        description: "Deterministic impact analysis for changed symbols or files.",
         access: |_p| AccessClass::Read,
         workspace: |p| p.workspace.as_deref(),
         unbound: |_p| false,

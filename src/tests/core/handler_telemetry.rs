@@ -791,8 +791,6 @@ fn test_blast_radius_metadata_carries_seed_modes() {
     let params = BlastRadiusTool {
         symbol_ids: vec!["sym_a".to_string()],
         file_paths: vec!["src/api.rs".to_string()],
-        from_revision: Some(10),
-        to_revision: Some(12),
         max_depth: 2,
         limit: 5,
         include_tests: true,
@@ -805,8 +803,6 @@ fn test_blast_radius_metadata_carries_seed_modes() {
 
     assert_eq!(metadata["symbol_ids"][0], "sym_a");
     assert_eq!(metadata["file_paths"][0], "src/api.rs");
-    assert_eq!(metadata["from_revision"], 10);
-    assert_eq!(metadata["to_revision"], 12);
     assert_eq!(metadata["limit"], 5);
     assert_eq!(metadata["format"], "readable");
 }

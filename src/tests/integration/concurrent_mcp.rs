@@ -254,8 +254,6 @@ mod tests {
                 let result = BlastRadiusTool {
                     symbol_ids: Vec::new(),
                     file_paths: vec!["src/alpha.rs".to_string()],
-                    from_revision: None,
-                    to_revision: None,
                     max_depth: 1,
                     limit: 10,
                     include_tests: false,

@@ -1,218 +1,37 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
-use tempfile::TempDir;
 
-use crate::database::types::FileInfo;
-use crate::extractors::{
-    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
-};
-use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::mcp::call_tool_result_text;
+use crate::tests::helpers::snapshot::snapshot_context_from_files;
 use crate::tools::impact::BlastRadiusTool;
 
-fn make_file(path: &str, hash: &str) -> FileInfo {
-    FileInfo {
-        path: path.to_string(),
-        language: "rust".to_string(),
-        hash: hash.to_string(),
-        size: 256,
-        last_modified: 1_700_000_000,
-        last_indexed: 0,
-        symbol_count: 1,
-        line_count: 10,
-        content: None,
-    }
-}
-
-fn make_symbol(
-    id: &str,
-    name: &str,
-    file_path: &str,
-    visibility: Option<&str>,
-    metadata: Option<HashMap<String, serde_json::Value>>,
-) -> Symbol {
-    Symbol {
-        extracted: julie_extractors::Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: file_path.to_string(),
-            start_line: 1,
-            end_line: 3,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 42,
-            parent_id: None,
-            signature: Some(format!("fn {}()", name)),
-            doc_comment: None,
-            visibility: visibility.map(|value| match value {
-                "public" => Visibility::Public,
-                "protected" => Visibility::Protected,
-                "private" => Visibility::Private,
-                other => panic!("unsupported visibility in test helper: {other}"),
-            }),
-            metadata,
-            semantic_group: None,
-            confidence: Some(1.0),
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
-        },
-        code_context: None,
-    }
-}
-
-fn make_relationship(
-    id: &str,
-    from_symbol_id: &str,
-    to_symbol_id: &str,
-    kind: RelationshipKind,
-    file_path: &str,
-) -> Relationship {
-    Relationship {
-        id: id.to_string(),
-        from_symbol_id: from_symbol_id.to_string(),
-        to_symbol_id: to_symbol_id.to_string(),
-        kind,
-        file_path: file_path.to_string(),
-        line_number: 1,
-        span: None,
-        reference_site_is_exact: false,
-        confidence: 1.0,
-        metadata: None,
-    }
-}
-
-fn make_identifier(
-    id: &str,
-    name: &str,
-    file_path: &str,
-    containing_symbol_id: Option<&str>,
-    target_symbol_id: Option<&str>,
-    kind: IdentifierKind,
-    confidence: f32,
-) -> Identifier {
-    Identifier {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 1,
-        end_column: name.len() as u32,
-        start_byte: 0,
-        end_byte: name.len() as u32,
-        containing_symbol_id: containing_symbol_id.map(str::to_string),
-        target_symbol_id: target_symbol_id.map(str::to_string),
-        confidence,
-        code_context: None,
-        receiver_type: None,
-    }
-}
-
-fn extract_text(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|item| {
-            serde_json::to_value(item).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|value| value.as_str())
-                    .map(|text| text.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-async fn setup_handler() -> Result<(TempDir, JulieServerHandler, String)> {
-    let temp_dir = TempDir::new()?;
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
-    handler.initialize_workspace(None).await?;
-    let workspace_id = handler
-        .current_workspace_id()
-        .expect("initialized workspace should bind a primary workspace id");
-    Ok((temp_dir, handler, workspace_id))
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_blast_radius_ranks_direct_callers_and_truncates() -> Result<()> {
-    let (_temp_dir, handler, workspace_id) = setup_handler().await?;
-
-    let mut linkage = HashMap::new();
-    linkage.insert(
-        "test_linkage".to_string(),
-        serde_json::json!({
-            "test_count": 1,
-            "best_tier": "thorough",
-            "worst_tier": "thorough",
-            "linked_tests": ["tests/request_tests.rs"],
-            "evidence_sources": ["relationship"]
-        }),
-    );
-
-    let files = vec![
-        make_file("src/worker.rs", "hash_worker"),
-        make_file("src/api.rs", "hash_api"),
-        make_file("src/app.rs", "hash_app"),
-    ];
-    let symbols = vec![
-        make_symbol("seed", "run_pipeline", "src/worker.rs", None, Some(linkage)),
-        make_symbol(
-            "direct",
-            "handle_request",
-            "src/api.rs",
-            Some("public"),
-            None,
-        ),
-        make_symbol("indirect", "app_entry", "src/app.rs", Some("public"), None),
-    ];
-    let relationships = vec![
-        make_relationship(
-            "rel_direct",
-            "direct",
-            "seed",
-            RelationshipKind::Calls,
-            "src/api.rs",
-        ),
-        make_relationship(
-            "rel_indirect",
-            "indirect",
-            "direct",
-            RelationshipKind::Calls,
-            "src/app.rs",
-        ),
-    ];
-
-    let db = handler.primary_database().await?;
-    {
-        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.bulk_store_fresh_atomic(&files, &symbols, &relationships, &[], &[], &workspace_id)?;
-        guard.compute_reference_scores()?;
-    }
-
-    let result = BlastRadiusTool {
-        symbol_ids: vec!["seed".to_string()],
-        file_paths: vec![],
-        from_revision: None,
-        to_revision: None,
-        max_depth: 2,
-        limit: 1,
-        include_tests: true,
+fn readable(symbol: &str, max_depth: u32, limit: u32) -> BlastRadiusTool {
+    BlastRadiusTool {
+        symbol_ids: vec![symbol.to_string()],
+        max_depth,
+        limit,
         format: Some("readable".to_string()),
-        workspace: Some("primary".to_string()),
         ..Default::default()
     }
-    .call_tool(&handler)
-    .await?;
+}
 
-    let text = extract_text(&result);
+#[tokio::test]
+async fn test_blast_radius_ranks_direct_callers_and_truncates() -> Result<()> {
+    let (_tree, context) = snapshot_context_from_files(&[
+        ("src/worker.rs", "pub fn run_pipeline() {}\n"),
+        (
+            "src/api.rs",
+            "pub fn handle_request() { run_pipeline(); }\n",
+        ),
+        ("src/app.rs", "pub fn app_entry() { handle_request(); }\n"),
+        (
+            "tests/request_tests.rs",
+            "#[test]\nfn test_request_flow() { handle_request(); }\n",
+        ),
+    ])?;
+
+    let result = readable("run_pipeline", 2, 1).call_tool(&context).await?;
+
+    let text = call_tool_result_text(&result);
     assert!(
         text.contains("handle_request"),
         "first page should show direct caller first: {text}"
@@ -221,111 +40,32 @@ async fn test_blast_radius_ranks_direct_callers_and_truncates() -> Result<()> {
         text.contains("tests/request_tests.rs"),
         "linked tests should be listed: {text}"
     );
-
     assert!(
         text.trim_end()
             .ends_with("Output truncated at 1 results; narrow the query or pass a smaller limit."),
         "overflowing impacts must end with the truncation line: {text}"
     );
-
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn test_blast_radius_likely_tests_include_resolved_refs_to_impacted_symbols() -> Result<()> {
-    let (_temp_dir, handler, workspace_id) = setup_handler().await?;
-
-    let files = vec![
-        make_file("src/service.rs", "hash_service"),
-        make_file("src/api.rs", "hash_api"),
-        make_file("src/helper.rs", "hash_helper"),
-        make_file("tests/request_flow.rs", "hash_request_flow"),
-    ];
-    let symbols = vec![
-        make_symbol("seed", "run_service", "src/service.rs", None, None),
-        make_symbol(
-            "impact",
-            "handle_request",
-            "src/api.rs",
-            Some("public"),
-            None,
-        ),
-        make_symbol("helper", "build_helper", "src/helper.rs", None, None),
-        make_symbol(
-            "test_symbol",
-            "test_request_flow",
-            "tests/request_flow.rs",
-            None,
-            None,
-        ),
-    ];
-    let relationships = vec![make_relationship(
-        "impact_calls_seed",
-        "impact",
-        "seed",
-        RelationshipKind::Calls,
-        "src/api.rs",
-    )];
-    let identifiers = vec![
-        make_identifier(
-            "seed_non_test_ref",
-            "run_service",
+    let (_tree, context) = snapshot_context_from_files(&[
+        ("src/service.rs", "pub fn run_service() {}\n"),
+        ("src/api.rs", "pub fn handle_request() { run_service(); }\n"),
+        (
             "src/helper.rs",
-            Some("helper"),
-            Some("seed"),
-            IdentifierKind::Call,
-            0.99,
+            "pub fn build_helper() { run_service(); }\n",
         ),
-        make_identifier(
-            "seed_self_ref",
-            "run_service",
-            "src/service.rs",
-            Some("seed"),
-            Some("seed"),
-            IdentifierKind::Call,
-            1.0,
-        ),
-        make_identifier(
-            "impact_test_ref",
-            "handle_request",
+        (
             "tests/request_flow.rs",
-            Some("test_symbol"),
-            Some("impact"),
-            IdentifierKind::Call,
-            0.98,
+            "#[test]\nfn test_request_flow() { handle_request(); }\n",
         ),
-    ];
+    ])?;
 
-    let db = handler.primary_database().await?;
-    {
-        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.bulk_store_fresh_atomic(
-            &files,
-            &symbols,
-            &relationships,
-            &identifiers,
-            &[],
-            &workspace_id,
-        )?;
-        guard.compute_reference_scores()?;
-    }
+    let result = readable("run_service", 1, 5).call_tool(&context).await?;
 
-    let result = BlastRadiusTool {
-        symbol_ids: vec!["seed".to_string()],
-        file_paths: vec![],
-        from_revision: None,
-        to_revision: None,
-        max_depth: 1,
-        limit: 5,
-        include_tests: true,
-        format: Some("readable".to_string()),
-        workspace: Some("primary".to_string()),
-        ..Default::default()
-    }
-    .call_tool(&handler)
-    .await?;
-
-    let text = extract_text(&result);
+    let text = call_tool_result_text(&result);
     assert!(
         text.contains("handle_request"),
         "impacted symbol should appear in blast radius: {text}"
@@ -338,217 +78,91 @@ async fn test_blast_radius_likely_tests_include_resolved_refs_to_impacted_symbol
         text.contains("test_request_flow"),
         "related test symbol should be surfaced with the likely path: {text}"
     );
-
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_blast_radius_likely_test_path_overflow_is_counted() -> Result<()> {
-    let (_temp_dir, handler, workspace_id) = setup_handler().await?;
+fn generated_tests(count: usize) -> Vec<(String, String)> {
+    (0..count)
+        .map(|index| {
+            (
+                format!("tests/generated/test_{index:02}.rs"),
+                format!("#[test]\nfn test_generated_case_{index:02}() {{ run_pipeline(); }}\n"),
+            )
+        })
+        .collect()
+}
 
-    let linked_test_paths: Vec<String> = (0..12)
-        .map(|index| format!("tests/generated/test_{index}.rs"))
-        .collect();
-    let mut linkage = HashMap::new();
-    linkage.insert(
-        "test_linkage".to_string(),
-        serde_json::json!({
-            "test_count": linked_test_paths.len(),
-            "best_tier": "basic",
-            "worst_tier": "basic",
-            "linked_test_paths": linked_test_paths,
-            "evidence_sources": ["metadata"]
-        }),
+async fn overflow_text() -> Result<String> {
+    let generated = generated_tests(12);
+    let mut files: Vec<(&str, &str)> = vec![("src/worker.rs", "pub fn run_pipeline() {}\n")];
+    files.extend(
+        generated
+            .iter()
+            .map(|(path, content)| (path.as_str(), content.as_str())),
     );
+    let (_tree, context) = snapshot_context_from_files(&files)?;
+    let result = readable("run_pipeline", 1, 5).call_tool(&context).await?;
+    Ok(call_tool_result_text(&result))
+}
 
-    let db = handler.primary_database().await?;
-    {
-        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.bulk_store_fresh_atomic(
-            &[make_file("src/worker.rs", "hash_worker")],
-            &[make_symbol(
-                "seed",
-                "run_pipeline",
-                "src/worker.rs",
-                None,
-                Some(linkage),
-            )],
-            &[],
-            &[],
-            &[],
-            &workspace_id,
-        )?;
-        guard.compute_reference_scores()?;
-    }
+#[tokio::test]
+async fn test_blast_radius_likely_test_path_overflow_is_counted() -> Result<()> {
+    let text = overflow_text().await?;
 
-    let result = BlastRadiusTool {
-        symbol_ids: vec!["seed".to_string()],
-        file_paths: vec![],
-        from_revision: None,
-        to_revision: None,
-        max_depth: 1,
-        limit: 5,
-        include_tests: true,
-        format: Some("readable".to_string()),
-        workspace: Some("primary".to_string()),
-        ..Default::default()
-    }
-    .call_tool(&handler)
-    .await?;
-
-    let text = extract_text(&result);
     assert!(
-        text.contains("tests/generated/test_9.rs"),
+        text.contains("tests/generated/test_09.rs"),
         "visible likely tests should include the capped prefix: {text}"
     );
     assert!(
         !text.contains("tests/generated/test_10.rs"),
         "overflow likely tests should stay out of the first page: {text}"
     );
-
     assert!(
         text.contains("…and 2 more"),
         "hidden likely-test paths must be counted: {text}"
     );
-
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn test_blast_radius_related_test_symbol_overflow_is_counted() -> Result<()> {
-    let (_temp_dir, handler, workspace_id) = setup_handler().await?;
+    let text = overflow_text().await?;
 
-    let linked_tests: Vec<String> = (0..12)
-        .map(|index| format!("test_generated_case_{index}"))
-        .collect();
-    let mut linkage = HashMap::new();
-    linkage.insert(
-        "test_linkage".to_string(),
-        serde_json::json!({
-            "test_count": linked_tests.len(),
-            "best_tier": "basic",
-            "worst_tier": "basic",
-            "linked_tests": linked_tests,
-            "evidence_sources": ["metadata"]
-        }),
-    );
-
-    let db = handler.primary_database().await?;
-    {
-        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.bulk_store_fresh_atomic(
-            &[make_file("src/worker.rs", "hash_worker")],
-            &[make_symbol(
-                "seed",
-                "run_pipeline",
-                "src/worker.rs",
-                None,
-                Some(linkage),
-            )],
-            &[],
-            &[],
-            &[],
-            &workspace_id,
-        )?;
-        guard.compute_reference_scores()?;
-    }
-
-    let result = BlastRadiusTool {
-        symbol_ids: vec!["seed".to_string()],
-        file_paths: vec![],
-        from_revision: None,
-        to_revision: None,
-        max_depth: 1,
-        limit: 5,
-        include_tests: true,
-        format: Some("readable".to_string()),
-        workspace: Some("primary".to_string()),
-        ..Default::default()
-    }
-    .call_tool(&handler)
-    .await?;
-
-    let text = extract_text(&result);
     assert!(
-        text.contains("test_generated_case_9"),
+        text.contains("test_generated_case_09"),
         "visible related test symbols should include the capped prefix: {text}"
     );
     assert!(
         !text.contains("test_generated_case_10"),
         "overflow related test symbols should stay out of the first page: {text}"
     );
-
     assert!(
         text.contains("…and 2 more"),
         "hidden related test symbols must be counted: {text}"
     );
-
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_blast_radius_reports_deleted_files_from_revision_range() -> Result<()> {
-    let (_temp_dir, handler, workspace_id) = setup_handler().await?;
-    let db = handler.primary_database().await?;
+#[tokio::test]
+async fn test_blast_radius_rejects_unknown_seed_and_empty_request() -> Result<()> {
+    let (_tree, context) =
+        snapshot_context_from_files(&[("src/worker.rs", "pub fn run_pipeline() {}\n")])?;
 
-    let first_revision = {
-        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.incremental_update_atomic(
-            &[],
-            &[make_file("src/legacy.rs", "hash_legacy_v1")],
-            &[make_symbol(
-                "legacy",
-                "legacy_fn",
-                "src/legacy.rs",
-                None,
-                None,
-            )],
-            &[],
-            &[],
-            &[],
-            &workspace_id,
-        )?;
-        guard
-            .get_current_canonical_revision(&workspace_id)?
-            .expect("first write should record revision")
-    };
-
-    let second_revision = {
-        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard
-            .delete_orphaned_files_atomic(&workspace_id, &["src/legacy.rs".to_string()])?
-            .expect("delete should record revision")
-    };
-
-    let result = BlastRadiusTool {
-        symbol_ids: vec![],
-        file_paths: vec![],
-        from_revision: Some(first_revision),
-        to_revision: Some(second_revision),
-        max_depth: 2,
-        limit: 5,
-        include_tests: true,
-        format: Some("readable".to_string()),
-        workspace: Some("primary".to_string()),
-        ..Default::default()
-    }
-    .call_tool(&handler)
-    .await?;
-
-    let text = extract_text(&result);
-    assert!(
-        text.contains("Deleted files"),
-        "deleted-file section should be present: {text}"
-    );
-    assert!(
-        text.contains("src/legacy.rs"),
-        "deleted file should be reported: {text}"
-    );
-    assert!(
-        text.contains("deleted-file impact is path-only")
-            && text.contains("historical callers are unavailable"),
-        "deletion-only revision ranges should state the impact limit: {text}"
+    let unknown = readable("no_such_symbol", 1, 5)
+        .call_tool(&context)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        unknown,
+        "Unknown symbol ids for blast_radius: no_such_symbol"
     );
 
+    let empty = BlastRadiusTool::default()
+        .call_tool(&context)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(empty, "blast_radius requires symbol_ids or file_paths.");
     Ok(())
 }

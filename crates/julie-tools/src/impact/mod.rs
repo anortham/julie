@@ -10,9 +10,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use tracing::debug;
 
-use crate::navigation::resolution::WorkspaceTarget;
 use julie_context::ToolContext;
-use julie_core::database::SymbolDatabase;
+use julie_index::snapshot::Snapshot;
 
 use self::formatting::{BlastRadiusFormat, BlastRadiusHeader, format_blast_radius};
 pub use self::likely_tests::LikelyTests;
@@ -41,7 +40,7 @@ const LIKELY_TESTS_LIMIT: usize = 10;
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct BlastRadiusTool {
-    /// Symbol ids to seed the impact walk. Use ids from search or navigation tools.
+    /// Symbol names or ids to seed the impact walk. Every definition with a matching name seeds the walk.
     #[serde(
         default,
         deserialize_with = "julie_core::serde_lenient::deserialize_vec_string_lenient"
@@ -53,18 +52,6 @@ pub struct BlastRadiusTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_vec_string_lenient"
     )]
     pub file_paths: Vec<String>,
-    /// Start Julie database revision number for a revision-range seed. Requires `to_revision`.
-    #[serde(
-        default,
-        deserialize_with = "julie_core::serde_lenient::deserialize_option_i64_lenient"
-    )]
-    pub from_revision: Option<i64>,
-    /// End Julie database revision number. Requires `from_revision` and must be greater.
-    #[serde(
-        default,
-        deserialize_with = "julie_core::serde_lenient::deserialize_option_i64_lenient"
-    )]
-    pub to_revision: Option<i64>,
     /// Maximum relationship hops to walk outward from seed symbols.
     #[serde(
         default = "default_max_depth",
@@ -102,8 +89,6 @@ impl Default for BlastRadiusTool {
         Self {
             symbol_ids: Vec::new(),
             file_paths: Vec::new(),
-            from_revision: None,
-            to_revision: None,
             max_depth: default_max_depth(),
             limit: default_limit(),
             include_tests: default_include_tests(),
@@ -122,49 +107,24 @@ impl BlastRadiusTool {
 }
 
 pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<String> {
-    let workspace_target = handler
+    let target = handler
         .resolve_workspace_target(tool.workspace.as_deref())
         .await?;
-    let tool = tool.clone();
-
-    match workspace_target {
-        WorkspaceTarget::Target(target_workspace_id) => {
-            debug!("blast_radius: using workspace {}", target_workspace_id);
-            // Pooled DB: read-only, no mutation gate required.
-            let pooled_db = handler
-                .get_pooled_database_for_workspace(&target_workspace_id)
-                .await?;
-
-            tokio::task::spawn_blocking(move || {
-                let pooled_db = pooled_db.into_read_snapshot()?;
-                run_with_db(&tool, &pooled_db, &target_workspace_id)
-            })
-            .await?
-        }
-        WorkspaceTarget::Primary => {
-            let db = handler.primary_pooled_database().await?;
-            let workspace_id = handler.require_primary_workspace_identity()?;
-
-            tokio::task::spawn_blocking(move || {
-                let db_guard = db.into_read_snapshot()?;
-                run_with_db(&tool, &db_guard, &workspace_id)
-            })
-            .await?
-        }
-    }
+    debug!("blast_radius: using workspace {:?}", target);
+    let snapshot = handler.snapshot(&target).await?;
+    run_with_snapshot(tool, &snapshot)
 }
 
-fn run_with_db(tool: &BlastRadiusTool, db: &SymbolDatabase, workspace_id: &str) -> Result<String> {
+fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<String> {
     match tool.mode.as_deref() {
         None | Some("default") | Some("web") => {}
         Some(other) => return Ok(format!("mode must be 'default' or 'web'; got '{other}'")),
     }
-    let seed_context = seed::resolve_seed_context(tool, db, workspace_id)?;
+    let graph = snapshot.graph();
+    let seed_context = seed::resolve_seed_context(tool, graph)?;
     let page_limit = tool.limit.max(1) as usize;
-    let default_budget = WalkBudget::default();
     let walk_budget = WalkBudget {
         max_frontier_per_depth: (page_limit * 10).clamp(100, 500),
-        max_identifier_fanout_per_name: default_budget.max_identifier_fanout_per_name,
     };
     let traversal_policy = if tool.mode.as_deref() == Some("web") {
         ImpactTraversalPolicy::Web
@@ -172,25 +132,20 @@ fn run_with_db(tool: &BlastRadiusTool, db: &SymbolDatabase, workspace_id: &str) 
         ImpactTraversalPolicy::Default
     };
     let (candidates, _walk_stats) = walk::walk_impacts_with_policy(
-        db,
+        graph,
         &seed_context.seed_symbols,
         tool.max_depth,
         walk_budget,
         traversal_policy,
-    )?;
+    );
     let web_callers = if tool.mode.as_deref() == Some("web") {
-        let seed_ids: Vec<String> = seed_context
-            .seed_symbols
-            .iter()
-            .map(|symbol| symbol.id.clone())
-            .collect();
-        walk::walk_web_callers(db, &seed_ids)?
+        walk::walk_web_callers(snapshot, &seed_context.seed_symbols)?
     } else {
         Vec::new()
     };
     let ranked_impacts = ranking::rank_impacts(candidates, tool.include_tests);
     let likely_tests = if tool.include_tests {
-        collect_likely_tests(db, &seed_context, &ranked_impacts)?
+        collect_likely_tests(graph, &seed_context, &ranked_impacts)
     } else {
         LikelyTests::default()
     };
@@ -222,11 +177,6 @@ fn run_with_db(tool: &BlastRadiusTool, db: &SymbolDatabase, workspace_id: &str) 
     web_caller_rows.truncate(page_limit);
 
     let header = BlastRadiusHeader {
-        revision_range: match (tool.from_revision, tool.to_revision) {
-            (Some(from), Some(to)) => Some((from, to)),
-            _ => None,
-        },
-        deleted_files_path_only: !seed_context.deleted_files.is_empty(),
         impact_overflow,
         web_callers: web_caller_rows,
         web_callers_total,
@@ -236,7 +186,6 @@ fn run_with_db(tool: &BlastRadiusTool, db: &SymbolDatabase, workspace_id: &str) 
         &seed_context,
         &visible_impacts,
         &visible_likely_tests,
-        &seed_context.deleted_files,
         format,
         header,
     ))

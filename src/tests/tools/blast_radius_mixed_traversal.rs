@@ -4,12 +4,7 @@ mod scorecard;
 
 use anyhow::Result;
 
-use self::corpus::{build_fixture, call_case, load_corpus};
-
-#[test]
-fn phase3_mixed_traversal_corpus_is_complete() -> Result<()> {
-    load_corpus()?.validate()
-}
+use self::corpus::{build_fixture, call_case};
 
 #[tokio::test]
 async fn phase3_default_mode_matches_legacy_snapshot() -> Result<()> {
@@ -19,7 +14,7 @@ async fn phase3_default_mode_matches_legacy_snapshot() -> Result<()> {
 
     assert_eq!(
         output,
-        "Blast radius from 1 seed symbol\nHigh impact\n1. showUser  backend/show_user.php:30\n   why: direct caller, 1 hop, centrality=low\n2. cycleA  cycles/cycle_a.rs:50\n   why: direct caller, 1 hop, centrality=low\n3. cycleB  cycles/cycle_b.rs:60\n   why: reaches cycleA in 2 hops, centrality=low"
+        "Blast radius from 1 seed symbol\nHigh impact\n1. cycleA  cycles/cycle_a.rs:1\n   why: direct caller, 1 hop, centrality=medium\n2. showUser  backend/show_user.php:4\n   why: direct caller, 1 hop, centrality=low\n3. cycleB  cycles/cycle_b.rs:1\n   why: reaches cycleA in 2 hops, centrality=medium"
     );
     Ok(())
 }

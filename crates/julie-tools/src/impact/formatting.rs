@@ -30,12 +30,6 @@ impl BlastRadiusFormat {
 /// without bumping the arity of `format_blast_radius`.
 #[derive(Debug, Clone, Default)]
 pub struct BlastRadiusHeader {
-    /// Inclusive `(from, to)` database revision range driving the seed, if
-    /// the caller asked for a revision-range blast radius.
-    pub revision_range: Option<(i64, i64)>,
-    /// True when deleted files are present. Julie does not keep historical
-    /// caller graphs for removed files, so that section is path-only.
-    pub deleted_files_path_only: bool,
     /// True when more impact rows existed than the visible page kept.
     pub impact_overflow: bool,
     /// Pre-formatted `web`-mode caller rows (e.g. `"fetchUser  src/client.ts:3  via http_call GET /api/users/123"`).
@@ -50,7 +44,6 @@ pub fn format_blast_radius(
     seed_context: &SeedContext,
     impacts: &[RankedImpact],
     likely_tests: &LikelyTests,
-    deleted_files: &[String],
     format: BlastRadiusFormat,
     header: BlastRadiusHeader,
 ) -> String {
@@ -60,7 +53,7 @@ pub fn format_blast_radius(
     };
 
     let mut sections = Vec::new();
-    sections.push(header_line(seed_context, &header));
+    sections.push(header_line(seed_context));
 
     if !impacts.is_empty() {
         let mut impact_block = String::from("High impact\n");
@@ -71,7 +64,7 @@ pub fn format_blast_radius(
                 .join("\n"),
         );
         sections.push(impact_block);
-    } else if deleted_files.is_empty() {
+    } else {
         sections.push("No impacted symbols found.".to_string());
     }
 
@@ -89,23 +82,6 @@ pub fn format_blast_radius(
             &likely_tests.related_test_symbols,
             likely_tests.related_test_symbols_total,
         ));
-    }
-
-    if !deleted_files.is_empty() {
-        let mut deleted_block = String::from("Deleted files\n");
-        if header.deleted_files_path_only {
-            deleted_block.push_str(
-                "Note: deleted-file impact is path-only because historical callers are unavailable after the file has been removed.\n",
-            );
-        }
-        deleted_block.push_str(
-            &deleted_files
-                .iter()
-                .map(|file| format!("- {}", file))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        );
-        sections.push(deleted_block);
     }
 
     if !header.web_callers.is_empty() {
@@ -198,11 +174,11 @@ fn format_impact_group(impacts: &[RankedImpact], start_rank: usize) -> String {
     block
 }
 
-fn header_line(seed_context: &SeedContext, header: &BlastRadiusHeader) -> String {
+fn header_line(seed_context: &SeedContext) -> String {
     let file_count = seed_context.changed_files.len();
     let seed_count = seed_context.seed_symbols.len();
 
-    let base = match (file_count, seed_count) {
+    match (file_count, seed_count) {
         (0, 0) => "Blast radius".to_string(),
         (0, 1) => "Blast radius from 1 seed symbol".to_string(),
         (0, _) => format!("Blast radius from {} seed symbols", seed_count),
@@ -221,10 +197,5 @@ fn header_line(seed_context: &SeedContext, header: &BlastRadiusHeader) -> String
             "Blast radius from {} changed files, {} seed symbols",
             file_count, seed_count
         ),
-    };
-
-    match header.revision_range {
-        Some((from, to)) => format!("{} (revs {}..{})", base, from, to),
-        None => base,
     }
 }

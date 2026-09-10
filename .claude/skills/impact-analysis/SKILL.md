@@ -29,12 +29,11 @@ Use `context_file` when the name is ambiguous. If the target is described concep
 blast_radius(file_paths=["<definition_file>"], max_depth=2, include_tests=true)
 ```
 
-`blast_radius` is the primary entry point for impact analysis. One call returns ranked impacted symbols with why-reasons, likely tests, and (for revision-range seeds) deleted files. It walks the reference graph deterministically, so you don't have to chain `get_context → fast_refs → deep_dive` to build the same picture.
+`blast_radius` is the primary entry point for impact analysis. One call returns ranked impacted symbols with why-reasons and likely tests. It walks the reference graph deterministically, so you don't have to chain `get_context → fast_refs → deep_dive` to build the same picture.
 
 You can seed it three ways:
 - `file_paths=["src/foo.rs"]` — default when you know the changed file but not a symbol ID
 - `symbol_ids=["<id>"]` — tighter impact when another Julie result already gave you concrete symbol IDs
-- `from_revision=<number>`, `to_revision=<number>` — advanced mode using Julie's canonical revision numbers, not Git refs or SHAs
 
 If the impact list is large, the output ends with `Output truncated at <N> results; narrow the query or pass a smaller limit.` See Step 4.
 
@@ -56,16 +55,6 @@ deep_dive(symbol="<caller>", context_file="<partial_file_path>")
 ### Step 4: Narrow long impact lists
 
 If Step 2 ended with the truncation line, rerun `blast_radius` with a larger `limit`, a smaller `max_depth`, or a tighter seed (`symbol_ids` instead of `file_paths`).
-
-### Reviewing what changed since a revision
-
-For "what's the blast radius of everything that changed in a recorded Julie revision range?" use revision-range seeds:
-
-```
-blast_radius(from_revision=101, to_revision=108, include_tests=true)
-```
-
-This walks from every symbol touched in that range. Deleted files get reported in a separate section of the output because they have no symbols left to walk from. Do not pass branch names, SHAs, or tags here, the tool only accepts canonical numeric revisions.
 
 ### Step 5: Sample Deep Dives on High-Risk Callers
 

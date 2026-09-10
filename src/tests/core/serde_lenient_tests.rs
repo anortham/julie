@@ -136,20 +136,6 @@ fn option_i64_rejects_invalid_strings() {
 }
 
 #[test]
-fn blast_radius_tool_accepts_stringified_revisions() {
-    use crate::tools::impact::BlastRadiusTool;
-
-    let payload = r#"{
-        "file_paths": ["src/foo.rs"],
-        "from_revision": "7",
-        "to_revision": "12"
-    }"#;
-    let tool: BlastRadiusTool = serde_json::from_str(payload).unwrap();
-    assert_eq!(tool.from_revision, Some(7));
-    assert_eq!(tool.to_revision, Some(12));
-}
-
-#[test]
 fn blast_radius_tool_accepts_stringified_arrays() {
     use crate::tools::impact::BlastRadiusTool;
 
@@ -200,11 +186,9 @@ fn blast_radius_tool_schema_describes_inputs() {
         .and_then(serde_json::Value::as_object)
         .expect("BlastRadiusTool schema should expose input properties");
 
-    let expected_fragments: [(&str, &[&str]); 9] = [
-        ("symbol_ids", &["symbol ids"]),
+    let expected_fragments: [(&str, &[&str]); 7] = [
+        ("symbol_ids", &["symbol names or ids"]),
         ("file_paths", &["changed files"]),
-        ("from_revision", &["julie database revision"]),
-        ("to_revision", &["julie database revision"]),
         ("max_depth", &["relationship hops"]),
         ("limit", &["visible impact rows"]),
         ("include_tests", &["likely tests"]),

@@ -300,10 +300,18 @@ async fn trace_default_mode_is_byte_identical_no_web_markers() -> Result<()> {
 
 #[tokio::test]
 async fn impact_web_mode_lists_calling_frontend_symbols() -> Result<()> {
-    let (_temp, context) = seeded_context()?;
+    let tree = write_tree(&[
+        ("src/client.ts", CLIENT_TS),
+        ("src/Controller.php", CONTROLLER_PHP),
+        (
+            "tests/client.test.ts",
+            "import { fetchUser } from \"../src/client\";\nexport function fetchUserReturnsProfile() { return fetchUser(); }\n",
+        ),
+    ])?;
+    let context = crate::tests::helpers::snapshot::snapshot_context(tree.path())?;
 
     let result = BlastRadiusTool {
-        symbol_ids: vec!["show_user".into()],
+        symbol_ids: vec!["showUser".into()],
         mode: Some("web".into()),
         ..Default::default()
     }
@@ -338,7 +346,7 @@ async fn impact_web_mode_lists_calling_frontend_symbols() -> Result<()> {
     );
 
     let depth_zero_result = BlastRadiusTool {
-        symbol_ids: vec!["show_user".into()],
+        symbol_ids: vec!["showUser".into()],
         mode: Some("web".into()),
         max_depth: 0,
         ..Default::default()
@@ -363,7 +371,7 @@ async fn impact_default_mode_omits_web_callers_section() -> Result<()> {
     let (_temp, context) = seeded_context()?;
 
     let result = BlastRadiusTool {
-        symbol_ids: vec!["show_user".into()],
+        symbol_ids: vec!["showUser".into()],
         ..Default::default()
     }
     .call_tool(&context)
@@ -544,7 +552,7 @@ async fn impact_web_mode_lists_routines_querying_table() -> Result<()> {
     let (_temp, context) = seeded_sql_context()?;
 
     let result = BlastRadiusTool {
-        symbol_ids: vec!["users_table_symbol".into()],
+        symbol_ids: vec!["users".into()],
         mode: Some("web".into()),
         ..Default::default()
     }
@@ -602,7 +610,7 @@ async fn impact_default_mode_ignores_sql_query_edge() -> Result<()> {
     let (_temp, context) = seeded_sql_context()?;
 
     let result = BlastRadiusTool {
-        symbol_ids: vec!["users_table_symbol".into()],
+        symbol_ids: vec!["users".into()],
         ..Default::default()
     }
     .call_tool(&context)

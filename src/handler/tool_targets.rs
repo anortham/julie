@@ -112,8 +112,6 @@ pub(crate) fn blast_radius_metadata(params: &BlastRadiusTool) -> Value {
     json!({
         "symbol_ids": params.symbol_ids,
         "file_paths": params.file_paths,
-        "from_revision": params.from_revision,
-        "to_revision": params.to_revision,
         "max_depth": params.max_depth,
         "limit": params.limit,
         "include_tests": params.include_tests,

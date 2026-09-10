@@ -1,80 +1,62 @@
 use std::collections::HashSet;
 
 use anyhow::{Result, anyhow};
+use julie_extractors::SymbolKind;
+use julie_index::graph::{Graph, SymbolId};
 
 use super::BlastRadiusTool;
-use julie_core::Symbol;
-use julie_core::database::RevisionChangeKind;
-use julie_core::database::SymbolDatabase;
-use julie_extractors::SymbolKind;
+use crate::navigation::resolution::find_symbols;
 
 #[derive(Debug, Clone)]
 pub struct SeedContext {
-    pub seed_symbols: Vec<Symbol>,
+    pub seed_symbols: Vec<SymbolId>,
     pub changed_files: Vec<String>,
-    pub deleted_files: Vec<String>,
 }
 
-pub fn resolve_seed_context(
-    tool: &BlastRadiusTool,
-    db: &SymbolDatabase,
-    workspace_id: &str,
-) -> Result<SeedContext> {
-    validate_request(tool)?;
+/// Seeds are graph row ids or symbol names (`symbol_ids`) and file paths
+/// (`file_paths`); every matching definition of a name seeds the walk.
+pub fn resolve_seed_context(tool: &BlastRadiusTool, graph: &Graph) -> Result<SeedContext> {
+    if tool.symbol_ids.is_empty() && tool.file_paths.is_empty() {
+        return Err(anyhow!("blast_radius requires symbol_ids or file_paths."));
+    }
 
     let mut seed_symbols = Vec::new();
-    let mut changed_files = Vec::new();
-    let mut deleted_files = Vec::new();
-
-    if !tool.symbol_ids.is_empty() {
-        let requested_ids: HashSet<&str> = tool.symbol_ids.iter().map(|id| id.as_str()).collect();
-        let resolved = db.get_symbols_by_ids(&tool.symbol_ids)?;
-        let resolved_ids: HashSet<&str> =
-            resolved.iter().map(|symbol| symbol.id.as_str()).collect();
-
-        let mut missing_ids: Vec<String> = requested_ids
-            .difference(&resolved_ids)
-            .map(|id| (*id).to_string())
-            .collect();
-        missing_ids.sort();
-        if !missing_ids.is_empty() {
-            return Err(anyhow!(
-                "Unknown symbol ids for blast_radius: {}",
-                missing_ids.join(", ")
-            ));
+    let mut missing_ids = Vec::new();
+    for requested in &tool.symbol_ids {
+        let matches = match graph.symbol_by_row_id(requested) {
+            Some(id) => vec![id],
+            None => find_symbols(graph, requested, None),
+        };
+        if matches.is_empty() {
+            missing_ids.push(requested.clone());
         }
-
-        seed_symbols.extend(resolved);
+        seed_symbols.extend(matches);
+    }
+    missing_ids.sort();
+    if !missing_ids.is_empty() {
+        return Err(anyhow!(
+            "Unknown symbol ids for blast_radius: {}",
+            missing_ids.join(", ")
+        ));
     }
 
+    let mut changed_files = tool.file_paths.clone();
     for file_path in &tool.file_paths {
-        changed_files.push(file_path.clone());
-        seed_symbols.extend(file_seed_symbols(db, file_path)?);
+        seed_symbols.extend(
+            graph
+                .symbols_in_path(file_path)
+                .iter()
+                .copied()
+                .filter(|id| is_file_path_seed_kind(&graph.symbol(*id).kind)),
+        );
     }
 
-    if let (Some(from_revision), Some(to_revision)) = (tool.from_revision, tool.to_revision) {
-        let changes =
-            db.get_revision_file_changes_between(workspace_id, from_revision, to_revision)?;
-        for change in changes {
-            match change.change_kind {
-                RevisionChangeKind::Deleted => deleted_files.push(change.file_path),
-                RevisionChangeKind::Added | RevisionChangeKind::Modified => {
-                    changed_files.push(change.file_path.clone());
-                    seed_symbols.extend(file_seed_symbols(db, &change.file_path)?);
-                }
-            }
-        }
-    }
-
-    let mut seen_symbol_ids = HashSet::new();
-    seed_symbols.retain(|symbol| seen_symbol_ids.insert(symbol.id.clone()));
-
+    let mut seen = HashSet::new();
+    seed_symbols.retain(|id| seen.insert(*id));
     changed_files.sort();
     changed_files.dedup();
-    deleted_files.sort();
-    deleted_files.dedup();
 
-    if seed_symbols.is_empty() && deleted_files.is_empty() {
+    if seed_symbols.is_empty() {
         return Err(anyhow!(
             "No indexed symbols found for the requested blast_radius seeds."
         ));
@@ -83,16 +65,7 @@ pub fn resolve_seed_context(
     Ok(SeedContext {
         seed_symbols,
         changed_files,
-        deleted_files,
     })
-}
-
-fn file_seed_symbols(db: &SymbolDatabase, file_path: &str) -> Result<Vec<Symbol>> {
-    Ok(db
-        .get_symbols_for_file(file_path)?
-        .into_iter()
-        .filter(|symbol| is_file_path_seed_kind(&symbol.kind))
-        .collect())
 }
 
 fn is_file_path_seed_kind(kind: &SymbolKind) -> bool {
@@ -106,32 +79,4 @@ fn is_file_path_seed_kind(kind: &SymbolKind) -> bool {
             | SymbolKind::Variable
             | SymbolKind::Constant
     )
-}
-
-fn validate_request(tool: &BlastRadiusTool) -> Result<()> {
-    let has_symbol_seeds = !tool.symbol_ids.is_empty();
-    let has_file_seeds = !tool.file_paths.is_empty();
-    let has_revision_seeds = tool.from_revision.is_some() || tool.to_revision.is_some();
-
-    if !has_symbol_seeds && !has_file_seeds && !has_revision_seeds {
-        return Err(anyhow!(
-            "blast_radius requires symbol_ids, file_paths, or a revision range."
-        ));
-    }
-
-    if tool.from_revision.is_some() ^ tool.to_revision.is_some() {
-        return Err(anyhow!(
-            "blast_radius requires from_revision and to_revision together."
-        ));
-    }
-
-    if let (Some(from_revision), Some(to_revision)) = (tool.from_revision, tool.to_revision) {
-        if from_revision >= to_revision {
-            return Err(anyhow!(
-                "blast_radius requires from_revision < to_revision."
-            ));
-        }
-    }
-
-    Ok(())
 }

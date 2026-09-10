@@ -1,13 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use anyhow::Result;
-
-use julie_core::database::{IdentifierRef, SymbolDatabase};
+use julie_core::Symbol;
 use julie_index::analysis::test_linkage::test_linkage_entry;
+use julie_index::graph::{Graph, SymbolId};
 use julie_index::search::scoring::is_test_path;
 
 use super::ranking::RankedImpact;
 use super::seed::SeedContext;
+use crate::snapshot_rows::to_symbol;
 
 /// Bundle of test evidence surfaced next to a blast radius report.
 ///
@@ -41,187 +41,112 @@ impl LikelyTests {
         visible.related_test_symbols.truncate(limit);
         visible
     }
+
+    fn push_path(&mut self, seen: &mut HashSet<String>, path: String) {
+        if seen.insert(path.clone()) {
+            self.likely_test_paths.push(path);
+        }
+    }
+
+    fn push_name(&mut self, seen: &mut HashSet<String>, name: String) {
+        if seen.insert(name.clone()) {
+            self.related_test_symbols.push(name);
+        }
+    }
+
+    fn finalized(mut self) -> Self {
+        self.likely_test_paths_total = self.likely_test_paths.len();
+        self.related_test_symbols_total = self.related_test_symbols.len();
+        self
+    }
 }
 
+/// Tests for the seeds and impacts, first match wins:
+/// 1. `test_linkage` metadata on a relevant symbol,
+/// 2. test symbols with a graph edge into a relevant symbol,
+/// 3. test files whose name shares a stem with a relevant symbol's file.
 pub fn collect_likely_tests(
-    db: &SymbolDatabase,
+    graph: &Graph,
     seed_context: &SeedContext,
     impacts: &[RankedImpact],
-) -> Result<LikelyTests> {
+) -> LikelyTests {
     let mut tests = LikelyTests::default();
-
-    let relevant_symbols: Vec<_> = seed_context
-        .seed_symbols
-        .iter()
-        .chain(impacts.iter().map(|impact| &impact.symbol))
-        .collect();
-    let seed_ids: HashSet<String> = seed_context
-        .seed_symbols
-        .iter()
-        .map(|symbol| symbol.id.clone())
-        .collect();
-    let relevant_ids: HashSet<String> = relevant_symbols
-        .iter()
-        .map(|symbol| symbol.id.clone())
-        .collect();
-
-    // Tier 1: metadata-declared linkage from test_linkage / test_coverage.
-    // Paths go into likely_test_paths, bare names into related_test_symbols.
     let mut seen_paths = HashSet::new();
     let mut seen_names = HashSet::new();
+
+    let seed_ids: HashSet<SymbolId> = seed_context.seed_symbols.iter().copied().collect();
+    let mut relevant_ids: Vec<SymbolId> = seed_context.seed_symbols.clone();
+    relevant_ids.extend(
+        impacts
+            .iter()
+            .filter_map(|impact| graph.symbol_by_row_id(&impact.symbol.id)),
+    );
+    let relevant_symbols: Vec<Symbol> = relevant_ids
+        .iter()
+        .map(|id| to_symbol(graph, *id))
+        .collect();
+
     for symbol in &relevant_symbols {
-        if let Some(linkage) = symbol.metadata.as_ref().and_then(|metadata| {
+        let Some(linkage) = symbol.metadata.as_ref().and_then(|metadata| {
             let value = serde_json::to_value(metadata).ok()?;
             test_linkage_entry(&value).cloned()
-        }) {
-            if let Some(linked_test_paths) = linkage
-                .get("linked_test_paths")
+        }) else {
+            continue;
+        };
+        let strings = |key: &str| -> Vec<String> {
+            linkage
+                .get(key)
                 .and_then(|value| value.as_array())
-            {
-                for linked_test_path in linked_test_paths.iter().filter_map(|value| value.as_str())
-                {
-                    push_unique(
-                        &mut tests.likely_test_paths,
-                        &mut seen_paths,
-                        linked_test_path.to_string(),
-                    );
-                }
-            }
-            if let Some(linked_tests) = linkage
-                .get("linked_tests")
-                .and_then(|value| value.as_array())
-            {
-                for linked_test in linked_tests.iter().filter_map(|value| value.as_str()) {
-                    push_unique(
-                        &mut tests.related_test_symbols,
-                        &mut seen_names,
-                        linked_test.to_string(),
-                    );
-                }
-            }
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|value| value.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        for path in strings("linked_test_paths") {
+            tests.push_path(&mut seen_paths, path);
+        }
+        for name in strings("linked_tests") {
+            tests.push_name(&mut seen_names, name);
         }
     }
-
     if !tests.is_empty() {
-        finalize_likely_tests(&mut tests);
-        return Ok(tests);
+        return tests.finalized();
     }
 
-    // Tier 2: relationships table — any test symbol that calls/uses the
-    // relevant symbols. Yields test file paths.
-    let symbol_ids: Vec<String> = relevant_symbols
+    let mut referrers: Vec<SymbolId> = relevant_ids
         .iter()
-        .map(|symbol| symbol.id.clone())
+        .flat_map(|id| graph.references_to(*id))
+        .filter(|id| !seed_ids.contains(id))
         .collect();
-    let relationship_tests = db.get_relationships_to_symbols(&symbol_ids)?;
-    let mut from_ids: Vec<String> = relationship_tests
-        .iter()
-        .map(|relationship| relationship.from_symbol_id.clone())
-        .collect();
-    from_ids.sort();
-    from_ids.dedup();
-    let mut from_symbols = db.get_symbols_by_ids(&from_ids)?;
-    from_symbols.sort_by(|a, b| a.file_path.cmp(&b.file_path).then_with(|| a.id.cmp(&b.id)));
-    for symbol in from_symbols {
-        if is_test_symbol(&symbol) {
-            push_unique(
-                &mut tests.likely_test_paths,
-                &mut seen_paths,
-                symbol.file_path.clone(),
-            );
-        }
-    }
-
-    if !tests.likely_test_paths.is_empty() {
-        finalize_likely_tests(&mut tests);
-        return Ok(tests);
-    }
-
-    // Tier 3: identifiers table. First pass — resolved matches where
-    // target_symbol_id points at a seed. Those are much higher signal than
-    // name-only matches. If any resolved matches exist, we use ONLY them so
-    // the result stays tight.
-    let relevant_names: Vec<String> = relevant_symbols
-        .iter()
-        .map(|symbol| symbol.name.clone())
-        .collect();
-    let mut identifier_refs = db.get_identifiers_by_names(&relevant_names)?;
-
-    // Drop rows whose container is a seed — a seed "calling itself" via its
-    // own name is noise.
-    identifier_refs.retain(|iref| {
-        iref.containing_symbol_id
-            .as_ref()
-            .is_none_or(|id| !seed_ids.contains(id))
+    referrers.sort_by(|a, b| {
+        let (left, right) = (graph.symbol(*a), graph.symbol(*b));
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.id.cmp(&right.id))
     });
-
-    let resolved_refs: Vec<IdentifierRef> = identifier_refs
-        .iter()
-        .filter(|iref| {
-            iref.target_symbol_id
-                .as_ref()
-                .is_some_and(|target| relevant_ids.contains(target))
-        })
-        .cloned()
-        .collect();
-
-    let mut working_refs = if resolved_refs.is_empty() {
-        identifier_refs
-    } else {
-        resolved_refs
-    };
-    sort_identifier_refs(&mut working_refs);
-
-    let containing_ids: Vec<String> = working_refs
-        .iter()
-        .filter_map(|identifier| identifier.containing_symbol_id.clone())
-        .collect();
-    let containing_symbols = db.get_symbols_by_ids(&containing_ids)?;
-    let containing_map: HashMap<String, julie_core::Symbol> = containing_symbols
-        .into_iter()
-        .map(|symbol| (symbol.id.clone(), symbol))
-        .collect();
-
-    for identifier in working_refs {
-        let containing_symbol = identifier
-            .containing_symbol_id
-            .as_ref()
-            .and_then(|id| containing_map.get(id));
-        if containing_symbol.is_some_and(is_test_symbol) || is_test_path(&identifier.file_path) {
-            let test_path = containing_symbol
-                .map(|symbol| symbol.file_path.clone())
-                .unwrap_or_else(|| identifier.file_path.clone());
-            push_unique(&mut tests.likely_test_paths, &mut seen_paths, test_path);
-            if let Some(symbol) = containing_symbol {
-                push_unique(
-                    &mut tests.related_test_symbols,
-                    &mut seen_names,
-                    symbol.name.clone(),
-                );
-            }
+    referrers.dedup();
+    for id in referrers {
+        let symbol = to_symbol(graph, id);
+        if is_test_symbol(&symbol) {
+            tests.push_path(&mut seen_paths, symbol.file_path.clone());
+            tests.push_name(&mut seen_names, symbol.name.clone());
         }
     }
-
     if !tests.is_empty() {
-        finalize_likely_tests(&mut tests);
-        return Ok(tests);
+        return tests.finalized();
     }
 
-    // Tier 4: stem-matching fallback. Walk the file index in deterministic
-    // order and flag test files whose name shares a stem with any relevant
-    // symbol's source file. Paths only (no symbol names).
-    let mut stmt = db.conn.prepare("SELECT path FROM files ORDER BY path")?;
-    let file_rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
     let file_stems: HashSet<String> = relevant_symbols
         .iter()
         .filter_map(|symbol| symbol.file_path.rsplit('/').next())
         .filter_map(|file_name| file_name.split('.').next())
         .map(|stem| stem.to_ascii_lowercase())
         .collect();
-
-    for row in file_rows {
-        let path = row?;
-        if !is_test_path(&path) {
+    for path in graph.paths() {
+        if !is_test_path(path) {
             continue;
         }
         let matches_stem = path
@@ -230,44 +155,12 @@ pub fn collect_likely_tests(
             .map(|file_name| file_name.to_ascii_lowercase())
             .is_some_and(|file_name| file_stems.iter().any(|stem| file_name.contains(stem)));
         if matches_stem {
-            push_unique(&mut tests.likely_test_paths, &mut seen_paths, path);
+            tests.push_path(&mut seen_paths, path.clone());
         }
     }
-
-    finalize_likely_tests(&mut tests);
-    Ok(tests)
+    tests.finalized()
 }
 
-fn push_unique(values: &mut Vec<String>, seen: &mut HashSet<String>, candidate: String) {
-    if seen.insert(candidate.clone()) {
-        values.push(candidate);
-    }
-}
-
-fn finalize_likely_tests(tests: &mut LikelyTests) {
-    // Capture totals so the formatter can emit an overflow marker per
-    // collection. Independent caps: paths and symbol names never share a budget.
-    tests.likely_test_paths_total = tests.likely_test_paths.len();
-    tests.related_test_symbols_total = tests.related_test_symbols.len();
-}
-
-fn sort_identifier_refs(refs: &mut [IdentifierRef]) {
-    refs.sort_by(|a, b| {
-        // Confidence descending, then file_path ascending, then
-        // containing_symbol_id ascending (break ties deterministically).
-        b.confidence
-            .partial_cmp(&a.confidence)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.file_path.cmp(&b.file_path))
-            .then_with(|| {
-                let left = a.containing_symbol_id.as_deref().unwrap_or("");
-                let right = b.containing_symbol_id.as_deref().unwrap_or("");
-                left.cmp(right)
-            })
-            .then_with(|| a.start_line.cmp(&b.start_line))
-    });
-}
-
-fn is_test_symbol(symbol: &julie_core::Symbol) -> bool {
+fn is_test_symbol(symbol: &Symbol) -> bool {
     julie_index::analysis::test_roles::is_test_related(symbol) || is_test_path(&symbol.file_path)
 }

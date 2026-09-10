@@ -1,13 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
+use julie_core::Symbol;
+use julie_extractors::RelationshipKind;
+use julie_facts::FactsReader;
+use julie_facts::rows::StructuralFactQuery;
+use julie_index::graph::{EdgeKind, Graph, SymbolId};
+use julie_index::snapshot::Snapshot;
 
 use crate::impact::ranking::relationship_priority;
-use julie_core::Symbol;
-use julie_core::database::SymbolDatabase;
-use julie_core::database::WebEdgeKind;
-use julie_core::database::impact_graph::identifier_incoming_edges;
-use julie_extractors::{Relationship, RelationshipKind};
+use crate::snapshot_rows::to_symbol;
 
 #[derive(Debug, Clone)]
 pub struct ImpactCandidate {
@@ -18,87 +20,88 @@ pub struct ImpactCandidate {
     pub via_symbol_name: String,
 }
 
-/// A reverse web-edge caller of a seed symbol. For `http_call` edges the seed
+/// A reverse web-edge caller of a seed symbol. For `WebRoute` edges the seed
 /// is a route handler and the caller is the frontend symbol that issued the
-/// client call; for `sql_query` edges the seed is a table symbol and the
-/// caller is the routine/view that queries it. Populated only in `web` mode
-/// so the default blast-radius output stays byte-identical.
+/// client call; for `SqlQuery` edges the seed is a table symbol and the
+/// caller is the routine that queries it. Populated only in `web` mode so
+/// the default blast-radius output stays byte-identical.
 #[derive(Debug, Clone)]
 pub struct WebCaller {
     pub impact: ImpactCandidate,
-    /// Human-readable endpoint/table label, e.g. `"GET /api/users/123"` for
-    /// matched HTTP edges, `"table:users"` for matched SQL edges, or the
-    /// external-endpoint label for unmatched calls.
+    /// Endpoint or table label, e.g. `"GET /api/users/123"` or `"table:users"`.
     pub endpoint: String,
-    /// The web-edge kind that produced this caller, rendered as the `via`
-    /// label (`http_call` or `sql_query`).
+    /// The edge kind rendered as the `via` label (`http_call` or `sql_query`).
     pub via: &'static str,
 }
 
-fn web_edge_via_label(kind: WebEdgeKind) -> &'static str {
-    match kind {
-        WebEdgeKind::HttpCall => "http_call",
-        WebEdgeKind::SqlQuery => "sql_query",
-    }
-}
+const HTTP_CLIENT_CALL_PATTERN: &str = "http.client_request.v1";
 
-fn web_edge_relationship_kind(kind: WebEdgeKind) -> RelationshipKind {
-    match kind {
-        WebEdgeKind::HttpCall => RelationshipKind::Calls,
-        WebEdgeKind::SqlQuery => RelationshipKind::References,
-    }
-}
-
-/// Reverse web-edge lookup: given seed symbol ids (route handlers or table
-/// symbols), return the symbols that call them via derived `http_call` /
-/// `sql_query` edges. Used by the blast-radius tool in `web` mode to surface
-/// "who calls this endpoint / queries this table".
-pub fn walk_web_callers(db: &SymbolDatabase, seed_symbol_ids: &[String]) -> Result<Vec<WebCaller>> {
-    if seed_symbol_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    let edges = db.web_edges_to_symbols(seed_symbol_ids)?;
-    let caller_ids: Vec<String> = edges.iter().map(|e| e.from_symbol_id.clone()).collect();
-    let symbols = db.get_symbols_by_ids(&caller_ids)?;
-    let map: HashMap<String, Symbol> = symbols.into_iter().map(|s| (s.id.clone(), s)).collect();
-    let caller_id_refs: Vec<&str> = caller_ids.iter().map(String::as_str).collect();
-    let reference_scores = db.get_reference_scores(&caller_id_refs)?;
-    let mut callers = Vec::new();
-    for edge in edges {
-        let Some(caller) = map.get(&edge.from_symbol_id).cloned() else {
-            continue;
-        };
-        let via = web_edge_via_label(edge.kind);
-        let endpoint = match edge.kind {
-            WebEdgeKind::SqlQuery => edge
-                .table
-                .clone()
-                .map(|t| format!("table:{t}"))
-                .unwrap_or_else(|| edge.to_external.clone().unwrap_or_default()),
-            WebEdgeKind::HttpCall => {
-                edge.to_external
-                    .clone()
-                    .unwrap_or_else(|| match (&edge.method, &edge.path) {
-                        (Some(method), Some(path)) => format!("{method} {path}"),
-                        (Some(method), None) => method.clone(),
-                        (None, Some(path)) => path.clone(),
-                        (None, None) => String::new(),
-                    })
+/// `"VERB /path"` of the first HTTP client call inside `caller`, by line.
+// ponytail: a caller with several client calls is labelled by its first one;
+// per-call matching needs the handler's route template.
+fn client_call_label(reader: &FactsReader<'_>, graph: &Graph, caller: SymbolId) -> Result<String> {
+    let symbol = graph.symbol(caller);
+    let mut rows = reader.structural_facts(&StructuralFactQuery {
+        pattern_ids: vec![HTTP_CLIENT_CALL_PATTERN.to_string()],
+        path_pattern: Some(symbol.path.clone()),
+        language: None,
+        limit: i64::MAX as usize,
+    })?;
+    rows.retain(|fact| fact.containing_ordinal == Some(symbol.ordinal));
+    rows.sort_by_key(|fact| fact.span.start_line);
+    Ok(rows
+        .first()
+        .map(|fact| {
+            let meta = |key: &str| {
+                fact.metadata
+                    .as_ref()?
+                    .get(key)?
+                    .as_str()
+                    .map(str::to_string)
+            };
+            let path = meta("target_path").unwrap_or_default();
+            match meta("verb") {
+                Some(verb) => format!("{verb} {path}"),
+                None => path,
             }
-        };
-        let relationship_kind = web_edge_relationship_kind(edge.kind);
-        let reference_score = reference_scores.get(&caller.id).copied().unwrap_or(0.0);
-        callers.push(WebCaller {
-            impact: ImpactCandidate {
-                symbol: caller,
-                distance: 1,
-                relationship_kind,
-                reference_score,
-                via_symbol_name: endpoint.clone(),
-            },
-            endpoint,
-            via,
-        });
+        })
+        .unwrap_or_default())
+}
+
+/// Reverse web-edge lookup: the symbols that reach `seeds` over `WebRoute`
+/// or `SqlQuery` edges, one row per edge.
+pub fn walk_web_callers(snapshot: &Snapshot, seeds: &[SymbolId]) -> Result<Vec<WebCaller>> {
+    let graph = snapshot.graph();
+    let facts = snapshot.facts()?;
+    let reader = facts.reader();
+    let mut callers = Vec::new();
+    for &seed in seeds {
+        for &(caller, kind) in graph.incoming(seed) {
+            let (via, endpoint, relationship_kind) = match kind {
+                EdgeKind::WebRoute => (
+                    "http_call",
+                    client_call_label(&reader, graph, caller)?,
+                    RelationshipKind::Calls,
+                ),
+                EdgeKind::SqlQuery => (
+                    "sql_query",
+                    format!("table:{}", graph.symbol(seed).name),
+                    RelationshipKind::References,
+                ),
+                _ => continue,
+            };
+            callers.push(WebCaller {
+                impact: ImpactCandidate {
+                    symbol: to_symbol(graph, caller),
+                    distance: 1,
+                    relationship_kind,
+                    reference_score: graph.reference_score(caller),
+                    via_symbol_name: endpoint.clone(),
+                },
+                endpoint,
+                via,
+            });
+        }
     }
     callers.sort_by(|a, b| {
         a.impact
@@ -114,7 +117,14 @@ pub fn walk_web_callers(db: &SymbolDatabase, seed_symbol_ids: &[String]) -> Resu
 #[derive(Debug, Clone, Copy)]
 pub struct WalkBudget {
     pub max_frontier_per_depth: usize,
-    pub max_identifier_fanout_per_name: usize,
+}
+
+impl Default for WalkBudget {
+    fn default() -> Self {
+        Self {
+            max_frontier_per_depth: 250,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,304 +133,134 @@ pub(super) enum ImpactTraversalPolicy {
     Web,
 }
 
-impl Default for WalkBudget {
-    fn default() -> Self {
-        Self {
-            max_frontier_per_depth: 250,
-            max_identifier_fanout_per_name: 100,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct WalkStats {
     pub depths_visited: u32,
     pub capped_depths: u32,
-    pub dropped_identifier_edges: usize,
-    pub total_relationship_edges_considered: usize,
-    pub total_identifier_edges_considered: usize,
+    pub total_edges_considered: usize,
 }
 
-pub fn walk_impacts(
-    db: &SymbolDatabase,
-    seed_symbols: &[Symbol],
-    max_depth: u32,
-) -> Result<Vec<ImpactCandidate>> {
-    let (impacts, _stats) =
-        walk_impacts_with_budget(db, seed_symbols, max_depth, WalkBudget::default())?;
-    Ok(impacts)
+pub fn walk_impacts(graph: &Graph, seeds: &[SymbolId], max_depth: u32) -> Vec<ImpactCandidate> {
+    walk_impacts_with_budget(graph, seeds, max_depth, WalkBudget::default()).0
 }
 
 pub fn walk_impacts_with_budget(
-    db: &SymbolDatabase,
-    seed_symbols: &[Symbol],
+    graph: &Graph,
+    seeds: &[SymbolId],
     max_depth: u32,
     budget: WalkBudget,
-) -> Result<(Vec<ImpactCandidate>, WalkStats)> {
+) -> (Vec<ImpactCandidate>, WalkStats) {
     walk_impacts_with_policy(
-        db,
-        seed_symbols,
+        graph,
+        seeds,
         max_depth,
         budget,
         ImpactTraversalPolicy::Default,
     )
 }
 
+fn relationship_kind(kind: EdgeKind, policy: ImpactTraversalPolicy) -> Option<RelationshipKind> {
+    let web = policy == ImpactTraversalPolicy::Web;
+    match kind {
+        EdgeKind::Calls => Some(RelationshipKind::Calls),
+        EdgeKind::References => Some(RelationshipKind::References),
+        EdgeKind::Imports => Some(RelationshipKind::Imports),
+        EdgeKind::Implements => Some(RelationshipKind::Implements),
+        EdgeKind::Extends => Some(RelationshipKind::Extends),
+        EdgeKind::Contains => None,
+        EdgeKind::WebRoute => web.then_some(RelationshipKind::Calls),
+        EdgeKind::SqlQuery => web.then_some(RelationshipKind::References),
+    }
+}
+
+/// Bounded breadth-first walk over incoming edges. Each depth keeps one edge
+/// per caller (strongest relationship kind, then lowest target id), sorts the
+/// callers, and clips the frontier to `budget.max_frontier_per_depth`.
 pub(super) fn walk_impacts_with_policy(
-    db: &SymbolDatabase,
-    seed_symbols: &[Symbol],
+    graph: &Graph,
+    seeds: &[SymbolId],
     max_depth: u32,
     budget: WalkBudget,
     policy: ImpactTraversalPolicy,
-) -> Result<(Vec<ImpactCandidate>, WalkStats)> {
-    if seed_symbols.is_empty() || max_depth == 0 {
-        return Ok((Vec::new(), WalkStats::default()));
-    }
-
-    let max_frontier_per_depth = budget.max_frontier_per_depth.max(1);
-    let max_identifier_fanout_per_name = budget.max_identifier_fanout_per_name.max(1);
-
-    let mut frontier_symbols: Vec<Symbol> = seed_symbols.to_vec();
-    let mut frontier_ids: Vec<String> = frontier_symbols
-        .iter()
-        .map(|symbol| symbol.id.clone())
-        .collect();
-    let mut frontier_names: HashMap<String, String> = frontier_symbols
-        .iter()
-        .map(|symbol| (symbol.id.clone(), symbol.name.clone()))
-        .collect();
-    let mut visited: HashSet<String> = frontier_ids.iter().cloned().collect();
-    let mut impacts = Vec::new();
+) -> (Vec<ImpactCandidate>, WalkStats) {
     let mut stats = WalkStats::default();
+    if seeds.is_empty() || max_depth == 0 {
+        return (Vec::new(), stats);
+    }
+    let max_frontier_per_depth = budget.max_frontier_per_depth.max(1);
+    let mut frontier: Vec<SymbolId> = seeds.to_vec();
+    let mut visited: HashSet<SymbolId> = frontier.iter().copied().collect();
+    let mut impacts = Vec::new();
 
     for distance in 1..=max_depth {
-        if frontier_ids.is_empty() {
+        if frontier.is_empty() {
             break;
         }
         stats.depths_visited = distance;
 
-        let relationships = db.get_relationships_to_symbols(&frontier_ids)?;
-        stats.total_relationship_edges_considered += relationships.len();
-        let mut best_by_source: HashMap<String, CandidateEdge> = HashMap::new();
-
-        for rel in relationships {
-            let Some(kind) = normalized_kind(&rel) else {
-                continue;
-            };
-            if visited.contains(&rel.from_symbol_id) {
-                continue;
-            }
-
-            let candidate = CandidateEdge {
-                relationship_kind: kind,
-                target_id: Some(rel.to_symbol_id.clone()),
-                resolved_target: true,
-            };
-            let should_replace = best_by_source
-                .get(&rel.from_symbol_id)
-                .is_none_or(|current| relation_order(&candidate) < relation_order(current));
-            if should_replace {
-                best_by_source.insert(rel.from_symbol_id.clone(), candidate);
-            }
-        }
-
-        // Identifier-based expansion fills in callers that only appear in the
-        // identifiers table (TypeScript type usages, calls, imports). Pick the
-        // strongest identifier edge per source, cap per-name fanout, then merge
-        // after relationship rows so stored relationships keep priority.
-        let identifier_edges = identifier_incoming_edges(db, &frontier_symbols, &visited)?;
-        stats.total_identifier_edges_considered += identifier_edges.len();
-        let fallback_target_id = if frontier_ids.len() == 1 {
-            frontier_ids.first().cloned()
-        } else {
-            None
-        };
-
-        let mut best_identifier_by_source: HashMap<String, CandidateEdge> = HashMap::new();
-        for edge in identifier_edges {
-            if visited.contains(&edge.container_id) {
-                continue;
-            }
-            let target_id = edge.target_symbol_id.or_else(|| fallback_target_id.clone());
-            let candidate = CandidateEdge {
-                relationship_kind: edge.relationship_kind,
-                target_id: target_id.clone(),
-                resolved_target: target_id.is_some(),
-            };
-            let should_replace = best_identifier_by_source
-                .get(&edge.container_id)
-                .is_none_or(|current| relation_order(&candidate) < relation_order(current));
-            if should_replace {
-                best_identifier_by_source.insert(edge.container_id, candidate);
-            }
-        }
-
-        let mut identifier_candidates: Vec<(String, CandidateEdge)> =
-            best_identifier_by_source.into_iter().collect();
-        identifier_candidates.sort_by(|left, right| {
-            relation_order(&left.1)
-                .cmp(&relation_order(&right.1))
-                .then_with(|| left.1.target_id.cmp(&right.1.target_id))
-                .then_with(|| left.0.cmp(&right.0))
-        });
-
-        let mut identifier_name_counts: HashMap<String, usize> = HashMap::new();
-        for (source_id, candidate) in identifier_candidates {
-            if best_by_source.contains_key(&source_id) {
-                continue;
-            }
-            let fanout_name = candidate
-                .target_id
-                .as_ref()
-                .and_then(|target_id| frontier_names.get(target_id))
-                .cloned()
-                .unwrap_or_else(|| "__unresolved__".to_string());
-            let fanout_count = identifier_name_counts.entry(fanout_name).or_insert(0);
-            if *fanout_count >= max_identifier_fanout_per_name {
-                stats.dropped_identifier_edges += 1;
-                continue;
-            }
-            *fanout_count += 1;
-            best_by_source.insert(source_id, candidate);
-        }
-
-        if policy == ImpactTraversalPolicy::Web {
-            let mut best_web_by_source: HashMap<String, CandidateEdge> = HashMap::new();
-            for edge in db.web_edges_to_symbols(&frontier_ids)? {
-                if visited.contains(&edge.from_symbol_id)
-                    || best_by_source.contains_key(&edge.from_symbol_id)
-                {
-                    continue;
-                }
-                let Some(target_id) = edge.to_symbol_id else {
+        let mut best_by_source: HashMap<SymbolId, (RelationshipKind, SymbolId)> = HashMap::new();
+        for &target in &frontier {
+            for &(source, kind) in graph.incoming(target) {
+                let Some(kind) = relationship_kind(kind, policy) else {
                     continue;
                 };
-                let candidate = CandidateEdge {
-                    relationship_kind: web_edge_relationship_kind(edge.kind),
-                    target_id: Some(target_id),
-                    resolved_target: true,
-                };
-                let should_replace = best_web_by_source
-                    .get(&edge.from_symbol_id)
-                    .is_none_or(|current| relation_order(&candidate) < relation_order(current));
-                if should_replace {
-                    best_web_by_source.insert(edge.from_symbol_id, candidate);
+                stats.total_edges_considered += 1;
+                if visited.contains(&source) {
+                    continue;
+                }
+                let candidate = (kind, target);
+                let replace = best_by_source
+                    .get(&source)
+                    .is_none_or(|current| edge_order(&candidate) < edge_order(current));
+                if replace {
+                    best_by_source.insert(source, candidate);
                 }
             }
-            for (source_id, candidate) in best_web_by_source {
-                best_by_source.entry(source_id).or_insert(candidate);
-            }
         }
-
         if best_by_source.is_empty() {
             break;
         }
 
-        let mut source_ids: Vec<String> = best_by_source.keys().cloned().collect();
-        source_ids.sort();
-        let symbols = db.get_symbols_by_ids(&source_ids)?;
-        let symbol_map: HashMap<String, Symbol> = symbols
+        let mut depth_impacts: Vec<(SymbolId, ImpactCandidate)> = best_by_source
             .into_iter()
-            .map(|symbol| (symbol.id.clone(), symbol))
-            .collect();
-        let source_id_refs: Vec<&str> = source_ids.iter().map(|id| id.as_str()).collect();
-        let reference_scores = db.get_reference_scores(&source_id_refs)?;
-
-        let mut depth_impacts = Vec::new();
-        for source_id in source_ids {
-            let Some(symbol) = symbol_map.get(&source_id).cloned() else {
-                continue;
-            };
-            let Some(candidate_edge) = best_by_source.remove(&source_id) else {
-                continue;
-            };
-            visited.insert(source_id.clone());
-
-            depth_impacts.push(ImpactWithResolution {
-                resolved_target: candidate_edge.resolved_target,
-                impact: ImpactCandidate {
-                    symbol,
+            .map(|(source, (kind, target))| {
+                visited.insert(source);
+                let impact = ImpactCandidate {
+                    symbol: to_symbol(graph, source),
                     distance,
-                    relationship_kind: candidate_edge.relationship_kind,
-                    reference_score: reference_scores.get(&source_id).copied().unwrap_or(0.0),
-                    via_symbol_name: candidate_edge
-                        .target_id
-                        .as_ref()
-                        .and_then(|id| frontier_names.get(id))
-                        .cloned()
-                        .unwrap_or_else(|| "changed code".to_string()),
-                },
-            });
-        }
-
-        depth_impacts.sort_by(|left, right| impact_order(left).cmp(&impact_order(right)));
+                    relationship_kind: kind,
+                    reference_score: graph.reference_score(source),
+                    via_symbol_name: graph.symbol(target).name.clone(),
+                };
+                (source, impact)
+            })
+            .collect();
+        depth_impacts.sort_by(|left, right| impact_order(&left.1).cmp(&impact_order(&right.1)));
         if depth_impacts.len() > max_frontier_per_depth {
             stats.capped_depths += 1;
             depth_impacts.truncate(max_frontier_per_depth);
         }
 
-        frontier_symbols = depth_impacts
-            .iter()
-            .map(|candidate| candidate.impact.symbol.clone())
-            .collect();
-        frontier_ids = frontier_symbols
-            .iter()
-            .map(|symbol| symbol.id.clone())
-            .collect();
-        frontier_names = frontier_symbols
-            .iter()
-            .map(|symbol| (symbol.id.clone(), symbol.name.clone()))
-            .collect();
-        impacts.extend(depth_impacts.into_iter().map(|candidate| candidate.impact));
+        frontier = depth_impacts.iter().map(|(source, _)| *source).collect();
+        impacts.extend(depth_impacts.into_iter().map(|(_, impact)| impact));
     }
 
-    Ok((impacts, stats))
+    (impacts, stats)
 }
 
-fn normalized_kind(relationship: &Relationship) -> Option<RelationshipKind> {
-    match relationship.kind {
-        RelationshipKind::Calls => Some(RelationshipKind::Calls),
-        RelationshipKind::Extends => Some(RelationshipKind::Extends),
-        RelationshipKind::Overrides => Some(RelationshipKind::Overrides),
-        RelationshipKind::Implements => Some(RelationshipKind::Implements),
-        RelationshipKind::Instantiates => Some(RelationshipKind::Instantiates),
-        RelationshipKind::References | RelationshipKind::Uses => Some(RelationshipKind::References),
-        RelationshipKind::Imports => Some(RelationshipKind::Imports),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone)]
-struct CandidateEdge {
-    relationship_kind: RelationshipKind,
-    target_id: Option<String>,
-    resolved_target: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ImpactWithResolution {
-    impact: ImpactCandidate,
-    resolved_target: bool,
-}
-
-fn relation_order(candidate: &CandidateEdge) -> (u8, u8, &str) {
-    (
-        relationship_priority(&candidate.relationship_kind),
-        if candidate.resolved_target { 0 } else { 1 },
-        candidate.target_id.as_deref().unwrap_or(""),
-    )
+fn edge_order(candidate: &(RelationshipKind, SymbolId)) -> (u8, SymbolId) {
+    (relationship_priority(&candidate.0), candidate.1)
 }
 
 fn impact_order(
-    candidate: &ImpactWithResolution,
-) -> (u8, u8, std::cmp::Reverse<u64>, &str, u32, &str, &str) {
+    candidate: &ImpactCandidate,
+) -> (u8, std::cmp::Reverse<u64>, &str, u32, &str, &str) {
     (
-        relationship_priority(&candidate.impact.relationship_kind),
-        if candidate.resolved_target { 0 } else { 1 },
-        std::cmp::Reverse(candidate.impact.reference_score.to_bits()),
-        candidate.impact.symbol.file_path.as_str(),
-        candidate.impact.symbol.start_line,
-        candidate.impact.symbol.name.as_str(),
-        candidate.impact.symbol.id.as_str(),
+        relationship_priority(&candidate.relationship_kind),
+        std::cmp::Reverse(candidate.reference_score.to_bits()),
+        candidate.symbol.file_path.as_str(),
+        candidate.symbol.start_line,
+        candidate.symbol.name.as_str(),
+        candidate.symbol.id.as_str(),
     )
 }

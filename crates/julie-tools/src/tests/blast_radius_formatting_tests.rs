@@ -6,6 +6,7 @@ use crate::impact::ranking::RankedImpact;
 use crate::impact::seed::SeedContext;
 use julie_core::Symbol;
 use julie_extractors::{RelationshipKind, SymbolKind};
+use julie_index::graph::SymbolId;
 
 fn make_symbol(name: &str, file_path: &str, line: u32) -> Symbol {
     Symbol {
@@ -40,9 +41,8 @@ fn make_symbol(name: &str, file_path: &str, line: u32) -> Symbol {
 #[test]
 fn test_format_blast_radius_includes_sections_and_overflow_marker() {
     let seed_context = SeedContext {
-        seed_symbols: vec![make_symbol("run_pipeline", "src/worker.rs", 10)],
+        seed_symbols: vec![SymbolId(0)],
         changed_files: vec!["src/worker.rs".to_string()],
-        deleted_files: vec!["src/legacy.rs".to_string()],
     };
     let impacts = vec![RankedImpact {
         symbol: make_symbol("handle_request", "src/api.rs", 20),
@@ -62,7 +62,6 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
         &seed_context,
         &impacts,
         &likely_tests,
-        &seed_context.deleted_files,
         BlastRadiusFormat::Readable,
         BlastRadiusHeader {
             impact_overflow: true,
@@ -77,8 +76,6 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
     assert!(text.contains("tests/request_tests.rs"));
     assert!(text.contains("Related test symbols"));
     assert!(text.contains("test_handle_request"));
-    assert!(text.contains("Deleted files"));
-    assert!(text.contains("src/legacy.rs"));
     assert!(
         text.ends_with("Output truncated at 1 results; narrow the query or pass a smaller limit.")
     );
@@ -125,41 +122,10 @@ fn test_impact_rows_group_same_file_impacts() {
 }
 
 #[test]
-fn test_format_header_includes_revision_range_when_set() {
-    let seed_context = SeedContext {
-        seed_symbols: vec![],
-        changed_files: vec!["src/a.rs".to_string(), "src/b.rs".to_string()],
-        deleted_files: vec![],
-    };
-    let likely_tests = LikelyTests::default();
-    let text = format_blast_radius(
-        &seed_context,
-        &[],
-        &likely_tests,
-        &[],
-        BlastRadiusFormat::Compact,
-        BlastRadiusHeader {
-            revision_range: Some((42, 48)),
-            ..BlastRadiusHeader::default()
-        },
-    );
-
-    assert!(
-        text.contains("revs 42..48"),
-        "header should echo revision range: {text}"
-    );
-    assert!(
-        text.contains("2 changed files"),
-        "header should still include file count: {text}"
-    );
-}
-
-#[test]
 fn test_likely_tests_overflow_marker_appears_when_truncated() {
     let seed_context = SeedContext {
-        seed_symbols: vec![make_symbol("seed", "src/lib.rs", 1)],
+        seed_symbols: vec![SymbolId(0)],
         changed_files: vec![],
-        deleted_files: vec![],
     };
     let mut paths = Vec::new();
     for i in 0..10 {
@@ -176,7 +142,6 @@ fn test_likely_tests_overflow_marker_appears_when_truncated() {
         &seed_context,
         &[],
         &likely_tests,
-        &[],
         BlastRadiusFormat::Compact,
         BlastRadiusHeader::default(),
     );
@@ -190,9 +155,8 @@ fn test_likely_tests_overflow_marker_appears_when_truncated() {
 #[test]
 fn test_related_test_symbols_overflow_marker_independent_of_paths() {
     let seed_context = SeedContext {
-        seed_symbols: vec![make_symbol("seed", "src/lib.rs", 1)],
+        seed_symbols: vec![SymbolId(0)],
         changed_files: vec![],
-        deleted_files: vec![],
     };
     let mut related = Vec::new();
     for i in 0..10 {
@@ -208,7 +172,6 @@ fn test_related_test_symbols_overflow_marker_independent_of_paths() {
         &seed_context,
         &[],
         &likely_tests,
-        &[],
         BlastRadiusFormat::Compact,
         BlastRadiusHeader::default(),
     );
@@ -234,9 +197,8 @@ fn test_related_test_symbols_overflow_marker_independent_of_paths() {
 #[test]
 fn test_web_callers_overflow_marker_appears_when_truncated() {
     let seed_context = SeedContext {
-        seed_symbols: vec![make_symbol("get_users", "src/api.rs", 5)],
+        seed_symbols: vec![SymbolId(0)],
         changed_files: vec![],
-        deleted_files: vec![],
     };
     let mut web_callers = Vec::new();
     for i in 0..10 {
@@ -248,7 +210,6 @@ fn test_web_callers_overflow_marker_appears_when_truncated() {
         &seed_context,
         &[],
         &LikelyTests::default(),
-        &[],
         BlastRadiusFormat::Compact,
         BlastRadiusHeader {
             web_callers,
@@ -284,9 +245,8 @@ fn test_blast_radius_format_parse_strict_rejects_unknown_value() {
 #[test]
 fn test_format_blast_radius_ends_with_truncation_line_when_impacts_overflow() {
     let seed_context = SeedContext {
-        seed_symbols: vec![make_symbol("run_pipeline", "src/worker.rs", 10)],
+        seed_symbols: vec![SymbolId(0)],
         changed_files: vec![],
-        deleted_files: vec![],
     };
     let impacts = vec![RankedImpact {
         symbol: make_symbol("handle_request", "src/api.rs", 20),
@@ -299,7 +259,6 @@ fn test_format_blast_radius_ends_with_truncation_line_when_impacts_overflow() {
         &seed_context,
         &impacts,
         &LikelyTests::default(),
-        &[],
         BlastRadiusFormat::Compact,
         BlastRadiusHeader {
             impact_overflow: true,

@@ -63,7 +63,6 @@ async fn phase3_mixed_traversal_scorecard() -> Result<()> {
     }
 
     let report = json!({
-        "corpus_version": fixture.corpus.version,
         "hard_gates": {
             "default_unchanged": true,
             "expected_found": found_total,
@@ -101,7 +100,7 @@ fn found_ids(corpus: &Corpus, case: &CorpusCase, output: &str) -> BTreeSet<Strin
         .iter()
         .filter(|symbol| symbol.id != case.seed)
         .filter(|symbol| output.contains(&format!("{}  {}:", symbol.name, symbol.file_path)))
-        .map(|symbol| symbol.id.clone())
+        .map(|symbol| symbol.id.to_string())
         .collect()
 }
 
