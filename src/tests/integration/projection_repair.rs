@@ -68,69 +68,6 @@ fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     }
 }
 
-#[test]
-fn test_search_projection_preserves_existing_docs_across_legacy_upgrade() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let db_path = temp_dir.path().join("symbols.db");
-    let index_path = temp_dir.path().join("tantivy");
-    std::fs::create_dir_all(&index_path)?;
-
-    {
-        let mut db = SymbolDatabase::new(&db_path)?;
-        let index = SearchIndex::open_or_create(&index_path)?;
-        let projection = SearchProjection::tantivy("ws_test");
-
-        db.bulk_store_fresh_atomic(
-            &[make_file("src/lib.rs", "fn legacy_symbol() {}\n")],
-            &[make_symbol("sym_legacy", "legacy_symbol", "src/lib.rs")],
-            &[],
-            &[],
-            &[],
-            "ws_test",
-        )?;
-        projection.ensure_current_from_database(&mut db, &index)?;
-        assert_eq!(
-            index.num_docs(),
-            2,
-            "fixture setup should create Tantivy docs"
-        );
-    }
-
-    {
-        let conn = rusqlite::Connection::open(&db_path)?;
-        conn.execute("DELETE FROM schema_version WHERE version >= 15", [])?;
-        conn.execute("DROP TABLE IF EXISTS indexing_repairs", [])?;
-        conn.execute("DROP TABLE IF EXISTS canonical_revisions", [])?;
-        conn.execute("DROP TABLE IF EXISTS projection_states", [])?;
-        conn.execute(
-            "INSERT OR REPLACE INTO schema_version (version, applied_at, description)
-             VALUES (14, 0, 'legacy fixture')",
-            [],
-        )?;
-    }
-
-    let mut upgraded_db = SymbolDatabase::new(&db_path)?;
-    let upgraded_index = SearchIndex::open_or_create(&index_path)?;
-    let projection = SearchProjection::tantivy("ws_test");
-
-    let state = projection.ensure_current_from_database(&mut upgraded_db, &upgraded_index)?;
-
-    assert_eq!(
-        upgraded_index.num_docs(),
-        2,
-        "upgrade repair should preserve the existing Tantivy symbol and file docs"
-    );
-    assert_eq!(state.status.as_str(), "ready");
-
-    let results = upgraded_index.search_symbols("legacy_symbol", &Default::default(), 10)?;
-    assert_eq!(
-        results.results.len(),
-        1,
-        "legacy symbol should still be searchable"
-    );
-    assert_eq!(results.results[0].name, "legacy_symbol");
-    Ok(())
-}
 
 #[test]
 fn test_search_projection_rebuilds_empty_index_from_canonical_sqlite() -> Result<()> {

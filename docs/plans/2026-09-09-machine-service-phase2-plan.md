@@ -291,10 +291,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** Under the mutation guard: `std::fs::copy` the sibling `symbols.db` (open the sibling read-only first and run `PRAGMA wal_checkpoint(TRUNCATE)` so the copy is one file), copy the `tantivy/` directory with `fs_extra`-free recursive copy (a 15-line helper), open the copy, `UPDATE workspaces SET id=?, path=?, name=?`. Then reuse the incremental path exactly as `manage_workspace refresh` does. The test builds `fixtures/seed/a`, indexes it into temp home, then `git init` is not needed: inject the sibling lookup as a function parameter (`sibling: Option<&Path>`) so the unit test passes the sibling root directly and only one small test covers `git_common_dir` with a real `git worktree add` in a temp dir (design rule 4: under two seconds, in-process). Assert `copied_files == 6`, `reextracted_files == 2`, `removed_files == 0`, and that `fast_search` on the new workspace finds a symbol that lives only in a shared file.
 
 **Acceptance criteria:**
-- [ ] `git_common_dir` returns the same canonical path for a main checkout and a linked worktree created in the test, and `None` for a non-git directory.
-- [ ] Seeding `fixtures/seed/b` from an indexed `fixtures/seed/a` copies 6 files, re-extracts 2, removes 0, and a search on `b` finds a shared-file symbol.
-- [ ] Seed time for a real worktree of the Julie repo is recorded in the commit message (report-only).
-- [ ] `cargo nextest run --lib tests::tools::workspace::seed` and `cargo nextest run --lib tests::tools::workspace::global_targeting::open_lifecycle` pass; `cargo build` green; committed per commit mode.
+- [x] `git_common_dir` returns the same canonical path for a main checkout and a linked worktree created in the test, and `None` for a non-git directory.
+- [x] Seeding `fixtures/seed/b` from an indexed `fixtures/seed/a` copies 6 files, re-extracts 2, removes 0, and a search on `b` finds a shared-file symbol.
+- [x] Seed time for a real worktree of the Julie repo is recorded in the commit message (report-only).
+- [x] `cargo nextest run --lib tests::tools::workspace::seed` and `cargo nextest run --lib tests::tools::workspace::global_targeting::open_lifecycle` pass; `cargo build` green; committed per commit mode.
 
 ---
 
@@ -322,11 +322,11 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** `db_bytes` is `metadata(symbols.db).len()` plus the `-wal` file if present; `tantivy_age_seconds` is now minus the newest `meta.json` mtime under `tantivy/`; `vector_count` is `embedding_count` (`vectors.rs:201`); `last_file_event_at` and `watcher` come from `IncrementalIndexer` (add two getters if absent; no new state). Delete the `stats` tests in `list_stats.rs` and the `register`/`clean` cases wherever they live (Miller `search(query='operation: "register"')` across `src/tests`). Update the `validate_standalone` refusal list so the CLI reaches every remaining operation; the reason the CLI refused them (per-session primary) is gone after Task 3.
 
 **Acceptance criteria:**
-- [ ] `ManageWorkspaceOperation::OPERATIONS` equals the Global Constraints list and `valid_operations_help()` prints it.
-- [ ] `manage_workspace status` on an indexed temp workspace returns every `CheckoutStatus` field with the expected values, and `GET /status` carries the same object under `checkouts`.
-- [ ] `manage_workspace rebuild` recreates `indexes/<id>/` and the symbol count after equals the count before.
-- [ ] `julie-server workspace status` and `julie-server workspace rebuild --path <root>` work from the CLI (asserted in `src/tests/cli_execution_tests.rs`).
-- [ ] `cargo nextest run --lib tests::tools::workspace::status_rebuild`, `cargo nextest run --lib tests::service::http_api`, `cargo nextest run --lib tests::cli_execution_tests` pass; `cargo build` green; committed per commit mode.
+- [x] `ManageWorkspaceOperation::OPERATIONS` equals the Global Constraints list and `valid_operations_help()` prints it.
+- [x] `manage_workspace status` on an indexed temp workspace returns every `CheckoutStatus` field with the expected values, and `GET /status` carries the same object under `checkouts`.
+- [x] `manage_workspace rebuild` recreates `indexes/<id>/` and the symbol count after equals the count before.
+- [x] `julie-server workspace status` and `julie-server workspace rebuild --path <root>` work from the CLI (asserted in `src/tests/cli_execution_tests.rs`).
+- [x] `cargo nextest run --lib tests::tools::workspace::status_rebuild`, `cargo nextest run --lib tests::service::http_api`, `cargo nextest run --lib tests::cli_execution_tests` pass; `cargo build` green; committed per commit mode.
 
 ---
 
@@ -354,10 +354,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** The script is POSIX `sh` with `git diff --unified=0` and `grep -Ewi`. The word list is the fourteen words from design section 4. The test lives in `tests::service` so it runs in `fast`. Run `cargo xtask test list` and `cargo nextest run -p xtask` to prove the manifest contract agrees after tier edits; record `cargo xtask test fast` wall time in the commit message (report-only).
 
 **Acceptance criteria:**
-- [ ] `scripts/complexity-words.sh main` exits 0 on this branch, and exits 1 on a scratch commit that adds `let lease = 1;` (demonstrated in the commit message).
-- [ ] `durable_roots` passes and lists nothing beyond the Global Constraints layout.
-- [ ] `cargo nextest run -p xtask` passes with the updated bucket inventory; `cargo xtask test list` shows no bucket whose test module no longer exists.
-- [ ] `cargo build` green; committed per commit mode.
+- [x] `scripts/complexity-words.sh main` exits 0 on this branch, and exits 1 on a scratch commit that adds `let lease = 1;` (demonstrated in the commit message).
+- [x] `durable_roots` passes and lists nothing beyond the Global Constraints layout.
+- [x] `cargo nextest run -p xtask` passes with the updated bucket inventory; `cargo xtask test list` shows no bucket whose test module no longer exists.
+- [x] `cargo build` green; committed per commit mode.
 
 ---
 
