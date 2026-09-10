@@ -100,6 +100,8 @@ def parse_json_payload(stdout: str) -> dict[str, Any]:
 
 
 def result_text(payload: dict[str, Any]) -> str:
+    payload = payload.get("reply", payload)
+    payload = payload.get("result", payload)
     parts = []
     for item in payload.get("content", []):
         if item.get("type") == "text":
@@ -174,7 +176,8 @@ def run_backend(
         rank = first_expected_rank(hits, case.get("expected_any", []))
         lower_text = text.lower()
         fallback = any(pattern in lower_text for pattern in FALLBACK_PATTERNS)
-        if completed.returncode != 0 or payload.get("isError"):
+        result_payload = payload.get("reply", payload).get("result", payload)
+        if completed.returncode != 0 or payload.get("ok") is False or result_payload.get("isError"):
             message = text or (completed.stderr or completed.stdout).strip()
             return BackendResult(backend, False, rank, hits, latency_ms, fallback, message, text)
         return BackendResult(backend, True, rank, hits, latency_ms, fallback, None, text)
