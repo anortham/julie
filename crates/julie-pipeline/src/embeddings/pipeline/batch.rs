@@ -34,7 +34,7 @@ pub(crate) fn process_embedding_batches(
 
         let texts: Vec<String> = chunk.iter().map(|(_, text)| text.clone()).collect();
         let batch_budget = EmbeddingRequestBudget {
-            deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(180),
             cancelled: Arc::clone(cancel_token),
         };
         let vectors = match provider.embed_batch(&texts, &batch_budget) {

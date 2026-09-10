@@ -34,6 +34,7 @@ pub struct NativeEmbeddingProvider {
     child: Mutex<Option<SidecarChild>>,
     identity: EncoderIdentity,
     runtime_facts: Mutex<NativeRuntimeFacts>,
+    active_pid: std::sync::atomic::AtomicU32,
 }
 
 impl NativeEmbeddingProvider {
@@ -46,11 +47,13 @@ impl NativeEmbeddingProvider {
         )?;
         let budget = EmbeddingRequestBudget::with_timeout(Duration::from_secs(10));
         let (child, identity, facts) = Self::spawn_and_probe(&config, &budget, None)?;
+        let pid = child.pid();
         Ok(Self {
             config,
             child: Mutex::new(Some(child)),
             identity,
             runtime_facts: Mutex::new(facts),
+            active_pid: std::sync::atomic::AtomicU32::new(pid),
         })
     }
 
@@ -90,6 +93,7 @@ impl NativeEmbeddingProvider {
         if guard.as_mut().is_none_or(|child| !child.is_alive()) {
             let (child, _, facts) =
                 Self::spawn_and_probe(&self.config, budget, Some(&self.identity))?;
+            self.active_pid.store(child.pid(), std::sync::atomic::Ordering::Release);
             *guard = Some(child);
             if let Ok(mut f) = self.runtime_facts.lock() {
                 *f = facts;
@@ -99,6 +103,7 @@ impl NativeEmbeddingProvider {
         match call(child) {
             Ok(value) => Ok(value),
             Err(err) => {
+                self.active_pid.store(0, std::sync::atomic::Ordering::Release);
                 *guard = None;
                 Err(err)
             }
@@ -107,17 +112,30 @@ impl NativeEmbeddingProvider {
 
     /// Returns the OS process ID of the active sidecar child, if running.
     pub fn child_pid(&self) -> Option<u32> {
-        let mut guard = self.child.lock().ok()?;
-        let child = guard.as_mut()?;
-        if child.is_alive() {
-            Some(child.pid())
+        let pid = self.active_pid.load(std::sync::atomic::Ordering::Acquire);
+        if pid == 0 {
+            return None;
+        }
+        if let Ok(mut guard) = self.child.try_lock() {
+            if let Some(child) = guard.as_mut() {
+                if child.is_alive() {
+                    Some(child.pid())
+                } else {
+                    self.active_pid.store(0, std::sync::atomic::Ordering::Release);
+                    None
+                }
+            } else {
+                self.active_pid.store(0, std::sync::atomic::Ordering::Release);
+                None
+            }
         } else {
-            None
+            Some(pid)
         }
     }
 
     /// Kills or drops the active sidecar child to test recovery (test only).
     pub fn kill_child_for_test(&self) {
+        self.active_pid.store(0, std::sync::atomic::Ordering::Release);
         if let Ok(mut guard) = self.child.lock() {
             *guard = None;
         }
@@ -183,6 +201,7 @@ impl EmbeddingProvider for NativeEmbeddingProvider {
     }
 
     fn shutdown(&self) {
+        self.active_pid.store(0, std::sync::atomic::Ordering::Release);
         let child = self.child.lock().ok().and_then(|mut g| g.take());
         if let Some(c) = child {
             c.shutdown();

@@ -31,7 +31,7 @@ use crate::embeddings::metadata::{
 
 /// Texts per sidecar request. The sidecar splits them into smaller GPU
 /// batches; a smaller request keeps each round trip inside its deadline.
-const EMBEDDING_BATCH_SIZE: usize = 250;
+const EMBEDDING_BATCH_SIZE: usize = 50;
 const VARIABLE_EMBEDDING_POLICY: VariableEmbeddingPolicy = VariableEmbeddingPolicy {
     enabled: true,
     max_ratio: 0.20,

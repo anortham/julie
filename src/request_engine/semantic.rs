@@ -380,7 +380,7 @@ impl DefaultSemanticRuntime {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 let probe_budget =
                     julie_core::embeddings_contract::EmbeddingRequestBudget::with_timeout(
-                        Duration::from_millis(500).min(remaining),
+                        Duration::from_secs(2).min(remaining),
                     );
                 if tokio::task::spawn_blocking(move || p_clone.health_check(&probe_budget))
                     .await
