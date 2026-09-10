@@ -608,9 +608,9 @@ In `src/tests/service/http_api.rs`, in the existing status test (find it with `g
 5. Commit: `docs(semantics): model scorecard finding for bge-small and qwen3-0.6b`.
 
 **Acceptance criteria:**
-- [ ] Result files for both models exist under `docs/eval/semantic-value/results/`.
-- [ ] The finding records both models, the CodeRankEmbed exclusion with evidence, and a recommendation.
-- [ ] `scorecard.toml` paths point at this machine.
+- [x] Result files for both models exist under `docs/eval/semantic-value/results/`.
+- [x] The finding records both models, the CodeRankEmbed exclusion with evidence, and a recommendation.
+- [x] `scorecard.toml` paths point at this machine.
 
 ---
 
