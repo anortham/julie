@@ -100,7 +100,7 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
             .expect("original primary workspace should initialize"),
     );
 
-    let handler = JulieServerHandler::new_with_shared_workspace(
+    let mut handler = JulieServerHandler::new_with_shared_workspace(
         original_primary_ws,
         original_primary_path,
         Some(Arc::clone(&daemon_db)),
@@ -120,7 +120,8 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
         .upsert_workspace(&rebound_primary_id, &rebound_primary_path_str, "ready")
         .unwrap();
 
-    handler.set_current_primary_binding(rebound_primary_id.clone(), rebound_primary_path);
+    handler.set_current_primary_binding(rebound_primary_id.clone(), rebound_primary_path.clone());
+    handler.in_process_index_root = Some(indexes_dir.join(&rebound_primary_id));
 
     #[cfg(not(windows))]
     {
@@ -150,20 +151,53 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
         "force refresh should not fall back to stale handler.workspace_root: {text}"
     );
 
-    let rebound_snapshot = daemon_db
-        .get_latest_snapshot(&rebound_primary_id)
-        .expect("rebound primary snapshot lookup should succeed");
+    let rebound_index = handler
+        .workspace_index_dir_for(&rebound_primary_id)
+        .await
+        .expect("rebound index dir should resolve");
+    assert_eq!(
+        rebound_index,
+        indexes_dir.join(&rebound_primary_id),
+        "rebound primary store should stay under the shared indexes root"
+    );
     assert!(
-        rebound_snapshot.is_some(),
-        "force refresh should attribute codehealth snapshot to rebound session primary"
+        rebound_index.join("facts.sqlite").exists(),
+        "force refresh should write facts.sqlite for rebound session primary at {}",
+        rebound_index.display()
+    );
+    assert!(
+        !rebound_index.join("db").exists(),
+        "db/ is not accepted under {}",
+        rebound_index.display()
+    );
+    assert!(
+        !rebound_index.join("store").exists(),
+        "store/ is not accepted under {}",
+        rebound_index.display()
     );
 
-    let original_snapshot = daemon_db
-        .get_latest_snapshot(&original_primary_id)
-        .expect("original primary snapshot lookup should succeed");
+    let original_index = handler
+        .workspace_index_dir_for(&original_primary_id)
+        .await
+        .expect("original index dir should resolve");
     assert!(
-        original_snapshot.is_none(),
-        "stale handler.workspace_id should not receive the rebound primary snapshot"
+        !original_index.join("facts.sqlite").exists(),
+        "stale handler.workspace_id should not receive the rebound primary store"
+    );
+
+    let store = handler
+        .checkout_store_for_workspace(&rebound_primary_id, &rebound_primary_path)
+        .await
+        .expect("rebound checkout store should open");
+    let snapshot = store.current();
+    let graph = snapshot.graph();
+    assert!(
+        !graph.find_by_name("rebound_primary_marker").is_empty(),
+        "force refresh should index rebound session primary symbols"
+    );
+    assert!(
+        graph.find_by_name("original_primary_marker").is_empty(),
+        "force refresh should not index the stale original primary"
     );
 }
 
