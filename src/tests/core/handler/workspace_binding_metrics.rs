@@ -30,8 +30,9 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
         .await?,
     );
     let source_file_rel = "src/original.rs".to_string();
-    let source_bytes = 321_u64;
-    std::fs::write(original_root.join(&source_file_rel), "fn original() {}\n")?;
+    let source_contents = "fn original() {}\n";
+    let source_bytes = source_contents.len() as u64;
+    std::fs::write(original_root.join(&source_file_rel), source_contents)?;
     {
         let db_arc = original_ws
             .db
@@ -133,7 +134,7 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     assert_eq!(
         recorded_daemon_source_bytes,
         Some(source_bytes as i64),
-        "daemon metrics row should preserve source_bytes from the snapshotted workspace db"
+        "daemon metrics row should preserve source_bytes from the snapshotted checkout"
     );
 
     let recorded_local_source_bytes: Option<i64> = {
@@ -147,12 +148,12 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     assert_eq!(
         recorded_local_source_bytes,
         Some(source_bytes as i64),
-        "local workspace metrics row should write source_bytes from the snapshotted workspace db"
+        "local workspace metrics row should write source_bytes from the snapshotted checkout"
     );
     assert_eq!(
         handler.session_metrics.total_source_bytes(),
         source_bytes,
-        "session metrics should include source_bytes resolved from the snapshotted workspace db"
+        "session metrics should include source_bytes resolved from the snapshotted checkout"
     );
 
     Ok(())
