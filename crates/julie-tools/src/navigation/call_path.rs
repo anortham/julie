@@ -1,19 +1,18 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-use julie_core::mcp_compat::{CallToolResult, Content};
+use julie_context::ToolContext;
+use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use julie_extractors::RelationshipKind;
+use julie_index::graph::{Graph, SymbolId};
+use julie_index::snapshot::Snapshot;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::deep_dive::data::find_symbol;
-use julie_context::ToolContext;
-use julie_core::Symbol;
-use julie_core::database::SymbolDatabase;
-use julie_core::mcp_compat::CallToolResultExt;
-use julie_extractors::{Relationship, RelationshipKind};
-
-use super::resolution::{WorkspaceTarget, file_path_matches_suffix};
+use super::resolution::{file_path_matches_suffix, find_symbols};
+use super::sites::reference_sites;
 
 const DEFAULT_MAX_HOPS: u32 = 6;
 const MAX_HOPS: u32 = 32;
@@ -28,11 +27,10 @@ fn default_workspace() -> Option<String> {
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-/// BFS traverses Calls, Instantiates, and Overrides relationships only.
-/// Extends/Implements/TypeUsage/Reference edges are not followed.
-/// Set `mode = "web"` to additionally follow derived `http_call` (and, in
-/// Phase 2, `sql_query`) web edges so a frontend client-call traces through
-/// to its backend handler.
+/// BFS traverses `Calls` edges only (calls and instantiations). Implements,
+/// Extends, and plain references are not followed. Set `mode = "web"` to
+/// additionally follow derived `http_call` web edges so a frontend client-call
+/// traces through to its backend handler.
 pub struct CallPathTool {
     /// Source symbol name to start from. Use a qualified name when shared names are ambiguous.
     pub from: String,
@@ -54,10 +52,10 @@ pub struct CallPathTool {
     /// Optional target file hint used to disambiguate the `to` symbol.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to_file_path: Option<String>,
-    /// Traversal mode. `default` (omitted) follows Calls/Instantiates/Overrides
-    /// only — output is byte-identical to the legacy tool. `web` additionally
-    /// follows derived `http_call` edges (client-call symbol -> route handler)
-    /// and reports external endpoints reached by unmatched client calls.
+    /// Traversal mode. `default` (omitted) follows call edges only. `web`
+    /// additionally follows derived `http_call` edges (client-call symbol ->
+    /// route handler) and reports external endpoints reached by unmatched
+    /// client calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
 }
@@ -105,40 +103,27 @@ pub struct CallPathHop {
     pub target_start_line: u32,
 }
 
-#[derive(Clone)]
 struct ResolvedEndpoints {
-    from: Symbol,
-    targets: HashSet<String>,
+    from: SymbolId,
+    targets: HashSet<SymbolId>,
 }
 
-#[derive(Clone)]
+/// `to -> (from, edge label)` for every symbol the search reached.
+type Predecessors = HashMap<SymbolId, (SymbolId, &'static str)>;
+
 struct PathSearchResult {
-    target_id: Option<String>,
-    predecessor: HashMap<String, Relationship>,
+    target: Option<SymbolId>,
+    predecessors: Predecessors,
 }
 
-fn find_matching_symbols(
-    db: &SymbolDatabase,
-    name: &str,
-    file_path: Option<&str>,
-) -> Result<Vec<Symbol>> {
-    let all_matches = find_symbol(db, name, None)?;
-    Ok(if let Some(filter) = file_path {
-        all_matches
+fn find_matching_symbols(graph: &Graph, name: &str, file_path: Option<&str>) -> Vec<SymbolId> {
+    let all_matches = find_symbols(graph, name, None);
+    match file_path {
+        Some(filter) => all_matches
             .into_iter()
-            .filter(|s| file_path_matches_suffix(&s.file_path, filter))
-            .collect()
-    } else {
-        all_matches
-    })
-}
-
-fn relationship_priority(kind: &RelationshipKind) -> u8 {
-    match kind {
-        RelationshipKind::Calls => 0,
-        RelationshipKind::Instantiates => 1,
-        RelationshipKind::Overrides => 2,
-        _ => unreachable!("BFS only traverses Calls, Instantiates, and Overrides"),
+            .filter(|id| file_path_matches_suffix(&graph.symbol(*id).path, filter))
+            .collect(),
+        None => all_matches,
     }
 }
 
@@ -152,12 +137,12 @@ pub fn edge_label(kind: &RelationshipKind) -> &'static str {
 }
 
 fn resolve_unique_symbol(
-    db: &SymbolDatabase,
+    graph: &Graph,
     name: &str,
     role: &str,
     file_path: Option<&str>,
-) -> Result<Symbol> {
-    let matches = find_matching_symbols(db, name, file_path)?;
+) -> Result<SymbolId> {
+    let matches = find_matching_symbols(graph, name, file_path);
     if matches.is_empty() {
         return Err(anyhow!(
             "Symbol '{}' for '{}' was not found. Use fast_search or deep_dive to verify the name.",
@@ -168,10 +153,11 @@ fn resolve_unique_symbol(
     if matches.len() > 1 {
         let locations = matches
             .iter()
-            .map(|symbol| {
+            .map(|id| {
+                let symbol = graph.symbol(*id);
                 format!(
                     "  {} at {}:{}-{}",
-                    symbol.name, symbol.file_path, symbol.start_line, symbol.end_line
+                    symbol.name, symbol.path, symbol.span.start_line, symbol.span.end_line
                 )
             })
             .collect::<Vec<_>>()
@@ -184,185 +170,193 @@ fn resolve_unique_symbol(
             locations
         ));
     }
-    Ok(matches.into_iter().next().expect("one symbol"))
+    Ok(matches[0])
 }
 
 fn resolve_target_ids(
-    db: &SymbolDatabase,
+    graph: &Graph,
     name: &str,
     file_path: Option<&str>,
-) -> Result<HashSet<String>> {
-    let matches = find_matching_symbols(db, name, file_path)?;
+) -> Result<HashSet<SymbolId>> {
+    let matches = find_matching_symbols(graph, name, file_path);
     if matches.is_empty() {
         return Err(anyhow!(
             "Symbol '{}' for 'to' was not found. Use fast_search or deep_dive to verify the name.",
             name
         ));
     }
-
-    Ok(matches
-        .into_iter()
-        .map(|symbol| symbol.extracted.id)
-        .collect())
+    Ok(matches.into_iter().collect())
 }
 
 fn resolve_endpoints(
-    db: &SymbolDatabase,
+    graph: &Graph,
     from: &str,
     to: &str,
     from_file_path: Option<&str>,
     to_file_path: Option<&str>,
 ) -> Result<ResolvedEndpoints> {
-    let from_symbol = resolve_unique_symbol(db, from, "from", from_file_path)?;
-    let targets = resolve_target_ids(db, to, to_file_path)?;
     Ok(ResolvedEndpoints {
-        from: from_symbol,
-        targets,
+        from: resolve_unique_symbol(graph, from, "from", from_file_path)?,
+        targets: resolve_target_ids(graph, to, to_file_path)?,
     })
 }
 
+/// Breadth-first over `expand`, at most `max_hops` levels deep. Neighbours are
+/// visited in the order `expand` returns them, so ties follow graph order.
 fn bfs_shortest_path(
-    db: &SymbolDatabase,
-    start_id: &str,
-    targets: &HashSet<String>,
+    start: SymbolId,
+    targets: &HashSet<SymbolId>,
     max_hops: u32,
-) -> Result<PathSearchResult> {
-    if targets.contains(start_id) {
-        return Ok(PathSearchResult {
-            target_id: Some(start_id.to_string()),
-            predecessor: HashMap::new(),
-        });
+    mut expand: impl FnMut(SymbolId) -> Vec<(SymbolId, &'static str)>,
+) -> PathSearchResult {
+    let mut predecessors = HashMap::new();
+    if targets.contains(&start) {
+        return PathSearchResult {
+            target: Some(start),
+            predecessors,
+        };
     }
 
-    let mut visited = HashSet::from([start_id.to_string()]);
-    let mut frontier = vec![start_id.to_string()];
-    let mut predecessor = HashMap::new();
-
+    let mut visited = HashSet::from([start]);
+    let mut frontier = vec![start];
     for _depth in 0..max_hops {
         if frontier.is_empty() {
             break;
         }
+        let mut next_frontier = Vec::new();
+        for from in frontier {
+            for (to, label) in expand(from) {
+                if !visited.insert(to) {
+                    continue;
+                }
+                predecessors.insert(to, (from, label));
+                if targets.contains(&to) {
+                    return PathSearchResult {
+                        target: Some(to),
+                        predecessors,
+                    };
+                }
+                next_frontier.push(to);
+            }
+        }
+        frontier = next_frontier;
+    }
 
-        let frontier_ids = frontier.clone();
-        let mut relationships = db.get_outgoing_relationships_for_symbols(&frontier_ids)?;
-        relationships.retain(|rel| {
+    PathSearchResult {
+        target: None,
+        predecessors,
+    }
+}
+
+/// Line in `from` where it calls `to`; the start of `from` when no row names the call.
+fn call_site_line(graph: &Graph, from: SymbolId, to: SymbolId) -> u32 {
+    let sites = reference_sites(graph, from, to);
+    sites
+        .iter()
+        .find(|site| {
             matches!(
-                rel.kind,
+                site.kind,
                 RelationshipKind::Calls
                     | RelationshipKind::Instantiates
                     | RelationshipKind::Overrides
             )
-        });
-        relationships.sort_by(|left, right| {
-            let source_cmp = left.from_symbol_id.cmp(&right.from_symbol_id);
-            if source_cmp != std::cmp::Ordering::Equal {
-                return source_cmp;
-            }
-            let kind_cmp =
-                relationship_priority(&left.kind).cmp(&relationship_priority(&right.kind));
-            if kind_cmp != std::cmp::Ordering::Equal {
-                return kind_cmp;
-            }
-            let confidence_cmp = right
-                .confidence
-                .partial_cmp(&left.confidence)
-                .unwrap_or(std::cmp::Ordering::Equal);
-            if confidence_cmp != std::cmp::Ordering::Equal {
-                return confidence_cmp;
-            }
-            let line_cmp = left.line_number.cmp(&right.line_number);
-            if line_cmp != std::cmp::Ordering::Equal {
-                return line_cmp;
-            }
-            let target_cmp = left.to_symbol_id.cmp(&right.to_symbol_id);
-            if target_cmp != std::cmp::Ordering::Equal {
-                return target_cmp;
-            }
-            left.id.cmp(&right.id)
-        });
-
-        let mut next_frontier = Vec::new();
-        for relationship in relationships {
-            if !visited.insert(relationship.to_symbol_id.clone()) {
-                continue;
-            }
-
-            predecessor.insert(relationship.to_symbol_id.clone(), relationship.clone());
-            if targets.contains(&relationship.to_symbol_id) {
-                return Ok(PathSearchResult {
-                    target_id: Some(relationship.to_symbol_id.clone()),
-                    predecessor,
-                });
-            }
-            next_frontier.push(relationship.to_symbol_id);
-        }
-
-        frontier = next_frontier;
-    }
-
-    Ok(PathSearchResult {
-        target_id: None,
-        predecessor,
-    })
+        })
+        .or(sites.first())
+        .map_or(graph.symbol(from).span.start_line, |site| site.line)
 }
 
 fn build_hops(
-    db: &SymbolDatabase,
-    start_symbol: &Symbol,
-    target_id: &str,
-    predecessor: &HashMap<String, Relationship>,
+    graph: &Graph,
+    start: SymbolId,
+    target: SymbolId,
+    predecessors: &Predecessors,
+    site_line: &dyn Fn(SymbolId, SymbolId, &str) -> u32,
 ) -> Result<Vec<CallPathHop>> {
     let mut chain = VecDeque::new();
-    let mut current_id = target_id.to_string();
-
-    while current_id != start_symbol.id {
-        let relationship = predecessor
-            .get(&current_id)
-            .ok_or_else(|| anyhow!("Path reconstruction failed at '{}'", current_id))?;
-        chain.push_front(relationship.clone());
-        current_id = relationship.from_symbol_id.clone();
+    let mut current = target;
+    while current != start {
+        let (from, label) = *predecessors.get(&current).ok_or_else(|| {
+            anyhow!(
+                "Path reconstruction failed at '{}'",
+                graph.symbol(current).id
+            )
+        })?;
+        chain.push_front((from, current, label));
+        current = from;
     }
 
-    let mut symbol_ids = vec![start_symbol.id.clone()];
-    for relationship in &chain {
-        symbol_ids.push(relationship.to_symbol_id.clone());
-        symbol_ids.push(relationship.from_symbol_id.clone());
-    }
-    symbol_ids.sort();
-    symbol_ids.dedup();
-
-    let symbol_map = db
-        .get_symbols_by_ids(&symbol_ids)?
+    Ok(chain
         .into_iter()
-        .map(|symbol| (symbol.id.clone(), symbol))
-        .collect::<HashMap<_, _>>();
-
-    let mut hops = Vec::new();
-    for relationship in chain {
-        let from_symbol = symbol_map
-            .get(&relationship.from_symbol_id)
-            .ok_or_else(|| anyhow!("Missing symbol '{}'", relationship.from_symbol_id))?;
-        let to_symbol = symbol_map
-            .get(&relationship.to_symbol_id)
-            .ok_or_else(|| anyhow!("Missing symbol '{}'", relationship.to_symbol_id))?;
-
-        hops.push(CallPathHop {
-            from: from_symbol.name.clone(),
-            to: to_symbol.name.clone(),
-            edge: edge_label(&relationship.kind).to_string(),
-            file: format!("{}:{}", relationship.file_path, relationship.line_number),
-            target_file: to_symbol.file_path.clone(),
-            target_start_line: to_symbol.start_line,
-        });
-    }
-
-    Ok(hops)
+        .map(|(from, to, label)| {
+            let (from_symbol, to_symbol) = (graph.symbol(from), graph.symbol(to));
+            CallPathHop {
+                from: from_symbol.name.clone(),
+                to: to_symbol.name.clone(),
+                edge: label.to_string(),
+                file: format!("{}:{}", from_symbol.path, site_line(from, to, label)),
+                target_file: to_symbol.path.clone(),
+                target_start_line: to_symbol.span.start_line,
+            }
+        })
+        .collect())
 }
 
-// ---------------------------------------------------------------------------
-// Web mode: BFS that additionally follows derived `http_call`/`sql_query` web
-// edges. Extracted into `call_path_web.rs` for file-size hygiene.
-// ---------------------------------------------------------------------------
+fn found_response(path: Vec<CallPathHop>, external_endpoints: Vec<String>) -> CallPathResponse {
+    CallPathResponse {
+        found: true,
+        hops: path.len() as u32,
+        path,
+        diagnostic: None,
+        external_endpoints,
+    }
+}
+
+fn not_found_response(
+    from: &str,
+    to: &str,
+    max_hops: u32,
+    external_endpoints: Vec<String>,
+) -> CallPathResponse {
+    CallPathResponse {
+        found: false,
+        hops: 0,
+        path: Vec::new(),
+        diagnostic: Some(format!(
+            "No path found from '{}' to '{}' within {} hops.",
+            from, to, max_hops
+        )),
+        external_endpoints,
+    }
+}
+
+fn run_call_path(
+    graph: &Graph,
+    endpoints: &ResolvedEndpoints,
+    max_hops: u32,
+    from: &str,
+    to: &str,
+) -> Result<CallPathResponse> {
+    if endpoints.targets.contains(&endpoints.from) {
+        return Ok(found_response(Vec::new(), Vec::new()));
+    }
+    let search = bfs_shortest_path(endpoints.from, &endpoints.targets, max_hops, |id| {
+        graph.callees(id).map(|callee| (callee, "call")).collect()
+    });
+    match search.target {
+        Some(target) => {
+            let hops = build_hops(
+                graph,
+                endpoints.from,
+                target,
+                &search.predecessors,
+                &|from, to, _| call_site_line(graph, from, to),
+            )?;
+            Ok(found_response(hops, Vec::new()))
+        }
+        None => Ok(not_found_response(from, to, max_hops, Vec::new())),
+    }
+}
+
 #[path = "call_path_web.rs"]
 mod call_path_web;
 pub use call_path_web::web_call_path_by_name;
@@ -384,18 +378,32 @@ impl CallPathTool {
         }
     }
 
-    async fn resolve_workspace_target(&self, handler: &dyn ToolContext) -> Result<SymbolDatabase> {
-        match handler
+    async fn resolve_snapshot(&self, handler: &dyn ToolContext) -> Result<Arc<Snapshot>> {
+        let target = handler
             .resolve_workspace_target(self.workspace.as_deref())
-            .await?
-        {
-            WorkspaceTarget::Primary => handler.primary_pooled_database().await,
-            WorkspaceTarget::Target(workspace_id) => {
-                handler
-                    .get_pooled_database_for_workspace(&workspace_id)
-                    .await
-            }
+            .await?;
+        handler.snapshot(&target).await
+    }
+
+    fn search(&self, snapshot: &Snapshot) -> Result<CallPathResponse> {
+        let graph = snapshot.graph();
+        let endpoints = resolve_endpoints(
+            graph,
+            &self.from,
+            &self.to,
+            self.from_file_path.as_deref(),
+            self.to_file_path.as_deref(),
+        )?;
+        if self.mode.as_deref() == Some("web") {
+            return call_path_web::run_web_call_path(
+                snapshot,
+                &endpoints,
+                self.max_hops,
+                &self.from,
+                &self.to,
+            );
         }
+        run_call_path(graph, &endpoints, self.max_hops, &self.from, &self.to)
     }
 
     pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
@@ -418,74 +426,18 @@ impl CallPathTool {
             }
         }
 
-        let db = match self.resolve_workspace_target(handler).await {
-            Ok(db) => db,
+        let snapshot = match self.resolve_snapshot(handler).await {
+            Ok(snapshot) => snapshot,
             Err(error) => {
                 return Self::response_result(&Self::diagnostic_response(format!(
                     "Workspace resolution failed: {error}"
                 )));
             }
         };
-        let from = self.from.clone();
-        let to = self.to.clone();
-        let max_hops = self.max_hops;
-        let from_file_path = self.from_file_path.clone();
-        let to_file_path = self.to_file_path.clone();
-        let web_mode = self.mode.as_deref() == Some("web");
 
-        let response = tokio::task::spawn_blocking(move || -> Result<CallPathResponse> {
-            let endpoints = resolve_endpoints(
-                &db,
-                &from,
-                &to,
-                from_file_path.as_deref(),
-                to_file_path.as_deref(),
-            )?;
-
-            if web_mode {
-                return call_path_web::run_web_call_path(&db, &endpoints, max_hops, &from, &to);
-            }
-
-            let search = bfs_shortest_path(&db, &endpoints.from.id, &endpoints.targets, max_hops)?;
-
-            if endpoints.targets.contains(&endpoints.from.id) {
-                return Ok(CallPathResponse {
-                    found: true,
-                    hops: 0,
-                    path: Vec::new(),
-                    diagnostic: None,
-                    external_endpoints: Vec::new(),
-                });
-            }
-
-            if let Some(target_id) = search.target_id.as_deref() {
-                let hops = build_hops(&db, &endpoints.from, target_id, &search.predecessor)?;
-                return Ok(CallPathResponse {
-                    found: true,
-                    hops: hops.len() as u32,
-                    path: hops,
-                    diagnostic: None,
-                    external_endpoints: Vec::new(),
-                });
-            }
-
-            Ok(CallPathResponse {
-                found: false,
-                hops: 0,
-                path: Vec::new(),
-                diagnostic: Some(format!(
-                    "No path found from '{}' to '{}' within {} hops.",
-                    from, to, max_hops
-                )),
-                external_endpoints: Vec::new(),
-            })
-        })
-        .await;
-
-        let response = match response {
-            Ok(Ok(response)) => response,
-            Ok(Err(error)) => Self::diagnostic_response(error.to_string()),
-            Err(error) => Self::diagnostic_response(format!("call_path worker failed: {error}")),
+        let response = match self.search(&snapshot) {
+            Ok(response) => response,
+            Err(error) => Self::diagnostic_response(error.to_string()),
         };
 
         debug!(

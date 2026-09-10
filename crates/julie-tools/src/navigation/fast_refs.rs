@@ -1,32 +1,37 @@
 //! FastRefsTool - Find all references to a symbol
 //!
-//! This tool finds all usages and references across the codebase using:
-//! 1. SQLite symbols table for O(log n) exact name matching
-//! 2. Cross-language naming convention variants (snake_case, camelCase, etc.)
-//! 3. Relationships table for caller→callee connections
-//! 4. Identifiers table for usage sites (calls, type usages, member access, imports)
+//! Walks the snapshot graph:
+//! 1. Definitions by exact name, then cross-language naming variants
+//! 2. Every symbol with an edge into a definition
+//! 3. The identifier and relationship rows of that symbol that name the target,
+//!    one reference per source line
+
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
+use julie_context::ToolContext;
+use julie_core::Symbol;
+use julie_core::cross_language_intelligence::generate_naming_variants;
 use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use julie_extractors::{Relationship, RelationshipKind, SymbolKind};
+use julie_index::graph::{EdgeKind, Graph, SymbolId};
+use julie_index::snapshot::Snapshot;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::formatting::format_lean_refs_results;
-use super::resolution::{WorkspaceTarget, parse_qualified_name};
-use super::target_workspace;
-use julie_context::ToolContext;
-use julie_core::Symbol;
-use julie_core::cross_language_intelligence::generate_naming_variants;
-use julie_extractors::{Relationship, RelationshipKind, SymbolKind};
-use std::collections::{HashMap, HashSet};
+use super::resolution::{WorkspaceTarget, has_parent_named, parse_qualified_name, to_symbol};
+use super::sites::{Site, identifier_kind_name, reference_sites};
+
+const MAX_DEFINITIONS: usize = 50;
 
 fn default_true() -> bool {
     true
 }
 
 fn default_limit() -> u32 {
-    10 // Reduced from 50 for Julie 2.0 token efficiency (80% reduction)
+    10
 }
 
 fn default_workspace() -> Option<String> {
@@ -60,25 +65,17 @@ pub struct FastRefsTool {
     pub semantics: Option<julie_core::embeddings_contract::SemanticMode>,
 }
 
-impl FastRefsTool {
-    /// Create lean text result for references
-    fn create_result(
-        &self,
-        definitions: Vec<Symbol>,
-        references: Vec<Relationship>,
-        source_names: &HashMap<String, String>,
-    ) -> Result<CallToolResult> {
-        let lean_output =
-            format_lean_refs_results(&self.symbol, &definitions, &references, source_names);
-        Ok(CallToolResult::text_content(vec![Content::text(
-            lean_output,
-        )]))
-    }
+/// Definitions and references of one symbol, plus the referencing symbols' names.
+#[derive(Debug, Default)]
+pub struct FoundReferences {
+    pub definitions: Vec<Symbol>,
+    pub references: Vec<Relationship>,
+    /// `from_symbol_id` -> name, for the reference listing.
+    pub source_names: HashMap<String, String>,
+}
 
+impl FastRefsTool {
     pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
-        // Resolve workspace target (primary or explicit workspace). The helpers
-        // below each acquire their own pooled DB internally — there's no longer
-        // a shared Arc<Mutex<>> passed around (see A2.2c follow-up).
         let workspace_target = handler
             .resolve_workspace_target(self.workspace.as_deref())
             .await?;
@@ -106,385 +103,233 @@ impl FastRefsTool {
     ) -> Result<CallToolResult> {
         debug!("Finding references for: {}", self.symbol);
 
-        // Find references (workspace resolution is handled by workspace_target)
-        let (definitions, references) = self
-            .find_references_and_definitions(handler, workspace_target.clone())
-            .await?;
+        let snapshot = handler.snapshot(workspace_target).await?;
+        let found = find_references(
+            &snapshot,
+            &self.symbol,
+            self.limit,
+            self.reference_kind.as_deref(),
+        );
 
-        if definitions.is_empty() && references.is_empty() {
-            // Attempt semantic fallback (works for both primary and explicit workspaces)
+        if found.definitions.is_empty() && found.references.is_empty() {
             let semantic_mode = self
                 .semantics
                 .unwrap_or(julie_core::embeddings_contract::SemanticMode::Auto);
             let semantic_section = super::fast_refs_semantic::try_semantic_fallback(
                 &self.symbol,
                 handler,
-                workspace_target,
+                &snapshot,
                 budget,
                 semantic_mode,
             )
             .await?;
 
-            let empty_names = HashMap::new();
-            let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &empty_names);
+            let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &HashMap::new());
             result_text.push_str(&semantic_section);
             return Ok(CallToolResult::text_content(vec![Content::text(
                 result_text,
             )]));
         }
 
-        // Resolve from_symbol_id → name for each reference so the formatter
-        // can show the calling symbol's name (e.g., "format_definition_search_results (Calls)")
-        let source_names = self
-            .resolve_source_names(handler, &references, workspace_target)
-            .await;
-
-        // Respect include_definition parameter
-        let defs = if self.include_definition {
-            definitions
+        let definitions = if self.include_definition {
+            found.definitions
         } else {
-            vec![]
+            Vec::new()
         };
-
-        self.create_result(defs, references, &source_names)
+        let lean_output = format_lean_refs_results(
+            &self.symbol,
+            &definitions,
+            &found.references,
+            &found.source_names,
+        );
+        Ok(CallToolResult::text_content(vec![Content::text(
+            lean_output,
+        )]))
     }
 
-    /// Batch-resolve from_symbol_id values to symbol names for reference display.
-    ///
-    /// Routes to the correct workspace DB via the pooled accessor: explicit
-    /// workspaces use `get_pooled_database_for_workspace`; primary uses
-    /// `primary_pooled_database`.
-    async fn resolve_source_names(
-        &self,
-        handler: &dyn ToolContext,
-        references: &[Relationship],
-        workspace_target: &WorkspaceTarget,
-    ) -> HashMap<String, String> {
-        let ids: Vec<String> = references
-            .iter()
-            .map(|r| r.from_symbol_id.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-
-        if ids.is_empty() {
-            return HashMap::new();
-        }
-
-        // Pooled DB: read-only, no mutation gate required.
-        let pooled_db = match workspace_target {
-            WorkspaceTarget::Target(target_workspace_id) => {
-                match handler
-                    .get_pooled_database_for_workspace(target_workspace_id)
-                    .await
-                {
-                    Ok(db) => db,
-                    Err(_) => return HashMap::new(),
-                }
-            }
-            WorkspaceTarget::Primary => match handler.primary_pooled_database().await {
-                Ok(db) => db,
-                Err(_) => return HashMap::new(),
-            },
-        };
-
-        tokio::task::spawn_blocking(move || match pooled_db.get_symbols_by_ids(&ids) {
-            Ok(symbols) => symbols
-                .into_iter()
-                .map(|s| (s.id.clone(), s.name.clone()))
-                .collect(),
-            Err(_) => HashMap::new(),
-        })
-        .await
-        .unwrap_or_default()
-    }
-
+    /// Definitions and references for callers that edit every site, such as
+    /// `rename_symbol`.
     pub async fn find_references_and_definitions(
         &self,
         handler: &dyn ToolContext,
         workspace_target: WorkspaceTarget,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-        debug!(
-            "Searching for references to '{}' using indexed search",
-            self.symbol
-        );
-
-        match workspace_target {
-            WorkspaceTarget::Target(target_workspace_id) => {
-                debug!("Searching target workspace: {}", target_workspace_id);
-                return self
-                    .database_find_references_in_target_workspace(handler, target_workspace_id)
-                    .await;
-            }
-            WorkspaceTarget::Primary => {
-                // Fall through to primary workspace search below
-            }
-        }
-
-        // Resolve qualified names: "SearchIndex::search_symbols" → search "search_symbols" filtered by parent
-        let (effective_symbol, parent_filter) = match parse_qualified_name(&self.symbol) {
-            Some((parent, child)) => {
-                debug!("Qualified name: parent='{}', child='{}'", parent, child);
-                (child.to_string(), Some(parent.to_string()))
-            }
-            None => (self.symbol.clone(), None),
-        };
-
-        // Pooled DB: read-only, no mutation gate required. The five separate
-        // spawn_blocking calls of the prior Arc<Mutex<>> implementation are
-        // consolidated here into one, since the owned pooled SymbolDatabase
-        // can't be cloned across spawn_blocking boundaries.
-        let pooled_db = handler.primary_pooled_database().await?;
-        let symbol_owned = effective_symbol.clone();
-        let parent_filter_owned = parent_filter.clone();
-        let reference_kind_filter = self.reference_kind.clone();
-        let limit = self.limit as usize;
-        let self_symbol = self.symbol.clone();
-
-        let (definitions, references) =
-            tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-                // Strategy 1: exact-name lookup via SQLite (O(log n))
-                let mut definitions = pooled_db.get_symbols_by_name(&symbol_owned)?;
-
-                // Apply parent filter for qualified names like Foo::bar
-                if let Some(ref parent_name) = parent_filter_owned {
-                    let parent_ids: Vec<String> = definitions
-                        .iter()
-                        .filter_map(|s| s.parent_id.clone())
-                        .collect::<HashSet<_>>()
-                        .into_iter()
-                        .collect();
-
-                    if !parent_ids.is_empty() {
-                        let parents = pooled_db.get_symbols_by_ids(&parent_ids)?;
-                        let matching_parent_ids: HashSet<String> = parents
-                            .into_iter()
-                            .filter(|p| p.name == *parent_name)
-                            .map(|p| p.extracted.id)
-                            .collect();
-
-                        definitions.retain(|s| {
-                            s.parent_id
-                                .as_deref()
-                                .map(|pid| matching_parent_ids.contains(pid))
-                                .unwrap_or(false)
-                        });
-                    } else {
-                        definitions.clear();
-                    }
-                }
-
-                debug!("⚡ SQLite found {} exact matches", definitions.len());
-
-                // Strategy 2: Cross-language naming convention variants
-                let variants = generate_naming_variants(&symbol_owned);
-                debug!("🔍 Cross-language search variants: {:?}", variants);
-
-                if definitions.is_empty() {
-                    for variant in &variants {
-                        if *variant != symbol_owned {
-                            if let Ok(variant_symbols) = pooled_db.get_symbols_by_name(variant) {
-                                for s in variant_symbols {
-                                    if s.name == *variant {
-                                        debug!(
-                                            "✨ Found cross-language match: {} (variant: {})",
-                                            s.name, variant
-                                        );
-                                        definitions.push(s);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Dedup definitions
-                definitions.sort_by(|a, b| a.id.cmp(&b.id));
-                definitions.dedup_by(|a, b| a.id == b.id);
-
-                // Separate imports from true definitions
-                let mut import_refs: Vec<Relationship> = Vec::new();
-                definitions.retain(|sym| {
-                    if sym.kind == SymbolKind::Import {
-                        import_refs.push(Relationship {
-                            id: format!("import_{}_{}", sym.file_path, sym.start_line),
-                            from_symbol_id: sym.id.clone(),
-                            to_symbol_id: String::new(),
-                            kind: RelationshipKind::Imports,
-                            file_path: sym.file_path.clone(),
-                            line_number: sym.start_line,
-                            span: None,
-                            reference_site_is_exact: false,
-                            confidence: 1.0,
-                            metadata: None,
-                        });
-                        false
-                    } else {
-                        true
-                    }
-                });
-
-                // Filter synthetic import refs if reference_kind is set and isn't "import"
-                let mut references: Vec<Relationship> = match reference_kind_filter.as_deref() {
-                    Some(kind) if kind != "import" => Vec::new(),
-                    _ => import_refs,
-                };
-
-                // Strategy 3: relationships table — direct REFERENCES TO these symbols
-                let definition_ids: Vec<String> =
-                    definitions.iter().map(|d| d.id.clone()).collect();
-
-                let rel_results = match reference_kind_filter.as_deref() {
-                    Some(kind) => pooled_db
-                        .get_relationships_to_symbols_filtered_by_kind(&definition_ids, kind),
-                    None => pooled_db.get_relationships_to_symbols(&definition_ids),
-                };
-                if let Ok(refs) = rel_results {
-                    references.extend(refs);
-                }
-
-                // Strategy 4: identifiers table — catches usages that relationships miss
-                let mut all_names = vec![symbol_owned.clone()];
-                for v in &variants {
-                    if *v != symbol_owned {
-                        all_names.push(v.clone());
-                    }
-                }
-
-                let first_def_id = definitions
-                    .first()
-                    .map(|d| d.id.clone())
-                    .unwrap_or_default();
-                let resolved_definition_ids: HashSet<String> =
-                    definitions.iter().map(|d| d.id.clone()).collect();
-                let qualified_lookup = parent_filter_owned.is_some();
-
-                let identifier_refs = match reference_kind_filter.as_deref() {
-                    Some(kind) => pooled_db
-                        .get_identifiers_by_names_and_kind(&all_names, kind)
-                        .unwrap_or_default(),
-                    None => pooled_db
-                        .get_identifiers_by_names(&all_names)
-                        .unwrap_or_default(),
-                };
-
-                // Build dedup set from existing relationships AND definitions
-                // so identifier entries at definition sites don't create duplicates
-                let mut existing_refs: HashSet<(String, u32)> = references
-                    .iter()
-                    .map(|r| (r.file_path.clone(), r.line_number))
-                    .collect();
-                for def in &definitions {
-                    existing_refs.insert((def.file_path.clone(), def.start_line));
-                }
-
-                let mut added = 0;
-                for ident in identifier_refs {
-                    let key = (ident.file_path.clone(), ident.start_line);
-                    if existing_refs.contains(&key) {
-                        continue;
-                    }
-
-                    if qualified_lookup
-                        && !ident
-                            .target_symbol_id
-                            .as_deref()
-                            .map(|target_id| resolved_definition_ids.contains(target_id))
-                            .unwrap_or(false)
-                    {
-                        continue;
-                    }
-
-                    let rel_kind = match ident.kind.as_str() {
-                        "call" => RelationshipKind::Calls,
-                        "import" => RelationshipKind::Imports,
-                        "type_usage" => RelationshipKind::Uses,
-                        "member_access" => RelationshipKind::References,
-                        _ => RelationshipKind::References,
-                    };
-
-                    references.push(Relationship {
-                        id: format!("ident_{}_{}", ident.file_path, ident.start_line),
-                        from_symbol_id: ident.containing_symbol_id.unwrap_or_default(),
-                        to_symbol_id: first_def_id.clone(),
-                        kind: rel_kind,
-                        file_path: ident.file_path,
-                        line_number: ident.start_line,
-                        span: None,
-                        reference_site_is_exact: false,
-                        confidence: ident.confidence,
-                        metadata: None,
-                    });
-                    existing_refs.insert(key);
-                    added += 1;
-                }
-
-                debug!(
-                    "🔓 Identifiers added {} new references (deduped from existing relationships)",
-                    added
-                );
-
-                Ok((definitions, references))
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
-
-        let mut references = references;
-
-        // Sort references by confidence and location
-        references.sort_by(|a, b| {
-            let conf_cmp = b
-                .confidence
-                .partial_cmp(&a.confidence)
-                .unwrap_or(std::cmp::Ordering::Equal);
-            if conf_cmp != std::cmp::Ordering::Equal {
-                return conf_cmp;
-            }
-            let file_cmp = a.file_path.cmp(&b.file_path);
-            if file_cmp != std::cmp::Ordering::Equal {
-                return file_cmp;
-            }
-            a.line_number.cmp(&b.line_number)
-        });
-
-        // Apply user-specified limit to prevent massive responses
-        references.truncate(limit);
-
-        // Cap definitions — large counts signal cross-language naming collisions
-        const MAX_DEFINITIONS: usize = 50;
-        if definitions.len() > MAX_DEFINITIONS {
-            tracing::debug!(
-                "⚠️  {} definitions for '{}' — capping at {}",
-                definitions.len(),
-                self_symbol,
-                MAX_DEFINITIONS
-            );
-        }
-        let definitions: Vec<Symbol> = definitions.into_iter().take(MAX_DEFINITIONS).collect();
-
-        debug!(
-            "✅ Found {} definitions and {} references for '{}'",
-            definitions.len(),
-            references.len(),
-            self_symbol
-        );
-
-        Ok((definitions, references))
-    }
-
-    /// Find references in a target workspace by delegating to the target_workspace module.
-    async fn database_find_references_in_target_workspace(
-        &self,
-        handler: &dyn ToolContext,
-        target_workspace_id: String,
-    ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-        target_workspace::find_references_in_target_workspace(
-            handler,
-            target_workspace_id,
+        let snapshot = handler.snapshot(&workspace_target).await?;
+        let found = find_references(
+            &snapshot,
             &self.symbol,
             self.limit,
             self.reference_kind.as_deref(),
-        )
-        .await
+        );
+        Ok((found.definitions, found.references))
     }
+}
+
+/// Symbols named `symbol`: exact name, else its naming variants, narrowed to
+/// children of the parent when the name is qualified.
+fn definition_ids(graph: &Graph, symbol: &str) -> Vec<SymbolId> {
+    let (effective, parent) = match parse_qualified_name(symbol) {
+        Some((parent, child)) => (child, Some(parent)),
+        None => (symbol, None),
+    };
+    let mut ids = graph.find_by_name(effective).to_vec();
+    if ids.is_empty() {
+        let variants = generate_naming_variants(effective);
+        debug!("Cross-language search variants: {:?}", variants);
+        for variant in variants.iter().filter(|v| v.as_str() != effective) {
+            ids.extend_from_slice(graph.find_by_name(variant));
+        }
+    }
+    if let Some(parent) = parent {
+        ids.retain(|id| has_parent_named(graph, *id, parent));
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+fn import_reference(graph: &Graph, id: SymbolId) -> Relationship {
+    let row = graph.symbol(id);
+    Relationship {
+        id: format!("import_{}_{}", row.path, row.span.start_line),
+        from_symbol_id: row.id.clone(),
+        to_symbol_id: String::new(),
+        kind: RelationshipKind::Imports,
+        file_path: row.path.clone(),
+        line_number: row.span.start_line,
+        span: None,
+        reference_site_is_exact: false,
+        confidence: 1.0,
+        metadata: None,
+    }
+}
+
+fn edge_relationship_kind(kind: EdgeKind) -> RelationshipKind {
+    match kind {
+        EdgeKind::Calls => RelationshipKind::Calls,
+        EdgeKind::Imports => RelationshipKind::Imports,
+        EdgeKind::Implements => RelationshipKind::Implements,
+        EdgeKind::Extends => RelationshipKind::Extends,
+        EdgeKind::References | EdgeKind::Contains | EdgeKind::WebRoute => {
+            RelationshipKind::References
+        }
+    }
+}
+
+/// Symbols with a reference edge into `to`, once each, with the first edge kind.
+fn referencing_symbols(graph: &Graph, to: SymbolId) -> Vec<(SymbolId, EdgeKind)> {
+    let mut sources: Vec<(SymbolId, EdgeKind)> = graph
+        .incoming(to)
+        .iter()
+        .filter(|(_, kind)| !matches!(kind, EdgeKind::Contains | EdgeKind::WebRoute))
+        .copied()
+        .collect();
+    sources.dedup_by_key(|(from, _)| *from);
+    sources
+}
+
+/// Every definition named `symbol` and the sites that reference it, sorted by
+/// confidence then location and cut to `limit`. Import symbols become import
+/// references. `reference_kind` keeps only sites whose identifier has that kind
+/// (`import` keeps only the import references).
+pub fn find_references(
+    snapshot: &Snapshot,
+    symbol: &str,
+    limit: u32,
+    reference_kind: Option<&str>,
+) -> FoundReferences {
+    let graph = snapshot.graph();
+    let mut found = FoundReferences::default();
+
+    let mut definitions = Vec::new();
+    for id in definition_ids(graph, symbol) {
+        if graph.symbol(id).kind == SymbolKind::Import {
+            if reference_kind.is_none_or(|kind| kind == "import") {
+                found.references.push(import_reference(graph, id));
+            }
+        } else {
+            definitions.push(id);
+        }
+    }
+
+    let mut seen: HashSet<(String, u32)> = found
+        .references
+        .iter()
+        .map(|r| (r.file_path.clone(), r.line_number))
+        .collect();
+    for id in &definitions {
+        let row = graph.symbol(*id);
+        seen.insert((row.path.clone(), row.span.start_line));
+    }
+
+    for &to in &definitions {
+        let to_row = graph.symbol(to);
+        for (from, edge) in referencing_symbols(graph, to) {
+            let from_row = graph.symbol(from);
+            let mut sites = reference_sites(graph, from, to);
+            if sites.is_empty() {
+                sites.push(Site {
+                    line: from_row.span.start_line,
+                    kind: edge_relationship_kind(edge),
+                    identifier_kind: None,
+                    confidence: 1.0,
+                });
+            }
+            for site in sites {
+                let site_kind = site.identifier_kind.as_ref().map(identifier_kind_name);
+                if reference_kind.is_some_and(|kind| site_kind != Some(kind)) {
+                    continue;
+                }
+                if !seen.insert((from_row.path.clone(), site.line)) {
+                    continue;
+                }
+                found.references.push(Relationship {
+                    id: format!("ident_{}_{}", from_row.path, site.line),
+                    from_symbol_id: from_row.id.clone(),
+                    to_symbol_id: to_row.id.clone(),
+                    kind: site.kind,
+                    file_path: from_row.path.clone(),
+                    line_number: site.line,
+                    span: None,
+                    reference_site_is_exact: false,
+                    confidence: site.confidence,
+                    metadata: None,
+                });
+                found
+                    .source_names
+                    .insert(from_row.id.clone(), from_row.name.clone());
+            }
+        }
+    }
+
+    found.references.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.file_path.cmp(&b.file_path))
+            .then_with(|| a.line_number.cmp(&b.line_number))
+    });
+    found.references.truncate(limit as usize);
+
+    if definitions.len() > MAX_DEFINITIONS {
+        debug!(
+            "⚠️  {} definitions for '{}' — capping at {}",
+            definitions.len(),
+            symbol,
+            MAX_DEFINITIONS
+        );
+    }
+    found.definitions = definitions
+        .iter()
+        .take(MAX_DEFINITIONS)
+        .map(|id| to_symbol(graph, *id))
+        .collect();
+
+    debug!(
+        "✅ Found {} definitions and {} references for '{}'",
+        found.definitions.len(),
+        found.references.len(),
+        symbol
+    );
+    found
 }

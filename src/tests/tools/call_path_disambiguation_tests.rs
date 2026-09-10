@@ -1,44 +1,23 @@
 use anyhow::Result;
 use std::fs;
 
-use crate::handler::JulieServerHandler;
-use crate::tests::helpers::workspace::mark_workspace_root;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::navigation::call_path::{CallPathHop, CallPathResponse, CallPathTool};
 use crate::tools::navigation::resolution::file_path_matches_suffix;
-use crate::tools::workspace::ManageWorkspaceTool;
+use julie_test_support::FakeToolContext;
 use tempfile::TempDir;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async fn setup_multi_file_workspace(
-    files: &[(&str, &str)],
-) -> Result<(TempDir, JulieServerHandler)> {
+async fn setup_multi_file_workspace(files: &[(&str, &str)]) -> Result<(TempDir, FakeToolContext)> {
     let temp_dir = TempDir::new()?;
-    let workspace_path = temp_dir.path().to_path_buf();
-    mark_workspace_root(workspace_path.as_path());
-
     for (relative_path, content) in files {
-        let full_path = workspace_path.join(relative_path);
+        let full_path = temp_dir.path().join(relative_path);
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent)?;
         }
         fs::write(&full_path, content)?;
     }
-
-    let handler = JulieServerHandler::new(workspace_path.clone()).await?;
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        workspace_id: None,
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        name: None,
-        force: Some(false),
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    Ok((temp_dir, handler))
+    let context = snapshot_context(temp_dir.path())?;
+    Ok((temp_dir, context))
 }
 
 fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
