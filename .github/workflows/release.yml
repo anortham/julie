@@ -13,15 +13,11 @@ env:
 
 jobs:
   # ==========================================================================
-  # Server binary builds (julie-server + julie-embedding-host)
+  # Server binary build (julie-server)
   #
-  # Post-cutover (Phase 3c.3/3d) the plugin spawns julie-server directly:
-  #   - julie-server: the MCP entry point; serves in-process over stdio
-  #     (leader-locked, no daemon fork). This is what your client spawns.
-  #   - julie-embedding-host: resident process owning the shared embedding
-  #     sidecar; julie-server locates this sibling binary at runtime.
-  # The legacy julie-daemon binary was removed in Phase 3d.2a.
-  # Both binaries are bundled in the same archive per platform.
+  # The plugin spawns julie-server directly: the MCP entry point serves
+  # in-process over stdio. Semantics run through the native
+  # julie-semantic-sidecar, which ships separately; there is no Python host.
   # ==========================================================================
   build:
     name: Build ${{ matrix.target }}
@@ -73,41 +69,36 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Build release binaries (julie-server + julie-embedding-host)
+      - name: Build release binary (julie-server)
         shell: bash
         run: |
           cargo build --release --target ${{ matrix.target }} \
-            --bin julie-server \
-            --bin julie-embedding-host
+            --bin julie-server
 
       - name: Strip binaries (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: |
           strip target/${{ matrix.target }}/release/julie-server${{ matrix.exe_suffix }}
-          strip target/${{ matrix.target }}/release/julie-embedding-host${{ matrix.exe_suffix }}
 
       - name: Ad-hoc codesign (macOS)
         if: startsWith(matrix.os, 'macos')
         run: |
           codesign --force --sign - target/${{ matrix.target }}/release/julie-server${{ matrix.exe_suffix }}
-          codesign --force --sign - target/${{ matrix.target }}/release/julie-embedding-host${{ matrix.exe_suffix }}
 
       - name: Create archive
         shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           SERVER_BIN="julie-server${{ matrix.exe_suffix }}"
-          HOST_BIN="julie-embedding-host${{ matrix.exe_suffix }}"
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.zip"
             cp "./target/${{ matrix.target }}/release/${SERVER_BIN}" "${SERVER_BIN}"
-            cp "./target/${{ matrix.target }}/release/${HOST_BIN}" "${HOST_BIN}"
-            7z a "${ARCHIVE}" "${SERVER_BIN}" "${HOST_BIN}"
+            7z a "${ARCHIVE}" "${SERVER_BIN}"
           else
             ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.tar.gz"
             tar -czf "${ARCHIVE}" \
               -C target/${{ matrix.target }}/release \
-              "${SERVER_BIN}" "${HOST_BIN}"
+              "${SERVER_BIN}"
           fi
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
@@ -156,10 +147,9 @@ jobs:
 
           ### What's Included
 
-          Each archive ships two binaries:
+          Each archive ships one binary:
 
-          - **\`julie-server\`** — The MCP entry point your client spawns. Serves in-process over stdio (leader-locked; no daemon fork).
-          - **\`julie-embedding-host\`** — Resident process that owns the shared embedding sidecar. \`julie-server\` locates this sibling binary at runtime for semantic search.
+          - **\`julie-server\`** — The MCP entry point your client spawns. Serves in-process over stdio. Semantics run through the native \`julie-semantic-sidecar\`; there is no Python runtime.
 
           ### Platform Support
           | Platform | Archive |
@@ -171,9 +161,8 @@ jobs:
 
           ### Quick Start
           \`\`\`bash
-          # 1. Extract the archive for your platform; both binaries land in the same directory.
+          # 1. Extract the archive for your platform.
           # 2. Configure your MCP client to spawn julie-server.
-          # 3. julie-server serves in-process and spawns julie-embedding-host as needed.
           \`\`\`
 
           See [README.md](https://github.com/${{ github.repository }}) for full documentation.
@@ -206,7 +195,7 @@ jobs:
         run: |
           echo "Release v${{ steps.version.outputs.version }} created successfully"
           echo ""
-          echo "Bundled binaries: julie-server, julie-embedding-host"
+          echo "Bundled binary: julie-server"
           echo ""
           echo "Platforms built:"
           echo "  - Windows (x86_64-pc-windows-msvc)"

@@ -611,10 +611,10 @@ async fn content_locations_cpp_h_language_filter_keeps_line_hits() -> Result<()>
 
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
-    let include_dir = workspace_path.join("include");
-    fs::create_dir_all(&include_dir)?;
+    let include_root = workspace_path.join("include");
+    fs::create_dir_all(&include_root)?;
     fs::write(
-        include_dir.join("Widget.h"),
+        include_root.join("Widget.h"),
         r#"#pragma once
 namespace app {
 class Widget {

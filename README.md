@@ -55,60 +55,19 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - Search latency: <5ms (Tantivy full-text search)
 - Memory usage: <100MB typical workload
 - Startup time: <2s (database + Tantivy indexing)
-- Single binary server with GPU-accelerated embedding sidecar (auto-provisioned via `uv`)
+- Single binary server; semantics run through the native `julie-semantic-sidecar` (no Python runtime)
 
 **Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds.
 
-### Embeddings and GPU Acceleration
+### Embeddings
 
-Julie uses embeddings for semantic search, related symbol discovery, and intelligent code navigation. These features are powered by a managed Python sidecar (sentence-transformers + PyTorch) with automatic GPU acceleration.
-
-#### Recommended: install `uv`
-
-[`uv`](https://docs.astral.sh/uv/) lets Julie install Python 3.12 and all sidecar dependencies automatically. You do not need to install Python yourself. If `uv` or the sidecar is unavailable, keyword search and code navigation still work; embedding-backed features stay disabled until the sidecar is available.
-
-**macOS:**
-```bash
-brew install uv
-```
-
-**Windows** (open PowerShell):
-```powershell
-winget install --id=astral-sh.uv -e
-```
-
-If `winget` is not available, use the standalone installer instead:
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-**Linux:**
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-After installing, open a new terminal and verify with `uv --version`.
-
-#### Step 2: there is no step 2
-
-On first launch, Julie automatically creates a Python 3.12 environment, installs PyTorch and the embedding model, and detects your GPU. Everything is cached, so subsequent launches are instant.
-
-#### GPU acceleration
-
-Julie auto-detects your GPU and uses it for faster embeddings:
-
-- **NVIDIA (CUDA)**: auto-detected; the correct torch+CUDA variant is installed automatically
-- **AMD/Intel (DirectML)**: auto-detected on Windows via `torch-directml`
-- **Apple Silicon (MPS)**: auto-detected by PyTorch
-- **CPU**: used when no GPU is available (slower, but fully functional)
-
-Python 3.12 is used because it has the best PyTorch hardware acceleration compatibility across all GPU backends.
+Julie uses embeddings for semantic search, related symbol discovery, and intelligent code navigation. Semantics run through the native `julie-semantic-sidecar` binary; there is no Python runtime. When the sidecar binary is not found, keyword search and code navigation still work and embedding-backed features stay disabled.
 
 #### Advanced configuration
 
 - `JULIE_HOME`: relocate shared registry state and workspace indexes (default: `~/.julie`). Must be an absolute path; empty or relative values are rejected. Existing installs upgrade in place — set this only if you want to move Julie's storage to another drive or path. See `docs/OPERATIONS.md` for the migration checklist.
-- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`, 768d code-optimized). Changing models automatically wipes and re-embeds all vectors on the next indexing run.
-- See `docs/operations/embedding-sidecar.md` for all environment variables and troubleshooting
+- `JULIE_NATIVE_SIDECAR_PROGRAM`: explicit path to the `julie-semantic-sidecar` binary (default: next to `julie-server`, then `PATH`).
+- `JULIE_NATIVE_SIDECAR_MODEL`: native sidecar model id.
 
 ## Supported Languages (36)
 
@@ -338,8 +297,9 @@ All `env` values are optional — see the table below for defaults.
 | Variable | Values | Default | Notes |
 |----------|--------|---------|-------|
 | `JULIE_WORKSPACE` | Absolute path to project root | Client roots (if supported), else `cwd` | Overrides workspace detection. Set this when a no-roots client launches Julie from the wrong directory. |
-| `JULIE_EMBEDDING_PROVIDER` | `auto`, `sidecar` | `auto` | Selects embedding backend. `auto` resolves to `sidecar` on all platforms. |
-| `JULIE_EMBEDDING_SIDECAR_MODEL_ID` | Any HuggingFace model ID | `nomic-ai/CodeRankEmbed` | Sidecar model. CodeRankEmbed (768d) is code-optimized. |
+| `JULIE_EMBEDDING_PROVIDER` | `auto`, `native`, `none` | `auto` | Selects embedding backend. `auto` resolves to `native` when the `julie-semantic-sidecar` binary is found, else no embeddings. |
+| `JULIE_NATIVE_SIDECAR_PROGRAM` | Path to `julie-semantic-sidecar` | next to `julie-server`, then `PATH` | Explicit native sidecar binary. |
+| `JULIE_NATIVE_SIDECAR_MODEL` | Native sidecar model id | sidecar default | Native sidecar model. |
 | `JULIE_EMBEDDING_STRICT_ACCEL` | `1` | unset | Disable embeddings entirely when no GPU is available. |
 
 **First Use / Verify:**
@@ -552,14 +512,13 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 - **Per-workspace isolation** with separate databases and indexes
 - **In-process MCP protocol** over stdio (JSON-RPC), with no background daemon or HTTP bridge
 - **Per-workspace leader locks** so one session owns writes while other sessions serve read-only requests from SQLite WAL and Tantivy mmap
-- **Embedding pipeline** with GPU-accelerated Python sidecar (CUDA/DirectML/MPS/CPU), shared through a resident embedding host per `$JULIE_HOME`
+- **Embedding pipeline** through the native `julie-semantic-sidecar`; there is no Python runtime
 
 ## Development
 
 ### Prerequisites
 
 - **Rust** — [rustup](https://rustup.rs) installs the repository-pinned Rust 1.97.0 toolchain automatically
-- **[uv](https://docs.astral.sh/uv/)** — auto-provisions Python 3.12 and the embedding sidecar (see [Embeddings and GPU Acceleration](#embeddings-and-gpu-acceleration))
 
 ### Building
 
@@ -634,7 +593,7 @@ cat edit_req.json | julie-server tool edit_file --params-stdin --json
 
 ### Zero-Warmup Discovery (`tools list` & `tools schema`)
 
-Instant catalog inspection answering in <15ms without starting file watchers, compiling indexes, or warming PyTorch/GPU embedding models:
+Instant catalog inspection answering in <15ms without starting file watchers, compiling indexes, or warming embedding models:
 
 ```bash
 # List all 13 registered tools with descriptions and schema availability
@@ -748,7 +707,7 @@ src/
 ├── external_extract/ # Process-facing extractor commands
 ├── health/          # Health report and diagnostics
 ├── indexing_core/   # Shared indexing orchestration
-├── embeddings/      # Embedding pipeline, sidecar supervisor and protocol
+├── embeddings/      # Embedding pipeline, native sidecar client and protocol
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
 │   ├── editing/     # edit_file, rewrite_symbol
@@ -763,9 +722,6 @@ src/
 │   └── workspace/   # manage_workspace
 ├── workspace/       # Multi-workspace management and registry
 └── tests/           # Test infrastructure
-
-python/
-└── embeddings_sidecar/  # GPU-accelerated embedding sidecar (PyTorch + sentence-transformers)
 
 fixtures/            # Test data (SOURCE/CONTROL files, real-world samples)
 ```

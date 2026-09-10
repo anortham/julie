@@ -47,7 +47,6 @@ pub struct DashboardConfig {
     /// When true, templates are re-read from disk on every render.
     /// Automatically enabled when `dashboard/templates/` exists on disk.
     pub dev_mode: bool,
-
     /// Path to the `dashboard/` directory.
     pub dashboard_dir: PathBuf,
 }
@@ -72,10 +71,8 @@ impl Default for DashboardConfig {
 pub struct AppState {
     /// Dashboard-level shared state (registry, events, etc.).
     pub dashboard: DashboardState,
-
     /// The Tera template engine instance.
     pub tera: SharedTera,
-
     /// Configuration (dev mode, paths).
     pub config: DashboardConfig,
 }
@@ -132,7 +129,6 @@ pub fn dashboard_router(paths: &julie_core::paths::RegistryPaths) -> anyhow::Res
             crate::registry::lifecycle::LifecyclePhase::Ready,
         )),
         std::time::Instant::now(),
-        None,
         50,
     )
     .with_recovery_markers(recovery_markers);

@@ -6,10 +6,9 @@ pub(crate) fn overall_from_planes(
     control_level: HealthLevel,
     data_level: HealthLevel,
     runtime_level: HealthLevel,
-    runtime_configured: bool,
 ) -> HealthLevel {
     let mut levels = vec![control_level, data_level];
-    if runtime_configured || runtime_level != HealthLevel::Unavailable {
+    if runtime_level != HealthLevel::Unavailable {
         levels.push(runtime_level);
     }
     overall_from_levels(&levels)

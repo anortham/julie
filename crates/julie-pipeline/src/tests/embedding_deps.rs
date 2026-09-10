@@ -8,14 +8,6 @@ mod tests {
     use rusqlite::Connection;
     use zerocopy::AsBytes;
 
-    #[test]
-    fn test_default_build_enables_sidecar_backend_feature() {
-        assert!(
-            cfg!(feature = "embeddings-sidecar"),
-            "Default build should enable embeddings-sidecar feature"
-        );
-    }
-
     /// Verify sqlite-vec loads and vec_version() returns a version string.
     #[test]
     fn test_sqlite_vec_registration_and_version() {

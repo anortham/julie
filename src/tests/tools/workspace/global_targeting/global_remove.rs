@@ -48,7 +48,6 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -161,7 +160,6 @@ async fn test_remove_current_primary_workspace_is_blocked_in_process() {
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
-        None,
         None,
     )
     .await

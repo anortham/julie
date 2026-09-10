@@ -26,15 +26,6 @@ path = "src/lib.rs"
 name = "julie-server"
 path = "src/main.rs"
 
-[[bin]]
-name = "julie-embedding-host"
-path = "src/bin/julie-embedding-host.rs"
-
-[features]
-default = ["embeddings-sidecar"]
-embeddings-sidecar = []
-
-
 [dependencies]
 # Julie Extractors — external standalone product, consumed as a pinned git dependency.
 # Language/parser work happens in anortham/julie-extractors; re-pin the tag here and sync
@@ -49,7 +40,7 @@ julie-core = { path = "crates/julie-core" }
 julie-index = { path = "crates/julie-index" }
 
 # Julie pipeline crate (indexing engine + embeddings, above julie-index)
-julie-pipeline = { path = "crates/julie-pipeline", features = ["embeddings-sidecar"] }
+julie-pipeline = { path = "crates/julie-pipeline" }
 
 # Julie runtime crate (watcher + workspace lifecycle, above julie-pipeline)
 julie-runtime = { path = "crates/julie-runtime" }
@@ -108,8 +99,6 @@ blake3 = "1.8"
 hex = "0.4"
 shellexpand = "3.1"
 sha2 = "0.10"
-include_dir = "0.7"  # Embed Python sidecar source into binary at compile time
-
 # HTTP server for the standalone dashboard reader and machine service
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "form", "json"] }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }

@@ -27,7 +27,6 @@ async fn test_manage_workspace_open_registers_missing_workspace_and_returns_work
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -115,7 +114,6 @@ async fn test_manage_workspace_register_does_not_mutate_primary_binding_during_r
         Some(Arc::clone(&daemon_db)),
         Some(legacy_primary_id.clone()),
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -193,7 +191,6 @@ async fn test_manage_workspace_open_by_workspace_id_marks_known_workspace_active
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
         None,
-        None,
     )
     .await
     .expect("handler should initialize");
@@ -260,7 +257,6 @@ async fn test_manage_workspace_open_does_not_activate_workspace_when_refresh_fai
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
     )
     .await

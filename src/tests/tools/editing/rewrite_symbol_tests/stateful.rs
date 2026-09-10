@@ -38,7 +38,6 @@ async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
         None,
-        None,
     )
     .await?;
 
@@ -219,7 +218,6 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
     )
     .await?;

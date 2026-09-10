@@ -165,8 +165,6 @@ pub struct JulieServerHandler {
     /// Keep this separate from `current_workspace_id()`, which reads session-owned
     /// mutable state and may diverge during rebinding.
     pub(crate) workspace_id: Arc<StdRwLock<Option<String>>>,
-    /// Shared embedding service for daemon mode. None in stdio mode.
-    pub(crate) embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
     /// Certification/replay handlers can index external repos without writing
     /// helper files such as `.julieignore` into those repos.
     pub(crate) suppress_workspace_file_writes: Arc<AtomicBool>,
@@ -184,7 +182,7 @@ pub struct JulieServerHandler {
     /// bounded read envelope in `call_tool`.
     pub(crate) in_process: bool,
     /// Embedding provider injected by `new_in_process`. When `Some`, takes
-    /// priority over `embedding_service` and the per-workspace provider.
+    /// priority over the per-workspace provider.
     injected_embedding_provider:
         Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>,
     /// When true, semantics are explicitly disabled for the current request context.
@@ -332,7 +330,6 @@ impl JulieServerHandler {
             project_log: None,
             daemon_db: None,
             workspace_id: Arc::new(StdRwLock::new(None)),
-            embedding_service: None,
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -357,13 +354,12 @@ impl JulieServerHandler {
     /// - `db: Arc<Mutex<SqliteDB>>` and `search_index: Arc<SearchIndex>` are
     ///   shared (Arc clone). This is the whole point: multiple sessions hit one db.
     /// - `watcher` is `None` in the clone (leader manages the file watcher).
-    /// - `embedding_provider` is set to `None` (shared via EmbeddingService).
+    /// - `embedding_provider` is set to `None`.
     pub async fn new_with_shared_workspace(
         workspace: Arc<JulieWorkspace>,
         workspace_root: PathBuf,
         daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
         workspace_id: Option<String>,
-        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         Self::new_with_shared_workspace_startup_hint(
@@ -374,7 +370,6 @@ impl JulieServerHandler {
             },
             daemon_db,
             workspace_id,
-            embedding_service,
             dashboard_tx,
         )
         .await
@@ -385,7 +380,6 @@ impl JulieServerHandler {
         workspace_startup_hint: WorkspaceStartupHint,
         daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
         workspace_id: Option<String>,
-        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         let workspace_root = workspace_startup_hint.path.clone();
@@ -433,7 +427,6 @@ impl JulieServerHandler {
             project_log,
             daemon_db,
             workspace_id: Arc::new(StdRwLock::new(workspace_id)),
-            embedding_service,
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -457,13 +450,11 @@ impl JulieServerHandler {
     pub async fn new_deferred_daemon_startup_hint(
         workspace_startup_hint: WorkspaceStartupHint,
         daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
-        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         Self::new_deferred_daemon_startup_hint_with_project_log(
             workspace_startup_hint,
             daemon_db,
-            embedding_service,
             dashboard_tx,
             true,
         )
@@ -473,13 +464,11 @@ impl JulieServerHandler {
     pub async fn new_deferred_daemon_startup_hint_without_project_log(
         workspace_startup_hint: WorkspaceStartupHint,
         daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
-        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         Self::new_deferred_daemon_startup_hint_with_project_log(
             workspace_startup_hint,
             daemon_db,
-            embedding_service,
             dashboard_tx,
             false,
         )
@@ -489,7 +478,6 @@ impl JulieServerHandler {
     async fn new_deferred_daemon_startup_hint_with_project_log(
         workspace_startup_hint: WorkspaceStartupHint,
         daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
-        embedding_service: Option<Arc<crate::registry::embedding_service::EmbeddingService>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
         enable_project_writes: bool,
     ) -> Result<Self> {
@@ -521,7 +509,6 @@ impl JulieServerHandler {
             },
             daemon_db,
             workspace_id: Arc::new(StdRwLock::new(None)),
-            embedding_service,
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -572,7 +559,6 @@ impl JulieServerHandler {
         let mut handler = Self::new_deferred_daemon_startup_hint_with_project_log(
             startup_hint,
             daemon_db,
-            /*embedding_service=*/ None,
             /*dashboard_tx=*/ None,
             /*enable_project_writes=*/ true,
         )
@@ -746,11 +732,7 @@ impl JulieServerHandler {
                 return Some(Arc::clone(p));
             }
         }
-        // Daemon mode: use shared service
-        if let Some(ref service) = self.embedding_service {
-            return service.provider();
-        }
-        // Stdio mode: use per-workspace provider
+        // Per-workspace provider
         let ws = self.workspace.read().await;
         ws.as_ref().and_then(|ws| ws.embedding_provider.clone())
     }
@@ -765,13 +747,10 @@ impl JulieServerHandler {
         }
     }
 
-    /// Get embedding runtime status, preferring daemon shared service.
+    /// Get the per-workspace embedding runtime status.
     pub(crate) async fn embedding_runtime_status(
         &self,
     ) -> Option<crate::embeddings::EmbeddingRuntimeStatus> {
-        if let Some(ref service) = self.embedding_service {
-            return service.runtime_status();
-        }
         let ws = self.workspace.read().await;
         ws.as_ref()
             .and_then(|ws| ws.embedding_runtime_status.clone())
@@ -1043,14 +1022,11 @@ impl JulieServerHandler {
             }
         }
 
-        // Backfill embedding model from the shared embedding service
         if needs_model {
-            if let Some(ref svc) = self.embedding_service {
-                if let Some(provider) = svc.provider() {
-                    let model = provider.device_info().model_name;
-                    let _ = db.update_embedding_model(ws_id, &model);
-                    info!(workspace_id = %ws_id, model, "Backfilled embedding_model");
-                }
+            if let Some(provider) = self.embedding_provider().await {
+                let model = provider.device_info().model_name;
+                let _ = db.update_embedding_model(ws_id, &model);
+                info!(workspace_id = %ws_id, model, "Backfilled embedding_model");
             }
         }
     }

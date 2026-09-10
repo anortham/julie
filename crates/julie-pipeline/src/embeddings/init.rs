@@ -88,7 +88,7 @@ pub fn create_embedding_provider() -> (
         }
     };
 
-    let capabilities = BackendResolverCapabilities::current();
+    let capabilities = BackendResolverCapabilities::detect(config.native_program.as_deref());
     let resolved_backend =
         match resolve_backend_preference(requested_backend.clone(), &capabilities) {
             Ok(backend) => backend,

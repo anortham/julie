@@ -20,7 +20,6 @@ mod file_pattern_tests;
 mod line_mode;
 mod line_mode_or_fallback_tests;
 mod line_mode_second_pass_tests;
-mod nl_embeddings_daemon_tests;
 mod primary_workspace_bug;
 mod quality; // STAYS: uses crate::utils::exact_match_boost + path_relevance (top-crate only)
 mod race_condition;

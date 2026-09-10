@@ -260,7 +260,7 @@ fn changed_tests_route_pipeline_embeddings_to_core_pipeline_and_embeddings() {
     let manifest = manifest();
     let selection = select_changed_buckets(
         &manifest,
-        &["crates/julie-pipeline/src/embeddings/sidecar_supervisor.rs".to_string()],
+        &["crates/julie-pipeline/src/embeddings/native/launch.rs".to_string()],
     );
 
     assert_eq!(

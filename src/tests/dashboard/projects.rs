@@ -34,7 +34,6 @@ fn action_state_with_phase(
         Some(Arc::clone(&daemon_db)),
         Arc::new(RwLock::new(phase)),
         Instant::now(),
-        None,
         50,
     );
 
@@ -47,7 +46,6 @@ fn action_state_without_daemon() -> (DashboardState, tempfile::TempDir) {
         None,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
-        None,
         50,
     );
     (state, temp_dir)

@@ -379,7 +379,7 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
         ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
         ws.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
             requested_backend: EmbeddingBackend::Auto,
-            resolved_backend: EmbeddingBackend::Sidecar,
+            resolved_backend: EmbeddingBackend::Native,
             accelerated: false,
             degraded_reason: Some("CPU only: no GPU detected in sidecar runtime".to_string()),
         });
@@ -411,7 +411,7 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
         "health output should include sidecar runtime identity: {health}"
     );
     assert!(
-        health.contains("backend: sidecar") || health.contains("Backend: sidecar"),
+        health.contains("backend: native") || health.contains("Backend: native"),
         "health output should include resolved backend: {health}"
     );
     assert!(
@@ -454,7 +454,7 @@ async fn test_manage_workspace_health_reports_unavailable_when_provider_missing(
         ws.embedding_provider = None;
         ws.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
             requested_backend: EmbeddingBackend::Auto,
-            resolved_backend: EmbeddingBackend::Sidecar,
+            resolved_backend: EmbeddingBackend::Native,
             accelerated: false,
             degraded_reason: Some("provider init failed".to_string()),
         });
@@ -564,7 +564,7 @@ async fn test_manage_workspace_health_reports_initialized_when_not_degraded() {
         ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
         ws.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
             requested_backend: EmbeddingBackend::Auto,
-            resolved_backend: EmbeddingBackend::Sidecar,
+            resolved_backend: EmbeddingBackend::Native,
             accelerated: false,
             degraded_reason: None,
         });
@@ -585,7 +585,7 @@ async fn test_manage_workspace_health_reports_initialized_when_not_degraded() {
     assert!(health.contains("Embedding Runtime"), "{health}");
     assert!(health.contains("Embedding Status: INITIALIZED"), "{health}");
     assert!(health.contains("Runtime: pytorch-sidecar"), "{health}");
-    assert!(health.contains("Backend: sidecar"), "{health}");
+    assert!(health.contains("Backend: native"), "{health}");
     assert!(health.contains("Device: cpu"), "{health}");
     assert!(health.contains("Accelerated: false"), "{health}");
     assert!(health.contains("Degraded: none"), "{health}");

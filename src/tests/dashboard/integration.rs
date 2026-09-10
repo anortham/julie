@@ -24,7 +24,6 @@ fn test_state() -> DashboardState {
         None,
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
-        None, // no embedding service in tests
         50,
     )
 }
@@ -44,7 +43,6 @@ fn test_state_with_db() -> (DashboardState, tempfile::TempDir) {
         Some(daemon_db),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
-        None,
         50,
     );
 
@@ -220,7 +218,6 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
             Some(daemon_db),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
-            None,
             50,
         ),
         temp_dir,
@@ -295,7 +292,6 @@ async fn state_with_signal_workspace() -> (DashboardState, tempfile::TempDir, St
             Some(daemon_db),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
-            None,
             50,
         ),
         temp_dir,
@@ -361,7 +357,6 @@ async fn state_with_search_workspace(
             Some(daemon_db),
             Arc::new(RwLock::new(LifecyclePhase::Ready)),
             Instant::now(),
-            None,
             50,
         ),
         temp_dir,

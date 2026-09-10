@@ -189,7 +189,6 @@ async fn run_baseline_async(
             Some(Arc::clone(&daemon_db)),
             Some(workspace.workspace_id.clone()),
             None,
-            None,
         )
         .await?;
 

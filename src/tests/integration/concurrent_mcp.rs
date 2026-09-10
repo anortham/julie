@@ -160,7 +160,6 @@ mod tests {
                     Some(Arc::clone(&daemon_db)),
                     Some(workspace_id.clone()),
                     None,
-                    None,
                 ),
             )
             .await

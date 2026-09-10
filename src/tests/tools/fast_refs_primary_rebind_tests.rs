@@ -226,7 +226,6 @@ async fn setup_rebound_primary_fast_refs_handler()
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
         None,
-        None,
     )
     .await?;
 

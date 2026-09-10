@@ -34,7 +34,6 @@ pub mod core {
     pub mod annotation_storage;
     pub mod early_warning_report_cache;
     pub mod embedding_provider; // EmbeddingProvider trait and factory tests
-    pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
     pub mod engine_version; // Phase 5.3 — extractor contract / engine version composition
     pub mod handler; // MCP handler tests
     pub mod handler_telemetry; // search telemetry and downstream target metadata tests
@@ -45,7 +44,6 @@ pub mod core {
     pub mod performance_indexes; // SQLite performance guardrail indexes
     pub mod revision_changes; // Canonical revision file-delta persistence tests
     pub mod serde_lenient_tests; // Lenient MCP param deserializers (u32, bool, Vec<String>)
-    pub mod sidecar_embedding_tests; // Top-crate-only: sidecar_root_path CARGO_MANIFEST_DIR branch
     pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests // bulk_store_types integration tests (TDD)
 }
 
@@ -80,7 +78,6 @@ pub mod tools {
 
     pub mod workspace {
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
-        pub mod embedding_deferred; // Deferred-embedding non-blocking semantics (Task 2)
         pub mod file_policy; // Shared watcher/indexer extraction and path policy parity tests
         pub mod global_targeting; // Explicit workspace open/activation tests
         pub mod index_embedding_tests; // Embedding pipeline fixes: embedding_count reflects DB total
@@ -163,11 +160,6 @@ pub mod integration {
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
     pub mod real_world_validation; // Real-world code validation tests
     pub mod search_regression_tests; // Regression tests for recurring search glob pattern issues
-    #[cfg(feature = "embeddings-sidecar")]
-    pub mod sidecar_embedding_incremental; // Sidecar equivalents of embedding_incremental tests
-    #[cfg(feature = "embeddings-sidecar")]
-    pub mod sidecar_embedding_pipeline; // Sidecar equivalents of embedding_pipeline tests
-    pub mod sidecar_test_helpers; // Shared fake-sidecar helpers for integration tests
     pub mod stale_index_detection; // Stale index detection tests
     pub mod system_health;
     pub mod target_workspace; // Target-workspace tests

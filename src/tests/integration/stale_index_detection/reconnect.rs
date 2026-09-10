@@ -119,7 +119,6 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
         Some(Arc::clone(&daemon_db)),
         Some(workspace_id.clone()),
         None,
-        None,
     )
     .await?;
     // The shared anchor used to be carried by the WorkspacePool (removed in
@@ -195,7 +194,6 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id),
-        None,
         None,
     )
     .await?;
@@ -309,7 +307,6 @@ async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot(
         loaded_path,
         Some(Arc::clone(&daemon_db)),
         Some(loaded_id.clone()),
-        None,
         None,
     )
     .await?;

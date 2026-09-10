@@ -297,10 +297,7 @@ fn parse_provider_preference_accepts_native() {
         parse_provider_preference("auto").unwrap(),
         EmbeddingBackend::Auto
     );
-    assert_eq!(
-        parse_provider_preference("sidecar").unwrap(),
-        EmbeddingBackend::Sidecar
-    );
+    assert!(parse_provider_preference("sidecar").is_err());
 }
 
 #[test]

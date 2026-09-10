@@ -28,7 +28,6 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
         None,
-        None,
     )
     .await
     .expect("handler should initialize");

@@ -89,7 +89,6 @@ async fn test_known_workspace_row_does_not_preactivate_on_new_session() {
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
         None,
-        None,
     )
     .await
     .expect("fresh handler should initialize");

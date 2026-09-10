@@ -42,10 +42,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_target_minimal_mode_includes_body_for_child_symbols() -> Result<()> {
-        // Suppress background embedding generation so indexing the full repo focuses
-        // strictly on symbol extraction for GetSymbolsTool without CPU inference timeouts.
-        let _guard = EnvGuard::set("JULIE_EMBEDDING_PROVIDER", "none");
-
         // BUG: When target is set and mode is "minimal", child symbols (methods)
         // get their body stripped because parent_id.is_none() == false.
         // The fix: when target is set, all matched symbols should get bodies.

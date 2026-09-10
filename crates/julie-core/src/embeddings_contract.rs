@@ -189,7 +189,6 @@ impl Default for EmbeddingRequestBudget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmbeddingBackend {
     Auto,
-    Sidecar,
     Native,
     Unresolved,
     Invalid(String),
@@ -199,7 +198,6 @@ impl EmbeddingBackend {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Auto => "auto",
-            Self::Sidecar => "sidecar",
             Self::Native => "native",
             Self::Unresolved => "unresolved",
             Self::Invalid(_) => "invalid",
@@ -293,7 +291,7 @@ pub trait EmbeddingProvider: Send + Sync {
     }
 
     /// Explicitly shut down the provider, releasing any child processes.
-    /// Default is a no-op; sidecar providers override to kill the child process.
+    /// Default is a no-op; the native provider overrides to drop its broker connection.
     fn shutdown(&self) {}
 
     /// Wait for the provider's underlying child process to exit, up to `timeout`.

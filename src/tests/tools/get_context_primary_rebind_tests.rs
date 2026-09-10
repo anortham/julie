@@ -52,7 +52,6 @@ async fn setup_rebound_primary_get_context_handler()
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
         None,
-        None,
     )
     .await?;
 
@@ -70,7 +69,6 @@ async fn setup_rebound_primary_get_context_handler()
         rebound_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(rebound_id.clone()),
-        None,
         None,
     )
     .await?;

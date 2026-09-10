@@ -75,7 +75,6 @@ async fn test_status_live_exposes_indexing_health_snapshot() {
         Some(daemon_db),
         Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
-        None,
         50,
     );
     let config = DashboardConfig::default();

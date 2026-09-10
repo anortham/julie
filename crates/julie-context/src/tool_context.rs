@@ -89,9 +89,8 @@ pub trait ToolContext: Send + Sync {
     /// available (embeddings not initialized).
     async fn embedding_provider(&self) -> Option<Arc<dyn EmbeddingProvider>>;
 
-    /// Waits up to `timeout` for the embedding provider to settle (daemon
-    /// cold-start) and returns it. Encapsulates the daemon
-    /// `EmbeddingServiceSettled` wait and the stdio lazy-init path.
+    /// Returns the embedding provider, running the per-workspace lazy init
+    /// once when none exists yet. `timeout` bounds implementations that wait.
     async fn ensure_embedding_provider(
         &self,
         timeout: Duration,
@@ -126,8 +125,7 @@ pub trait ToolContext: Send + Sync {
     /// Returns the system readiness status for the given workspace (or the
     /// primary workspace if `None`).
     ///
-    /// Top-crate purpose-method: the implementation reads
-    /// `embedding_service.is_some()` (daemon-only field, above julie-context),
-    /// so this cannot be a default method (Blocker B5, CORRECTED).
+    /// Top-crate purpose-method: the implementation reads handler state above
+    /// julie-context, so this cannot be a default method.
     async fn system_readiness(&self, target_workspace_id: Option<&str>) -> Result<SystemStatus>;
 }

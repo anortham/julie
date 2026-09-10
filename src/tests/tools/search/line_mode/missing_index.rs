@@ -49,7 +49,6 @@ async fn test_fast_search_line_mode_reports_index_requirement_for_reference_with
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
         None,
-        None,
     )
     .await?;
 
@@ -139,7 +138,6 @@ async fn test_fast_search_definitions_reports_index_requirement_for_reference_wi
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
     )
     .await?;

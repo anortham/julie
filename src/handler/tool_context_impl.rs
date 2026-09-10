@@ -98,12 +98,13 @@ impl ToolContext for JulieServerHandler {
     }
 
     /// Purpose-method: encapsulates `wait_for_embedding_provider_settled`
-    /// (daemon `EmbeddingServiceSettled` wait + stdio lazy-init).
+    /// (per-workspace lazy init). The in-process provider settles inline, so
+    /// the facade timeout has nothing to bound.
     async fn ensure_embedding_provider(
         &self,
-        timeout: Duration,
+        _timeout: Duration,
     ) -> Option<Arc<dyn EmbeddingProvider>> {
-        crate::handler::embedding_init::wait_for_embedding_provider_settled(self, timeout).await
+        crate::handler::embedding_init::wait_for_embedding_provider_settled(self).await
     }
 
     // ── Purpose-methods (top-crate impls) ────────────────────────────────
@@ -157,8 +158,7 @@ impl ToolContext for JulieServerHandler {
         Ok(None)
     }
 
-    /// Top-crate purpose-method: delegates to `HealthChecker::check_system_readiness`
-    /// which reads `embedding_service.is_some()` (daemon-only field, Blocker B5).
+    /// Top-crate purpose-method: delegates to `HealthChecker::check_system_readiness`.
     async fn system_readiness(&self, target_workspace_id: Option<&str>) -> Result<SystemStatus> {
         crate::health::HealthChecker::check_system_readiness(self, target_workspace_id).await
     }

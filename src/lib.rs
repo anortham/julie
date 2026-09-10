@@ -25,7 +25,6 @@ pub use julie_runtime::watcher;
 pub use julie_runtime::workspace;
 
 pub mod dashboard;
-pub mod embedding_host_launch;
 pub mod paths;
 pub mod registry;
 pub mod request_engine;

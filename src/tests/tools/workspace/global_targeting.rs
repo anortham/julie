@@ -77,7 +77,6 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
         None,
-        None,
     )
     .await
     .expect("seed handler should initialize");
@@ -119,7 +118,6 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
     )
     .await

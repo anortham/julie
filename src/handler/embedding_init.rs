@@ -2,15 +2,13 @@
 //!
 //! `wait_for_embedding_provider_settled` is the implementation that backs
 //! `ToolContext::ensure_embedding_provider`. It lives here (in the top crate,
-//! adjacent to `tool_context_impl.rs`) because it names `JulieServerHandler`
-//! fields (`embedding_service`, `workspace`) that are not part of the
-//! `ToolContext` facade.
+//! adjacent to `tool_context_impl.rs`) because it names the `JulieServerHandler`
+//! `workspace` field that is not part of the `ToolContext` facade.
 //!
 //! Handler-free helpers (`maybe_initialize_embeddings_for_nl_definitions`)
 //! stay in `src/tools/search/nl_embeddings.rs`.
 
 use std::sync::{Arc, LazyLock};
-use std::time::Duration;
 use tracing::{debug, warn};
 
 use crate::embeddings::EmbeddingProvider;
@@ -47,56 +45,19 @@ pub(crate) fn take_nl_definition_embedding_init_attempts(
     attempts.remove(workspace_root).unwrap_or(0)
 }
 
-/// Wait for the embedding provider to settle (daemon cold-start) and return it.
+/// Return the embedding provider, running the per-workspace lazy init once
+/// when no provider exists yet.
 ///
 /// This is the backing implementation for `ToolContext::ensure_embedding_provider`.
-/// It names `JulieServerHandler` directly to access daemon fields
-/// (`embedding_service`) and workspace state, so it cannot live in the
-/// handler-free `src/tools/` layer.
+/// It names `JulieServerHandler` directly to access workspace state, so it
+/// cannot live in the handler-free `src/tools/` layer.
 pub(crate) async fn wait_for_embedding_provider_settled(
     handler: &JulieServerHandler,
-    daemon_timeout: Duration,
 ) -> Option<Arc<dyn EmbeddingProvider>> {
-    // If a provider is already available (daemon shared service or workspace),
-    // return it immediately.
     if let Some(provider) = handler.embedding_provider().await {
         return Some(provider);
     }
 
-    // Daemon mode: the shared service may still be in `Initializing` (cold
-    // start). Wait briefly for it to settle. CRITICALLY: we must NOT fall
-    // through to the per-workspace stdio init path below — that would spawn a
-    // SECOND Python sidecar alongside the daemon's shared one, wasting
-    // resources and masking the real provider.
-    if let Some(svc) = handler.embedding_service.as_ref() {
-        use crate::registry::embedding_service::EmbeddingServiceSettled;
-        match svc.wait_until_settled(daemon_timeout).await {
-            EmbeddingServiceSettled::Ready { provider, .. } => {
-                debug!(
-                    "Daemon embedding service became Ready while waiting for NL definition query"
-                );
-                return Some(provider);
-            }
-            EmbeddingServiceSettled::Unavailable { reason, .. } => {
-                debug!(
-                    %reason,
-                    "Daemon embedding service Unavailable; NL query falls back to keyword-only"
-                );
-                return None;
-            }
-            EmbeddingServiceSettled::Timeout => {
-                debug!(
-                    "Daemon embedding service did not settle within 3s for NL query; \
-                     falling back to keyword-only (provider may become ready later)"
-                );
-                return None;
-            }
-        }
-    }
-
-    // Stdio mode (no daemon shared service). Fall through to the existing
-    // per-workspace lazy init path. Reached only when handler.embedding_service
-    // is None — this is the original pre-daemon-lazy-init code path.
     let should_attempt_init = {
         let workspace_guard = handler.workspace.read().await;
         match workspace_guard.as_ref() {

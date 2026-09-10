@@ -1,6 +1,30 @@
 use std::io::{self, BufReader, Read, Write};
 use std::time::{Duration, Instant};
 
+/// Owns a spawned test process and kills it on drop, including on panic, so a
+/// failing test never leaves a mock broker running.
+pub(crate) struct KillOnDrop(pub std::process::Child);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn kill_on_drop_reaps_child_when_guard_drops() {
+    let child = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id() as libc::pid_t;
+    drop(KillOnDrop(child));
+    let alive = unsafe { libc::kill(pid, 0) } == 0;
+    assert!(!alive, "child {pid} must be gone after the guard drops");
+}
+
 #[cfg(unix)]
 use std::thread;
 #[cfg(unix)]
@@ -746,13 +770,15 @@ fn challenge_budget_deduction_after_broker_connection_subtracts_elapsed_time() {
         broker_paths: paths.clone(),
     };
 
-    let mut child = std::process::Command::new(&bin_path)
-        .env("MOCK_ENDPOINT", &sock_path)
-        .env("DROP_FIRST", "1")
-        .env("HEALTH_DELAY_MS", "45")
-        .env("QUERY_DELAY_MS", "70")
-        .spawn()
-        .expect("spawn mock broker");
+    let _child = KillOnDrop(
+        std::process::Command::new(&bin_path)
+            .env("MOCK_ENDPOINT", &sock_path)
+            .env("DROP_FIRST", "1")
+            .env("HEALTH_DELAY_MS", "45")
+            .env("QUERY_DELAY_MS", "70")
+            .spawn()
+            .expect("spawn mock broker"),
+    );
 
     for _ in 0..100 {
         if sock_path.exists() {
@@ -788,9 +814,6 @@ fn challenge_budget_deduction_after_broker_connection_subtracts_elapsed_time() {
         "total execution time was {:?}, which allowed the full delayed server reply",
         elapsed
     );
-
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 #[cfg(unix)]
@@ -816,13 +839,15 @@ fn challenge_budget_exhausted_during_connection_aborts_without_round_trip() {
         broker_paths: paths.clone(),
     };
 
-    let mut child = std::process::Command::new(&bin_path)
-        .env("MOCK_ENDPOINT", &sock_path)
-        .env("DROP_FIRST", "1")
-        .env("HEALTH_DELAY_MS", "50")
-        .env("QUERY_FLAG_PATH", &flag_path)
-        .spawn()
-        .expect("spawn mock broker");
+    let _child = KillOnDrop(
+        std::process::Command::new(&bin_path)
+            .env("MOCK_ENDPOINT", &sock_path)
+            .env("DROP_FIRST", "1")
+            .env("HEALTH_DELAY_MS", "50")
+            .env("QUERY_FLAG_PATH", &flag_path)
+            .spawn()
+            .expect("spawn mock broker"),
+    );
 
     for _ in 0..100 {
         if sock_path.exists() {
@@ -853,7 +878,4 @@ fn challenge_budget_exhausted_during_connection_aborts_without_round_trip() {
         !flag_path.exists(),
         "embed_query should not have been dispatched after budget was exhausted during connection"
     );
-
-    let _ = child.kill();
-    let _ = child.wait();
 }

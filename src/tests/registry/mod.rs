@@ -1,9 +1,5 @@
 pub mod connection_pool_test;
 pub mod database;
-pub mod embedding_host_multi_session;
-pub mod embedding_service;
-pub mod embedding_service_shutdown;
 pub mod handler;
-pub mod inprocess_embedding;
 pub mod paths;
 pub mod symbol_db_pooled_test;

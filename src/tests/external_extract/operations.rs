@@ -242,9 +242,9 @@ pub fn external_entry() -> ExternalType {
 async fn extract_scan_routes_cpp_h_header_through_source_aware_detection() {
     let temp_dir = TempDir::new().expect("temp dir");
     let workspace_root = temp_dir.path().canonicalize().expect("canonical root");
-    let include_dir = workspace_root.join("include");
-    fs::create_dir_all(&include_dir).expect("create include dir");
-    let file_path = include_dir.join("widget.h");
+    let include_root = workspace_root.join("include");
+    fs::create_dir_all(&include_root).expect("create include dir");
+    let file_path = include_root.join("widget.h");
     fs::write(
         &file_path,
         r#"

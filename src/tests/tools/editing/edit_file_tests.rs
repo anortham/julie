@@ -400,7 +400,6 @@ async fn test_edit_file_routes_to_target_workspace() -> Result<()> {
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
         None,
-        None,
     )
     .await?;
 

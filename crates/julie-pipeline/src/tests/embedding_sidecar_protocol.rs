@@ -1,7 +1,6 @@
 //! Tests for sidecar protocol contracts and validation helpers.
 
 #[cfg(test)]
-#[cfg(feature = "embeddings-sidecar")]
 mod tests {
     use crate::embeddings::sidecar_protocol::{
         DeviceBackendCapabilities, DeviceBackendCapability, DeviceLoadPolicy, EmbedBatchResult,

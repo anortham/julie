@@ -7,31 +7,16 @@
 //! # Architecture
 //!
 //! - [`EmbeddingProvider`] — trait abstracting embedding generation
-//! - [`SidecarEmbeddingProvider`] — production implementation using a managed Python sidecar
+//! - [`NativeEmbeddingProvider`] — production implementation over the native `julie-semantic-sidecar`
 //! - Vector storage lives in `database::vectors` (sqlite-vec)
 
 pub mod factory;
-pub mod host_server;
-pub mod host_transport;
 pub mod init;
 pub mod log_fields;
 pub mod metadata;
 pub mod native;
 pub mod pipeline;
-pub mod rpc_client;
-pub mod rpc_client_types;
-// Pure-serde envelope contracts — always compiled (no torch/Python deps) so the
-// thin RPC client works in binaries built WITHOUT the `embeddings-sidecar`
-// feature (a session process that only talks to the resident host, Phase 3b).
-#[cfg(feature = "embeddings-sidecar")]
-pub mod sidecar_bootstrap;
-#[cfg(feature = "embeddings-sidecar")]
-pub mod sidecar_embedded;
 pub mod sidecar_protocol;
-#[cfg(feature = "embeddings-sidecar")]
-pub mod sidecar_provider;
-#[cfg(feature = "embeddings-sidecar")]
-pub mod sidecar_supervisor;
 
 // Core embedding contract types live in julie-core (bottom leaf crate) so
 // that any future sibling crate can share the same definitions without
@@ -42,13 +27,11 @@ pub use julie_core::embeddings_contract::{
     EmbeddingRuntimeStatus, EncoderIdentity,
 };
 
-// Re-exports
 pub use factory::{
     BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
     parse_provider_preference, resolve_backend_preference, should_disable_for_strict_acceleration,
     strict_acceleration_enabled_from_env_value,
 };
-pub use host_transport::{HostAddress, HostClientConn, HostListener, HostServerConn};
 pub use init::create_embedding_provider;
 pub use native::NativeEmbeddingProvider;
 pub use sidecar_protocol::{
@@ -57,10 +40,4 @@ pub use sidecar_protocol::{
     RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
     validate_batch_response, validate_health_response, validate_query_response,
     validate_response_envelope,
-};
-#[cfg(feature = "embeddings-sidecar")]
-pub use sidecar_provider::SidecarEmbeddingProvider;
-#[cfg(feature = "embeddings-sidecar")]
-pub use sidecar_supervisor::{
-    SidecarLaunchConfig, build_sidecar_launch_config, managed_venv_path, sidecar_root_path,
 };

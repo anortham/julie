@@ -17,6 +17,7 @@ use crate::request_engine::types::WorkspaceBinding;
 use crate::request_engine::{
     BindingResolver, RequestContext, RequestEngine, RequestOrigin, RuntimeFactory, ToolRequest,
 };
+use crate::tests::helpers::env::EnvVarGuard;
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
 use crate::tests::semantic_request_contract::MockReadyProvider;
 use julie_core::database::SymbolDatabase;
@@ -41,17 +42,15 @@ fn semantic_off_requires_no_provider() {
 // 2. Integration Anchor Helpers
 // ============================================================================
 
-struct EnvGuard;
+/// Owns a spawned mock broker and kills it on drop, including on panic.
+#[cfg(unix)]
+struct KillOnDrop(std::process::Child);
 
-impl Drop for EnvGuard {
+#[cfg(unix)]
+impl Drop for KillOnDrop {
     fn drop(&mut self) {
-        unsafe {
-            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
-            std::env::remove_var("JULIE_NATIVE_SIDECAR_MODEL");
-            std::env::remove_var("JULIE_NATIVE_SIDECAR_PROGRAM");
-            std::env::remove_var("JULIE_EMBEDDING_CACHE_DIR");
-            std::env::remove_var("REQUIRE_BARRIER");
-        }
+        let _ = self.0.kill();
+        let _ = self.0.wait();
     }
 }
 
@@ -104,6 +103,13 @@ fn main() {
         Some(ep) => ep,
         None => std::process::exit(0),
     };
+    if args.iter().any(|a| a == "--lock") {
+        std::thread::spawn(|| {
+            let mut byte = [0u8; 1];
+            let _ = std::io::Read::read(&mut std::io::stdin(), &mut byte);
+            std::process::exit(0);
+        });
+    }
     let ep_path = Path::new(&endpoint);
     let _ = std::fs::remove_file(ep_path);
     let listener = match UnixListener::bind(ep_path) {
@@ -184,14 +190,12 @@ async fn native_semantics_becomes_ready_without_client_restart() {
 
     let bin_path = compile_mock_sidecar(temp_home.path());
 
-    let _env_guard = EnvGuard;
-    unsafe {
-        std::env::set_var("JULIE_EMBEDDING_PROVIDER", "native");
-        std::env::set_var("JULIE_NATIVE_SIDECAR_MODEL", "bge-small-en-v1.5-f32");
-        std::env::set_var("JULIE_NATIVE_SIDECAR_PROGRAM", &bin_path);
-        std::env::set_var("JULIE_EMBEDDING_CACHE_DIR", &cache_dir);
-        std::env::set_var("REQUIRE_BARRIER", "1");
-    }
+    let mut env = EnvVarGuard::new();
+    env.set("JULIE_EMBEDDING_PROVIDER", "native");
+    env.set("JULIE_NATIVE_SIDECAR_MODEL", "bge-small-en-v1.5-f32");
+    env.set("JULIE_NATIVE_SIDECAR_PROGRAM", &bin_path);
+    env.set("JULIE_EMBEDDING_CACHE_DIR", &cache_dir);
+    env.set("REQUIRE_BARRIER", "1");
 
     let (_bin, mock_sha) = find_and_hash_sidecar_binary(Some(&bin_path)).expect("hash sidecar");
     let broker_paths =
@@ -307,12 +311,14 @@ async fn native_semantics_becomes_ready_without_client_restart() {
     let barrier_file = cache_dir.join("barrier");
     std::fs::write(&barrier_file, "ready").expect("write barrier");
 
-    let mut child = std::process::Command::new(&bin_path)
-        .env("REQUIRE_BARRIER", "1")
-        .env("JULIE_EMBEDDING_CACHE_DIR", &cache_dir)
-        .env("MOCK_ENDPOINT", &broker_paths.endpoint_path)
-        .spawn()
-        .expect("spawn mock broker");
+    let _child = KillOnDrop(
+        std::process::Command::new(&bin_path)
+            .env("REQUIRE_BARRIER", "1")
+            .env("JULIE_EMBEDDING_CACHE_DIR", &cache_dir)
+            .env("MOCK_ENDPOINT", &broker_paths.endpoint_path)
+            .spawn()
+            .expect("spawn mock broker"),
+    );
 
     for _ in 0..100 {
         if broker_paths.endpoint_path.exists() {
@@ -376,9 +382,6 @@ async fn native_semantics_becomes_ready_without_client_restart() {
         Some("full".to_string()),
         "expected coverage to be 'full' after recovery"
     );
-
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 // ============================================================================
@@ -398,22 +401,22 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
 
     let bin_path = compile_mock_sidecar(temp_home.path());
 
-    let _env_guard = EnvGuard;
-    unsafe {
-        std::env::set_var("JULIE_EMBEDDING_PROVIDER", "native");
-        std::env::set_var("JULIE_NATIVE_SIDECAR_MODEL", "bge-small-en-v1.5-f32");
-        std::env::set_var("JULIE_NATIVE_SIDECAR_PROGRAM", &bin_path);
-        std::env::set_var("JULIE_EMBEDDING_CACHE_DIR", &cache_dir);
-    }
+    let mut env = EnvVarGuard::new();
+    env.set("JULIE_EMBEDDING_PROVIDER", "native");
+    env.set("JULIE_NATIVE_SIDECAR_MODEL", "bge-small-en-v1.5-f32");
+    env.set("JULIE_NATIVE_SIDECAR_PROGRAM", &bin_path);
+    env.set("JULIE_EMBEDDING_CACHE_DIR", &cache_dir);
 
     let (_bin, mock_sha) = find_and_hash_sidecar_binary(Some(&bin_path)).expect("hash sidecar");
     let broker_paths =
         derive_broker_paths(&cache_dir, &mock_sha, "bge-small-en-v1.5-f32").expect("broker paths");
 
-    let mut child = std::process::Command::new(&bin_path)
-        .env("MOCK_ENDPOINT", &broker_paths.endpoint_path)
-        .spawn()
-        .expect("spawn mock broker");
+    let _child = KillOnDrop(
+        std::process::Command::new(&bin_path)
+            .env("MOCK_ENDPOINT", &broker_paths.endpoint_path)
+            .spawn()
+            .expect("spawn mock broker"),
+    );
 
     for _ in 0..100 {
         if broker_paths.endpoint_path.exists() {
@@ -541,9 +544,6 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
     let p = runtime.provider().expect("provider cached");
     assert_eq!(p.dimensions(), 384);
     assert_eq!(runtime.runtime_state().await, RuntimeProviderState::Ready);
-
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 #[tokio::test]
@@ -832,11 +832,6 @@ async fn challenge_off_mode_nl_query_performs_zero_provider_acquisition() {
     let cache_dir = temp_home.path().join("cache");
     std::fs::create_dir_all(&cache_dir).expect("create cache dir");
 
-    let _env_guard = EnvGuard;
-    unsafe {
-        std::env::set_var("JULIE_EMBEDDING_PROVIDER", "none");
-    }
-
     let semantic_runtime = Arc::new(DefaultSemanticRuntime::from_registry_paths(
         registry_paths.clone(),
     ));
@@ -887,11 +882,6 @@ async fn challenge_required_mode_fails_closed_on_unstarted_broker() {
     let root = make_isolated_workspace_root(temp_repo.path(), "challenge_unstarted_broker_ws");
     let temp_home = tempfile::tempdir().expect("temp home dir");
     let registry_paths = RegistryPaths::with_home(temp_home.path().to_path_buf());
-
-    let _env_guard = EnvGuard;
-    unsafe {
-        std::env::set_var("JULIE_EMBEDDING_PROVIDER", "none");
-    }
 
     let semantic_runtime = Arc::new(DefaultSemanticRuntime::from_registry_paths(
         registry_paths.clone(),

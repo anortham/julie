@@ -443,25 +443,25 @@ fn test_accepts_record_with_resolved_backend_and_qualified_at_aliases() {
 }
 
 // ============================================================================
-// Section C: Python Provider Baseline & Selection Preservation
+// Section C: Provider Selection
 // ============================================================================
 
 #[test]
-fn test_python_provider_is_default_when_auto() {
+fn test_auto_resolves_to_native_when_sidecar_binary_found() {
     let backend = parse_provider_preference("auto").expect("auto must parse");
     assert_eq!(backend, EmbeddingBackend::Auto);
 
-    let caps = BackendResolverCapabilities::current();
-    if caps.sidecar_available {
-        let resolved = resolve_backend_preference(backend, &caps).expect("must resolve");
-        assert_eq!(resolved, EmbeddingBackend::Sidecar);
-    }
+    let caps = BackendResolverCapabilities {
+        native_available: true,
+        ..BackendResolverCapabilities::current()
+    };
+    let resolved = resolve_backend_preference(backend, &caps).expect("must resolve");
+    assert_eq!(resolved, EmbeddingBackend::Native);
 }
 
 #[test]
-fn test_explicit_provider_selection_preserves_sidecar_and_native() {
-    let sidecar_pref = parse_provider_preference("sidecar").expect("sidecar must parse");
-    assert_eq!(sidecar_pref, EmbeddingBackend::Sidecar);
+fn test_explicit_provider_selection_rejects_sidecar_and_keeps_native() {
+    assert!(parse_provider_preference("sidecar").is_err());
 
     let native_pref = parse_provider_preference("native").expect("native must parse");
     assert_eq!(native_pref, EmbeddingBackend::Native);

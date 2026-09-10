@@ -9,14 +9,11 @@ use serde::Serialize;
 use tokio::sync::broadcast;
 
 use crate::dashboard::error_buffer::{ErrorBuffer, LogEntry};
-use crate::embeddings::EmbeddingBackend;
-use crate::embeddings::EmbeddingRuntimeStatus;
 use crate::health::{
     EmbeddingRuntimeHealth, HealthLevel, ProjectionFreshness, ProjectionHealth, ProjectionState,
     SystemStatus, overall_from_planes, project_embedding_runtime,
 };
 use crate::registry::database::DaemonDatabase;
-use crate::registry::embedding_service::EmbeddingService;
 use crate::registry::lifecycle::{LifecyclePhase, LifecyclePhaseKind, ShutdownCause};
 use crate::search::projection::TANTIVY_PROJECTION_NAME;
 
@@ -118,13 +115,6 @@ pub struct DashboardState {
     /// Surfaced through the `/api/status` endpoint until the operator
     /// clears them. Default empty.
     recovery_markers: Arc<Vec<crate::registry::shutdown::RecoveryMarker>>,
-    /// Live reference to the daemon's shared embedding service. Stored as a
-    /// reference (not a snapshot bool) so the dashboard reflects state
-    /// transitions as the background init task progresses from
-    /// `Initializing` -> `Ready` (or `Unavailable`) without needing a restart.
-    /// `None` in test contexts that don't wire up a service; the
-    /// `embedding_available` accessor returns `false` in that case.
-    embedding_service: Option<Arc<EmbeddingService>>,
     tx: broadcast::Sender<DashboardEvent>,
 }
 
@@ -138,7 +128,6 @@ impl DashboardState {
         daemon_db: Option<Arc<DaemonDatabase>>,
         daemon_phase: Arc<RwLock<LifecyclePhase>>,
         start_time: Instant,
-        embedding_service: Option<Arc<EmbeddingService>>,
         error_buffer_capacity: usize,
     ) -> Self {
         let error_buffer = ErrorBuffer::new(error_buffer_capacity);
@@ -150,7 +139,6 @@ impl DashboardState {
             start_time,
             error_buffer,
             recovery_markers: Arc::new(Vec::new()),
-            embedding_service,
             tx,
         }
     }
@@ -297,7 +285,7 @@ impl DashboardState {
         let indexing = self.indexing_health().await;
 
         let data_plane = DashboardDataPlaneHealth {
-            level: overall_from_planes(data_plane_level, indexing.level, HealthLevel::Ready, false),
+            level: overall_from_planes(data_plane_level, indexing.level, HealthLevel::Ready),
             readiness,
             workspace_count,
             active_workspace_count,
@@ -323,56 +311,21 @@ impl DashboardState {
             },
         };
 
-        let embedding_service = self.embedding_service.as_ref();
-        let embedding_available = embedding_service.is_some_and(|svc| svc.is_available());
-        let embedding_initializing = embedding_service.is_some_and(|svc| !svc.is_settled());
-        let runtime_status = embedding_service.and_then(|svc| svc.runtime_status());
-        let embedding_provider = embedding_service.and_then(|svc| svc.provider());
-        let runtime_status_snapshot =
-            runtime_status
-                .as_ref()
-                .map(|status| DashboardEmbeddingRuntimeStatus {
-                    requested_backend: backend_label(&status.requested_backend),
-                    resolved_backend: backend_label(&status.resolved_backend),
-                    accelerated: status.accelerated,
-                    degraded_reason: status.degraded_reason.clone(),
-                });
-        let embeddings = project_embedding_runtime(
-            runtime_status.clone(),
-            embedding_provider.as_deref(),
-            embedding_service.is_some(),
-            embedding_initializing,
-        );
-
+        // The dashboard reader process holds no embedding provider; semantics
+        // live in-process with the MCP session that owns the workspace.
+        let embeddings = project_embedding_runtime(None, None);
         let runtime_plane = DashboardRuntimePlaneHealth {
             level: embeddings.level,
-            configured: embedding_service.is_some(),
-            embedding_available,
-            embedding_initializing,
-            detail: if embedding_service.is_none() {
-                "embedding service not configured".to_string()
-            } else if embedding_initializing {
-                "embedding runtime initializing".to_string()
-            } else if embedding_available {
-                "embedding runtime available".to_string()
-            } else if let Some(status) = runtime_status.as_ref() {
-                status
-                    .degraded_reason
-                    .clone()
-                    .unwrap_or_else(|| "embedding runtime unavailable".to_string())
-            } else {
-                "embedding runtime unavailable".to_string()
-            },
+            configured: false,
+            embedding_available: false,
+            embedding_initializing: false,
+            detail: "embedding service not configured".to_string(),
             embeddings,
-            runtime_status: runtime_status_snapshot,
+            runtime_status: None,
         };
 
-        let overall = overall_from_planes(
-            control_plane.level,
-            data_plane.level,
-            runtime_plane.level,
-            runtime_plane.configured,
-        );
+        let overall =
+            overall_from_planes(control_plane.level, data_plane.level, runtime_plane.level);
 
         DashboardHealthSnapshot {
             overall,
@@ -380,35 +333,6 @@ impl DashboardState {
             data_plane,
             runtime_plane,
         }
-    }
-
-    /// Whether an embedding provider is currently available. Reads the
-    /// `EmbeddingService` state live on each call, so the dashboard reflects
-    /// the background init task's progress (Initializing -> Ready) without
-    /// needing a restart. Returns `false` when no service is configured.
-    pub fn embedding_available(&self) -> bool {
-        self.embedding_service
-            .as_ref()
-            .is_some_and(|svc| svc.is_available())
-    }
-
-    /// `true` when the embedding service is configured but still starting up.
-    /// Reads `EmbeddingService` state live. Returns `false` when no service is
-    /// configured (that's "Not configured", not "Initializing").
-    pub fn embedding_initializing(&self) -> bool {
-        self.embedding_service
-            .as_ref()
-            .is_some_and(|svc| !svc.is_settled())
-    }
-
-    /// Current embedding runtime status, if available. Reads the
-    /// `EmbeddingService` state live on each call. Returns `None` when no
-    /// service is configured or when the service has no runtime status
-    /// (e.g. still in `Initializing`).
-    pub fn embedding_runtime_status(&self) -> Option<EmbeddingRuntimeStatus> {
-        self.embedding_service
-            .as_ref()
-            .and_then(|svc| svc.runtime_status())
     }
 
     /// Subscribe to the broadcast channel. Each call returns an independent receiver.
@@ -462,15 +386,5 @@ impl DashboardState {
                 ),
             })
             .collect()
-    }
-}
-
-fn backend_label(backend: &EmbeddingBackend) -> String {
-    match backend {
-        EmbeddingBackend::Auto => "auto".to_string(),
-        EmbeddingBackend::Sidecar => "sidecar".to_string(),
-        EmbeddingBackend::Native => "native".to_string(),
-        EmbeddingBackend::Unresolved => "unresolved".to_string(),
-        EmbeddingBackend::Invalid(value) => format!("invalid({value})"),
     }
 }

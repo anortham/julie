@@ -3,9 +3,7 @@
 //! These are for the Julie maintainer's local dev loop. Regular users install
 //! the plugin and never run these. They assume:
 //!
-//! - You build the dev binaries at `target/release/julie-server` and
-//!   `target/release/julie-embedding-host` (the legacy `julie-daemon` bin was
-//!   removed in Phase 3d.2a).
+//! - You build the dev binary at `target/release/julie-server`.
 //! - You want every installed Julie plugin variant on this machine to point at
 //!   those binaries so a single `cargo build --release --bins` rebuilds for
 //!   every harness.
@@ -190,9 +188,9 @@ fn binary_name() -> &'static str {
 
 fn split_binary_names() -> &'static [&'static str] {
     if cfg!(windows) {
-        &["julie-server.exe", "julie-embedding-host.exe"]
+        &["julie-server.exe"]
     } else {
-        &["julie-server", "julie-embedding-host"]
+        &["julie-server"]
     }
 }
 
@@ -354,7 +352,7 @@ mod tests {
         let mut out = Vec::new();
         let report = run_dev_link(&workspace, false, &cache, &mut out).expect("dev-link succeeds");
 
-        assert_eq!(report.linked.len(), 2, "all split binaries are linked");
+        assert_eq!(report.linked.len(), 1, "the server binary is linked");
         assert_eq!(report.already_linked.len(), 0);
         assert_eq!(report.skipped.len(), 0);
 
@@ -388,7 +386,7 @@ mod tests {
 
         assert_eq!(
             report.linked.len(),
-            2,
+            1,
             "only the architecture dir is linked"
         );
         for binary in split_binary_names() {
@@ -414,22 +412,13 @@ mod tests {
         let mut out = Vec::new();
         let report = run_dev_link(&workspace, false, &cache, &mut out).expect("dev-link succeeds");
 
-        assert_eq!(report.linked.len(), 2, "all split binaries linked");
+        assert_eq!(report.linked.len(), 1, "the server binary is linked");
         let server_action = report
             .linked
             .iter()
             .find(|action| action.path == cache_bin)
             .expect("server binary link reported");
         assert_eq!(server_action.previous_kind, PreviousKind::RealBinary);
-        assert_eq!(
-            report
-                .linked
-                .iter()
-                .filter(|action| action.previous_kind == PreviousKind::Missing)
-                .count(),
-            1,
-            "the embedding-host link was created from a missing cache entry"
-        );
         assert_eq!(report.already_linked.len(), 0);
         assert_eq!(report.skipped.len(), 0);
 
@@ -460,8 +449,8 @@ mod tests {
         assert_eq!(report.linked.len(), 0, "second run links nothing");
         assert_eq!(
             report.already_linked.len(),
-            2,
-            "second run sees existing symlinks"
+            1,
+            "second run sees the existing symlink"
         );
     }
 
@@ -477,7 +466,7 @@ mod tests {
         let report = run_dev_link(&workspace, true, &cache, &mut out)
             .expect("dry-run succeeds even without release binary");
 
-        assert_eq!(report.linked.len(), 2);
+        assert_eq!(report.linked.len(), 1);
         assert!(report.dry_run);
 
         let meta = fs::symlink_metadata(&cache_bin).unwrap();

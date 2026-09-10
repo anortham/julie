@@ -267,7 +267,6 @@ impl ProcessFixture {
         cmd.arg("--workspace").arg(&self.workspace_root);
         cmd.env("JULIE_HOME", self.temp_home.path());
         cmd.env("TMPDIR", self.temp_home.path());
-        cmd.env("JULIE_EMBEDDING_PROVIDER", "none");
         cmd.current_dir(&self.workspace_root);
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
@@ -480,7 +479,6 @@ impl ProcessFixture {
         cmd.args(args);
         cmd.env("JULIE_HOME", self.temp_home.path());
         cmd.env("TMPDIR", self.temp_home.path());
-        cmd.env("JULIE_EMBEDDING_PROVIDER", "none");
         cmd.current_dir(&self.workspace_root);
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());

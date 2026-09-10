@@ -108,9 +108,9 @@ async fn test_incremental_indexing_stores_cpp_language_for_cpp_h_header() {
     let temp_dir = julie_test_support::unique_temp_dir("watcher_cpp_header_language");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
-    let include_dir = workspace_root.join("include");
-    fs::create_dir_all(&include_dir).unwrap();
-    let test_file = include_dir.join("widget.h");
+    let include_root = workspace_root.join("include");
+    fs::create_dir_all(&include_root).unwrap();
+    let test_file = include_root.join("widget.h");
     fs::write(
         &test_file,
         r#"

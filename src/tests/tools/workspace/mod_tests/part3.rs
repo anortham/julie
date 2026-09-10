@@ -46,7 +46,6 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
         Some(Arc::clone(&daemon_db)),
         Some(loaded_primary_id.clone()),
         None,
-        None,
     )
     .await
     .unwrap();
@@ -190,7 +189,6 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
         loaded_primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(loaded_primary_id.clone()),
-        None,
         None,
     )
     .await

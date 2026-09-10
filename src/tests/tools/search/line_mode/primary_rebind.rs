@@ -49,7 +49,6 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
         None,
-        None,
     )
     .await?;
 
@@ -67,7 +66,6 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
         rebound_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(rebound_id.clone()),
-        None,
         None,
     )
     .await?;

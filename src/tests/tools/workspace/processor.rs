@@ -326,9 +326,9 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
 async fn test_extract_files_for_indexing_records_cpp_language_for_cpp_h_header_grouped_as_c() {
     let temp_dir = TempDir::new().unwrap();
     let workspace_root = temp_dir.path().canonicalize().unwrap();
-    let include_dir = workspace_root.join("include");
-    fs::create_dir_all(&include_dir).unwrap();
-    let file_path = include_dir.join("widget.h");
+    let include_root = workspace_root.join("include");
+    fs::create_dir_all(&include_root).unwrap();
+    let file_path = include_root.join("widget.h");
     fs::write(
         &file_path,
         r#"

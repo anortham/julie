@@ -407,8 +407,8 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
 4. **Native Rust Core**: No FFI, no CGO — core indexing/search has zero external dependencies
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
 6. **SQLite Storage**: Symbols, identifiers, relationships, types, files
-7. **Single Binary + Optional Sidecar**: Core features work standalone; GPU-accelerated embeddings use a managed Python sidecar (auto-provisioned via `uv`)
-8. **Semantic Embeddings + KNN Vector Search**: Symbol embeddings via Python sidecar (sentence-transformers + PyTorch) stored in SQLite, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). GPU support: CUDA (NVIDIA, auto-detected), DirectML (AMD/Intel via torch-directml), MPS (Apple Silicon). Default model: CodeRankEmbed (768d). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2). A resident embedding host is shared per `$JULIE_HOME`; it is not per-workspace and is not owned by a daemon process.
+7. **Single Binary + Native Sidecar**: Core features work standalone; semantics run through the native `julie-semantic-sidecar` binary. There is no Python runtime.
+8. **Semantic Embeddings + KNN Vector Search**: Symbol embeddings from the native sidecar stored in SQLite, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2). `JULIE_EMBEDDING_PROVIDER` accepts `auto` (native when the sidecar binary is found, else none), `native`, or `none`; cargo sets `none` for every test binary via `.cargo/config.toml`.
 9. **Instant Search**: Tantivy index available immediately after indexing
 10. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
 11. **Language-Agnostic Everything**: See below — this is critical

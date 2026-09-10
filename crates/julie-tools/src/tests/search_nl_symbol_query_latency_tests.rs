@@ -23,9 +23,6 @@
 //! `handler.mark_standalone_embedding_skipped()` sets `embedding_runtime_status`
 //! to a non-`None` sentinel so the sidecar probe guard fires immediately.
 //!
-//! Daemon mode is unaffected (it uses a shared `EmbeddingService`).  The daemon
-//! latency for the same query is ~100ms.
-//!
 //! ## Ablation caveat (Task 3)
 //!
 //! `JULIE_ABLATE_STEMMING` and `JULIE_ABLATE_CAMEL_EMIT` change what tokens are

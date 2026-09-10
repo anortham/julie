@@ -97,7 +97,6 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
         Some(Arc::clone(&daemon_db)),
         Some(target_id.clone()),
         None,
-        None,
     )
     .await?;
     // Pin anchor so force-reindex writes target DB under indexes_dir/{target_id}.
@@ -120,7 +119,6 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
     )
     .await?;

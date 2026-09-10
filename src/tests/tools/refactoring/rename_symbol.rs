@@ -579,7 +579,6 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
         None,
-        None,
     )
     .await?;
 
@@ -595,7 +594,6 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
         rebound_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(rebound_id.clone()),
-        None,
         None,
     )
     .await?;

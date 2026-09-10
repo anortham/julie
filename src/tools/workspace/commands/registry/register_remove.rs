@@ -118,9 +118,7 @@ impl ManageWorkspaceTool {
                     result.relationships_total,
                     workspace_id,
                 );
-                if embed_outcome.deferred {
-                    message.push_str("\nEmbedding queued while provider initializes.");
-                } else if embed_outcome.symbols > 0 {
+                if embed_outcome.symbols > 0 {
                     message.push_str(&format!(
                         "\nEmbedding {} symbols in background...",
                         embed_outcome.symbols

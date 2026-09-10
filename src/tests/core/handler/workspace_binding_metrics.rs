@@ -62,7 +62,6 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         Some(dashboard_tx),
     )
     .await?;
@@ -193,7 +192,6 @@ async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id),
-        None,
         None,
     )
     .await?;
@@ -338,7 +336,6 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
         primary_path,
         Some(Arc::clone(&daemon_db)),
         Some(primary_id.clone()),
-        None,
         None,
     )
     .await?;

@@ -213,7 +213,6 @@ async fn test_text_search_definitions_explicit_rebound_workspace_uses_current_pr
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
         None,
-        None,
     )
     .await?;
 
@@ -231,7 +230,6 @@ async fn test_text_search_definitions_explicit_rebound_workspace_uses_current_pr
         rebound_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(rebound_id.clone()),
-        None,
         None,
     )
     .await?;

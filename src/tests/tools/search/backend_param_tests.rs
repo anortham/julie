@@ -7,7 +7,6 @@ use tempfile::TempDir;
 use crate::embeddings::{DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
-use crate::registry::embedding_service::EmbeddingService;
 use crate::tools::search::{FastSearchTool, SearchBackend};
 use crate::tools::workspace::ManageWorkspaceTool;
 
@@ -107,11 +106,9 @@ async fn semantic_workspace_with_embeddings() -> Result<(TempDir, JulieServerHan
         "// conceptual permissions handoff appears here only as lexical text\n",
     )?;
 
-    let mut handler = index_workspace(workspace_path).await?;
+    let handler = index_workspace(workspace_path).await?;
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(StaticProvider);
-    handler.embedding_service = Some(Arc::new(EmbeddingService::initialize_for_test(Some(
-        Arc::clone(&provider),
-    ))));
+    handler.set_injected_embedding_provider(Some(Arc::clone(&provider)));
 
     let mut db = handler.primary_pooled_database().await?;
     let symbols = db.get_all_symbols()?;
@@ -170,8 +167,7 @@ async fn semantic_backend_falls_back_to_lexical_when_provider_is_unavailable() -
         "pub fn lexical_backend_marker() {}\n",
     )?;
 
-    let mut handler = index_workspace(workspace_path).await?;
-    handler.embedding_service = Some(Arc::new(EmbeddingService::initialize_for_test(None)));
+    let handler = index_workspace(workspace_path).await?;
 
     let run = FastSearchTool {
         query: "lexical_backend_marker".to_string(),

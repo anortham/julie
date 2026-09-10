@@ -130,10 +130,7 @@ impl ManageWorkspaceTool {
                                 )
                                 .await
                             } else {
-                                EmbeddingOutcome {
-                                    symbols: 0,
-                                    deferred: false,
-                                }
+                                EmbeddingOutcome { symbols: 0 }
                             }
                         };
 
@@ -213,9 +210,7 @@ impl ManageWorkspaceTool {
                     success.symbols_total,
                     success.relationships_total,
                 );
-                if success.embed_outcome.deferred {
-                    message.push_str("\nEmbedding queued while provider initializes.");
-                } else if success.embed_outcome.symbols > 0 {
+                if success.embed_outcome.symbols > 0 {
                     message.push_str(&format!(
                         "\nEmbedding {} symbols in background...",
                         success.embed_outcome.symbols

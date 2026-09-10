@@ -63,8 +63,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 60,
                 commands: &[
                     "cargo nextest run --lib tests::core::embedding_provider -- --skip search_quality",
-                    "cargo nextest run --lib tests::core::embedding_sidecar_provider -- --skip search_quality",
-                    "cargo nextest run --lib tests::core::sidecar_embedding_tests -- --skip search_quality",
                 ],
             },
         ),
@@ -647,7 +645,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "core",
                 owner: "lead",
                 expensive: false,
-                notes: Some("embedding stack (top-crate survivors; bulk moved to core-pipeline)"),
+                notes: Some("embedding provider factory (top crate; bulk in core-pipeline)"),
             },
         ),
         (

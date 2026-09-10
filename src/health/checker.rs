@@ -74,12 +74,8 @@ impl HealthChecker {
         let data_plane = build_data_plane(handler, &primary).await?;
         let runtime_plane = Self::build_runtime_plane(handler).await?;
         let readiness = readiness_from_data_plane(&data_plane);
-        let overall = overall_from_planes(
-            control_plane.level,
-            data_plane.level,
-            runtime_plane.level,
-            handler.embedding_service.is_some(),
-        );
+        let overall =
+            overall_from_planes(control_plane.level, data_plane.level, runtime_plane.level);
 
         let qualification = match &primary {
             PrimaryWorkspaceHealth::Ready(state) => {
@@ -342,17 +338,7 @@ impl HealthChecker {
     async fn build_runtime_plane(handler: &JulieServerHandler) -> Result<RuntimePlaneHealth> {
         let runtime_status = handler.embedding_runtime_status().await;
         let embedding_provider = handler.embedding_provider().await;
-        let service_configured = handler.embedding_service.is_some();
-        let service_settling = handler
-            .embedding_service
-            .as_ref()
-            .is_some_and(|service| !service.is_settled());
-        let embeddings = project_embedding_runtime(
-            runtime_status,
-            embedding_provider.as_deref(),
-            service_configured,
-            service_settling,
-        );
+        let embeddings = project_embedding_runtime(runtime_status, embedding_provider.as_deref());
 
         Ok(RuntimePlaneHealth {
             level: embeddings.level,

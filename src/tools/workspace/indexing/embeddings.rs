@@ -13,31 +13,23 @@ use crate::handler::JulieServerHandler;
 
 /// Outcome of `spawn_workspace_embedding`.
 ///
-/// - `symbols`: count of symbols in the target workspace DB. Caller uses this
-///   to format response messages. `0` indicates embedding was skipped.
-/// - `deferred`: `true` when the daemon embedding provider is still bootstrapping
-///   and the actual pipeline run was queued in a background task. The index
-///   response should not wait for it.
+/// `symbols` is the count of symbols in the target workspace DB. Callers use
+/// it to format response messages; `0` means embedding was skipped.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EmbeddingOutcome {
     pub symbols: usize,
-    pub deferred: bool,
 }
 
 impl EmbeddingOutcome {
     pub(crate) fn skipped() -> Self {
-        Self {
-            symbols: 0,
-            deferred: false,
-        }
+        Self { symbols: 0 }
     }
 }
 
 /// Spawn the embedding pipeline for a workspace (fire-and-forget).
 ///
 /// Returns an [`EmbeddingOutcome`] so the caller can include the symbol count
-/// (and whether the run was deferred behind a still-initializing provider) in
-/// response messages. Returns `symbols: 0` if embedding is skipped (no
+/// in response messages. Returns `symbols: 0` if embedding is skipped (no
 /// provider, no workspace, etc.).
 ///
 /// If the embedding provider has not been initialized yet (deferred from
@@ -49,45 +41,11 @@ pub(crate) async fn spawn_workspace_embedding(
     handler: &JulieServerHandler,
     workspace_id: String,
 ) -> EmbeddingOutcome {
-    // Fast path: check handler (daemon shared service or workspace provider)
     let provider = if let Some(p) = handler.embedding_provider().await {
         p
-    } else if let Some(svc) = handler.embedding_service.as_ref() {
-        // Daemon mode. The shared service may still be in `Initializing`
-        // (background bootstrap of the Python sidecar + torch + model load
-        // takes ~36-39s on cold start). Probe non-blocking; if it's already
-        // settled, use the result immediately. Otherwise hand off to a
-        // deferred task that waits for settlement without blocking the
-        // index response.
-        use crate::registry::embedding_service::EmbeddingServiceSettled;
-        match svc.try_settled() {
-            Some(EmbeddingServiceSettled::Ready { provider: p, .. }) => {
-                debug!("Daemon embedding service Ready; proceeding inline");
-                p
-            }
-            Some(EmbeddingServiceSettled::Unavailable { reason, .. }) => {
-                debug!(
-                    %reason,
-                    "Daemon embedding service Unavailable; skipping workspace embedding"
-                );
-                return EmbeddingOutcome::skipped();
-            }
-            Some(EmbeddingServiceSettled::Timeout) => {
-                // try_settled never returns Timeout; defensive fall-through.
-                return EmbeddingOutcome::skipped();
-            }
-            None => {
-                // Still initializing. Queue a deferred task and return now.
-                return super::pipeline_runner::spawn_deferred_daemon_embedding(
-                    handler,
-                    workspace_id,
-                )
-                .await;
-            }
-        }
     } else {
-        // Stdio mode: provider not yet initialized. Do it now (deferred from
-        // workspace init to avoid blocking symbol extraction and Tantivy indexing).
+        // Provider not yet initialized. Do it now (deferred from workspace init
+        // to avoid blocking symbol extraction and Tantivy indexing).
         let existing_runtime_status = handler.embedding_runtime_status().await;
         if let Some(runtime_status) = existing_runtime_status {
             let retryable = runtime_status
@@ -252,9 +210,5 @@ pub(crate) async fn spawn_workspace_embedding(
 
     EmbeddingOutcome {
         symbols: total_symbols,
-        deferred: false,
     }
 }
-
-#[allow(unused_imports)]
-pub(crate) use super::pipeline_runner::sync_vector_count_on_terminal;

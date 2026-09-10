@@ -178,7 +178,6 @@ async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> R
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
         None,
-        None,
     )
     .await?;
 
@@ -293,7 +292,6 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
         original_path.clone(),
         Some(Arc::clone(&daemon_db)),
         Some(original_id.clone()),
-        None,
         None,
     )
     .await?;

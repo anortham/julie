@@ -18,7 +18,6 @@ pub(crate) async fn dashboard_handler(
             source: Some(WorkspaceStartupSource::Cwd),
         },
         state.dashboard.daemon_db().cloned(),
-        None,
         Some(state.dashboard.sender()),
     )
     .await?;

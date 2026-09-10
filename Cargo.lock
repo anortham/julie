@@ -1582,25 +1582,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "include_dir"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "923d117408f1e49d914f1a379a309cffe4f18c05cf4e3d12e613a15fc81bd0dd"
-dependencies = [
- "include_dir_macros",
-]
-
-[[package]]
-name = "include_dir_macros"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cab85a7ed0bd5f0e76d93846e0147172bed2e2d3f859bcc33a8d9699cad1a75"
-dependencies = [
- "proc-macro2",
- "quote",
-]
-
-[[package]]
 name = "indexmap"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1731,7 +1712,6 @@ dependencies = [
  "globset",
  "hex",
  "ignore",
- "include_dir",
  "julie-context",
  "julie-core",
  "julie-extractors",
@@ -1893,10 +1873,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
- "fs2",
  "futures",
  "hex",
- "include_dir",
  "julie-core",
  "julie-extractors",
  "julie-index",
@@ -1909,7 +1887,6 @@ dependencies = [
  "sqlite-vec",
  "tempfile",
  "tokio",
- "tokio-util",
  "tracing",
  "zerocopy 0.7.35",
 ]

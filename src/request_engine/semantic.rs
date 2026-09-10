@@ -327,13 +327,10 @@ impl DefaultSemanticRuntime {
             }
         }
 
-        let paths = match &self.registry_paths {
-            Some(p) => p.clone(),
-            None => {
-                let cache = self.provider_cache.read().await;
-                return Ok(cache.clone());
-            }
-        };
+        if self.registry_paths.is_none() {
+            let cache = self.provider_cache.read().await;
+            return Ok(cache.clone());
+        }
 
         // 2. Single-flight shared initialization task
         let mut rx = {
@@ -372,8 +369,7 @@ impl DefaultSemanticRuntime {
                 let in_flight_clone = Arc::clone(&self.in_flight_init);
 
                 tokio::spawn(async move {
-                    let provider =
-                        crate::embeddings::acquire_in_process_embedding_provider(&paths).await;
+                    let provider = crate::embeddings::acquire_in_process_embedding_provider().await;
                     {
                         let mut cache = cache_clone.write().await;
                         let mut st = state_clone.write().await;

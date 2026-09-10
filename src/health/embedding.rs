@@ -5,8 +5,6 @@ use super::{EmbeddingRuntimeHealth, EmbeddingState, HealthLevel};
 pub(crate) fn project_embedding_runtime(
     runtime_status: Option<EmbeddingRuntimeStatus>,
     provider: Option<&dyn EmbeddingProvider>,
-    service_configured: bool,
-    service_settling: bool,
 ) -> EmbeddingRuntimeHealth {
     match (runtime_status, provider) {
         (Some(runtime), Some(provider)) => {
@@ -66,36 +64,16 @@ pub(crate) fn project_embedding_runtime(
                 query_fallback: "semantic".to_string(),
             }
         }
-        (None, None) => {
-            if service_configured && service_settling {
-                EmbeddingRuntimeHealth {
-                    level: HealthLevel::Degraded,
-                    state: EmbeddingState::Initializing,
-                    runtime: "initializing".to_string(),
-                    requested_backend: "unresolved".to_string(),
-                    backend: "unresolved".to_string(),
-                    device: "unavailable".to_string(),
-                    accelerated: false,
-                    detail: "daemon embedding service is still settling".to_string(),
-                    query_fallback: "pending".to_string(),
-                }
-            } else {
-                EmbeddingRuntimeHealth {
-                    level: HealthLevel::Unavailable,
-                    state: EmbeddingState::NotInitialized,
-                    runtime: "unavailable".to_string(),
-                    requested_backend: "unresolved".to_string(),
-                    backend: "unresolved".to_string(),
-                    device: "unavailable".to_string(),
-                    accelerated: false,
-                    detail: if service_configured {
-                        "embedding runtime unavailable".to_string()
-                    } else {
-                        "none".to_string()
-                    },
-                    query_fallback: "keyword-only".to_string(),
-                }
-            }
-        }
+        (None, None) => EmbeddingRuntimeHealth {
+            level: HealthLevel::Unavailable,
+            state: EmbeddingState::NotInitialized,
+            runtime: "unavailable".to_string(),
+            requested_backend: "unresolved".to_string(),
+            backend: "unresolved".to_string(),
+            device: "unavailable".to_string(),
+            accelerated: false,
+            detail: "none".to_string(),
+            query_fallback: "keyword-only".to_string(),
+        },
     }
 }

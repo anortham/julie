@@ -1,34 +1,31 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
 
-#[cfg(feature = "embeddings-sidecar")]
-use super::SidecarEmbeddingProvider;
+use super::native::launch::find_and_hash_sidecar_binary;
 use super::{EmbeddingBackend, EmbeddingProvider, NativeEmbeddingProvider};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BackendResolverCapabilities {
-    pub sidecar_available: bool,
+    pub native_available: bool,
     pub target_os: &'static str,
     pub target_arch: &'static str,
 }
 
 impl BackendResolverCapabilities {
-    pub fn current() -> Self {
+    /// Probe the host: native semantics are available when the
+    /// `julie-semantic-sidecar` binary can be found.
+    pub fn detect(native_program: Option<&Path>) -> Self {
         Self {
-            sidecar_available: cfg!(feature = "embeddings-sidecar"),
+            native_available: find_and_hash_sidecar_binary(native_program).is_ok(),
             target_os: std::env::consts::OS,
             target_arch: std::env::consts::ARCH,
         }
     }
 
-    fn is_available(self, backend: EmbeddingBackend) -> bool {
-        match backend {
-            EmbeddingBackend::Sidecar => self.sidecar_available,
-            EmbeddingBackend::Native => true,
-            _ => false,
-        }
+    pub fn current() -> Self {
+        Self::detect(None)
     }
 }
 
@@ -56,12 +53,12 @@ pub fn parse_provider_preference(provider: &str) -> Result<EmbeddingBackend> {
     match provider.trim().to_ascii_lowercase().as_str() {
         "auto" => Ok(EmbeddingBackend::Auto),
         "native" => Ok(EmbeddingBackend::Native),
-        "sidecar" => Ok(EmbeddingBackend::Sidecar),
-        "ort" => bail!(
-            "ORT embedding backend has been removed. Use 'auto', 'sidecar', or 'native' instead."
+        "ort" | "sidecar" => bail!(
+            "Embedding backend '{}' has been removed. Use 'auto', 'native', or 'none' instead.",
+            provider.trim()
         ),
         unknown => bail!(
-            "Unknown embedding provider: {} (valid: auto|sidecar|native)",
+            "Unknown embedding provider: {} (valid: auto|native|none)",
             unknown
         ),
     }
@@ -86,43 +83,28 @@ pub fn should_disable_for_strict_acceleration(
             || matches!(resolved_backend, EmbeddingBackend::Unresolved))
 }
 
+/// `auto` becomes `native` when the sidecar binary is found and an error
+/// (no provider) otherwise. An explicit `native` request always resolves so
+/// the provider constructor can report the precise launch failure.
 pub fn resolve_backend_preference(
     requested_backend: EmbeddingBackend,
     capabilities: &BackendResolverCapabilities,
 ) -> Result<EmbeddingBackend> {
-    let resolved_backend = match requested_backend {
-        EmbeddingBackend::Auto => {
-            if capabilities.sidecar_available {
-                EmbeddingBackend::Sidecar
-            } else {
-                bail!(
-                    "No embedding backend available for platform {}-{}",
-                    capabilities.target_os,
-                    capabilities.target_arch
-                )
-            }
-        }
-        EmbeddingBackend::Native => EmbeddingBackend::Native,
-        EmbeddingBackend::Sidecar => EmbeddingBackend::Sidecar,
+    match requested_backend {
+        EmbeddingBackend::Auto if capabilities.native_available => Ok(EmbeddingBackend::Native),
+        EmbeddingBackend::Auto => bail!(
+            "No embedding backend available for platform {}-{}: julie-semantic-sidecar binary not found",
+            capabilities.target_os,
+            capabilities.target_arch
+        ),
+        EmbeddingBackend::Native => Ok(EmbeddingBackend::Native),
         EmbeddingBackend::Unresolved => {
             bail!("Cannot resolve embedding backend from unresolved preference")
         }
         EmbeddingBackend::Invalid(provider) => {
             bail!("Cannot resolve embedding backend from invalid preference: {provider}")
         }
-    };
-
-    if !capabilities.is_available(resolved_backend.clone()) {
-        bail!(
-            "Embedding backend '{}' (requested '{}') is not available for platform {}-{} in this build",
-            resolved_backend.as_str(),
-            requested_backend.as_str(),
-            capabilities.target_os,
-            capabilities.target_arch,
-        );
     }
-
-    Ok(resolved_backend)
 }
 
 pub struct EmbeddingProviderFactory;
@@ -130,28 +112,13 @@ pub struct EmbeddingProviderFactory;
 impl EmbeddingProviderFactory {
     pub fn create(config: &EmbeddingConfig) -> Result<Arc<dyn EmbeddingProvider>> {
         let requested_backend = parse_provider_preference(&config.provider)?;
-        let resolved_backend =
-            resolve_backend_preference(requested_backend, &BackendResolverCapabilities::current())?;
-
-        match resolved_backend {
+        let capabilities = BackendResolverCapabilities::detect(config.native_program.as_deref());
+        match resolve_backend_preference(requested_backend, &capabilities)? {
             EmbeddingBackend::Native => Ok(Arc::new(NativeEmbeddingProvider::try_new(config)?)),
-            EmbeddingBackend::Sidecar => {
-                #[cfg(feature = "embeddings-sidecar")]
-                {
-                    return Ok(Arc::new(SidecarEmbeddingProvider::try_new()?));
-                }
-
-                #[cfg(not(feature = "embeddings-sidecar"))]
-                {
-                    bail!("Embedding provider 'sidecar' is not available in this build");
-                }
-            }
-            backend => {
-                unreachable!(
-                    "resolve_backend_preference returned unsupported backend: {}",
-                    backend.as_str()
-                )
-            }
+            backend => unreachable!(
+                "resolve_backend_preference returned unsupported backend: {}",
+                backend.as_str()
+            ),
         }
     }
 }

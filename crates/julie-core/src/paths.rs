@@ -368,44 +368,6 @@ impl RegistryPaths {
         self.workspace_index_dir(workspace_id).join("tantivy")
     }
 
-    /// FNV-1a hash of `julie_home`, used for Windows embedding host pipe names.
-    #[cfg(windows)]
-    fn julie_home_hash(&self) -> u64 {
-        let path_str = self.julie_home.to_string_lossy();
-        let mut hash: u64 = 14695981039346656037;
-        for byte in path_str.as_bytes() {
-            hash ^= *byte as u64;
-            hash = hash.wrapping_mul(1099511628211);
-        }
-        hash
-    }
-
-    /// Unix domain socket for the resident embedding-host (Phase 3b).
-    ///
-    /// One host per `$JULIE_HOME` serves embeddings to every Julie process,
-    /// mirroring the process-global lifetime of the daemon's `EmbeddingService`.
-    #[cfg(unix)]
-    pub fn embedding_host_socket(&self) -> PathBuf {
-        self.julie_home.join("embedding-host.sock")
-    }
-
-    /// Kernel-held singleton lock for the running embedding-host (Phase 3b).
-    ///
-    /// Ensures exactly one host process per `$JULIE_HOME`; a second launch
-    /// fails to acquire the lock and yields to the incumbent.
-    pub fn embedding_host_lock(&self) -> PathBuf {
-        self.julie_home.join("embedding-host.lock")
-    }
-
-    /// Named pipe for the resident embedding-host (Windows, Phase 3b).
-    #[cfg(windows)]
-    pub fn embedding_host_pipe_name(&self) -> String {
-        format!(
-            "\\\\.\\pipe\\julie-embedding-host-{:016x}",
-            self.julie_home_hash()
-        )
-    }
-
     /// Per-project log directory (written by daemon, scoped to project).
     pub fn project_log_dir(&self, project_root: &Path) -> PathBuf {
         project_root.join(".julie").join("logs")

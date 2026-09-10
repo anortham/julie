@@ -12,6 +12,7 @@ use tempfile::tempdir;
 use crate::embeddings::factory::EmbeddingConfig;
 use crate::embeddings::native::launch::derive_broker_paths;
 use crate::embeddings::native::{DEFAULT_NATIVE_MODEL, NativeEmbeddingProvider};
+use crate::tests::native_provider_challenges::KillOnDrop;
 
 #[test]
 #[serial_test::serial(embedding_env)]
@@ -55,7 +56,7 @@ fn challenge_replacement_between_hash_and_spawn_is_detected_and_rejected() {
     std::os::unix::fs::symlink(&bin_b, &link_path).unwrap();
 
     // 3. Process is spawned from the link, actually executing Binary B
-    let mut child = std::process::Command::new(&link_path).spawn().unwrap();
+    let child = KillOnDrop(std::process::Command::new(&link_path).spawn().unwrap());
 
     // 4. Immediately switch symlink back to Binary A on disk
     fs::remove_file(&link_path).unwrap();
@@ -65,12 +66,9 @@ fn challenge_replacement_between_hash_and_spawn_is_detected_and_rejected() {
     // and fail closed even though the disk link now points back to Binary A!
     let res = crate::embeddings::native::launch::verify_launched_child_sha(
         &link_path,
-        child.id(),
+        child.0.id(),
         &sha_a,
     );
-
-    let _ = child.kill();
-    let _ = child.wait();
 
     assert!(
         res.is_err(),
@@ -116,6 +114,13 @@ fn main() {{
         i += 1;
     }}
     let endpoint = endpoint.expect("missing --endpoint");
+    if args.iter().any(|a| a == "--lock") {{
+        std::thread::spawn(|| {{
+            let mut byte = [0u8; 1];
+            let _ = std::io::Read::read(&mut std::io::stdin(), &mut byte);
+            std::process::exit(0);
+        }});
+    }}
     let ep_path = Path::new(&endpoint);
     if ep_path.exists() {{
         let _ = std::fs::remove_file(ep_path);
@@ -364,12 +369,14 @@ fn main() {
     }
 
     // Spawn the winner process in the background with MOCK_WINNER=1
-    let mut winner_child = std::process::Command::new(&bin_path)
-        .env("MOCK_WINNER", "1")
-        .env("MOCK_ENDPOINT", endpoint.to_str().unwrap())
-        .env("MOCK_SPAWNED_MARKER", sync_marker.to_str().unwrap())
-        .spawn()
-        .expect("failed to spawn winner process");
+    let _winner_child = KillOnDrop(
+        std::process::Command::new(&bin_path)
+            .env("MOCK_WINNER", "1")
+            .env("MOCK_ENDPOINT", endpoint.to_str().unwrap())
+            .env("MOCK_SPAWNED_MARKER", sync_marker.to_str().unwrap())
+            .spawn()
+            .expect("failed to spawn winner process"),
+    );
 
     let config = EmbeddingConfig {
         provider: "native".to_string(),
@@ -421,8 +428,4 @@ fn main() {
         "query to winner failed: {:?}",
         embed_res.err()
     );
-
-    // Clean up winner process
-    let _ = winner_child.kill();
-    let _ = winner_child.wait();
 }
