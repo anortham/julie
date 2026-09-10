@@ -65,6 +65,11 @@ pub(crate) async fn build_data_plane(
                 .get_pooled_database_for_workspace(workspace_id)
                 .await
                 .ok();
+            let vector_count = handler
+                .checkout_store_for_workspace(workspace_id, &state.binding.workspace_root)
+                .await
+                .map(|store| store.status().vector_count as i64)
+                .unwrap_or(0);
 
             let canonical_store = match pooled_db.as_ref() {
                 Some(db) => match db.get_stats() {
@@ -101,7 +106,7 @@ pub(crate) async fn build_data_plane(
                             symbol_count: stats.total_symbols,
                             file_count: stats.total_files,
                             relationship_count: stats.total_relationships,
-                            embedding_count: stats.embedding_count,
+                            embedding_count: vector_count,
                             db_size_mb: stats.db_size_mb,
                             languages: stats.languages,
                             detail,

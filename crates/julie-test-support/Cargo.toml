@@ -13,6 +13,7 @@ julie-core = { path = "../julie-core", features = ["test-support"] }
 # FakeToolContext: implement the ToolContext facade for handler-free tool tests.
 julie-context = { path = "../julie-context" }
 julie-index = { path = "../julie-index" }
+julie-facts = { path = "../julie-facts" }
 async-trait = "0.1"
 anyhow = "1.0"
 

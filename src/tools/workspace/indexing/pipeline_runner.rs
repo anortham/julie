@@ -1,18 +1,19 @@
 //! Background embedding pipeline runner.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use julie_index::checkout_store::CheckoutStore;
 use tracing::{info, warn};
 
-use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
 use crate::embeddings::pipeline::run_embedding_pipeline_cancellable;
 
-/// Shared embedding-pipeline body. Runs the cancellable pipeline against an
-/// already-resolved DB + provider, then updates daemon.db and cleans up the
+/// Shared embedding-pipeline body. Runs the cancellable pipeline against the
+/// workspace's checkout store, then updates daemon.db and cleans up the
 /// task slot.
 pub(crate) async fn run_pipeline_body(
     provider: Arc<dyn EmbeddingProvider>,
-    db_arc: Arc<Mutex<SymbolDatabase>>,
+    store: Arc<CheckoutStore>,
     workspace_id: String,
     cancel_for_pipeline: Arc<std::sync::atomic::AtomicBool>,
     self_cancel_flag: Arc<std::sync::atomic::AtomicBool>,
@@ -31,13 +32,13 @@ pub(crate) async fn run_pipeline_body(
     total_symbols: usize,
 ) {
     info!("Starting workspace embedding for {workspace_id} ({total_symbols} symbols)...");
-    let db_clone = db_arc.clone();
+    let store_for_run = Arc::clone(&store);
     let lang_configs = crate::search::language_config::LanguageConfigs::load_embedded();
     // Capture model name before provider is moved into spawn_blocking
     let model_name = provider.device_info().model_name.clone();
     let result = tokio::task::spawn_blocking(move || {
         run_embedding_pipeline_cancellable(
-            &db_clone,
+            &store_for_run,
             provider.as_ref(),
             Some(&lang_configs),
             Some(cancel_for_pipeline),
@@ -64,15 +65,10 @@ pub(crate) async fn run_pipeline_body(
         }
     }
 
-    // Fix B part 2: unconditionally update daemon.db with the actual vector count.
-    // Use embedding_count() (ground-truth DB total) rather than stats.symbols_embedded
-    // (this-run delta). Runs after all outcomes: success, failure, and cancellation,
-    // so daemon.db never drifts from the workspace DB regardless of pipeline fate.
+    // Runs after every outcome (success, failure, cancellation) so daemon.db
+    // reports the store's bound vector count, not this run's delta.
     if let Some(ref daemon) = daemon_db {
-        let actual_count = {
-            let db_lock = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-            db_lock.embedding_count().unwrap_or(0)
-        };
+        let actual_count = store.status().vector_count as i64;
         let _ = daemon.update_vector_count(&workspace_id, actual_count);
         let _ = daemon.update_embedding_model(&workspace_id, &model_name);
     }

@@ -31,6 +31,8 @@ fn in_memory_creates_every_fact_table() {
         "literals",
         "type_arguments",
         "diagnostics",
+        "encoder",
+        "vectors",
         "test_verdicts",
     ]
     .into_iter()

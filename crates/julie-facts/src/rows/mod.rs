@@ -173,6 +173,45 @@ pub struct DiagnosticRow {
     pub span: Span,
 }
 
+/// The one encoder whose vectors the store holds. `id` is the encoder's
+/// storage key; the other columns describe the identity behind it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncoderRow {
+    pub id: String,
+    pub model_checksum: String,
+    pub dimensions: u32,
+    pub pooling: String,
+    pub normalization: String,
+    pub instruction_policy: String,
+}
+
+/// One symbol embedding keyed by the symbol's blob and ordinal.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VectorRow {
+    pub blob_hash: String,
+    pub symbol_ordinal: u32,
+    pub vector: Vec<f32>,
+}
+
+impl VectorRow {
+    /// The `"<blob_hash>:<ordinal>"` id of the symbol this vector belongs to.
+    pub fn symbol_id(&self) -> String {
+        format!("{}:{}", self.blob_hash, self.symbol_ordinal)
+    }
+
+    /// Little-endian f32 bytes, the on-disk form of `vector`.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.vector.iter().flat_map(|v| v.to_le_bytes()).collect()
+    }
+
+    pub fn vector_from_bytes(bytes: &[u8]) -> Vec<f32> {
+        bytes
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PathRow {
     pub path: String,

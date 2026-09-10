@@ -251,8 +251,6 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
             code_context: Some("fn rebound_primary_only() {}".to_string()),
         };
         rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;
-        rebound_db
-            .store_embeddings(&[("rebound-primary-symbol".to_string(), vec![0.1_f32; 384])])?;
         rebound_db.set_index_engine_version(
             &rebound_id,
             SEMANTIC_INDEX_ENGINE_COMPONENT,

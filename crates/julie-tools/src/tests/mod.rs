@@ -7,7 +7,6 @@
 // Original 5 (pre-T2b.6)
 pub mod blast_radius_formatting_tests;
 pub mod filtering_tests;
-#[cfg(any())]
 pub mod hybrid_search_tests;
 pub mod phase4_token_savings;
 pub mod query_classification_tests;
@@ -65,5 +64,4 @@ pub mod tantivy_path_prior_tests;
 pub mod formatting_tests;
 
 // Milestone M1 empirical challenges
-#[cfg(any())]
 pub mod m1_challenger_tests;

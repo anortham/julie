@@ -336,16 +336,15 @@ async fn test_incremental_index_triggers_catch_up_embedding_when_none_exist() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
-    // Clear all embeddings to simulate "sidecar wasn't ready during initial indexing"
+    clear_primary_vectors(&handler).await;
+    assert_eq!(
+        embedding_count_for_primary(&handler).await,
+        0,
+        "embeddings should be cleared"
+    );
     if let Ok(Some(workspace)) = handler.get_workspace().await {
         if let Some(db) = workspace.db.as_ref() {
-            let mut db_lock = db.lock().unwrap();
-            db_lock.clear_all_embeddings().unwrap();
-            assert_eq!(
-                db_lock.embedding_count().unwrap(),
-                0,
-                "embeddings should be cleared"
-            );
+            let db_lock = db.lock().unwrap();
             assert!(
                 db_lock.count_symbols_for_workspace().unwrap() > 0,
                 "symbols should still exist"

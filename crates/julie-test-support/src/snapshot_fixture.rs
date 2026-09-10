@@ -5,10 +5,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use julie_core::embeddings_identity::EncoderIdentity;
 use julie_core::file_policy::detect_language_for_indexing_with_content;
 use julie_core::workspace::mutation_gate::Registry;
+use julie_facts::rows::VectorRow;
 use julie_index::checkout_store::{CheckoutStore, PathChange};
 use julie_index::snapshot::Snapshot;
+use julie_index::vectors::encoder_row;
 use tempfile::TempDir;
 
 pub struct SnapshotFixture {
@@ -78,6 +81,38 @@ impl SnapshotFixture {
 
     pub fn snapshot(&self) -> Arc<Snapshot> {
         self.store.current()
+    }
+
+    /// Record `identity` as the store's encoder, write one vector per named
+    /// symbol (the first graph symbol with that name), and publish. Every
+    /// snapshot taken afterwards serves the vectors.
+    pub fn store_named_vectors(
+        &self,
+        identity: &EncoderIdentity,
+        vectors: &[(&str, Vec<f32>)],
+    ) -> Result<()> {
+        let encoder = encoder_row(identity)?;
+        let snapshot = self.snapshot();
+        let graph = snapshot.graph();
+        let rows = vectors
+            .iter()
+            .map(|(name, vector)| {
+                let id = graph
+                    .find_by_name(name)
+                    .first()
+                    .copied()
+                    .with_context(|| format!("no symbol named {name} in the fixture"))?;
+                let row = graph.symbol(id);
+                Ok(VectorRow {
+                    blob_hash: row.blob_hash.clone(),
+                    symbol_ordinal: row.ordinal,
+                    vector: vector.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.store.set_encoder(&encoder)?;
+        self.store.store_vectors(&encoder.id, &rows)?;
+        self.store.publish_vectors()
     }
 }
 

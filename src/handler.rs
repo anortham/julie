@@ -1011,15 +1011,11 @@ impl JulieServerHandler {
             return;
         }
 
-        // Backfill vector count from workspace's symbols.db
         if needs_vectors {
             let ws_guard = self.workspace.read().await;
             if let Some(ws) = ws_guard.as_ref() {
-                if let Some(ref db_arc) = ws.db {
-                    let count = {
-                        let sym_db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-                        sym_db.embedding_count().unwrap_or(0)
-                    };
+                if let Some(ref store) = ws.store {
+                    let count = store.status().vector_count as i64;
                     if count > 0 {
                         let _ = db.update_vector_count(ws_id, count);
                         info!(workspace_id = %ws_id, count, "Backfilled vector_count");

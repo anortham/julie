@@ -6,7 +6,6 @@ use anyhow::{Result, anyhow};
 use rusqlite::{Connection, Row};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Once;
 use tracing::{debug, info, warn};
 
 use crate::connection_pool::PooledConn;
@@ -19,15 +18,11 @@ pub mod analytics;
 pub mod bulk;
 mod bulk_operations;
 mod complexity_metrics;
-pub mod embedding_generation;
-pub mod embedding_generation_eligibility;
-pub mod embedding_generation_types;
 mod files;
 mod helpers;
 mod identifiers;
 pub mod impact_graph;
 mod index_engine;
-mod memory_vectors;
 mod projections;
 mod relationships;
 mod repairs;
@@ -41,32 +36,15 @@ mod symbols;
 mod tool_calls;
 mod type_queries;
 pub mod types;
-pub mod vectors;
 mod web_edges;
 mod workspace;
 pub use analytics::*;
-pub use embedding_generation_eligibility::*;
-pub use embedding_generation_types::{EmbeddingGeneration, EmbeddingGenerationStatus};
 pub use projections::{ProjectionState, ProjectionStatus};
 pub use revision_changes::{RevisionChangeKind, RevisionFileChange};
 pub use revisions::{CanonicalRevision, CanonicalRevisionKind};
 pub use structural_facts::*;
 pub use tool_calls::{HistorySummary, ToolCallSummary};
 pub use web_edges::*;
-
-/// Register sqlite-vec extension as a global auto-extension (once per process).
-static SQLITE_VEC_INIT: Once = Once::new();
-
-fn register_sqlite_vec() {
-    SQLITE_VEC_INIT.call_once(|| {
-        unsafe {
-            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
-                sqlite_vec::sqlite3_vec_init as *const (),
-            )));
-        }
-        debug!("sqlite-vec registered as auto-extension");
-    });
-}
 
 // Re-export public types
 pub use files::{calculate_file_hash, create_file_info};
@@ -118,9 +96,6 @@ pub struct ReadSnapshot {
 impl SymbolDatabase {
     /// Create a new database connection and initialize schema
     pub fn new<P: AsRef<Path>>(db_path: P) -> Result<Self> {
-        // Register sqlite-vec before opening any connection
-        register_sqlite_vec();
-
         let file_path = db_path.as_ref().to_path_buf();
 
         info!("Initializing SQLite database at: {}", file_path.display());

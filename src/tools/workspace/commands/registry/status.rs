@@ -100,20 +100,24 @@ async fn checkout_status(
     let index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
     let db_path = index_dir.join("db").join("symbols.db");
     let db_bytes = file_len(&db_path) + file_len(&index_dir.join("db").join("symbols.db-wal"));
-    let (file_count, symbol_count, vector_count) = if db_path.exists() {
+    let (file_count, symbol_count) = if db_path.exists() {
         let db_path = db_path.clone();
-        tokio::task::spawn_blocking(move || -> Result<(i64, i64, i64)> {
+        tokio::task::spawn_blocking(move || -> Result<(i64, i64)> {
             let db = crate::database::SymbolDatabase::new(&db_path)?;
             Ok((
                 db.get_file_count_for_workspace()?,
                 db.get_symbol_count_for_workspace()?,
-                db.embedding_count()?,
             ))
         })
         .await??
     } else {
-        (0, 0, 0)
+        (0, 0)
     };
+    let vector_count = handler
+        .checkout_store_for_workspace(&workspace_id, &root)
+        .await
+        .map(|store| store.status().vector_count as i64)
+        .unwrap_or(0);
     let tantivy_dir = index_dir.join("tantivy");
     let tantivy_meta_mtime = mtime(&tantivy_dir.join("meta.json"));
     let tantivy = if !tantivy_dir.exists() {

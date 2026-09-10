@@ -21,12 +21,9 @@ const EXPECTED_TABLES: &[&str] = &[
     "web_edges",
     "types",
     "relationships",
-    "embedding_generations",
     "schema_version",
     "embedding_config",
     "tool_calls",
-    "symbol_vectors",
-    "memory_vectors",
 ];
 
 fn table_names(db: &SymbolDatabase) -> Vec<String> {
@@ -65,17 +62,6 @@ fn fresh_database_records_latest_schema_version() {
 
     assert_eq!(db.get_schema_version().unwrap(), LATEST_SCHEMA_VERSION);
     assert!(db.schema_version_matches().unwrap());
-}
-
-#[test]
-fn fresh_database_seeds_embedding_config_row() {
-    let dir = TempDir::new().unwrap();
-    let db = fresh_db(&dir);
-
-    let (model, dims, format_version) = db.get_embedding_config().unwrap();
-    assert_eq!(model, "bge-small-en-v1.5");
-    assert_eq!(dims, 384);
-    assert_eq!(format_version, 1);
 }
 
 #[test]

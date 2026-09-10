@@ -10,6 +10,7 @@ description = "Indexing and embedding pipeline layer above julie-index"
 # Julie workspace crates
 julie-core = { path = "../julie-core" }
 julie-index = { path = "../julie-index" }
+julie-facts = { path = "../julie-facts" }
 julie-extractors = { git = "https://github.com/anortham/julie-extractors", tag = "v2.42.0" }
 
 # Async runtime
@@ -41,6 +42,4 @@ libc = "0.2"
 [dev-dependencies]
 tempfile = "3.13"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
-zerocopy = { version = "0.7", features = ["derive"] }
-sqlite-vec = "0.1"
 serial_test = { version = "3.2", features = ["file_locks"] }

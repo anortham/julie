@@ -13,7 +13,7 @@ use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 use julie_core::workspace::mutation_gate::MutationGuard;
-use julie_facts::rows::Normalization;
+use julie_facts::rows::{EncoderRow, Normalization, VectorRow};
 use julie_facts::{FactsStore, FactsWriter, Opened};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, Term};
 use tracing::info;
@@ -59,6 +59,8 @@ pub struct StoreStatus {
     pub tantivy_age_secs: Option<u64>,
     pub graph: GraphStats,
     pub last_write_at: Option<SystemTime>,
+    /// Vectors bound to symbols of the current snapshot.
+    pub vector_count: u64,
 }
 
 pub struct CheckoutStore {
@@ -73,7 +75,7 @@ pub struct CheckoutStore {
     fields: SchemaFields,
     tantivy_dir: Option<PathBuf>,
     tantivy_state: Mutex<TantivyState>,
-    vectors: Arc<VectorSet>,
+    vectors: Mutex<Arc<VectorSet>>,
     last_write_at: Mutex<Option<SystemTime>>,
     current: RwLock<Arc<Snapshot>>,
 }
@@ -134,7 +136,7 @@ impl CheckoutStore {
             .reload_policy(ReloadPolicy::Manual)
             .try_into()?;
         let fields = SchemaFields::new(&index.schema());
-        let vectors = Arc::new(VectorSet::empty());
+        let vectors = Arc::new(load_vectors(&facts, &graph)?);
         let snapshot = Snapshot::new(
             Arc::clone(&graph),
             reader_searcher(&reader),
@@ -155,7 +157,7 @@ impl CheckoutStore {
             fields,
             tantivy_dir,
             tantivy_state: Mutex::new(state),
-            vectors,
+            vectors: Mutex::new(vectors),
             last_write_at: Mutex::new(None),
             current: RwLock::new(Arc::new(snapshot)),
         })
@@ -255,6 +257,37 @@ impl CheckoutStore {
         Ok(true)
     }
 
+    /// Record the encoder whose vectors this store holds. A different identity
+    /// deletes every stored vector and publishes an empty set.
+    pub fn set_encoder(&self, encoder: &EncoderRow) -> Result<()> {
+        {
+            let mut facts = self.facts.lock().unwrap_or_else(|p| p.into_inner());
+            FactsWriter::new(&mut facts, &self.extractor, self.normalization.clone())
+                .set_encoder(encoder)?;
+        }
+        self.publish_vectors()
+    }
+
+    /// Append vector rows for `encoder_id`. Rows reach readers on the next
+    /// [`CheckoutStore::publish_vectors`], so a batch loop pays one reload.
+    pub fn store_vectors(&self, encoder_id: &str, rows: &[VectorRow]) -> Result<usize> {
+        let mut facts = self.facts.lock().unwrap_or_else(|p| p.into_inner());
+        FactsWriter::new(&mut facts, &self.extractor, self.normalization.clone())
+            .store_vectors(encoder_id, rows)
+    }
+
+    /// Reload every stored vector from facts, bind it to the current graph,
+    /// and publish. O(vectors) SQLite reads; call once per embedding run.
+    pub fn publish_vectors(&self) -> Result<()> {
+        let graph = Arc::clone(self.current().graph());
+        let vectors = {
+            let facts = self.facts.lock().unwrap_or_else(|p| p.into_inner());
+            load_vectors(&facts, &graph)?
+        };
+        *self.vectors.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(vectors);
+        self.publish(graph)
+    }
+
     pub fn status(&self) -> StoreStatus {
         let (blob_count, facts_bytes) = {
             let facts = self.facts.lock().unwrap_or_else(|p| p.into_inner());
@@ -264,6 +297,7 @@ impl CheckoutStore {
                 reader.file_size_bytes().unwrap_or(0),
             )
         };
+        let current = self.current();
         let tantivy_age_secs = self
             .tantivy_dir
             .as_ref()
@@ -276,8 +310,9 @@ impl CheckoutStore {
             facts_bytes,
             tantivy: *self.tantivy_state.lock().unwrap_or_else(|p| p.into_inner()),
             tantivy_age_secs,
-            graph: self.current().graph().stats(),
+            graph: current.graph().stats(),
             last_write_at: *self.last_write_at.lock().unwrap_or_else(|p| p.into_inner()),
+            vector_count: current.vectors().len() as u64,
         }
     }
 
@@ -331,17 +366,34 @@ impl CheckoutStore {
     }
 
     fn publish(&self, graph: Arc<Graph>) -> Result<()> {
+        let vectors = {
+            let mut held = self.vectors.lock().unwrap_or_else(|p| p.into_inner());
+            let bound = Arc::new(held.bind(|key| graph.symbol_by_row_id(key)));
+            *held = Arc::clone(&bound);
+            bound
+        };
         let snapshot = Snapshot::new(
             graph,
             reader_searcher(&self.reader),
             self.fields.clone(),
-            Arc::clone(&self.vectors),
+            vectors,
             self.facts_path.clone(),
             self.root.clone(),
         );
         *self.current.write().unwrap_or_else(|p| p.into_inner()) = Arc::new(snapshot);
         Ok(())
     }
+}
+
+fn load_vectors(facts: &FactsStore, graph: &Graph) -> Result<VectorSet> {
+    let reader = facts.reader();
+    let Some(encoder) = reader.encoder()? else {
+        return Ok(VectorSet::empty());
+    };
+    let rows = reader.vectors_for_encoder(&encoder.id)?;
+    Ok(VectorSet::from_rows(Some(encoder), &rows, |key| {
+        graph.symbol_by_row_id(key)
+    }))
 }
 
 fn reader_searcher(reader: &IndexReader) -> tantivy::Searcher {

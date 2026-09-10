@@ -35,11 +35,8 @@ impl SymbolDatabase {
         self.create_web_edges_table()?; // Derived web navigation edges
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
-        self.create_embedding_generations_table()?;
         self.create_embedding_config_table()?;
         self.create_tool_calls_table()?;
-        self.create_symbol_vectors_table()?;
-        self.create_memory_vectors_table()?;
         self.record_schema_version()?;
 
         debug!("Database schema created successfully");

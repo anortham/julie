@@ -61,11 +61,7 @@ async fn test_startup_noop_repair_does_not_mark_catchup_active_while_planning() 
 
     let snapshot = {
         let workspace = handler.get_workspace().await.unwrap().unwrap();
-        workspace
-            .indexing_runtime
-            .read()
-            .unwrap()
-            .snapshot()
+        workspace.indexing_runtime.read().unwrap().snapshot()
     };
     assert!(
         !snapshot.catchup_active,
@@ -212,6 +208,12 @@ async fn test_startup_repair_schedules_embeddings_when_workspace_has_symbols_but
     // Simulate "indexed before sidecar was ready": clear all embeddings,
     // keep all symbols. This is the exact disk state the user hit after
     // re-launching with Python finally installed.
+    clear_primary_vectors(&handler).await;
+    assert_eq!(
+        embedding_count_for_primary(&handler).await,
+        0,
+        "test setup: embeddings must be cleared"
+    );
     {
         let workspace = handler
             .get_workspace()
@@ -219,17 +221,7 @@ async fn test_startup_repair_schedules_embeddings_when_workspace_has_symbols_but
             .unwrap()
             .expect("workspace should be initialized");
         let db = workspace.db.as_ref().expect("workspace db should exist");
-        let mut db_lock = db.lock().unwrap();
-        db_lock
-            .clear_all_embeddings()
-            .expect("clearing embeddings should succeed");
-        assert_eq!(
-            db_lock
-                .embedding_count()
-                .expect("embedding_count should succeed"),
-            0,
-            "test setup: embeddings must be cleared"
-        );
+        let db_lock = db.lock().unwrap();
         assert!(
             db_lock
                 .count_symbols_for_workspace()
@@ -326,9 +318,9 @@ async fn test_startup_missing_embeddings_only_repair_reconciles_web_edges() {
                 None,
             )
             .unwrap();
-        db_lock.clear_all_embeddings().unwrap();
-        assert_eq!(db_lock.embedding_count().unwrap(), 0);
     }
+    clear_primary_vectors(&handler).await;
+    assert_eq!(embedding_count_for_primary(&handler).await, 0);
 
     let plan = run_primary_workspace_repair(&handler)
         .await
@@ -406,17 +398,7 @@ async fn test_startup_repair_does_not_schedule_missing_embeddings_when_task_alre
     index_tool.call_tool(&handler).await.unwrap();
     wait_for_embedding_tasks_to_finish(&handler).await;
 
-    // Clear embeddings to set up the catch-up scenario.
-    {
-        let workspace = handler
-            .get_workspace()
-            .await
-            .unwrap()
-            .expect("workspace should be initialized");
-        let db = workspace.db.as_ref().expect("workspace db should exist");
-        let mut db_lock = db.lock().unwrap();
-        db_lock.clear_all_embeddings().unwrap();
-    }
+    clear_primary_vectors(&handler).await;
 
     // Insert a sentinel embedding task for the primary workspace.
     // Represents "a previous repair already started catch-up; this task

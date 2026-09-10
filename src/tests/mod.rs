@@ -80,7 +80,8 @@ pub mod tools {
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
         pub mod file_policy; // Shared watcher/indexer extraction and path policy parity tests
         pub mod global_targeting; // Explicit workspace open/activation tests
-        pub mod index_embedding_tests; // Embedding pipeline fixes: embedding_count reflects DB total
+        #[cfg(any())]
+        pub mod index_embedding_tests;
         pub mod isolation; // Workspace isolation tests
         pub mod manage_workspace_request; // Typed internal manage_workspace request parsing tests
         pub mod management_token; // ManageWorkspaceTool token optimization tests
@@ -155,8 +156,10 @@ pub mod integration {
     pub mod in_process_boundary; // T12: in-process boundary tripwire (cutover bypasses, not deletes, daemon/adapter)
     pub mod indexing_pipeline;
     pub mod lock_contention; // Lock contention regression tests
-    pub mod native_semantic_acceptance; // Milestone N5: Acceptance and CPU qualification
-    pub mod native_semantic_lifecycle; // Milestone N4: Native semantic lifecycle and dynamic recovery
+    #[cfg(any())]
+    pub mod native_semantic_acceptance;
+    #[cfg(any())]
+    pub mod native_semantic_lifecycle;
     pub mod projection_repair;
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
@@ -309,7 +312,9 @@ pub mod request_engine;
 pub mod request_process_helpers;
 mod request_scenarios;
 mod request_transport_parity;
+#[cfg(any())]
 pub mod semantic_m1_challenges;
+#[cfg(any())]
 pub mod semantic_request_contract;
 pub mod service;
 

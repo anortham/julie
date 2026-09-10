@@ -27,11 +27,6 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 # Error handling
 anyhow = "1.0"
 
-# File locking
-
-# Semantic embeddings
-sqlite-vec = "0.1"
-
 # Logging
 tracing = "0.1"
 
@@ -49,7 +44,6 @@ md5 = "0.7"
 sha2 = "0.10"
 
 # Zero-copy byte conversions (vector storage)
-zerocopy = { version = "0.7", features = ["derive"] }
 
 # Date/time
 chrono = { version = "0.4.42", features = ["serde"] }

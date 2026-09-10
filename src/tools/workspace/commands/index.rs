@@ -287,60 +287,6 @@ impl ManageWorkspaceTool {
                         let db_mutated = result.files_processed > 0 || result.orphans_cleaned > 0;
 
                         if db_mutated || effective_force_reindex {
-                            // Force re-index: pipeline was already cancelled at the top
-                            // of this function. Clear embeddings so the new pipeline
-                            // re-embeds everything with the latest enrichment text.
-                            //
-                            // Bug fix: route the clear to the CORRECT workspace DB.
-                            // handler.get_workspace().db always points to the PRIMARY
-                            // workspace. For non-primary targets we must open the
-                            // target DB via workspace_db_path() instead.
-                            if effective_force_reindex {
-                                if is_non_primary_workspace_target {
-                                    let target_db_path =
-                                        handler.workspace_db_file_path_for(&ws_id).await?;
-                                    if target_db_path.exists() {
-                                        let path = target_db_path;
-                                        let clear_result = tokio::task::spawn_blocking(move || {
-                                            let mut target_db =
-                                                crate::database::SymbolDatabase::new(path)?;
-                                            target_db.clear_all_embeddings()
-                                        })
-                                        .await;
-                                        match clear_result {
-                                            Ok(Ok(())) => info!(
-                                                "🗑️ Cleared target workspace embeddings for force re-embed"
-                                            ),
-                                            Ok(Err(e)) => tracing::warn!(
-                                                "Failed to clear target-workspace embeddings: {e}"
-                                            ),
-                                            Err(e) => tracing::warn!(
-                                                "Target-workspace embedding clear task panicked: {e}"
-                                            ),
-                                        }
-                                    } else {
-                                        debug!(
-                                            "Target DB does not exist at {}, nothing to clear",
-                                            target_db_path.display()
-                                        );
-                                    }
-                                } else if let Ok(Some(workspace)) = handler.get_workspace().await {
-                                    if let Some(ref db) = workspace.db {
-                                        // Primary workspace: clear from the handler's workspace DB.
-                                        let mut db_lock =
-                                            db.lock().unwrap_or_else(|p| p.into_inner());
-                                        match db_lock.clear_all_embeddings() {
-                                            Ok(()) => info!(
-                                                "🗑️ Cleared all embeddings for force re-embed"
-                                            ),
-                                            Err(e) => {
-                                                tracing::warn!("Failed to clear embeddings: {e}")
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
                             let embed_outcome =
                                 crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                                     handler, ws_id,
@@ -356,30 +302,11 @@ impl ManageWorkspaceTool {
                             // No files changed, but the workspace may have been
                             // indexed before the embedding sidecar was ready.
                             // Check if symbols exist without any embeddings.
-                            let embedding_count = if is_non_primary_workspace_target {
-                                match handler.workspace_db_file_path_for(&ws_id).await {
-                                    Ok(path) if path.exists() => {
-                                        let c = tokio::task::spawn_blocking(move || {
-                                            crate::database::SymbolDatabase::new(path)
-                                                .and_then(|db| db.embedding_count())
-                                                .unwrap_or(0)
-                                        })
-                                        .await
-                                        .unwrap_or(0);
-                                        c
-                                    }
-                                    _ => 0,
-                                }
-                            } else if let Ok(Some(ws)) = handler.get_workspace().await {
-                                ws.db.as_ref().map_or(0, |db| {
-                                    db.lock()
-                                        .unwrap_or_else(|p| p.into_inner())
-                                        .embedding_count()
-                                        .unwrap_or(0)
-                                })
-                            } else {
-                                0
-                            };
+                            let embedding_count =
+                                crate::tools::workspace::indexing::embeddings::workspace_vector_count(
+                                    handler, &ws_id,
+                                )
+                                .await;
 
                             // Skip catch-up if an embedding task is already
                             // running (it may not have stored its first batch

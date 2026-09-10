@@ -84,8 +84,83 @@ async fn semantic_workspace_with_embeddings() -> Result<(TempDir, FakeToolContex
     let handler = index_workspace(workspace_path)
         .await?
         .with_embedding_provider(provider);
+    handler
+        .snapshot_fixture
+        .as_ref()
+        .expect("snapshot fixture")
+        .store_named_vectors(
+            &EncoderIdentity::mock("static-fast-search-backend", 768),
+            &[
+                ("semantic_backend_target", semantic_target_vector()),
+                ("unrelated_backend_symbol", semantic_unrelated_vector()),
+            ],
+        )?;
 
     Ok((temp_dir, handler))
+}
+
+async fn semantic_workspace_without_vectors() -> Result<(TempDir, FakeToolContext)> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    fs::create_dir_all(workspace_path.join("src"))?;
+    fs::write(
+        workspace_path.join("src/lib.rs"),
+        "pub fn semantic_backend_target() {}\n",
+    )?;
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(StaticProvider);
+    let handler = index_workspace(workspace_path)
+        .await?
+        .with_embedding_provider(provider);
+    Ok((temp_dir, handler))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn required_semantics_report_not_ready_without_an_encoder_row() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_without_vectors().await?;
+
+    let run = FastSearchTool {
+        query: "conceptual permissions handoff".to_string(),
+        backend: Some(SearchBackend::Semantic),
+        semantics: Some(julie_core::embeddings_contract::SemanticMode::Required),
+        limit: 1,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await;
+    let error = match run {
+        Ok(_) => panic!("required semantics must fail closed without vectors"),
+        Err(error) => error,
+    };
+
+    assert!(
+        error.to_string().contains("SEMANTICS_NOT_READY"),
+        "expected SEMANTICS_NOT_READY, got: {error}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn required_semantics_are_ready_with_an_encoder_row_and_vectors() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
+
+    let execution = FastSearchTool {
+        query: "conceptual permissions handoff".to_string(),
+        backend: Some(SearchBackend::Semantic),
+        semantics: Some(julie_core::embeddings_contract::SemanticMode::Required),
+        limit: 1,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("semantic backend should return execution");
+
+    assert_eq!(execution.trace.strategy_id, "fast_search_semantic");
+    assert_eq!(
+        execution.hits.first().map(|hit| hit.name.as_str()),
+        Some("semantic_backend_target")
+    );
+    Ok(())
 }
 
 #[test]
@@ -160,7 +235,6 @@ async fn semantic_backend_falls_back_to_lexical_when_provider_is_unavailable() -
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the snapshot vector set, which Task 10 fills"]
 async fn semantic_backend_returns_symbol_hits_and_preserves_symbol_kind() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
 
@@ -192,7 +266,6 @@ async fn semantic_backend_returns_symbol_hits_and_preserves_symbol_kind() -> Res
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the snapshot vector set, which Task 10 fills"]
 async fn semantic_backend_locations_render_semantic_hits_not_lexical_line_mode() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
 
@@ -230,7 +303,6 @@ async fn semantic_backend_locations_render_semantic_hits_not_lexical_line_mode()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the snapshot vector set, which Task 10 fills"]
 async fn lexical_zero_hits_use_semantic_fallback_when_embeddings_are_ready() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
 
@@ -408,7 +480,6 @@ async fn lexical_zero_hits_skip_semantic_fallback_with_file_pattern() -> Result<
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the snapshot vector set, which Task 10 fills"]
 async fn hybrid_backend_returns_symbol_hits_without_fallback() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
 

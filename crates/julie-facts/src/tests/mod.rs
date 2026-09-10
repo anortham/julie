@@ -1,5 +1,6 @@
 mod reader;
 mod schema;
+mod vectors;
 mod version;
 mod writer;
 

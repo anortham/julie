@@ -1,7 +1,6 @@
 //! Live runtime qualification reconciliation and workspace state validation.
 
 use julie_core::EncoderIdentity;
-use julie_core::database::EmbeddingGeneration;
 use thiserror::Error;
 
 use super::NativeQualificationRecord;
@@ -96,7 +95,7 @@ pub struct ActiveProviderFacts<'a> {
 pub fn validate_qualification_against_workspace(
     record: &NativeQualificationRecord,
     current_canonical_rev: i64,
-    ready_gen: Option<&EmbeddingGeneration>,
+    ready_encoder_key: Option<&str>,
     active_sidecar_sha: Option<&str>,
 ) -> Result<(), WorkspaceQualificationMismatch> {
     if record.canonical_revision != current_canonical_rev {
@@ -106,35 +105,17 @@ pub fn validate_qualification_against_workspace(
         });
     }
 
-    let ready_generation = ready_gen.ok_or(WorkspaceQualificationMismatch::NoReadyGeneration)?;
-
-    if record.vector_revision != ready_generation.source_revision {
-        return Err(WorkspaceQualificationMismatch::VectorRevisionMismatch {
-            record_rev: record.vector_revision,
-            gen_rev: ready_generation.source_revision,
-        });
-    }
-
-    if record.eligible_symbols != ready_generation.eligible_symbols
-        || record.embedded_symbols != ready_generation.embedded_symbols
-    {
-        return Err(WorkspaceQualificationMismatch::CoverageMismatch {
-            rec_eligible: record.eligible_symbols,
-            rec_embedded: record.embedded_symbols,
-            gen_eligible: ready_generation.eligible_symbols,
-            gen_embedded: ready_generation.embedded_symbols,
-        });
-    }
+    let ready_key = ready_encoder_key.ok_or(WorkspaceQualificationMismatch::NoReadyGeneration)?;
 
     let record_key = record
         .encoder_identity
         .storage_key()
         .map_err(|e| WorkspaceQualificationMismatch::InvalidStorageKey(e.to_string()))?;
 
-    if record_key != ready_generation.encoder_key {
+    if record_key != ready_key {
         return Err(WorkspaceQualificationMismatch::EncoderKeyMismatch {
             record_key,
-            gen_key: ready_generation.encoder_key.clone(),
+            gen_key: ready_key.to_string(),
         });
     }
 
@@ -155,14 +136,14 @@ pub fn validate_qualification_against_workspace(
 pub fn validate_qualification_against_running_runtime(
     record: &NativeQualificationRecord,
     current_canonical_rev: i64,
-    ready_gen: Option<&EmbeddingGeneration>,
+    ready_encoder_key: Option<&str>,
     active: &ActiveProviderFacts<'_>,
 ) -> Result<(), WorkspaceQualificationMismatch> {
     // 1. Verify workspace and DB state via validate_qualification_against_workspace
     validate_qualification_against_workspace(
         record,
         current_canonical_rev,
-        ready_gen,
+        ready_encoder_key,
         active.running_executable_sha,
     )?;
 

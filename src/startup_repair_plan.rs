@@ -165,12 +165,17 @@ pub(crate) async fn plan_primary_workspace_repair(
                     .load(std::sync::atomic::Ordering::Acquire)
                     && !julie_pipeline::embeddings::init::embeddings_disabled_by_env());
             if reasons.is_empty() && embeddings_possible {
-                let embedding_count = match db_arc.lock() {
-                    Ok(db) => db.embedding_count().unwrap_or(0),
-                    Err(poisoned) => poisoned.into_inner().embedding_count().unwrap_or(0),
+                let workspace_id = handler.require_primary_workspace_identity().ok();
+                let embedding_count = match workspace_id.as_deref() {
+                    Some(ws_id) => {
+                        crate::tools::workspace::indexing::embeddings::workspace_vector_count(
+                            handler, ws_id,
+                        )
+                        .await
+                    }
+                    None => 0,
                 };
                 if embedding_count == 0 {
-                    let workspace_id = handler.require_primary_workspace_identity().ok();
                     let task_already_running = match workspace_id.as_ref() {
                         Some(ws_id) => handler.embedding_tasks.lock().await.contains_key(ws_id),
                         None => false,

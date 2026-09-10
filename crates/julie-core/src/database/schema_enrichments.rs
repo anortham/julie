@@ -301,28 +301,4 @@ impl SymbolDatabase {
         )?;
         Ok(())
     }
-
-    /// 384-dimensional default; `recreate_vectors_table` rebuilds it when the
-    /// active model uses a different dimension.
-    pub(super) fn create_symbol_vectors_table(&self) -> Result<()> {
-        self.conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS symbol_vectors USING vec0(
-                symbol_id TEXT PRIMARY KEY,
-                embedding float[384]
-            )",
-            [],
-        )?;
-        Ok(())
-    }
-
-    pub(super) fn create_memory_vectors_table(&self) -> Result<()> {
-        self.conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0(
-                checkpoint_id TEXT PRIMARY KEY,
-                embedding float[384]
-            )",
-            [],
-        )?;
-        Ok(())
-    }
 }

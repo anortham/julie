@@ -339,9 +339,6 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
     )
     .expect("incremental_update_atomic should succeed");
 
-    db.store_embeddings(&[("sym_a".to_string(), vec![0.1f32; 384])])
-        .expect("store_embeddings should succeed");
-
     db.record_indexing_repair("src/lib.rs", "tantivy_dirty", Some("test"))
         .expect("record_indexing_repair should succeed");
 
@@ -463,10 +460,6 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
     );
     assert!(count_rows(&db, "types") > 0, "precondition: types");
     assert!(
-        count_rows(&db, "symbol_vectors") > 0,
-        "precondition: symbol_vectors"
-    );
-    assert!(
         count_rows(&db, "indexing_repairs") > 0,
         "precondition: indexing_repairs"
     );
@@ -508,11 +501,6 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         "identifiers must be cleared"
     );
     assert_eq!(count_rows(&db, "types"), 0, "types must be cleared");
-    assert_eq!(
-        count_rows(&db, "symbol_vectors"),
-        0,
-        "symbol_vectors must be cleared"
-    );
     assert_eq!(
         count_rows(&db, "indexing_repairs"),
         0,

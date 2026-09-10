@@ -474,10 +474,13 @@ impl SemanticRuntime for DefaultSemanticRuntime {
             });
         }
 
-        // Rule 4: Symbols or QueryAndSymbols requires SQLite vector compatibility
-        let db_path = binding.index_root.join("db/symbols.db");
-        crate::request_engine::semantic_store::check_sqlite_vectors(
-            &db_path,
+        // Rule 4: Symbols or QueryAndSymbols requires vectors the provider can query
+        let facts_path = binding
+            .index_root
+            .join(julie_index::checkout_store::STORE_DIR)
+            .join(julie_index::checkout_store::FACTS_FILE);
+        crate::request_engine::semantic_store::check_facts_vectors(
+            &facts_path,
             provider.as_ref(),
             mode,
         )

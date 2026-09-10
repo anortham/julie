@@ -98,9 +98,20 @@ impl HealthChecker {
                                 .flatten()
                         })
                         .unwrap_or(-1);
-                    let ready_gen = pooled_db
-                        .as_ref()
-                        .and_then(|db| db.get_latest_ready_generation().ok().flatten());
+                    let ready_encoder = handler
+                        .checkout_store_for_workspace(
+                            &state.binding.workspace_id,
+                            &state.binding.workspace_root,
+                        )
+                        .await
+                        .ok()
+                        .and_then(|store| {
+                            let current = store.current();
+                            let vectors = current.vectors();
+                            (!vectors.is_empty())
+                                .then(|| vectors.encoder().map(|e| e.id.clone()))
+                                .flatten()
+                        });
 
                     let active_provider = handler.embedding_provider().await;
                     let active_id = active_provider
@@ -124,7 +135,7 @@ impl HealthChecker {
                     match crate::request_engine::semantic_qualification::validate_qualification_against_running_runtime(
                         record,
                         cur_rev,
-                        ready_gen.as_ref(),
+                        ready_encoder.as_deref(),
                         &active_facts,
                     ) {
                         Ok(()) => {

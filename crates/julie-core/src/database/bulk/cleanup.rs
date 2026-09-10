@@ -13,10 +13,6 @@ const EXTRACTOR_FAILURE_REASON: &str = "extractor_failure";
 
 pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Result<()> {
     tx.execute(
-        "DELETE FROM symbol_vectors WHERE symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
-        params![file_path],
-    )?;
-    tx.execute(
         "DELETE FROM relationships
          WHERE file_path = ?1
             OR from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
@@ -111,7 +107,6 @@ pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Resu
 
 pub(super) fn delete_all_indexed_rows_tx(tx: &Transaction<'_>) -> Result<()> {
     for sql in [
-        "DELETE FROM symbol_vectors",
         "DELETE FROM source_regions",
         "DELETE FROM structural_facts",
         "DELETE FROM complexity_metrics",

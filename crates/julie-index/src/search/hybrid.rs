@@ -5,6 +5,8 @@
 //! - `compute_query_embedding_for_hybrid` / `compute_tagged_query_embedding_for_hybrid`:
 //!   compute the query embedding **before** the search, so a slow sidecar
 //!   round-trip (up to 30 s) never sits on the search path.
+//! - `vector_search`: the vector side alone, a cosine scan over the snapshot's
+//!   vector set, shaped as symbol results.
 //! - `hybrid_search_with_tagged_embedding`: keyword search plus the vector
 //!   side, merged with weighted RRF. Degrades to keyword-only in `Auto` mode
 //!   and fails closed in `Required` mode when vectors are not ready.
@@ -15,7 +17,9 @@ use tracing::warn;
 
 use super::SymbolSearchResult;
 use super::index::{SearchFilter, SearchView, SymbolSearchResults};
+use super::scoring::{classify_role, test_subrole};
 use super::weights::SearchWeightProfile;
+use crate::graph::{Graph, SymbolId};
 use crate::snapshot::Snapshot;
 use julie_core::embeddings_contract::{
     EmbeddingProvider, EmbeddingRequestBudget, SemanticMode, TaggedQueryEmbedding,
@@ -81,21 +85,76 @@ pub fn compute_tagged_query_embedding_for_hybrid(
     }))
 }
 
-/// Vector hits for `tagged` from the snapshot's vector set. An empty set is
-/// the not-ready outcome: `Required` fails closed, every other mode yields
-/// no semantic hits.
-fn vector_hits(
+/// A search result for the graph symbol `id`, scored `score`, shaped like
+/// a Tantivy hit so RRF merges and filters treat both sides alike.
+pub fn symbol_search_result(graph: &Graph, id: SymbolId, score: f32) -> SymbolSearchResult {
+    let row = graph.symbol(id);
+    let meta = row.metadata.as_ref();
+    let is_test = meta
+        .and_then(|m| m.get("is_test"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let test_role = meta
+        .and_then(|m| m.get("test_role"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| test_subrole(&row.path).to_string());
+    let role = if is_test {
+        "test"
+    } else {
+        classify_role(&row.path, &row.language)
+    };
+    SymbolSearchResult {
+        id: row.id.clone(),
+        name: row.name.clone(),
+        signature: row.signature.clone().unwrap_or_default(),
+        doc_comment: row.doc_comment.clone().unwrap_or_default(),
+        file_path: row.path.clone(),
+        kind: row.kind.to_string(),
+        language: row.language.clone(),
+        start_line: row.span.start_line,
+        score,
+        role: role.to_string(),
+        test_role,
+    }
+}
+
+/// Vector hits for `tagged` from the snapshot's vector set, best first. A set
+/// with no vectors, or one built by another encoder, is the not-ready outcome:
+/// `Required` fails closed, every other mode yields no semantic hits.
+pub fn vector_search(
     snapshot: &Snapshot,
     tagged: &TaggedQueryEmbedding,
+    limit: usize,
     semantic_mode: SemanticMode,
 ) -> Result<Vec<SymbolSearchResult>> {
-    if snapshot.vectors().is_empty() && semantic_mode == SemanticMode::Required {
+    let vectors = snapshot.vectors();
+    let ready = vectors
+        .encoder()
+        .is_some_and(|encoder| encoder.id == tagged.encoder_key)
+        && !vectors.is_empty();
+    if !ready {
+        if semantic_mode == SemanticMode::Required {
+            anyhow::bail!(
+                "SEMANTICS_NOT_READY: no vectors for encoder '{}' in this snapshot",
+                tagged.encoder_key
+            );
+        }
+        return Ok(Vec::new());
+    }
+    if tagged.vector.len() != vectors.dims() {
         anyhow::bail!(
-            "SEMANTICS_NOT_READY: no vectors for encoder '{}' in this snapshot",
-            tagged.encoder_key
+            "query vector has {} dimensions, the snapshot's vectors have {}",
+            tagged.vector.len(),
+            vectors.dims()
         );
     }
-    Ok(Vec::new())
+    let graph = snapshot.graph();
+    Ok(vectors
+        .scan(&tagged.vector, limit)
+        .into_iter()
+        .map(|(id, score)| symbol_search_result(graph, id, score.max(0.0)))
+        .collect())
 }
 
 /// Hybrid search over `snapshot` using a tagged query embedding with explicit semantic mode.
@@ -133,7 +192,7 @@ pub fn hybrid_search_with_tagged_embedding(
         }
     };
 
-    let semantic_results = match vector_hits(snapshot, &tagged, semantic_mode) {
+    let semantic_results = match vector_search(snapshot, &tagged, tantivy_limit, semantic_mode) {
         Ok(results) => results,
         Err(e) => {
             if semantic_mode == SemanticMode::Required {

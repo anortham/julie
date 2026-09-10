@@ -20,7 +20,7 @@ use crate::search::trace::{
 
 pub use self::types::{SearchExecutionParams, SearchExecutionWorkspace};
 
-use self::semantic::{run_symbol_backend_pass, snapshot_has_embeddings};
+use self::semantic::{SymbolPassRequest, run_symbol_backend_pass, snapshot_has_embeddings};
 use self::unified_pass::run_unified_pass;
 
 pub async fn execute_search(
@@ -100,8 +100,22 @@ pub async fn execute_search_unified(
             .await
         {
             if snapshot_has_embeddings(snapshot) {
-                drop(provider);
-                let mut execution = run_symbol_backend_pass(params.backend.value, snapshot)?;
+                let mode = params
+                    .semantic_mode
+                    .unwrap_or(julie_core::embeddings_contract::SemanticMode::Auto);
+                let request = SymbolPassRequest {
+                    backend: params.backend.value,
+                    query: params.query,
+                    language: params.language,
+                    file_pattern: normalized_file_pattern.as_deref(),
+                    limit: params.limit,
+                    exclude_tests: effective_exclude_tests,
+                    workspace_id: &workspace.workspace_id,
+                    provider,
+                    semantic_mode: mode,
+                    budget: params.budget.clone().unwrap_or_default(),
+                };
+                let mut execution = run_symbol_backend_pass(request, snapshot).await?;
                 execution.trace.or_disjunction_detected =
                     query::clean_or_disjunction_terms(params.query).is_some();
                 return Ok(execution);
@@ -214,10 +228,24 @@ pub async fn execute_search_unified(
 
     if execution.hits.is_empty()
         && should_try_semantic_zero_hit_fallback(&params, normalized_file_pattern.as_deref())
-        && handler.embedding_provider().await.is_some()
+        && let Some(provider) = handler.embedding_provider().await
         && snapshot_has_embeddings(snapshot)
     {
-        let mut semantic_execution = run_symbol_backend_pass(SearchBackend::Semantic, snapshot)?;
+        let request = SymbolPassRequest {
+            backend: SearchBackend::Semantic,
+            query: params.query,
+            language: params.language,
+            file_pattern: None,
+            limit: params.limit,
+            exclude_tests: effective_exclude_tests,
+            workspace_id: &workspace.workspace_id,
+            provider,
+            semantic_mode: params
+                .semantic_mode
+                .unwrap_or(julie_core::embeddings_contract::SemanticMode::Auto),
+            budget: params.budget.clone().unwrap_or_default(),
+        };
+        let mut semantic_execution = run_symbol_backend_pass(request, snapshot).await?;
         if !semantic_execution.hits.is_empty() {
             semantic_execution.trace.strategy_id = "fast_search_semantic_fallback".to_string();
             semantic_execution.trace.or_disjunction_detected =

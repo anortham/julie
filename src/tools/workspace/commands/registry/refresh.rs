@@ -100,22 +100,13 @@ impl ManageWorkspaceTool {
                             .await
                         } else {
                             // No files changed, but check for missing embeddings.
-                            let needs_catchup = result.symbols_total > 0 && {
-                                let ws_id = workspace_id.to_string();
-                                let count = match handler.workspace_db_file_path_for(&ws_id).await {
-                                    Ok(path) if path.exists() => {
-                                        tokio::task::spawn_blocking(move || {
-                                            crate::database::SymbolDatabase::new(path)
-                                                .and_then(|db| db.embedding_count())
-                                                .unwrap_or(0)
-                                        })
-                                        .await
-                                        .unwrap_or(0)
-                                    }
-                                    _ => 0,
-                                };
-                                count == 0
-                            };
+                            let needs_catchup = result.symbols_total > 0
+                                && crate::tools::workspace::indexing::embeddings::workspace_vector_count(
+                                    handler,
+                                    workspace_id,
+                                )
+                                .await
+                                    == 0;
                             let task_already_running = {
                                 let tasks = handler.embedding_tasks.lock().await;
                                 tasks.contains_key(workspace_id)

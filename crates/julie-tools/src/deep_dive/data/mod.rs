@@ -147,7 +147,7 @@ pub fn build_symbol_context_with_semantics(
     };
 
     let similar = if allow_similarity && (depth == "full" || depth == "context") {
-        build_similar(snapshot)
+        build_similar(snapshot, id)
     } else {
         vec![]
     };

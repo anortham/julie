@@ -1,7 +1,7 @@
 pub mod batch_resolver;
-pub mod embedding_deps;
 pub mod embedding_metadata;
 pub mod embedding_metadata_enrichment;
+pub mod embedding_pipeline;
 pub mod embedding_sidecar_protocol;
 pub mod extractor_migration;
 #[cfg(unix)]

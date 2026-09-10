@@ -6,14 +6,16 @@ use std::path::Path;
 
 use anyhow::Result;
 use julie_extractors::{IdentifierKind, RelationshipKind, SymbolKind, Visibility};
-use rusqlite::{Connection, Row, ToSql, params};
+use rusqlite::{Connection, OptionalExtension, Row, ToSql, params};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::rows::{
-    ComplexityRow, DiagnosticRow, IdentifierRow, PathRow, RelationshipRow, SourceRegionRow, Span,
-    StructuralFactQuery, StructuralFactRow, SymbolRow, TypeRow, diagnostic_kind_from_str,
+    ComplexityRow, DiagnosticRow, EncoderRow, IdentifierRow, PathRow, RelationshipRow,
+    SourceRegionRow, Span, StructuralFactQuery, StructuralFactRow, SymbolRow, TypeRow, VectorRow,
+    diagnostic_kind_from_str,
 };
+use crate::writer::encoder_row;
 
 pub struct FactsReader<'a> {
     conn: &'a Connection,
@@ -348,6 +350,53 @@ impl<'a> FactsReader<'a> {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// The encoder row, or `None` before any vectors were written.
+    pub fn encoder(&self) -> Result<Option<EncoderRow>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id, model_checksum, dimensions, pooling, normalization, instruction_policy FROM encoder",
+                [],
+                encoder_row,
+            )
+            .optional()?)
+    }
+
+    /// Every vector row for `encoder_id`, including rows for blobs no path
+    /// holds right now (a reverted file reuses them).
+    pub fn vectors_for_encoder(&self, encoder_id: &str) -> Result<Vec<VectorRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT blob_hash, symbol_ordinal, vector FROM vectors WHERE encoder_id = ?1 ORDER BY blob_hash, symbol_ordinal",
+        )?;
+        let rows = stmt.query_map([encoder_id], |row| {
+            let bytes: Vec<u8> = row.get(2)?;
+            Ok(VectorRow {
+                blob_hash: row.get(0)?,
+                symbol_ordinal: row.get(1)?,
+                vector: VectorRow::vector_from_bytes(&bytes),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Vectors whose blob some path holds: the count the snapshot can serve.
+    pub fn vector_count(&self) -> Result<u64> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM vectors v WHERE EXISTS (SELECT 1 FROM paths p WHERE p.blob_hash = v.blob_hash)",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u64)
+    }
+
+    /// Symbols whose blob some path holds.
+    pub fn symbol_count(&self) -> Result<u64> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM symbols s WHERE EXISTS (SELECT 1 FROM paths p WHERE p.blob_hash = s.blob_hash)",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u64)
     }
 
     pub fn blob_count(&self) -> Result<u64> {

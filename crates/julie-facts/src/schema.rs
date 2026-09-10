@@ -12,8 +12,8 @@ const SPAN_COLUMNS: &str = "start_line INTEGER NOT NULL,
     start_byte INTEGER NOT NULL,
     end_byte INTEGER NOT NULL";
 
-/// Every table and index, in creation order. `vectors` and `encoder` arrive
-/// with semantics (Task 10); `test_verdicts` stays empty until CT lands.
+/// Every table and index, in creation order. `test_verdicts` stays empty
+/// until CT lands.
 pub fn create_schema(conn: &Connection) -> Result<()> {
     let ddl = format!(
         "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -158,6 +158,21 @@ CREATE TABLE diagnostics (
     message TEXT,
     {SPAN_COLUMNS},
     PRIMARY KEY (blob_hash, ordinal)
+);
+CREATE TABLE encoder (
+    id TEXT PRIMARY KEY,
+    model_checksum TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    pooling TEXT NOT NULL,
+    normalization TEXT NOT NULL,
+    instruction_policy TEXT NOT NULL
+);
+CREATE TABLE vectors (
+    blob_hash TEXT NOT NULL REFERENCES blobs(hash),
+    symbol_ordinal INTEGER NOT NULL,
+    encoder_id TEXT NOT NULL,
+    vector BLOB NOT NULL,
+    PRIMARY KEY (blob_hash, symbol_ordinal, encoder_id)
 );
 CREATE TABLE test_verdicts (
     blob_hash TEXT NOT NULL REFERENCES blobs(hash),

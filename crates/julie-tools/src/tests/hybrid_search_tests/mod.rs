@@ -1,7 +1,8 @@
-//! Hybrid search test modules.
+//! Hybrid search test modules over a snapshot fixture.
 
-mod knn_conversion;
-mod lock_free_embed;
 mod orchestrator;
+mod query_embedding;
 mod rrf_merge;
+mod support;
+mod symbol_results;
 mod weight_profile_wiring;

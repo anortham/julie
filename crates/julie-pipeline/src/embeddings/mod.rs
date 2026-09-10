@@ -8,7 +8,7 @@
 //!
 //! - [`EmbeddingProvider`] — trait abstracting embedding generation
 //! - [`NativeEmbeddingProvider`] — production implementation over the native `julie-semantic-sidecar`
-//! - Vector storage lives in `database::vectors` (sqlite-vec)
+//! - Vectors are fact rows in `facts.sqlite`, served from the snapshot vector set
 
 pub mod factory;
 pub mod init;

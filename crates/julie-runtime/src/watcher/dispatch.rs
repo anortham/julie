@@ -20,9 +20,9 @@ pub(crate) async fn dispatch_file_event(
     event: FileChangeEvent,
     db: &Arc<StdMutex<SymbolDatabase>>,
     search_index: &Option<Arc<julie_index::search::SearchIndex>>,
-    embedding_provider: &Option<Arc<dyn julie_pipeline::embeddings::EmbeddingProvider>>,
+    _embedding_provider: &Option<Arc<dyn julie_pipeline::embeddings::EmbeddingProvider>>,
     workspace_root: &Path,
-    lang_configs: &Arc<julie_index::search::language_config::LanguageConfigs>,
+    _lang_configs: &Arc<julie_index::search::language_config::LanguageConfigs>,
     tantivy_dirty: &Arc<StdMutex<std::collections::HashSet<String>>>,
     indexing_runtime: &SharedIndexingRuntime,
     guard: &MutationGuard<'_>,
@@ -70,25 +70,6 @@ pub(crate) async fn dispatch_file_event(
                             .record_repair_reason(reason);
                         warn!(%reason, "Watcher repair needed after file change");
                     }
-                    // Fix E: wrap blocking IPC call in spawn_blocking
-                    if let (Some(provider), Some(rel)) = (embedding_provider, &rel_path) {
-                        let db_clone = Arc::clone(db);
-                        let provider_clone = Arc::clone(provider);
-                        let rel_owned = rel.clone();
-                        let lc = Arc::clone(lang_configs);
-                        if let Err(e) = tokio::task::spawn_blocking(move || {
-                            julie_pipeline::embeddings::pipeline::reembed_symbols_for_file(
-                                &db_clone,
-                                provider_clone.as_ref(),
-                                &rel_owned,
-                                Some(lc.as_ref()),
-                            )
-                        })
-                        .await
-                        {
-                            warn!("Incremental embedding task panicked: {}", e);
-                        }
-                    }
                 }
             }
             None
@@ -107,13 +88,6 @@ pub(crate) async fn dispatch_file_event(
                 return Some(event.path);
             }
 
-            if let Some(ref rel) = relative_for_embed {
-                if let Ok(mut db_guard) = db.lock() {
-                    if let Err(e) = db_guard.delete_embeddings_for_file(rel) {
-                        warn!("Failed to delete embeddings for {}: {}", rel, e);
-                    }
-                }
-            }
             if let Err(e) = handlers::handle_file_deleted_static(
                 event.path,
                 db,
@@ -170,9 +144,6 @@ pub(crate) async fn dispatch_file_event(
                         outcome.repair_reason != Some(IndexingRepairReason::ExtractorFailure);
                     if source_retired {
                         if let Some(ref rel_from) = rel_from {
-                            if let Ok(mut db_guard) = db.lock() {
-                                let _ = db_guard.delete_embeddings_for_file(rel_from);
-                            }
                             // Clear old path from dirty-retry set only after the source
                             // has been retired successfully.
                             tantivy_dirty
@@ -203,28 +174,6 @@ pub(crate) async fn dispatch_file_event(
                             .record_repair_reason(reason);
                         warn!(%reason, "Watcher repair needed after file rename");
                     }
-                }
-            }
-            if let (Some(provider), Ok(rel_to)) = (
-                embedding_provider,
-                julie_core::paths::to_relative_unix_style(&to, workspace_root),
-            ) {
-                // Fix E: wrap blocking IPC call in spawn_blocking
-                let db_clone = Arc::clone(db);
-                let provider_clone = Arc::clone(provider);
-                let rel_owned = rel_to.clone();
-                let lc = Arc::clone(lang_configs);
-                if let Err(e) = tokio::task::spawn_blocking(move || {
-                    julie_pipeline::embeddings::pipeline::reembed_symbols_for_file(
-                        &db_clone,
-                        provider_clone.as_ref(),
-                        &rel_owned,
-                        Some(lc.as_ref()),
-                    )
-                })
-                .await
-                {
-                    warn!("Incremental embedding task panicked for rename: {}", e);
                 }
             }
             None

@@ -467,13 +467,11 @@ fn test_format_semantic_fallback_empty() {
 }
 
 #[tokio::test]
-#[ignore = "the zero-match fallback embeds only when the snapshot carries vectors; Task 10 fills VectorSet and lifts this"]
 async fn test_fast_refs_semantic_fallback_offloaded_to_spawn_blocking() {
-    use julie_core::database::SymbolDatabase;
     use julie_core::embeddings_contract::{
         DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
     };
-    use julie_test_support::FakeToolContext;
+    use julie_test_support::{FakeToolContext, SnapshotFixture};
     use std::sync::mpsc::channel;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -517,17 +515,20 @@ async fn test_fast_refs_semantic_fallback_offloaded_to_spawn_blocking() {
     }
 
     let temp = tempfile::tempdir().unwrap();
-    let db_path = temp.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
-
-    let identity = EncoderIdentity::mock("test-mock", 384);
-    let key = identity.storage_key().unwrap();
-    let gen_id = db.begin_embedding_generation(&key, 0, 384).unwrap();
-    db.publish_embedding_generation(gen_id, 0, 0, 0).unwrap();
+    std::fs::write(temp.path().join("lib.rs"), "pub fn lonely_symbol() {}\n").unwrap();
+    let fixture = SnapshotFixture::from_tree(temp.path()).unwrap();
+    fixture
+        .store_named_vectors(
+            &EncoderIdentity::mock("test-mock", 384),
+            &[("lonely_symbol", vec![0.1_f32; 384])],
+        )
+        .unwrap();
 
     let provider = Arc::new(ThreadRecordingProvider { tx: Mutex::new(tx) });
     let context = FakeToolContext::new()
-        .with_primary_db_path(db_path)
+        .with_workspace_id("primary")
+        .with_primary_root(fixture.root().to_path_buf())
+        .with_snapshot_fixture(fixture)
         .with_embedding_provider(provider);
 
     let caller_thread_id = std::thread::current().id();

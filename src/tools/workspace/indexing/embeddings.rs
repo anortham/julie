@@ -1,19 +1,18 @@
 //! Embedding helpers for workspace indexing.
 //!
 //! Spawns the embedding pipeline for any registered workspace (primary or
-//! reference) using the active embedding provider and a fresh database
-//! connection.
+//! reference) using the active embedding provider and the workspace's
+//! checkout store.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use tracing::{debug, info, warn};
 
-use crate::database::SymbolDatabase;
 use crate::handler::JulieServerHandler;
 
 /// Outcome of `spawn_workspace_embedding`.
 ///
-/// `symbols` is the count of symbols in the target workspace DB. Callers use
+/// `symbols` is the count of symbols in the target workspace snapshot. Callers use
 /// it to format response messages; `0` means embedding was skipped.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EmbeddingOutcome {
@@ -23,6 +22,24 @@ pub(crate) struct EmbeddingOutcome {
 impl EmbeddingOutcome {
     pub(crate) fn skipped() -> Self {
         Self { symbols: 0 }
+    }
+}
+
+/// Vectors bound to the workspace's current snapshot; zero when the store
+/// cannot be opened.
+pub(crate) async fn workspace_vector_count(
+    handler: &JulieServerHandler,
+    workspace_id: &str,
+) -> u64 {
+    let Ok(root) = handler.get_workspace_root_for_target(workspace_id).await else {
+        return 0;
+    };
+    match handler
+        .checkout_store_for_workspace(workspace_id, &root)
+        .await
+    {
+        Ok(store) => store.status().vector_count,
+        Err(_) => 0,
     }
 }
 
@@ -125,43 +142,24 @@ pub(crate) async fn spawn_workspace_embedding(
         }
     };
 
-    let db_path = match handler.workspace_db_file_path_for(&workspace_id).await {
-        Ok(path) => path,
+    let root = match handler.get_workspace_root_for_target(&workspace_id).await {
+        Ok(root) => root,
         Err(e) => {
-            warn!("Failed to resolve workspace DB path for embedding: {e}");
+            warn!("Failed to resolve workspace root for embedding: {e}");
             return EmbeddingOutcome::skipped();
         }
     };
-    if !db_path.exists() {
-        warn!("Target workspace DB not found at {}", db_path.display());
-        return EmbeddingOutcome::skipped();
-    }
-
-    // Open a fresh database connection in a blocking context
-    let db = match tokio::task::spawn_blocking({
-        let path = db_path.clone();
-        move || SymbolDatabase::new(path)
-    })
-    .await
+    let store = match handler
+        .checkout_store_for_workspace(&workspace_id, &root)
+        .await
     {
-        Ok(Ok(db)) => db,
-        Ok(Err(e)) => {
-            warn!("Failed to open workspace DB for embedding: {e}");
-            return EmbeddingOutcome::skipped();
-        }
+        Ok(store) => store,
         Err(e) => {
-            warn!("Workspace DB open task panicked: {e}");
+            warn!("Failed to open workspace store for embedding: {e}");
             return EmbeddingOutcome::skipped();
         }
     };
-
-    // Get symbol count before wrapping in Arc<Mutex> and spawning
-    let total_symbols = db
-        .get_stats()
-        .map(|s| s.total_symbols as usize)
-        .unwrap_or(0);
-
-    let db_arc = Arc::new(Mutex::new(db));
+    let total_symbols = store.current().graph().len();
 
     // Cancel and abort any previously running embedding pipeline for this workspace.
     // Setting the flag stops the spawn_blocking pipeline between batches;
@@ -191,7 +189,7 @@ pub(crate) async fn spawn_workspace_embedding(
     let handle = tokio::spawn(async move {
         super::pipeline_runner::run_pipeline_body(
             provider,
-            db_arc,
+            store,
             workspace_id,
             cancel_for_pipeline,
             self_cancel_flag,
