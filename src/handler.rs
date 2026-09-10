@@ -46,7 +46,7 @@ use crate::workspace::startup_hint::WorkspaceStartupSource;
 use julie_index::checkout_store::{CheckoutStore, STORE_DIR};
 use tokio::sync::RwLock;
 
-use self::tool_metrics::{MetricsTask, run_metrics_writer};
+use self::tool_metrics::{MetricsTask, run_metrics_writer, source_bytes_for_paths};
 use crate::tools::metrics::session::{SessionMetrics, extract_source_paths};
 use crate::tools::workspace::commands::ManageWorkspaceOperation;
 
@@ -1071,22 +1071,16 @@ impl JulieServerHandler {
             return None;
         }
         let binding = binding?;
-        let snapshot = self
-            .primary_workspace_snapshot_from_binding_paths(binding)
+        let store = self
+            .checkout_store_for_workspace(&binding.workspace_id, &binding.workspace_root)
             .await
             .ok()?;
-        let database = Arc::clone(&snapshot.database);
+        let root = binding.workspace_root.clone();
         let paths = source_file_paths.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let path_refs: Vec<&str> = paths.iter().map(String::as_str).collect();
-            let db = database
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            db.get_total_file_sizes(&path_refs).ok()
-        })
-        .await
-        .ok()
-        .flatten()
+        tokio::task::spawn_blocking(move || source_bytes_for_paths(&store, &root, &paths))
+            .await
+            .ok()
+            .flatten()
     }
 
     /// Extract output byte count from a CallToolResult.

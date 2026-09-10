@@ -1,6 +1,8 @@
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use julie_index::checkout_store::CheckoutStore;
 use serde_json::json;
 use tokio::sync::RwLock;
 use tracing::warn;
@@ -9,6 +11,37 @@ use crate::dashboard::state::DashboardEvent;
 use crate::handler::{JulieServerHandler, PrimaryWorkspaceBinding};
 use crate::tools::metrics::session::{SessionMetrics, ToolCallReport, ToolKind};
 use crate::workspace::JulieWorkspace;
+
+/// Indexed size for `paths`: `blobs.byte_len` when the path is in facts, else
+/// the on-disk file size under `root`.
+pub(crate) fn source_bytes_for_paths(
+    store: &CheckoutStore,
+    root: &Path,
+    paths: &[String],
+) -> Option<u64> {
+    if paths.is_empty() {
+        return None;
+    }
+    let facts = store.current().facts().ok()?;
+    let conn = facts.conn();
+    let mut total = 0u64;
+    for path in paths {
+        let from_facts: rusqlite::Result<i64> = conn.query_row(
+            "SELECT b.byte_len FROM paths p JOIN blobs b ON b.hash = p.blob_hash WHERE p.path = ?1",
+            [path.as_str()],
+            |row| row.get(0),
+        );
+        match from_facts {
+            Ok(n) => total += n as u64,
+            Err(_) => {
+                total += std::fs::metadata(root.join(path))
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+            }
+        }
+    }
+    Some(total)
+}
 
 /// Data for a single metrics write, sent via bounded channel to the background writer.
 /// Avoids spawning a new task per tool call.
@@ -36,13 +69,13 @@ pub(crate) async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<Metri
         let resolved_workspace = task.workspace.read().await.clone();
 
         if let Some(ws) = resolved_workspace.as_ref() {
+            if source_bytes.is_none() {
+                if let Some(store) = ws.store.as_ref() {
+                    source_bytes = source_bytes_for_paths(store, &ws.root, &task.source_file_paths);
+                }
+            }
             if let Some(db_arc) = &ws.db {
                 if let Ok(db) = db_arc.lock() {
-                    if source_bytes.is_none() && !task.source_file_paths.is_empty() {
-                        let path_refs: Vec<&str> =
-                            task.source_file_paths.iter().map(|s| s.as_str()).collect();
-                        source_bytes = db.get_total_file_sizes(&path_refs).ok();
-                    }
                     let _ = db.insert_tool_call_with_input_bytes(
                         &task.session_id,
                         &task.tool_name,
