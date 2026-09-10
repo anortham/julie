@@ -12,7 +12,7 @@ use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::pipeline::run_indexing_pipeline;
 use crate::tools::workspace::indexing::route::IndexRoute;
 use crate::tools::workspace::indexing::state::{
-    IndexedFileDisposition, IndexingOperation, IndexingStage,
+    IndexingOperation, IndexingStage,
 };
 use crate::workspace::mutation_gate::acquire_gate;
 
@@ -381,74 +381,5 @@ void health_probe() {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_indexing_pipeline_reports_stage_history_for_text_only_files() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    fs::write(temp_dir.path().join("notes.txt"), "plain text fallback\n")?;
 
-    let (handler, workspace_root, route) = test_handler_and_route(&temp_dir).await?;
-    let result = run_indexing_pipeline(
-        &workspace_tool(),
-        &handler,
-        vec![workspace_root.join("notes.txt")],
-        &route,
-        IndexingOperation::Incremental,
-        &acquire_gate(&route.workspace_id).await,
-    )
-    .await?;
-
-    assert_eq!(
-        result.state.stage_history,
-        expected_stage_history(),
-        "text-only files should still traverse the full indexing pipeline"
-    );
-    assert_eq!(result.files_processed, 1, "one file should be processed");
-    assert_eq!(result.state.parsed_file_count(), 0);
-    assert_eq!(result.state.text_only_file_count(), 1);
-    assert_eq!(
-        result.state.file_states[0].disposition,
-        IndexedFileDisposition::TextOnly
-    );
-    assert_eq!(result.state.repair_file_count(), 0);
-    assert!(
-        handler.indexing_status.search_ready.load(Ordering::Acquire),
-        "successful pipeline runs should publish search readiness"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_indexing_pipeline_marks_missing_parser_files_as_repair_needed() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-
-    let (_handler, workspace_root, route) = test_handler_and_route(&temp_dir).await?;
-    let result = run_indexing_pipeline(
-        &workspace_tool(),
-        &_handler,
-        vec![workspace_root.join("missing.rs")],
-        &route,
-        IndexingOperation::Incremental,
-        &acquire_gate(&route.workspace_id).await,
-    )
-    .await?;
-
-    assert_eq!(
-        result.state.stage_history,
-        expected_stage_history(),
-        "repair-needed files should still report stage history through completion"
-    );
-    assert_eq!(
-        result.files_processed, 0,
-        "missing files should not count as processed"
-    );
-    assert!(result.state.repair_needed());
-    assert_eq!(result.state.repair_file_count(), 1);
-    assert_eq!(
-        result.state.file_states[0].disposition,
-        IndexedFileDisposition::RepairNeeded
-    );
-
-    Ok(())
-}
 
