@@ -132,7 +132,7 @@ async fn primary_store(
         .unwrap()
         .expect("workspace should be initialized")
         .store
-        .expect("workspace store should exist")
+        .clone()
 }
 
 async fn embedding_count_for_primary(handler: &JulieServerHandler) -> i64 {

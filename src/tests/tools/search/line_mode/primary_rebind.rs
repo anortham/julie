@@ -114,172 +114,6 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_fast_search_reference_db_cache_tracks_primary_root_changes() -> Result<()> {
-    use crate::database::FactsStore;
-    use crate::database::types::FileInfo;
-
-    let temp_dir = TempDir::new()?;
-    let first_root = temp_dir.path().join("first-root");
-    let second_root = temp_dir.path().join("second-root");
-    fs::create_dir_all(first_root.join(".git"))?;
-    fs::create_dir_all(second_root.join(".git"))?;
-
-    let handler = JulieServerHandler::new(first_root.clone()).await?;
-    handler
-        .initialize_workspace_with_force(Some(first_root.to_string_lossy().to_string()), true)
-        .await?;
-
-    let ref_id = "shared-ref";
-    let first_db_path = first_root
-        .join(".julie")
-        .join("indexes")
-        .join(ref_id)
-        .join("db")
-        .join("symbols.db");
-    fs::create_dir_all(first_db_path.parent().expect("first db parent"))?;
-    let mut first_db = FactsStore::new(&first_db_path)?;
-    let first_file = FileInfo {
-        path: "a.rs".to_string(),
-        language: "rust".to_string(),
-        hash: "hash-a".to_string(),
-        size: 1,
-        last_modified: 1,
-        last_indexed: 1,
-        symbol_count: 1,
-        line_count: 1,
-        content: Some("fn alpha() {}".to_string()),
-    };
-    let first_symbol = Symbol {
-        extracted: julie_extractors::Symbol {
-            id: "alpha-id".to_string(),
-            name: "alpha".to_string(),
-            kind: SymbolKind::Function,
-            language: "rust".to_string(),
-            file_path: "a.rs".to_string(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 1,
-            end_column: 12,
-            start_byte: 0,
-            end_byte: 12,
-            signature: None,
-            doc_comment: None,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
-        },
-        code_context: None,
-    };
-    first_db.bulk_store_fresh_atomic(&[first_file], &[first_symbol], &[], &[], &[], ref_id)?;
-
-    let first_db_handle = handler.get_database_for_workspace(ref_id).await?;
-    let first_count = first_db_handle
-        .lock()
-        .unwrap()
-        .count_symbols_for_workspace()?;
-    assert_eq!(first_count, 1);
-
-    handler
-        .initialize_workspace_with_force(Some(second_root.to_string_lossy().to_string()), true)
-        .await?;
-
-    let second_db_path = second_root
-        .join(".julie")
-        .join("indexes")
-        .join(ref_id)
-        .join("db")
-        .join("symbols.db");
-    fs::create_dir_all(second_db_path.parent().expect("second db parent"))?;
-    let mut second_db = FactsStore::new(&second_db_path)?;
-    let second_file = FileInfo {
-        path: "b.rs".to_string(),
-        language: "rust".to_string(),
-        hash: "hash-b".to_string(),
-        size: 1,
-        last_modified: 1,
-        last_indexed: 1,
-        symbol_count: 2,
-        line_count: 2,
-        content: Some("fn beta() {}\nfn gamma() {}".to_string()),
-    };
-    let second_symbols = vec![
-        Symbol {
-            extracted: julie_extractors::Symbol {
-                id: "beta-id".to_string(),
-                name: "beta".to_string(),
-                kind: SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: "b.rs".to_string(),
-                start_line: 1,
-                start_column: 0,
-                end_line: 1,
-                end_column: 11,
-                start_byte: 0,
-                end_byte: 11,
-                signature: None,
-                doc_comment: None,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: None,
-        },
-        Symbol {
-            extracted: julie_extractors::Symbol {
-                id: "gamma-id".to_string(),
-                name: "gamma".to_string(),
-                kind: SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: "b.rs".to_string(),
-                start_line: 2,
-                start_column: 0,
-                end_line: 2,
-                end_column: 12,
-                start_byte: 13,
-                end_byte: 25,
-                signature: None,
-                doc_comment: None,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: None,
-        },
-    ];
-    second_db.bulk_store_fresh_atomic(&[second_file], &second_symbols, &[], &[], &[], ref_id)?;
-
-    let second_db_handle = handler.get_database_for_workspace(ref_id).await?;
-    let second_count = second_db_handle
-        .lock()
-        .unwrap()
-        .count_symbols_for_workspace()?;
-    assert_eq!(
-        second_count, 2,
-        "reference db cache should follow the new primary root anchor instead of reusing the old cached handle"
-    );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_reference_indexing_uses_rebound_primary_storage_root() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let first_root = temp_dir.path().join("first-root");
@@ -318,14 +152,12 @@ async fn test_fast_search_reference_indexing_uses_rebound_primary_storage_root()
         .join(".julie")
         .join("indexes")
         .join(&reference_id)
-        .join("db")
-        .join("symbols.db");
+        .join("facts.sqlite");
     let first_db_path = first_root
         .join(".julie")
         .join("indexes")
         .join(&reference_id)
-        .join("db")
-        .join("symbols.db");
+        .join("facts.sqlite");
 
     assert!(
         second_db_path.exists(),

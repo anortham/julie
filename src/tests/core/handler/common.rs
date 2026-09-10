@@ -3,8 +3,8 @@
 // this whole file with `pub use common::*;`).
 
 pub(crate) use crate::dashboard::state::DashboardEvent;
-pub(crate) use crate::database::types::FileInfo;
 pub(crate) use crate::handler::{JulieServerHandler, metrics_db_path_for_workspace};
+pub(crate) use crate::registry::database::DaemonDatabase;
 pub(crate) use crate::mcp_compat::CallToolResponseExt;
 pub(crate) use crate::tools::metrics::session::ToolCallReport;
 pub(crate) use anyhow::Result;
@@ -25,24 +25,26 @@ pub fn json_object(value: Value) -> rmcp::model::JsonObject {
         .clone()
 }
 
+pub fn attach_daemon_db(handler: &mut JulieServerHandler, dir: &std::path::Path) -> Result<()> {
+    handler.daemon_db = Some(Arc::new(DaemonDatabase::open(&dir.join("registry.db"))?));
+    Ok(())
+}
+
 pub async fn latest_tool_metric(
     handler: &JulieServerHandler,
     tool_name: &str,
 ) -> Result<(i64, serde_json::Value)> {
-    let db_arc = {
-        let workspace = handler.workspace.read().await;
-        workspace
-            .as_ref()
-            .and_then(|workspace| workspace.db.as_ref())
-            .expect("indexed workspace should have a database")
-            .clone()
-    };
+    let db = handler
+        .daemon_db
+        .as_ref()
+        .expect("handler should have registry.db for metrics")
+        .clone();
 
     tokio::time::timeout(std::time::Duration::from_secs(2), async {
         loop {
             let row = {
-                let db = db_arc.lock().expect("workspace db should lock");
-                let mut stmt = db.conn.prepare(
+                let conn = db.conn_for_test();
+                let mut stmt = conn.prepare(
                     "SELECT success, metadata
                      FROM tool_calls
                      WHERE tool_name = ?1

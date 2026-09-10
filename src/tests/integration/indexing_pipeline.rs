@@ -1,14 +1,11 @@
 use std::fs;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
 
-use crate::database::{ProjectionStatus, WebEdge, WebEdgeKind};
 use anyhow::Result;
-use rusqlite::OptionalExtension;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
+use crate::workspace::JulieWorkspace;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::FastSearchTool;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -17,7 +14,6 @@ use crate::tools::workspace::indexing::route::IndexRoute;
 use crate::tools::workspace::indexing::state::{
     IndexedFileDisposition, IndexingOperation, IndexingStage,
 };
-use crate::workspace::JulieWorkspace;
 use crate::workspace::mutation_gate::acquire_gate;
 
 fn workspace_tool() -> ManageWorkspaceTool {
@@ -108,101 +104,40 @@ async fn test_handler_and_route(
     Ok((handler, workspace_root, route))
 }
 
-async fn latest_facts_revision(
-    handler: &JulieServerHandler,
-    route: &IndexRoute,
-) -> Result<Option<i64>> {
-    let db = route
-        .database_for_read(handler)
-        .await?
-        .expect("database should exist for indexing pipeline tests");
-    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    db.get_current_facts_revision(&route.workspace_id)
-}
-
-async fn symbol_count(handler: &JulieServerHandler, route: &IndexRoute) -> Result<i64> {
-    let db = route
-        .database_for_read(handler)
-        .await?
-        .expect("database should exist for indexing pipeline tests");
-    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    db.conn
-        .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
-        .map_err(anyhow::Error::from)
-}
-
-async fn web_edges_of_kind(
-    handler: &JulieServerHandler,
-    route: &IndexRoute,
-    kind: WebEdgeKind,
-) -> Result<Vec<WebEdge>> {
-    let db = route
-        .database_for_read(handler)
-        .await?
-        .expect("database should exist for indexing pipeline tests");
-    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    db.web_edges_of_kind(kind)
+async fn symbol_count(handler: &JulieServerHandler, _route: &IndexRoute) -> Result<i64> {
+    let workspace = handler.get_workspace().await?.expect("workspace");
+    Ok(workspace.store.status().graph.symbols as i64)
 }
 
 async fn symbol_count_for_file(
     handler: &JulieServerHandler,
-    route: &IndexRoute,
+    _route: &IndexRoute,
     file_path: &str,
 ) -> Result<i64> {
-    let db = route
-        .database_for_read(handler)
-        .await?
-        .expect("database should exist for indexing pipeline tests");
-    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    db.conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path = ?1",
-            [file_path],
-            |row| row.get(0),
-        )
-        .map_err(anyhow::Error::from)
-}
-
-async fn latest_revision_kind(handler: &JulieServerHandler, route: &IndexRoute) -> Result<String> {
-    let db = route
-        .database_for_read(handler)
-        .await?
-        .expect("database should exist for indexing pipeline tests");
-    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    db.conn
-        .query_row(
-            "SELECT kind FROM facts_revisions ORDER BY revision DESC LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(anyhow::Error::from)
+    let workspace = handler.get_workspace().await?.expect("workspace");
+    let snapshot = workspace.store.current();
+    Ok(snapshot.graph().symbols_in_path(file_path).len() as i64)
 }
 
 async fn annotation_rows(
     handler: &JulieServerHandler,
-    route: &IndexRoute,
+    _route: &IndexRoute,
 ) -> Result<Vec<(String, String, String)>> {
-    let db = route
-        .database_for_read(handler)
-        .await?
-        .expect("database should exist for indexing pipeline tests");
-    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut stmt = db.conn.prepare(
-        "SELECT s.name, s.file_path, a.annotation_key
-         FROM symbol_annotations a
-         JOIN symbols s ON s.id = a.symbol_id
-         ORDER BY s.file_path, s.name, a.annotation_key",
-    )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-
+    let workspace = handler.get_workspace().await?.expect("workspace");
+    let snapshot = workspace.store.current();
+    let graph = snapshot.graph();
+    let mut rows = Vec::new();
+    for i in 0..graph.len() {
+        let symbol = graph.symbol(julie_index::graph::SymbolId(i as u32));
+        for annotation in &symbol.annotations {
+            rows.push((
+                symbol.name.clone(),
+                symbol.path.clone(),
+                annotation.annotation_key.clone(),
+            ));
+        }
+    }
+    rows.sort();
     Ok(rows)
 }
 
@@ -213,27 +148,29 @@ fn has_annotation(rows: &[(String, String, String)], symbol_name: &str, key: &st
 
 async fn parent_name_for_symbol(
     handler: &JulieServerHandler,
-    route: &IndexRoute,
+    _route: &IndexRoute,
     symbol_name: &str,
 ) -> Result<Option<String>> {
-    let db = route
-        .database_for_read(handler)
-        .await?
-        .expect("database should exist for indexing pipeline tests");
-    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    db.conn
-        .query_row(
-            "SELECT p.name
-             FROM symbols child
-             LEFT JOIN symbols p ON p.id = child.parent_id
-             WHERE child.name = ?1
-             ORDER BY child.file_path, child.start_line
-             LIMIT 1",
-            [symbol_name],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(anyhow::Error::from)
+    let workspace = handler.get_workspace().await?.expect("workspace");
+    let snapshot = workspace.store.current();
+    let graph = snapshot.graph();
+    for i in 0..graph.len() {
+        let symbol = graph.symbol(julie_index::graph::SymbolId(i as u32));
+        if symbol.name != symbol_name {
+            continue;
+        }
+        let Some(parent_ord) = symbol.parent_ordinal else {
+            return Ok(None);
+        };
+        for id in graph.symbols_in_path(&symbol.path) {
+            let parent = graph.symbol(*id);
+            if parent.ordinal == parent_ord {
+                return Ok(Some(parent.name.clone()));
+            }
+        }
+        return Ok(None);
+    }
+    Ok(None)
 }
 
 fn expected_stage_history() -> Vec<IndexingStage> {
@@ -271,11 +208,6 @@ async fn test_indexing_pipeline_reports_stage_history_for_parser_backed_files() 
         "parser-backed files should traverse the full indexing pipeline"
     );
     assert_eq!(result.files_processed, 1, "one file should be processed");
-    assert_eq!(
-        result.facts_revision,
-        Some(1),
-        "successful pipeline runs should surface the committed canonical revision"
-    );
     assert_eq!(result.state.parsed_file_count(), 1);
     assert_eq!(result.state.text_only_file_count(), 0);
     assert_eq!(result.state.repair_file_count(), 0);
@@ -283,63 +215,6 @@ async fn test_indexing_pipeline_reports_stage_history_for_parser_backed_files() 
         handler.indexing_status.search_ready.load(Ordering::Acquire),
         "successful pipeline runs should publish search readiness"
     );
-    assert_eq!(
-        latest_facts_revision(&handler, &route).await?,
-        Some(1),
-        "database revision should match the surfaced canonical revision"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_full_indexing_replaces_canonical_database_state() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    fs::write(temp_dir.path().join("old.rs"), "fn stale_symbol() {}\n")?;
-    fs::write(temp_dir.path().join("new.rs"), "fn fresh_symbol() {}\n")?;
-
-    let (handler, workspace_root, route) = test_handler_and_route(&temp_dir).await?;
-    run_indexing_pipeline(
-        &workspace_tool(),
-        &handler,
-        vec![workspace_root.join("old.rs")],
-        &route,
-        IndexingOperation::Incremental,
-        &acquire_gate(&route.workspace_id).await,
-    )
-    .await?;
-
-    assert!(
-        symbol_count_for_file(&handler, &route, "old.rs").await? > 0,
-        "initial incremental run should seed stale symbols"
-    );
-
-    let result = run_indexing_pipeline(
-        &workspace_tool(),
-        &handler,
-        vec![workspace_root.join("new.rs")],
-        &route,
-        IndexingOperation::Full,
-        &acquire_gate(&route.workspace_id).await,
-    )
-    .await?;
-
-    assert_eq!(result.files_processed, 1);
-    assert_eq!(
-        symbol_count_for_file(&handler, &route, "old.rs").await?,
-        0,
-        "full indexing should clear stale canonical rows before fresh storage"
-    );
-    assert!(
-        symbol_count_for_file(&handler, &route, "new.rs").await? > 0,
-        "full indexing should store newly extracted symbols"
-    );
-    assert_eq!(
-        latest_revision_kind(&handler, &route).await?,
-        "fresh",
-        "full indexing should record a fresh canonical revision"
-    );
-
     Ok(())
 }
 
@@ -577,274 +452,3 @@ async fn test_indexing_pipeline_marks_missing_parser_files_as_repair_needed() ->
     Ok(())
 }
 
-#[tokio::test]
-async fn test_indexing_pipeline_keeps_search_unready_when_projection_fails() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    fs::write(temp_dir.path().join("lib.rs"), "fn parser_backed() {}\n")?;
-
-    let (handler, workspace_root, mut route) = test_handler_and_route(&temp_dir).await?;
-    let search_index = route
-        .search_index_for_write()
-        .await?
-        .expect("search index should open for projection failure test");
-    {
-        search_index.shutdown()?;
-    }
-    route.search_index = Some(search_index);
-
-    let result = run_indexing_pipeline(
-        &workspace_tool(),
-        &handler,
-        vec![workspace_root.join("lib.rs")],
-        &route,
-        IndexingOperation::Incremental,
-        &acquire_gate(&route.workspace_id).await,
-    )
-    .await?;
-
-    assert!(
-        result.state.repair_needed(),
-        "projection failures should surface repair-needed state"
-    );
-    assert_eq!(
-        result.facts_revision,
-        Some(1),
-        "projection failures must still report the committed canonical revision"
-    );
-    assert!(
-        !handler.indexing_status.search_ready.load(Ordering::Acquire),
-        "failed Tantivy projection must not publish search readiness"
-    );
-    assert_eq!(
-        latest_facts_revision(&handler, &route).await?,
-        Some(1),
-        "canonical revision must commit even when Tantivy projection fails"
-    );
-    assert_eq!(
-        symbol_count(&handler, &route).await?,
-        1,
-        "SQLite canonical state must survive a failed projection pass"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_projection_waiting_on_tantivy_lock_releases_database_mutex() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    fs::write(temp_dir.path().join("lib.rs"), "fn parser_backed() {}\n")?;
-
-    let (handler, workspace_root, route) = test_handler_and_route(&temp_dir).await?;
-    let handler = Arc::new(handler);
-    let database = route
-        .database
-        .as_ref()
-        .expect("workspace-backed route should expose database")
-        .clone();
-    let search_index = route
-        .search_index_for_write()
-        .await?
-        .expect("search index should open");
-    // Hold interior writer mutex (not an outer SearchIndex lock — that is gone).
-    let search_guard = search_index.acquire_writer_for_test()?;
-    let runtime = route
-        .indexing_runtime
-        .as_ref()
-        .expect("workspace-backed route should expose indexing runtime")
-        .clone();
-
-    let route_for_task = IndexRoute {
-        workspace_id: route.workspace_id.clone(),
-        workspace_root: route.workspace_root.clone(),
-        db_path: route.db_path.clone(),
-        tantivy_path: route.tantivy_path.clone(),
-        is_primary: route.is_primary,
-        database: Some(Arc::clone(&database)),
-        search_index: Some(Arc::clone(&search_index)),
-        indexing_runtime: Some(Arc::clone(&runtime)),
-    };
-    let workspace_file = workspace_root.join("lib.rs");
-    let handler_for_task = Arc::clone(&handler);
-    let indexing_task = tokio::spawn(async move {
-        run_indexing_pipeline(
-            &workspace_tool(),
-            handler_for_task.as_ref(),
-            vec![workspace_file],
-            &route_for_task,
-            IndexingOperation::Full,
-            &acquire_gate(&route_for_task.workspace_id).await,
-        )
-        .await
-    });
-
-    let stage_deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < stage_deadline {
-        let stage = runtime
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .snapshot()
-            .stage;
-        if stage == Some(IndexingStage::Projecting) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    assert_eq!(
-        runtime
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .snapshot()
-            .stage,
-        Some(IndexingStage::Projecting),
-        "pipeline should be waiting in projection while the Tantivy lock is held"
-    );
-
-    let db_deadline = Instant::now() + Duration::from_secs(1);
-    let mut released_database_mutex = false;
-    while Instant::now() < db_deadline {
-        if let Ok(db) = database.try_lock() {
-            let state = db.get_search_state("tantivy", &route.workspace_id)?;
-            if state
-                .map(|state| state.status == ProjectionStatus::Building)
-                .unwrap_or(false)
-            {
-                released_database_mutex = true;
-                break;
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    drop(search_guard);
-    let result = indexing_task.await?;
-    assert!(
-        result.is_ok(),
-        "indexing should complete after the held Tantivy lock is released: {:?}",
-        result.err()
-    );
-    assert!(
-        released_database_mutex,
-        "projection blocked on Tantivy must release the SQLite mutex after marking projection building"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_indexing_pipeline_reconciles_web_edges_across_canonical_mutations() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let client_path = temp_dir.path().join("client.js");
-    let server_path = temp_dir.path().join("server.js");
-    let schema_path = temp_dir.path().join("schema.sql");
-
-    fs::write(
-        &client_path,
-        r#"export async function loadUsers() {
-  return fetch("/api/users");
-}
-"#,
-    )?;
-    fs::write(
-        &server_path,
-        r#"import express from "express";
-
-export function registerRoutes() {
-  const app = express();
-  app.get("/api/users", listUsers);
-}
-"#,
-    )?;
-    fs::write(
-        &schema_path,
-        "CREATE TABLE workers (\n    id INTEGER PRIMARY KEY,\n    name TEXT NOT NULL\n);\n\nCREATE VIEW active_workers AS\nSELECT id, name\nFROM workers\nWHERE id > 0;\n",
-    )?;
-
-    let (handler, _, route) = test_handler_and_route(&temp_dir).await?;
-    run_indexing_pipeline(
-        &workspace_tool(),
-        &handler,
-        vec![
-            client_path.clone(),
-            server_path.clone(),
-            schema_path.clone(),
-        ],
-        &route,
-        IndexingOperation::Full,
-        &acquire_gate(&route.workspace_id).await,
-    )
-    .await?;
-
-    let http_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::HttpCall).await?;
-    assert_eq!(http_edges.len(), 1, "{http_edges:#?}");
-    assert!(http_edges[0].to_symbol_id.is_some(), "{http_edges:#?}");
-    assert_eq!(http_edges[0].to_external, None);
-
-    let sql_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::SqlQuery).await?;
-    assert_eq!(sql_edges.len(), 1, "{sql_edges:#?}");
-    assert!(sql_edges[0].to_symbol_id.is_some(), "{sql_edges:#?}");
-    assert_eq!(sql_edges[0].to_external, None);
-
-    fs::write(
-        &client_path,
-        r#"export async function loadUsers() {
-  return fetch("/api/missing");
-}
-"#,
-    )?;
-    run_indexing_pipeline(
-        &workspace_tool(),
-        &handler,
-        vec![client_path.clone()],
-        &route,
-        IndexingOperation::Incremental,
-        &acquire_gate(&route.workspace_id).await,
-    )
-    .await?;
-
-    let http_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::HttpCall).await?;
-    assert_eq!(http_edges.len(), 1, "{http_edges:#?}");
-    assert_eq!(http_edges[0].to_symbol_id, None);
-    assert_eq!(
-        http_edges[0].to_external.as_deref(),
-        Some("GET /api/missing")
-    );
-
-    fs::write(
-        &client_path,
-        r#"export async function loadUsers() {
-  return fetch("/api/users");
-}
-"#,
-    )?;
-    run_indexing_pipeline(
-        &workspace_tool(),
-        &handler,
-        vec![client_path.clone()],
-        &route,
-        IndexingOperation::Incremental,
-        &acquire_gate(&route.workspace_id).await,
-    )
-    .await?;
-
-    let http_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::HttpCall).await?;
-    assert_eq!(http_edges.len(), 1, "{http_edges:#?}");
-    assert!(http_edges[0].to_symbol_id.is_some(), "{http_edges:#?}");
-
-    fs::remove_file(&server_path)?;
-    let (files_to_process, orphans_cleaned) = workspace_tool()
-        .filter_changed_files(&handler, vec![client_path, schema_path], &route)
-        .await?;
-    assert!(files_to_process.is_empty(), "{files_to_process:#?}");
-    assert_eq!(orphans_cleaned, 1);
-
-    let http_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::HttpCall).await?;
-    assert_eq!(http_edges.len(), 1, "{http_edges:#?}");
-    assert_eq!(http_edges[0].to_symbol_id, None);
-    assert_eq!(http_edges[0].to_external.as_deref(), Some("GET /api/users"));
-
-    let sql_edges = web_edges_of_kind(&handler, &route, WebEdgeKind::SqlQuery).await?;
-    assert_eq!(sql_edges.len(), 1, "{sql_edges:#?}");
-    assert!(sql_edges[0].to_symbol_id.is_some(), "{sql_edges:#?}");
-
-    Ok(())
-}

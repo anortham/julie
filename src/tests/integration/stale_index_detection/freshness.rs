@@ -65,12 +65,14 @@ async fn test_primary_workspace_repair_plan_reports_semantic_version_changed() -
         .set_modified(backdated)?;
 
     let workspace_id = handler.require_primary_workspace_identity()?;
-    let db = handler.primary_pooled_database().await?;
-    db.set_index_engine_version(
-        &workspace_id,
-        SEMANTIC_INDEX_ENGINE_COMPONENT,
-        "stale-test-version",
-    )?;
+    let index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
+    {
+        let conn = rusqlite::Connection::open(index_dir.join("facts.sqlite"))?;
+        conn.execute(
+            "UPDATE meta SET value = 'stale-test-version' WHERE key = 'engine_version'",
+            [],
+        )?;
+    }
 
     let repair_plan = crate::startup::plan_primary_workspace_repair(&handler)
         .await?

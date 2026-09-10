@@ -9,44 +9,23 @@ mod workspace_isolation {
     use std::fs;
     use tempfile::TempDir;
 
-    use crate::Symbol;
-    use crate::SymbolKind;
-    use crate::database::FactsStore;
     use crate::handler::JulieServerHandler;
+    use julie_index::checkout_store::{CheckoutStore, PathChange};
 
-    /// BUG REPRODUCTION TEST: Force reindex should NOT delete reference workspace data
-    ///
-    /// This test reproduces the critical bug where force reindexing the primary workspace
-    /// deleted ALL workspace indexes including reference workspaces, violating workspace isolation.
-    ///
-    /// Bug behavior (before fix):
-    /// - Force reindex deleted entire `.julie/indexes/` directory
-    /// - Reference workspaces lost all their data
-    /// - Catastrophic workspace isolation violation
-    ///
-    /// Expected behavior (after fix):
-    /// - Force reindex only deletes `.julie/indexes/{primary_workspace_id}/`
-    /// - Reference workspaces remain completely untouched
-    /// - Workspace isolation maintained
     #[tokio::test(flavor = "multi_thread")]
     async fn test_force_reindex_preserves_reference_workspaces() -> Result<()> {
-        // STEP 1: Create two temporary workspace directories with test files
         let primary_workspace = TempDir::new()?;
         let reference_workspace = TempDir::new()?;
 
-        // Create test files in primary workspace
         fs::write(
             primary_workspace.path().join("primary.rs"),
             "fn primary_function() { println!(\"primary\"); }",
         )?;
-
-        // Create test files in reference workspace
         fs::write(
             reference_workspace.path().join("reference.rs"),
             "fn reference_function() { println!(\"reference\"); }",
         )?;
 
-        // STEP 2: Initialize handler and set primary workspace
         let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
@@ -55,68 +34,33 @@ mod workspace_isolation {
             )
             .await?;
 
-        // STEP 3: Compute workspace IDs from paths (deterministic, no registration needed)
         let workspace = handler.get_workspace().await?.unwrap();
         let reference_id = crate::workspace::registry::generate_workspace_id(
             &reference_workspace.path().to_string_lossy(),
         )?;
 
-        // Create test database content in reference workspace
-        let ref_db_path = workspace.workspace_db_path(&reference_id);
-        fs::create_dir_all(ref_db_path.parent().unwrap())?;
-
-        // Create and populate reference workspace database
+        let ref_index = workspace.workspace_index_path(&reference_id);
+        fs::create_dir_all(&ref_index)?;
+        let store = CheckoutStore::open(&ref_index, reference_workspace.path())?;
+        let bytes = fs::read(reference_workspace.path().join("reference.rs"))?;
         {
-            let mut ref_db = FactsStore::new(&ref_db_path)?;
-            let test_symbol = Symbol {
-                extracted: julie_extractors::Symbol {
-                    id: "test_ref_symbol".to_string(),
-                    name: "reference_function".to_string(),
-                    kind: SymbolKind::Function,
-                    language: "rust".to_string(),
-                    file_path: reference_workspace
-                        .path()
-                        .join("reference.rs")
-                        .to_string_lossy()
-                        .to_string(),
-                    signature: Some("fn reference_function()".to_string()),
-                    start_line: 1,
-                    start_column: 0,
-                    end_line: 1,
-                    end_column: 50,
-                    start_byte: 0,
-                    end_byte: 50,
-                    doc_comment: None,
-                    visibility: None,
-                    parent_id: None,
-                    metadata: None,
-                    semantic_group: None,
-                    confidence: None,
-                    content_type: None,
-                    body_span: None,
-                    body_hash: None,
-                    annotations: Vec::new(),
-                },
-                code_context: None,
-            };
-            ref_db.bulk_store_symbols(&[test_symbol], &reference_id)?;
+            let guard = julie_core::workspace::mutation_gate::acquire_gate(&reference_id).await;
+            store.apply(
+                &[PathChange::Upsert {
+                    path: "reference.rs".into(),
+                    bytes,
+                    language: "rust".into(),
+                }],
+                &guard,
+            )?;
         }
-
-        // Verify reference workspace database exists and has data
-        assert!(
-            ref_db_path.exists(),
-            "Reference workspace database should exist before force reindex"
-        );
-        let ref_db_before = FactsStore::new(&ref_db_path)?;
-        let symbols_before = ref_db_before.get_symbol_count_for_workspace()?;
         assert_eq!(
-            symbols_before, 1,
+            store.status().graph.symbols,
+            1,
             "Reference workspace should have 1 symbol before force reindex"
         );
-        drop(ref_db_before); // Close database before force reindex
+        drop(store);
 
-        // STEP 5: Force reindex the PRIMARY workspace
-        // 🔴 BUG: This used to delete the ENTIRE indexes/ directory, wiping out reference workspace!
         handler
             .initialize_workspace_with_force(
                 Some(primary_workspace.path().to_string_lossy().to_string()),
@@ -124,51 +68,24 @@ mod workspace_isolation {
             )
             .await?;
 
-        // STEP 6: CRITICAL ASSERTION - Reference workspace data must still exist!
-        // This is the bug we're testing for - reference workspace should be untouched
         assert!(
-            ref_db_path.exists(),
-            "🔴 BUG: Reference workspace database was deleted during primary force reindex! \
-             This violates workspace isolation."
+            ref_index.join("facts.sqlite").exists(),
+            "Reference workspace facts.sqlite was deleted during primary force reindex"
         );
-
-        // Verify reference workspace still has its data
-        let ref_db_after = FactsStore::new(&ref_db_path)?;
-        let symbols_after = ref_db_after.get_symbol_count_for_workspace()?;
+        let store_after = CheckoutStore::open(&ref_index, reference_workspace.path())?;
         assert_eq!(
-            symbols_after, 1,
-            "🔴 BUG: Reference workspace lost its symbols during primary force reindex! \
-             Expected 1 symbol, found {}",
-            symbols_after
+            store_after.status().graph.symbols,
+            1,
+            "Reference workspace lost its symbols during primary force reindex"
         );
-
-        // The key test is that reference workspace was NOT touched by the primary force reindex
 
         Ok(())
     }
 
-    /// BUG REPRODUCTION TEST: Reference workspaces should get HNSW vector indexes
-    ///
-    /// Bug behavior (before fix):
-    /// - Reference workspaces only got SQLite database
-    /// - No vectors/ directory created
-    /// - Semantic search unavailable for reference workspaces
-    /// - Cause: Passing primary workspace DB to embedding generation instead of reference DB
-    ///
-    /// Expected behavior (after fix):
-    /// - Reference workspaces get both db/ and vectors/ directories
-    /// - HNSW index generated from reference workspace's own symbols
-    /// - Semantic search available for all workspaces
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore] // SLOW: Requires ONNX model download and embedding generation (~30s)
+    #[ignore]
     async fn test_reference_workspaces_get_hnsw_indexes() -> Result<()> {
-        use std::fs;
-        use tempfile::TempDir;
-
-        // STEP 1: Create reference workspace with code
         let reference_workspace = TempDir::new()?;
-
-        // Create multiple files to ensure we have enough symbols for HNSW
         for i in 0..10 {
             fs::write(
                 reference_workspace.path().join(format!("file{}.rs", i)),
@@ -187,7 +104,6 @@ mod workspace_isolation {
             )?;
         }
 
-        // STEP 2: Initialize handler and primary workspace
         let handler = JulieServerHandler::new_for_test().await?;
         let primary_workspace = TempDir::new()?;
         fs::write(primary_workspace.path().join("main.rs"), "fn main() {}")?;
@@ -199,40 +115,17 @@ mod workspace_isolation {
             )
             .await?;
 
-        // STEP 3: Compute reference workspace ID
         let reference_id = crate::workspace::registry::generate_workspace_id(
             &reference_workspace.path().to_string_lossy(),
         )?;
-
-        // STEP 4: Index reference workspace (should trigger embedding generation)
-        // This requires the ManageWorkspaceTool which we can't easily test here
-        // For now, we'll manually verify the vectors path structure
-
         let workspace = handler.get_workspace().await?.unwrap();
-        let vectors_path = workspace
-            .root
-            .join(".julie")
-            .join("indexes")
-            .join(&reference_id)
-            .join("vectors");
-
-        // CRITICAL ASSERTION: Reference workspace should have vectors/ directory
-        // This test will fail until the embedding database bug is fixed
-
-        // Note: This test is marked #[ignore] because it requires:
-        // 1. ONNX model download (~120MB)
-        // 2. Embedding generation (~30s for 10 files)
-        // 3. HNSW index building
-        // Run manually with: cargo test test_reference_workspaces_get_hnsw_indexes -- --ignored --nocapture
-
-        println!("Expected vectors path: {}", vectors_path.display());
-        println!("Test structure created - manual indexing required to verify vectors/ creation");
-
+        let index_root = workspace.workspace_index_path(&reference_id);
+        println!("Expected reference index path: {}", index_root.display());
         Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn index_root_holds_only_db_and_tantivy_after_index() -> Result<()> {
+    async fn index_root_holds_only_facts_and_tantivy_after_index() -> Result<()> {
         let workspace = TempDir::new()?;
         fs::write(
             workspace.path().join("lib.rs"),
@@ -255,23 +148,39 @@ mod workspace_isolation {
         let workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace_path.to_string_lossy())?;
         let loaded = handler.get_workspace().await?.unwrap();
-        let index_root = loaded
-            .workspace_db_path(&workspace_id)
-            .parent()
-            .and_then(|db| db.parent())
-            .unwrap()
-            .to_path_buf();
+        let index_root = loaded.workspace_index_path(&workspace_id);
+
+        assert!(
+            !index_root.join("db").exists(),
+            "db/ is not accepted under {}",
+            index_root.display()
+        );
+        assert!(
+            !index_root.join("store").exists(),
+            "store/ is not accepted under {}",
+            index_root.display()
+        );
 
         let mut entries: Vec<String> = fs::read_dir(&index_root)?
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         entries.sort();
-        assert_eq!(
-            entries,
-            vec!["db".to_string(), "store".to_string(), "tantivy".to_string(),],
-            "unexpected entries under {}",
-            index_root.display()
-        );
+        let required = ["facts.sqlite", "tantivy"];
+        let optional = ["facts.sqlite-wal", "facts.sqlite-shm"];
+        for name in required {
+            assert!(
+                entries.iter().any(|entry| entry == name),
+                "missing {name} under {}: {entries:?}",
+                index_root.display()
+            );
+        }
+        for name in &entries {
+            assert!(
+                required.contains(&name.as_str()) || optional.contains(&name.as_str()),
+                "unexpected entry {name} under {}",
+                index_root.display()
+            );
+        }
         Ok(())
     }
 }

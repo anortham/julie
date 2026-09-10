@@ -9,10 +9,12 @@
 // ============================================================================
 // ANALYSIS TESTS - Post-indexing analysis (test quality, risk scoring)
 // ============================================================================
+pub mod analysis; // Test quality metrics engine tests
 
 // ============================================================================
 // TEST FIXTURES - Pre-indexed databases and test data
 // ============================================================================
+pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 pub mod harness; // Plan B.3: InProcessDaemon fixture for in-process daemon tests
 
 // ============================================================================
@@ -23,6 +25,7 @@ pub mod cli_execution_tests; // CLI execution core (daemon/standalone mode, hand
 pub mod cli_input_contract; // CLI request input parsing, sizing, and contract tests
 pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
 pub mod cli_tools_tests; // CLI tool subcommand parsing (search, refs, symbols, etc.)
+pub mod external_extract;
 
 // ============================================================================
 // CORE SYSTEM TESTS - Database, handlers, language support
@@ -30,12 +33,13 @@ pub mod cli_tools_tests; // CLI tool subcommand parsing (search, refs, symbols, 
 pub mod core {
     pub mod embedding_provider; // EmbeddingProvider trait and factory tests
     pub mod engine_version; // Phase 5.3 — extractor contract / engine version composition
-
+    pub mod handler; // MCP handler tests
     pub mod handler_telemetry; // search telemetry and downstream target metadata tests
     pub mod language; // Language detection and support tests
     pub mod logging; // Local-time log formatting and rolling writer tests
     pub mod paths; // Path utility tests (display_path, UNC handling)
     pub mod serde_lenient_tests; // Lenient MCP param deserializers (u32, bool, Vec<String>)
+    pub mod workspace_init; // Workspace root detection and initialization tests
 }
 
 // ============================================================================
@@ -52,13 +56,18 @@ pub mod tools {
     pub mod get_symbols_target_workspace; // GetSymbolsTool target-workspace bug test
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
     pub mod patterns;
-
+    pub mod web_navigation; // derived web-edge navigation (trace web mode + impact web callers)
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)
+
+    pub mod editing; // EditingTransaction tests (used by rename_symbol)
 
     pub mod deep_dive_primary_rebind_tests; // DeepDiveTool current-primary rebound routing tests
     // deep_dive_regression_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     // deep_dive_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
+    pub mod search; // Search tool tests (line mode, quality, race conditions)
     pub mod search_context_lines;
+    pub mod search_quality; // Search quality dogfooding tests (regression suite)
+    pub mod text_search_tantivy; // Tantivy-based text search implementation tests
 
     pub mod refactoring; // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
 
@@ -66,10 +75,12 @@ pub mod tools {
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
         pub mod file_policy; // Shared watcher/indexer extraction and path policy parity tests
         pub mod global_targeting; // Explicit workspace open/activation tests
-        // index_embedding_tests parked against FactsStore; embeddings now run on CheckoutStore.
-
+        pub mod isolation; // Workspace isolation tests
         pub mod manage_workspace_request; // Typed internal manage_workspace request parsing tests
-
+        pub mod management_token; // ManageWorkspaceTool token optimization tests
+        pub mod mod_tests; // Workspace module functionality tests
+        pub mod processor; // Indexing processor parser-failure handling tests
+        pub mod refresh_routing; // Primary force-refresh should reuse full index path
         pub mod seed; // Sibling checkout seed copy tests
         pub mod status_rebuild; // manage_workspace status and rebuild operations
         pub mod store_open; // Failed facts open deletes store/ and reopens
@@ -132,9 +143,10 @@ pub mod utils {
 // INTEGRATION TESTS - End-to-end and cross-component tests
 // ============================================================================
 pub mod integration {
-
+    pub mod concurrent_mcp; // A2.3 concurrent MCP regression test
+    pub mod documentation_indexing;
     pub mod in_process_boundary; // T12: in-process boundary tripwire (cutover bypasses, not deletes, daemon/adapter)
-
+    pub mod indexing_pipeline;
     pub mod lock_contention; // Lock contention regression tests
     #[cfg(any())]
     pub mod native_semantic_acceptance;
@@ -144,7 +156,9 @@ pub mod integration {
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
     pub mod real_world_validation; // Real-world code validation tests
     pub mod search_regression_tests; // Regression tests for recurring search glob pattern issues
-
+    pub mod stale_index_detection; // Stale index detection tests
+    pub mod system_health;
+    pub mod target_workspace; // Target-workspace tests
     // watcher, watcher_filtering, watcher_handlers, watcher_mutation_gate,
     // watcher_observability, watcher_queue — relocated to julie-runtime (T2c.3)
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests) // Daemon + adapter integration tests (lifecycle, pool sharing, IPC, migration)
@@ -273,13 +287,16 @@ pub mod helpers;
 // ============================================================================
 // DASHBOARD TESTS - Error ring buffer, dashboard state, views
 // ============================================================================
+pub mod dashboard;
 
 // ============================================================================
 // DAEMON TESTS - v6 daemon infrastructure (paths, PID, lifecycle)
 // ============================================================================
 pub mod edit_recovery_contract;
 pub mod health;
-
+pub mod mcp_protocol_contract;
+pub mod registry;
+pub mod request_engine;
 pub mod request_process_helpers;
 mod request_scenarios;
 mod request_transport_parity;

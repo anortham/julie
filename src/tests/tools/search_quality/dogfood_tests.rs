@@ -640,45 +640,18 @@ async fn test_definition_search_includes_code_context() {
 #[tokio::test]
 async fn test_identifiers_query_returns_results() {
     let handler = setup_handler_with_fixture().await;
-
-    if let Some(workspace) = handler.get_workspace().await.unwrap() {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
-
-            // First check how many identifiers exist
-            let count: i64 = db_lock
-                .conn
-                .query_row("SELECT COUNT(*) FROM identifiers", [], |row| row.get(0))
-                .expect("Failed to count identifiers");
-
-            println!("Fixture DB has {} identifiers", count);
-
-            if count > 0 {
-                // Get a sample identifier name to test with
-                let sample_name: String = db_lock
-                    .conn
-                    .query_row("SELECT name FROM identifiers LIMIT 1", [], |row| row.get(0))
-                    .expect("Failed to get sample identifier");
-
-                let results = db_lock
-                    .get_identifiers_by_names(&[sample_name.clone()])
-                    .expect("get_identifiers_by_names failed");
-
-                assert!(
-                    !results.is_empty(),
-                    "get_identifiers_by_names('{}') should return results",
-                    sample_name
-                );
-                println!(
-                    "get_identifiers_by_names('{}') returned {} results",
-                    sample_name,
-                    results.len()
-                );
-            } else {
-                println!("⚠ Fixture DB has 0 identifiers - skipping identifier query test");
-            }
-        }
-    }
+    let workspace = handler.get_workspace().await.unwrap().expect("workspace");
+    let snapshot = workspace.store.current();
+    let graph = snapshot.graph();
+    assert!(
+        graph.len() > 0,
+        "fixture snapshot should contain symbols"
+    );
+    let sample = graph.symbol(julie_index::graph::SymbolId(0));
+    assert!(
+        !graph.find_by_name(&sample.name).is_empty(),
+        "fixture graph should find the first symbol by name"
+    );
 }
 
 /// Test that fast_refs finds references using identifiers when relationships are sparse.
@@ -688,49 +661,8 @@ async fn test_fast_refs_finds_identifier_based_references() {
     use crate::tools::navigation::FastRefsTool;
 
     let handler = setup_handler_with_fixture().await;
-
-    // First verify identifiers exist in the fixture
-    let has_identifiers = if let Some(workspace) = handler.get_workspace().await.unwrap() {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
-            let count: i64 = db_lock
-                .conn
-                .query_row("SELECT COUNT(*) FROM identifiers", [], |row| row.get(0))
-                .unwrap_or(0);
-            count > 0
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
-    if !has_identifiers {
-        println!("⚠ Fixture DB has no identifiers - skipping fast_refs identifier test");
-        return;
-    }
-
-    // Find a symbol name that exists in identifiers but may not have relationships
-    let test_name = if let Some(workspace) = handler.get_workspace().await.unwrap() {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
-            // Find an identifier name that appears at least 3 times
-            db_lock
-                .conn
-                .query_row(
-                    "SELECT name FROM identifiers GROUP BY name HAVING COUNT(*) >= 3 LIMIT 1",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )
-                .ok()
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    if let Some(symbol_name) = test_name {
+    let symbol_name = "FastSearchTool".to_string();
+    {
         let tool = FastRefsTool {
             symbol: symbol_name.clone(),
             include_definition: true,
@@ -761,8 +693,6 @@ async fn test_fast_refs_finds_identifier_based_references() {
             symbol_name,
             &text[..text.len().min(200)]
         );
-    } else {
-        println!("⚠ No identifier with 3+ occurrences found - skipping");
     }
 }
 
@@ -772,53 +702,8 @@ async fn test_fast_refs_reference_kind_filter_with_identifiers() {
     use crate::tools::navigation::FastRefsTool;
 
     let handler = setup_handler_with_fixture().await;
-
-    // Check if fixture has call identifiers
-    let has_call_identifiers = if let Some(workspace) = handler.get_workspace().await.unwrap() {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
-            let count: i64 = db_lock
-                .conn
-                .query_row(
-                    "SELECT COUNT(*) FROM identifiers WHERE kind = 'call'",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap_or(0);
-            println!("Fixture has {} call identifiers", count);
-            count > 0
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
-    if !has_call_identifiers {
-        println!("⚠ Fixture has no call identifiers - skipping reference_kind test");
-        return;
-    }
-
-    // Find a name that has call identifiers
-    let call_name = if let Some(workspace) = handler.get_workspace().await.unwrap() {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
-            db_lock
-                .conn
-                .query_row(
-                    "SELECT name FROM identifiers WHERE kind = 'call' AND name GLOB '[A-Za-z_]*' GROUP BY name HAVING COUNT(*) >= 2 LIMIT 1",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )
-                .ok()
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    if let Some(symbol_name) = call_name {
+    let symbol_name = "FastSearchTool".to_string();
+    {
         let tool = FastRefsTool {
             symbol: symbol_name.clone(),
             include_definition: true,
@@ -851,8 +736,6 @@ async fn test_fast_refs_reference_kind_filter_with_identifiers() {
             symbol_name,
             &text[..text.len().min(200)]
         );
-    } else {
-        println!("⚠ No call identifier with 2+ occurrences found - skipping");
     }
 }
 

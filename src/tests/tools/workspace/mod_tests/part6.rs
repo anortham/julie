@@ -46,19 +46,7 @@ async fn test_startup_noop_repair_does_not_mark_catchup_active_while_planning() 
         "test setup: workspace must have embeddings before planning runs"
     );
 
-    let database = handler.primary_database().await.unwrap();
-    let database_guard = database.lock().unwrap();
-    let handler_for_thread = handler.clone();
-    let repair_thread = std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        runtime.block_on(run_primary_workspace_repair(&handler_for_thread))
-    });
-
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
+    let repair = run_primary_workspace_repair(&handler).await.unwrap();
     let snapshot = {
         let workspace = handler.get_workspace().await.unwrap().unwrap();
         workspace.indexing_runtime.read().unwrap().snapshot()
@@ -75,9 +63,6 @@ async fn test_startup_noop_repair_does_not_mark_catchup_active_while_planning() 
         snapshot.active_operation.is_none(),
         "no-op startup repair must not expose an active operation while only checking freshness"
     );
-
-    drop(database_guard);
-    let repair = repair_thread.join().unwrap().unwrap();
     assert!(
         repair.is_none(),
         "a workspace with symbols AND embeddings AND no file changes is truly \

@@ -259,186 +259,33 @@ async fn setup_handler_inner() -> FixtureHandlerGuard {
         .and_then(|n| n.to_str())
         .unwrap_or("workspace");
 
-    // Create workspace index directory
     let workspace_dir = indexes_dir.join(&full_workspace_id);
-    let db_dir = workspace_dir.join("db");
-    fs::create_dir_all(&db_dir).expect("Failed to create workspace db dir");
-
-    // Copy fixture database to temp workspace
-    let fixture_db_src = fixture.db_path();
-    let fixture_db_dest = db_dir.join("symbols.db");
-    let src_size = fs::metadata(fixture_db_src)
-        .expect("Failed to read fixture DB metadata")
+    fs::create_dir_all(&workspace_dir).expect("Failed to create workspace index dir");
+    let fixture_src = fixture
+        .db_path()
+        .parent()
+        .expect("fixture facts.sqlite has a parent");
+    copy_dir(fixture_src, &workspace_dir).expect("Failed to copy fixture index");
+    let dest_size = fs::metadata(workspace_dir.join("facts.sqlite"))
+        .expect("Failed to read copied facts.sqlite")
         .len();
-    fs::copy(fixture_db_src, &fixture_db_dest).expect("Failed to copy fixture database");
-    let dest_size = fs::metadata(&fixture_db_dest)
-        .expect("Failed to read copied DB metadata")
-        .len();
-    println!("✓ Fixture database copied: {} bytes", dest_size);
-    assert_eq!(src_size, dest_size, "Database copy size mismatch!");
+    println!("✓ Fixture index copied: {dest_size} bytes");
 
-    // Create handler
-    let handler = JulieServerHandler::new_for_test()
+    let workspace = crate::workspace::JulieWorkspace::initialize_with_index_root(
+        temp_root.clone(),
+        workspace_dir.clone(),
+    )
+    .await
+    .expect("Failed to open fixture workspace");
+    println!(
+        "✓ Fixture store opened with {} symbols",
+        workspace.store.status().graph.symbols
+    );
+
+    let mut handler = JulieServerHandler::new_for_test()
         .await
         .expect("Failed to create handler");
-
-    use crate::database::FactsStore;
-    use std::sync::{Arc, Mutex};
-
-    // Open through FactsStore so copied fixtures receive current migrations.
-    let db_struct = FactsStore::new(&fixture_db_dest).expect("Failed to open fixture database");
-
-    // Verify the database has data
-    let symbol_count: i64 = db_struct
-        .conn
-        .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
-        .expect("Failed to count symbols");
-
-    println!(
-        "✓ Fixture database opened directly with {} symbols",
-        symbol_count
-    );
-
-    // Create workspace configuration and registry
-    {
-        // Write julie.toml config
-        let config = r#"version = "0.1.0"
-languages = []
-ignore_patterns = [
-    "**/node_modules/**",
-    "**/target/**",
-    "**/build/**",
-    "**/dist/**",
-    "**/.git/**",
-    "**/*.min.js",
-    "**/*.bundle.js",
-    "**/.julie/**",
-]
-max_file_size = 1048576
-embedding_model = "bge-small"
-incremental_updates = true
-"#;
-        fs::write(julie_dir.join("julie.toml"), config).expect("Failed to write julie.toml");
-
-        // Create workspace_registry.json so workspace resolution works
-        // The registry tracks primary and reference workspaces
-        let registry_json = serde_json::json!({
-            "version": "1.0",
-            "last_updated": std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            "primary_workspace": {
-                "id": full_workspace_id,
-                "original_path": temp_root.to_string_lossy(),
-                "directory_name": full_workspace_id,
-                "display_name": workspace_name,
-                "workspace_type": "Primary",
-                "created_at": std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                "last_accessed": std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                "expires_at": null,
-                "symbol_count": fixture.metadata.symbol_count,
-                "file_count": fixture.metadata.file_count,
-                "index_size_bytes": dest_size,
-                "status": "Active"
-            },
-            "reference_workspaces": {},
-            "orphaned_indexes": {},
-            "config": {
-                "default_ttl_seconds": 604800,
-                "max_total_size_bytes": 524288000,
-                "auto_cleanup_enabled": true,
-                "cleanup_interval_seconds": 3600
-            },
-            "statistics": {
-                "total_workspaces": 1,
-                "total_orphans": 0,
-                "total_index_size_bytes": dest_size,
-                "total_symbols": fixture.metadata.symbol_count,
-                "total_files": fixture.metadata.file_count,
-                "last_cleanup": std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs()
-            }
-        });
-
-        fs::write(
-            julie_dir.join("workspace_registry.json"),
-            serde_json::to_string_pretty(&registry_json).expect("Failed to serialize registry"),
-        )
-        .expect("Failed to write workspace_registry.json");
-    }
-
-    // Initialize Tantivy search index and backfill from SQLite fixture.
-    // This mirrors what backfill_tantivy_if_needed() does in production for
-    // v1.x → v2.0 upgrades: read all data from SQLite and push to Tantivy.
-    let tantivy_dir = workspace_dir.join("tantivy");
-    fs::create_dir_all(&tantivy_dir).expect("Failed to create tantivy dir");
-
-    let configs = crate::search::LanguageConfigs::load_embedded();
-    let search_index =
-        crate::search::SearchIndex::open_or_create_with_language_configs(&tantivy_dir, &configs)
-            .expect("Failed to create Tantivy search index");
-
-    // Backfill symbols from SQLite fixture
-    let symbols = db_struct
-        .get_all_symbols()
-        .expect("Failed to get symbols for Tantivy backfill");
-    for symbol in &symbols {
-        let doc = crate::search::index::SearchDocument::for_symbol(
-            symbol,
-            vec![],
-            String::new(),
-            String::new(),
-        );
-        if let Err(e) = search_index.add_search_doc(&doc) {
-            eprintln!("Tantivy backfill warning: failed to add symbol: {}", e);
-        }
-    }
-
-    // Backfill file content from SQLite fixture
-    let file_contents = db_struct
-        .get_all_file_contents_with_language()
-        .unwrap_or_default();
-    for (path, language, content) in &file_contents {
-        let doc = crate::search::index::SearchDocument::file_from_parts(path, content, language);
-        if let Err(e) = search_index.add_search_doc(&doc) {
-            eprintln!("Tantivy backfill warning: failed to add file: {}", e);
-        }
-    }
-
-    search_index
-        .commit()
-        .expect("Failed to commit Tantivy index");
-    println!(
-        "✓ Tantivy backfilled: {} symbols, {} files",
-        symbols.len(),
-        file_contents.len()
-    );
-
-    // Create workspace structure manually with the fixture database
-    let workspace = crate::workspace::JulieWorkspace {
-        root: temp_root.clone(),
-        julie_dir: julie_dir.clone(),
-        db: Some(Arc::new(Mutex::new(db_struct))),
-        search_index: Some(Arc::new(search_index)),
-        store: None,
-        watcher: None,
-        embedding_provider: None,
-        embedding_runtime_status: None,
-        config: crate::workspace::WorkspaceConfig::default(),
-        index_root_override: None,
-        indexing_runtime: crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
-    };
-
-    // Store the workspace in the handler
+    handler.in_process_index_root = Some(workspace_dir.clone());
     {
         let mut workspace_guard = handler.workspace.write().await;
         *workspace_guard = Some(workspace);
@@ -452,39 +299,28 @@ incremental_updates = true
         .write()
         .unwrap_or_else(|p| p.into_inner()) = Some(workspace_id.clone());
     handler.set_current_primary_binding(workspace_id, temp_root.clone());
-
-    // Mark indexing as complete so searches work immediately
-    // We're loading from a pre-indexed fixture, so this status is accurate
     handler
         .indexing_status
         .search_ready
         .store(true, std::sync::atomic::Ordering::Relaxed);
-
-    // Debug confirmation
-    {
-        let workspace_guard = handler.workspace.read().await;
-        if let Some(ws) = workspace_guard.as_ref() {
-            println!("✓ Workspace initialized at: {}", ws.root.display());
-            if let Some(db_arc) = ws.db.as_ref() {
-                if let Ok(db_lock) = db_arc.lock() {
-                    match db_lock
-                        .conn
-                        .query_row("SELECT COUNT(*) FROM symbols", [], |row| {
-                            row.get::<_, i64>(0)
-                        }) {
-                        Ok(count) => println!(
-                            "✓ Workspace database has {} symbols ready for search",
-                            count
-                        ),
-                        Err(e) => println!("✗ Error querying symbols: {}", e),
-                    }
-                }
-            }
-        }
-    }
+    let _ = (workspace_name, dest_size, julie_dir, full_workspace_id);
 
     FixtureHandlerGuard {
         handler,
         _temp_dir: temp_dir,
     }
+}
+
+fn copy_dir(src: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dest)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let to = dest.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &to)?;
+        } else {
+            std::fs::copy(entry.path(), to)?;
+        }
+    }
+    Ok(())
 }

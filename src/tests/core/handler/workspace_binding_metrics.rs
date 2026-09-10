@@ -4,7 +4,6 @@ use super::*;
 async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -> Result<()> {
     use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
-    use rusqlite::Connection;
     use std::time::Duration;
 
     let temp_dir = TempDir::new()?;
@@ -34,22 +33,15 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     let source_bytes = source_contents.len() as u64;
     std::fs::write(original_root.join(&source_file_rel), source_contents)?;
     {
-        let db_arc = original_ws
-            .db
-            .as_ref()
-            .expect("original workspace should have a db");
-        let db = db_arc.lock().expect("original workspace db should lock");
-        db.store_file_info(&FileInfo {
-            path: source_file_rel.clone(),
-            language: "rust".to_string(),
-            hash: "original-hash".to_string(),
-            size: source_bytes as i64,
-            last_modified: 1,
-            last_indexed: 1,
-            symbol_count: 0,
-            line_count: 1,
-            content: Some("fn original() {}\n".to_string()),
-        })?;
+        let guard = julie_core::workspace::mutation_gate::acquire_gate(&original_id).await;
+        original_ws.store.apply(
+            &[julie_index::checkout_store::PathChange::Upsert {
+                path: source_file_rel.clone(),
+                bytes: source_contents.as_bytes().to_vec(),
+                language: "rust".to_string(),
+            }],
+            &guard,
+        )?;
     }
 
     let rebound_path = rebound_root.canonicalize()?;
@@ -97,12 +89,7 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
                 let conn = daemon_db.conn_for_test();
                 conn.query_row("SELECT COUNT(*) FROM tool_calls", [], |row| row.get(0))?
             };
-            let local_count: i64 = {
-                let conn =
-                    Connection::open(indexes_dir.join(&original_id).join("db").join("symbols.db"))?;
-                conn.query_row("SELECT COUNT(*) FROM tool_calls", [], |row| row.get(0))?
-            };
-            if daemon_count > 0 && local_count > 0 {
+            if daemon_count > 0 {
                 break Ok::<(), rusqlite::Error>(());
             }
             tokio::task::yield_now().await;
@@ -137,19 +124,6 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
         "daemon metrics row should preserve source_bytes from the snapshotted checkout"
     );
 
-    let recorded_local_source_bytes: Option<i64> = {
-        let conn = Connection::open(indexes_dir.join(&original_id).join("db").join("symbols.db"))?;
-        conn.query_row(
-            "SELECT source_bytes FROM tool_calls ORDER BY id DESC LIMIT 1",
-            [],
-            |row| row.get(0),
-        )?
-    };
-    assert_eq!(
-        recorded_local_source_bytes,
-        Some(source_bytes as i64),
-        "local workspace metrics row should write source_bytes from the snapshotted checkout"
-    );
     assert_eq!(
         handler.session_metrics.total_source_bytes(),
         source_bytes,
@@ -248,23 +222,15 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
         .await?,
     );
     {
-        let primary_db = primary_ws
-            .db
-            .as_ref()
-            .expect("primary workspace should have a database")
-            .clone();
-        let primary_db = primary_db.lock().unwrap();
-        primary_db.store_file_info(&FileInfo {
-            path: file_path.to_string(),
-            language: "rust".to_string(),
-            hash: "primary-hash".to_string(),
-            size: primary_bytes,
-            last_modified: 1,
-            last_indexed: 1,
-            symbol_count: 0,
-            line_count: 1,
-            content: Some(primary_content.to_string()),
-        })?;
+        let guard = julie_core::workspace::mutation_gate::acquire_gate(&primary_id).await;
+        primary_ws.store.apply(
+            &[julie_index::checkout_store::PathChange::Upsert {
+                path: file_path.to_string(),
+                bytes: primary_content.as_bytes().to_vec(),
+                language: "rust".to_string(),
+            }],
+            &guard,
+        )?;
     }
 
     let target_path = target_root.canonicalize()?;
@@ -279,56 +245,14 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
         .await?,
     );
     {
-        let target_db = target_ws
-            .db
-            .as_ref()
-            .expect("target workspace should have a database")
-            .clone();
-        let mut target_db = target_db.lock().unwrap();
-        let symbol = julie_core::Symbol {
-            extracted: julie_extractors::Symbol {
-                id: "target-symbol-id".to_string(),
-                name: "target_symbol".to_string(),
-                kind: SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: file_path.to_string(),
-                start_line: 1,
-                start_column: 0,
-                end_line: 1,
-                end_column: 24,
-                start_byte: 0,
-                end_byte: 24,
-                signature: Some("pub fn target_symbol()".to_string()),
-                doc_comment: None,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: None,
-        };
-        target_db.bulk_store_fresh_atomic(
-            &[FileInfo {
+        let guard = julie_core::workspace::mutation_gate::acquire_gate(&target_id).await;
+        target_ws.store.apply(
+            &[julie_index::checkout_store::PathChange::Upsert {
                 path: file_path.to_string(),
+                bytes: target_content.as_bytes().to_vec(),
                 language: "rust".to_string(),
-                hash: "target-hash".to_string(),
-                size: target_bytes,
-                last_modified: 1,
-                last_indexed: 1,
-                symbol_count: 1,
-                line_count: 3,
-                content: Some(target_content.to_string()),
             }],
-            &[symbol],
-            &[],
-            &[],
-            &[],
-            &target_id,
+            &guard,
         )?;
     }
 

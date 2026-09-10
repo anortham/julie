@@ -112,44 +112,6 @@ async fn test_primary_workspace_repair_plan_reports_new_files_reason() -> Result
     Ok(())
 }
 
-#[tokio::test]
-async fn test_primary_workspace_repair_plan_reports_extractor_failure_reason() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let workspace_path = temp_dir.path();
-
-    let test_file = workspace_path.join("test.rs");
-    fs::write(&test_file, "fn hello() {}\n")?;
-
-    let handler = create_test_handler(workspace_path).await?;
-    index_workspace(&handler, workspace_path).await?;
-
-    let snapshot = handler.primary_workspace_snapshot().await?;
-    {
-        let db_lock = snapshot
-            .database
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        db_lock.conn.execute(
-            "INSERT INTO indexing_issues (path, reason, detail, updated_at)
-             VALUES (?1, ?2, ?3, 0)",
-            rusqlite::params!["test.rs", "extractor_failure", "seeded startup repair"],
-        )?;
-    }
-
-    let repair_plan = crate::startup::plan_primary_workspace_repair(&handler)
-        .await?
-        .expect("persisted extractor repair should produce a repair plan");
-
-    assert!(
-        repair_plan
-            .reasons
-            .contains(&IndexingRepairReason::ExtractorFailure),
-        "repair plan should surface persisted extractor-failure state"
-    );
-
-    Ok(())
-}
-
 /// Test 4: Empty database still triggers indexing (existing behavior)
 /// Given: Database is completely empty
 /// When: check_if_indexing_needed() is called

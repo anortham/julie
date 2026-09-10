@@ -7,7 +7,7 @@ fn metrics_db_path_helper_uses_current_workspace_root_for_local_storage() {
 
     assert_eq!(
         db_path,
-        PathBuf::from("/tmp/rebound-primary/.julie/indexes/ref_workspace/db/symbols.db")
+        PathBuf::from("/tmp/rebound-primary/.julie/indexes/ref_workspace/facts.sqlite")
     );
 }
 
@@ -20,6 +20,6 @@ fn metrics_db_path_helper_uses_shared_index_parent_when_override_exists() {
 
     assert_eq!(
         db_path,
-        PathBuf::from("/tmp/shared/indexes/ref_workspace/db/symbols.db")
+        PathBuf::from("/tmp/shared/indexes/ref_workspace/facts.sqlite")
     );
 }

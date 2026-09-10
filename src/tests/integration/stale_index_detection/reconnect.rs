@@ -66,14 +66,11 @@ async fn test_startup_repair_cleans_deleted_file_and_clears_next_check() -> Resu
         repair.reasons
     );
 
-    let db = handler.primary_database().await?;
-    let files = {
-        let db = db.lock().unwrap();
-        db.get_all_indexed_files()?
-    };
+    let snapshot = handler.primary_workspace_snapshot().await?;
+    let files: Vec<String> = snapshot.store.current().graph().paths().to_vec();
     assert!(
-        !files.contains(&"src/b.rs".to_string()),
-        "deleted file should be removed from SQLite: {:?}",
+        !files.iter().any(|path| path == "src/b.rs"),
+        "deleted file should be removed from the snapshot: {:?}",
         files
     );
 
@@ -141,14 +138,11 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
 
     index_workspace(&handler, &workspace_root).await?;
 
-    let resolved_db_path = handler.workspace_db_file_path_for(&workspace_id).await?;
+    let resolved_index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
     assert_eq!(
-        resolved_db_path,
-        indexes_dir
-            .join(&workspace_id)
-            .join("db")
-            .join("symbols.db"),
-        "freshness check should resolve the shared daemon db path, not the local .julie decoy"
+        resolved_index_dir,
+        indexes_dir.join(&workspace_id),
+        "freshness check should resolve the shared daemon index dir, not the local .julie decoy"
     );
 
     let _ = crate::startup::check_if_indexing_needed(&handler).await?;
@@ -158,8 +152,6 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
 
 #[tokio::test]
 async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -> Result<()> {
-    use crate::database::types::FileInfo;
-    use crate::extractors::{Symbol, SymbolKind};
     use crate::registry::database::DaemonDatabase;
     use crate::workspace::registry::generate_workspace_id;
 
@@ -206,55 +198,15 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
     {
-        let rebound_db = rebound_ws
-            .db
-            .as_ref()
-            .expect("rebound workspace should have a db")
-            .clone();
-        let mut rebound_db = rebound_db.lock().unwrap();
-        let file_info = FileInfo {
-            path: "src/rebound.rs".to_string(),
-            language: "rust".to_string(),
-            hash: "rebound-primary-hash".to_string(),
-            size: 28,
-            last_modified: 1,
-            last_indexed: 1,
-            symbol_count: 1,
-            line_count: 1,
-            content: Some("fn rebound_primary_only() {}\n".to_string()),
-        };
-        let symbol = Symbol {
-            extracted: julie_extractors::Symbol {
-                id: "rebound-primary-symbol".to_string(),
-                name: "rebound_primary_only".to_string(),
-                kind: SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: "src/rebound.rs".to_string(),
-                start_line: 1,
-                start_column: 0,
-                end_line: 1,
-                end_column: 26,
-                start_byte: 0,
-                end_byte: 28,
-                signature: Some("fn rebound_primary_only()".to_string()),
-                doc_comment: None,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: Some("fn rebound_primary_only() {}".to_string()),
-        };
-        rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;
-        rebound_db.set_index_engine_version(
-            &rebound_id,
-            SEMANTIC_INDEX_ENGINE_COMPONENT,
-            SEMANTIC_INDEX_ENGINE_VERSION,
+        let bytes = fs::read(rebound_root.join("src").join("rebound.rs"))?;
+        let guard = julie_core::workspace::mutation_gate::acquire_gate(&rebound_id).await;
+        rebound_ws.store.apply(
+            &[julie_index::checkout_store::PathChange::Upsert {
+                path: "src/rebound.rs".into(),
+                bytes,
+                language: "rust".into(),
+            }],
+            &guard,
         )?;
     }
 
@@ -328,12 +280,9 @@ async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot(
     // `indexes_dir`, so the rebound current primary keeps shared-root storage
     // (the deleted WorkspacePool used to carry this anchor).
     assert_eq!(
-        route.db_path,
-        indexes_dir
-            .join(&route.workspace_id)
-            .join("db")
-            .join("symbols.db"),
-        "in-process leader routes rebound current primary DB under the shared indexes_dir"
+        route.index_dir,
+        indexes_dir.join(&route.workspace_id),
+        "in-process leader routes rebound current primary index under the shared indexes_dir"
     );
     assert_eq!(
         route.tantivy_path,

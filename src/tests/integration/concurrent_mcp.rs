@@ -87,15 +87,14 @@ mod tests {
     ) -> Result<()> {
         let start = Instant::now();
         loop {
-            if let Ok(db) = handler.primary_database().await {
-                let found = {
-                    let guard = db.lock().unwrap();
-                    guard
-                        .find_symbols_by_name(symbol_name)?
-                        .into_iter()
-                        .any(|s| s.name == symbol_name)
-                };
-                if found {
+            if let Ok(snapshot) = handler.primary_workspace_snapshot().await {
+                if !snapshot
+                    .store
+                    .current()
+                    .graph()
+                    .find_by_name(symbol_name)
+                    .is_empty()
+                {
                     return Ok(());
                 }
             }
@@ -203,18 +202,6 @@ mod tests {
     async fn test_primary_read_handlers_do_not_block_on_legacy_db_mutex() -> Result<()> {
         let fixture = setup_concurrent_workspace().await?;
         let handler = Arc::clone(&fixture.handler);
-        let legacy_db = handler.primary_database().await?;
-
-        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let holder = std::thread::spawn(move || {
-            let _guard = legacy_db.lock().expect("legacy db mutex lock");
-            locked_tx.send(()).expect("signal locked");
-            let _ = release_rx.recv();
-        });
-        locked_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("legacy db mutex holder should start");
 
         let mut set: JoinSet<Result<(&'static str, CallToolResult)>> = JoinSet::new();
         {
@@ -322,16 +309,8 @@ mod tests {
             }
             anyhow::Ok(completed)
         })
-        .await;
-
-        let _ = release_tx.send(());
-        holder
-            .join()
-            .expect("legacy db mutex holder thread panicked");
-
-        let completed = completed.expect(
-            "primary read handlers must use pooled request connections and not block on the legacy shared DB mutex",
-        )?;
+        .await
+        .expect("primary read handlers must finish without blocking on a deleted DB mutex")?;
         assert_eq!(
             completed.len(),
             5,

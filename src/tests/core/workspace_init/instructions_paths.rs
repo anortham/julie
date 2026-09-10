@@ -55,12 +55,13 @@ fn test_workspace_paths_differ_per_workspace_id_with_override() {
     let override_path = shared_indexes.join(primary_id);
     fs::create_dir_all(&override_path).unwrap();
 
+    let store = std::sync::Arc::new(
+        crate::workspace::open_or_recreate_store(&override_path, tmp.path()).unwrap(),
+    );
     let workspace = crate::workspace::JulieWorkspace {
         root: tmp.path().to_path_buf(),
         julie_dir: julie_dir.clone(),
-        db: None,
-        search_index: None,
-        store: None,
+        store,
         watcher: None,
         embedding_provider: None,
         embedding_runtime_status: None,
@@ -69,8 +70,8 @@ fn test_workspace_paths_differ_per_workspace_id_with_override() {
         indexing_runtime: crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
     };
 
-    let primary_db = workspace.workspace_db_path(primary_id);
-    let ref_db = workspace.workspace_db_path(ref_id);
+    let primary_db = workspace.workspace_index_path(primary_id);
+    let ref_db = workspace.workspace_index_path(ref_id);
 
     assert_ne!(
         primary_db,

@@ -53,43 +53,8 @@ async fn checkpoint_active_workspace_wal_runs_after_workspace_initialization() -
     let checkpoint = crate::startup::checkpoint_active_workspace_wal(&handler).await?;
 
     assert!(
-        checkpoint.is_some(),
-        "initialized workspace should expose a database for checkpointing"
+        checkpoint.is_none(),
+        "facts.sqlite has no WAL checkpoint path; initialized workspaces return None"
     );
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn checkpoint_active_workspace_wal_uses_rebound_current_primary_store() -> Result<()> {
-    let first_workspace = TempDir::new()?;
-    let rebound_workspace = TempDir::new()?;
-
-    let handler = JulieServerHandler::new(first_workspace.path().to_path_buf()).await?;
-    handler.initialize_workspace(None).await?;
-
-    let rebound_root = rebound_workspace.path().canonicalize()?;
-    let rebound_id =
-        crate::workspace::registry::generate_workspace_id(&rebound_root.to_string_lossy())?;
-    handler.set_current_primary_binding(rebound_id.clone(), rebound_root);
-
-    let rebound_db_path = handler.workspace_db_file_path_for(&rebound_id).await?;
-    std::fs::create_dir_all(rebound_db_path.parent().expect("rebound db parent"))?;
-    let _ = crate::database::FactsStore::new(&rebound_db_path)?;
-
-    let rebound_db = handler.get_database_for_workspace(&rebound_id).await?;
-    let _rebound_guard = rebound_db.lock().unwrap();
-
-    let checkpoint_err = crate::startup::checkpoint_active_workspace_wal(&handler)
-        .await
-        .expect_err(
-            "checkpoint should target the rebound current-primary db and hit the held lock",
-        );
-    assert!(
-        checkpoint_err
-            .to_string()
-            .contains("Could not acquire database lock for checkpoint"),
-        "checkpoint should use rebound current-primary db, not stale loaded db: {checkpoint_err}"
-    );
-
     Ok(())
 }

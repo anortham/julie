@@ -445,7 +445,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 75,
                 timeout_seconds: 120,
                 commands: &[
-                    "cargo nextest run -j 1 --lib tests::tools::search::line_mode::missing_index -- --skip search_quality",
                     "cargo nextest run -j 1 --lib tests::tools::search::line_mode::primary_rebind -- --skip search_quality",
                 ],
             },
@@ -492,7 +491,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run -p julie-tools --lib tests::search_nl_path_prior_pipeline_tests",
                     "cargo nextest run -p julie-tools --lib tests::search_nl_symbol_query_latency_tests",
                     "cargo nextest run -p julie-tools --lib tests::search_pretokenized_emit_test",
-                    "cargo nextest run --lib tests::tools::search::relationship_text_test -- --skip search_quality",
                     "cargo nextest run -p julie-tools --lib tests::search_title_exact_boost_tests",
                     "cargo nextest run --lib tests::tools::search::unified_ -- --skip search_quality",
                 ],
@@ -536,7 +534,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::structural_facts_text_test -- --skip search_quality",
                 ],
             },
         ),
@@ -558,10 +555,8 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 360,
                 commands: &[
                     "cargo nextest run --lib tests::tools::workspace::file_policy -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::workspace::index_embedding_tests -- --skip search_quality",
                     "cargo nextest run -j 1 --lib tests::tools::workspace::mod_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::processor -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::workspace::resolver -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::seed",
                 ],
             },

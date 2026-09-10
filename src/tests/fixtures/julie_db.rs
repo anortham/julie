@@ -2,7 +2,6 @@
 //! Git-ignored and built on demand (about 40 s once per checkout); the
 //! `search-quality` bucket runs `ensure_julie_fixture` before its tests.
 
-use crate::tests::test_helpers::open_test_connection;
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -31,7 +30,7 @@ pub struct FixtureMetadata {
     pub indexed_files: Vec<String>,
     /// Known symbols per file (for test assertions)
     pub known_symbols: HashMap<String, Vec<String>>,
-    /// `symbols.db` schema version the snapshot was built with
+    /// facts.sqlite schema version the snapshot was built with
     #[serde(default)]
     pub schema_version: i32,
     /// Engine version the snapshot was built with
@@ -79,20 +78,17 @@ impl JulieTestFixture {
         // The primary workspace ID is generated from the Julie root path
         use crate::workspace::registry::generate_workspace_id;
         let expected_workspace_id = generate_workspace_id(&julie_root.to_string_lossy())?;
-        let source_db = handler
-            .workspace_db_file_path_for(&expected_workspace_id)
+        let source_dir = handler
+            .workspace_index_dir_for(&expected_workspace_id)
             .await?;
 
-        if !source_db.exists() {
-            bail!("Database not found at: {}", source_db.display());
+        if !source_dir.join("facts.sqlite").exists() {
+            bail!("facts.sqlite not found at: {}", source_dir.display());
         }
 
-        // Checkpoint WAL before copying to ensure single-file database
-        // This consolidates WAL changes into the main DB file
         println!("⏳ Checkpointing WAL before copy...");
         {
-            let conn = open_test_connection(&source_db)?;
-            // PRAGMA wal_checkpoint returns (busy, log, checkpointed) as results
+            let conn = rusqlite::Connection::open(source_dir.join("facts.sqlite"))?;
             let _: (i64, i64, i64) =
                 conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
                     Ok((row.get(0)?, row.get(1)?, row.get(2)?))
@@ -100,11 +96,9 @@ impl JulieTestFixture {
             println!("✅ WAL checkpointed and truncated");
         }
 
-        // Copy database to fixture location
-        let fixture_db = fixture_dir.join("symbols.db");
-        fs::copy(&source_db, &fixture_db)?;
-
-        println!("✅ Database copied to fixture location");
+        copy_index_dir(&source_dir, &fixture_dir)?;
+        let fixture_db = fixture_dir.join("facts.sqlite");
+        println!("✅ Index copied to fixture location");
 
         // Build metadata
         let metadata = Self::build_metadata(&handler).await?;
@@ -129,18 +123,18 @@ impl JulieTestFixture {
     pub fn load() -> Result<Self> {
         let fixture_dir =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/databases/julie-snapshot");
-        let fixture_db = fixture_dir.join("symbols.db");
+        let fixture_db = fixture_dir.join("facts.sqlite");
         let metadata_path = fixture_dir.join("metadata.json");
 
         if !fixture_db.exists() {
             bail!(
-                "Fixture database not found at: {}\nRun: cargo test --lib build_julie_fixture -- --ignored --nocapture",
+                "Fixture facts.sqlite not found at: {}\nRun: cargo test --lib build_julie_fixture -- --ignored --nocapture",
                 fixture_db.display()
             );
         }
 
         let metadata: FixtureMetadata = serde_json::from_str(&fs::read_to_string(&metadata_path)?)?;
-        if metadata.schema_version != crate::database::LATEST_SCHEMA_VERSION
+        if metadata.schema_version != julie_facts::version::FACTS_SCHEMA_VERSION
             || metadata.engine_version
                 != crate::tools::workspace::indexing::engine_version::SEMANTIC_INDEX_ENGINE_VERSION
         {
@@ -149,7 +143,7 @@ impl JulieTestFixture {
                 fixture_dir.display(),
                 metadata.schema_version,
                 metadata.engine_version,
-                crate::database::LATEST_SCHEMA_VERSION
+                julie_facts::version::FACTS_SCHEMA_VERSION
             );
         }
 
@@ -168,8 +162,12 @@ impl JulieTestFixture {
     /// Create a test-scoped copy of the fixture for read-write tests
     pub fn copy_to_temp(&self) -> Result<TempDir> {
         let temp = TempDir::new()?;
-        let dest_db = temp.path().join("symbols.db");
-        fs::copy(&self.fixture_db_path, &dest_db)?;
+        copy_index_dir(
+            self.fixture_db_path
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("fixture path has no parent"))?,
+            temp.path(),
+        )?;
         Ok(temp)
     }
 
@@ -197,58 +195,46 @@ impl JulieTestFixture {
         let workspace = workspace_guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
-
-        let db_arc = workspace
-            .db
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?;
-
-        let db_lock = db_arc.lock().unwrap();
-
-        // Query database for metadata
-        // Count files
-        let file_count: i64 = db_lock
-            .conn
-            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
-
-        // Count symbols
-        let symbol_count: i64 =
-            db_lock
-                .conn
-                .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
-
-        // Get all file paths
-        let mut stmt = db_lock
-            .conn
-            .prepare("SELECT path FROM files ORDER BY path")?;
-        let indexed_files: Vec<String> = stmt
-            .query_map([], |row| row.get(0))?
-            .collect::<Result<Vec<String>, _>>()?;
-
-        // Get symbols per file (for test assertions)
+        let snapshot = workspace.store.current();
+        let graph = snapshot.graph();
+        let indexed_files = graph.paths().to_vec();
         let mut known_symbols: HashMap<String, Vec<String>> = HashMap::new();
-        for file_path in &indexed_files {
-            let mut stmt = db_lock
-                .conn
-                .prepare("SELECT name FROM symbols WHERE file_path = ? ORDER BY name")?;
-            let symbols: Vec<String> = stmt
-                .query_map([file_path], |row| row.get(0))?
-                .collect::<Result<Vec<String>, _>>()?;
-            known_symbols.insert(file_path.clone(), symbols);
+        for path in &indexed_files {
+            let mut names: Vec<String> = graph
+                .symbols_in_path(path)
+                .iter()
+                .map(|id| graph.symbol(*id).name.clone())
+                .collect();
+            names.sort();
+            known_symbols.insert(path.clone(), names);
         }
 
         Ok(FixtureMetadata {
             created_at: chrono::Utc::now().to_rfc3339(),
-            file_count: file_count as usize,
-            symbol_count: symbol_count as usize,
+            file_count: indexed_files.len(),
+            symbol_count: graph.len(),
             indexed_files,
             known_symbols,
-            schema_version: crate::database::LATEST_SCHEMA_VERSION,
+            schema_version: julie_facts::version::FACTS_SCHEMA_VERSION,
             engine_version:
                 crate::tools::workspace::indexing::engine_version::SEMANTIC_INDEX_ENGINE_VERSION
                     .to_string(),
         })
     }
+}
+
+fn copy_index_dir(src: &std::path::Path, dest: &std::path::Path) -> Result<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let to = dest.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_index_dir(&entry.path(), &to)?;
+        } else {
+            fs::copy(entry.path(), to)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

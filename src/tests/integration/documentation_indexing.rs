@@ -73,124 +73,46 @@ async fn test_documentation_indexing_basic() -> Result<()> {
     index_workspace(&handler, workspace_path).await?;
     println!("DEBUG: Indexing complete");
 
-    // Debug: Check ALL symbols in database
     let workspace = handler
         .get_workspace()
         .await?
         .expect("Workspace initialized");
-    let db_arc = workspace
-        .db
-        .as_ref()
-        .expect("Database should be initialized");
-    let db = db_arc.lock().unwrap();
-
-    let total_symbols: i64 = db
-        .conn
-        .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
-        .unwrap_or(0);
-    println!("DEBUG: Total symbols in database: {}", total_symbols);
-
-    if total_symbols > 0 {
-        // Show some sample symbols
-        let mut stmt = db
-            .conn
-            .prepare("SELECT name, language, content_type FROM symbols LIMIT 5")?;
-        let symbols: Vec<(String, String, Option<String>)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-            .collect::<Result<Vec<_>, _>>()?;
-        println!("DEBUG: Sample symbols:");
-        for (name, lang, ct) in symbols {
-            println!(
-                "  - name={}, language={}, content_type={:?}",
-                name, lang, ct
-            );
-        }
+    let symbols = graph_symbols(&workspace);
+    println!("DEBUG: Total symbols in snapshot: {}", symbols.len());
+    for symbol in symbols.iter().take(5) {
+        println!(
+            "  - name={}, language={}, content_type={:?}",
+            symbol.name, symbol.language, symbol.content_type
+        );
     }
-    drop(db);
 
-    // Verify: Documentation symbols are in symbols table with content_type='documentation'
-    let workspace = handler
-        .get_workspace()
-        .await?
-        .expect("Workspace should be initialized");
-
-    let db_arc = workspace
-        .db
-        .as_ref()
-        .expect("Database should be initialized");
-    let db = db_arc.lock().unwrap();
-
-    // Count total documentation entries
-    let doc_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
+    let doc_count = symbols
+        .iter()
+        .filter(|symbol| symbol.content_type.as_deref() == Some("documentation"))
+        .count();
     assert!(
         doc_count >= 3,
         "Should have at least 3 documentation sections (README.md, ARCHITECTURE.md, GUIDE.md), found {}",
         doc_count
     );
-
-    // Verify: Specific documentation files are present
-    let readme_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%README.md' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to query README.md");
-
     assert_eq!(
-        readme_count, 1,
+        documentation_in_path(&workspace, "README.md").len(),
+        1,
         "Should find 1 README.md documentation entry"
     );
-
-    let arch_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%ARCHITECTURE.md' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to query ARCHITECTURE.md");
-
     assert_eq!(
-        arch_count, 1,
+        documentation_in_path(&workspace, "ARCHITECTURE.md").len(),
+        1,
         "Should find 1 ARCHITECTURE.md documentation entry"
     );
-
-    // Verify: Non-documentation files are NOT marked as documentation
-    let code_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%main.rs' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to query main.rs");
-
     assert_eq!(
-        code_count, 0,
+        documentation_in_path(&workspace, "main.rs").len(),
+        0,
         "main.rs should NOT have content_type='documentation' (it's code, not documentation)"
     );
-
-    let json_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%config.json' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to query config.json");
-
     assert_eq!(
-        json_count, 0,
+        documentation_in_path(&workspace, "config.json").len(),
+        0,
         "config.json should NOT have content_type='documentation' (it's configuration, not documentation)"
     );
 
@@ -226,46 +148,21 @@ async fn test_documentation_deduplication() -> Result<()> {
         .get_workspace()
         .await?
         .expect("Workspace initialized");
-    let db_arc = workspace
-        .db
-        .as_ref()
-        .expect("Database should be initialized");
-    let db = db_arc.lock().unwrap();
-
-    // Count after first indexing
-    let count_after_first: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%CHANGELOG.md' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to count after first indexing");
-
     assert_eq!(
-        count_after_first, 1,
+        documentation_in_path(&workspace, "CHANGELOG.md").len(),
+        1,
         "Should have 1 entry after first indexing"
     );
 
-    drop(db); // Release lock before re-indexing
-
-    // Second indexing (same content - should not create duplicate)
     index_workspace(&handler, workspace_path).await?;
 
-    let db = db_arc.lock().unwrap();
-
-    // Count after second indexing
-    let count_after_second: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%CHANGELOG.md' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to count after second indexing");
-
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace initialized");
     assert_eq!(
-        count_after_second, 1,
+        documentation_in_path(&workspace, "CHANGELOG.md").len(),
+        1,
         "Should still have 1 entry after re-indexing (no duplicate)"
     );
 
@@ -298,83 +195,42 @@ async fn test_documentation_update_on_change() -> Result<()> {
         .get_workspace()
         .await?
         .expect("Workspace initialized");
-    let db_arc = workspace
-        .db
-        .as_ref()
-        .expect("Database should be initialized");
-    let db = db_arc.lock().unwrap();
-
-    // Get initial doc_comment content
-    let initial_content: String = db
-        .conn
-        .query_row(
-            "SELECT doc_comment FROM symbols WHERE file_path LIKE '%API.md' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to get initial content");
-
+    let initial = documentation_in_path(&workspace, "API.md");
+    let initial_content = initial[0]
+        .doc_comment
+        .clone()
+        .unwrap_or_default();
     assert!(
         initial_content.contains("Version 1.0 API"),
         "Initial content should contain 'Version 1.0 API'"
     );
 
-    drop(db); // Release lock
-
-    // Modify content
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     fs::write(
         &doc_file,
         "# API Reference\n\nVersion 2.0 API with new endpoints",
     )?;
 
-    // Re-index (force=true creates a new workspace/DB, so re-acquire the reference)
     index_workspace(&handler, workspace_path).await?;
 
     let workspace = handler
         .get_workspace()
         .await?
         .expect("Workspace should still exist after re-index");
-    let db_arc = workspace
-        .db
-        .as_ref()
-        .expect("Database should exist after re-index");
-    let db = db_arc.lock().unwrap();
-
-    // Get updated doc_comment content
-    let updated_content: String = db
-        .conn
-        .query_row(
-            "SELECT doc_comment FROM symbols WHERE file_path LIKE '%API.md' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to get updated content");
-
-    // Verify: Content changed (reflecting modified file)
+    let updated = documentation_in_path(&workspace, "API.md");
+    assert_eq!(
+        updated.len(),
+        1,
+        "Should still have exactly 1 entry (replaced, not duplicated)"
+    );
+    let updated_content = updated[0].doc_comment.clone().unwrap_or_default();
     assert_ne!(
         initial_content, updated_content,
         "Content should change when documentation is modified"
     );
-
     assert!(
         updated_content.contains("Version 2.0 API"),
         "Updated content should contain 'Version 2.0 API'"
-    );
-
-    // Verify: Still only one entry (replaced, not duplicated)
-    let count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%API.md' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to count entries");
-
-    assert_eq!(
-        count, 1,
-        "Should still have exactly 1 entry (replaced, not duplicated)"
     );
 
     Ok(())
@@ -407,22 +263,7 @@ async fn test_multiple_sections_from_single_file() -> Result<()> {
         .get_workspace()
         .await?
         .expect("Workspace initialized");
-    let db_arc = workspace
-        .db
-        .as_ref()
-        .expect("Database should be initialized");
-    let db = db_arc.lock().unwrap();
-
-    // Count sections from this file
-    let section_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%MULTIPART.md' AND content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to count sections");
-
+    let section_count = documentation_in_path(&workspace, "MULTIPART.md").len();
     assert!(
         section_count >= 3,
         "Should have at least 3 sections (Introduction, Installation, Configuration), found {}",
@@ -459,4 +300,25 @@ async fn index_workspace(
 
     index_tool.call_tool(handler).await?;
     Ok(())
+}
+
+fn graph_symbols(workspace: &crate::workspace::JulieWorkspace) -> Vec<julie_facts::rows::SymbolRow> {
+    let snapshot = workspace.store.current();
+    let graph = snapshot.graph();
+    (0..graph.len())
+        .map(|i| graph.symbol(julie_index::graph::SymbolId(i as u32)).clone())
+        .collect()
+}
+
+fn documentation_in_path(
+    workspace: &crate::workspace::JulieWorkspace,
+    path_needle: &str,
+) -> Vec<julie_facts::rows::SymbolRow> {
+    graph_symbols(workspace)
+        .into_iter()
+        .filter(|symbol| {
+            symbol.content_type.as_deref() == Some("documentation")
+                && symbol.path.contains(path_needle)
+        })
+        .collect()
 }

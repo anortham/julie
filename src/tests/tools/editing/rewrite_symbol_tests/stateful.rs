@@ -50,7 +50,7 @@ async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()
     let rebound_ws =
         Arc::new(crate::workspace::JulieWorkspace::initialize(rebound_path.clone()).await?);
     {
-        let store = rebound_ws.store.as_ref().expect("rebound store");
+        let store = &rebound_ws.store;
         let bytes = fs::read(rebound_root.join("src").join("test.rs"))?;
         let guard = julie_core::workspace::mutation_gate::acquire_gate(&rebound_id).await;
         store.apply(
@@ -121,59 +121,15 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
     let original_ws =
         Arc::new(crate::workspace::JulieWorkspace::initialize(original_path.clone()).await?);
     {
-        let original_file_path = original_root.join("src").join("test.rs");
-        let original_hash = crate::database::calculate_file_hash(&original_file_path)?;
-        let original_db = original_ws
-            .db
-            .as_ref()
-            .expect("original workspace db should exist")
-            .clone();
-        let mut original_db = original_db.lock().unwrap();
-        let file_info = crate::database::types::FileInfo {
-            path: "src/test.rs".to_string(),
-            language: "rust".to_string(),
-            hash: original_hash,
-            size: 64,
-            last_modified: 1,
-            last_indexed: 0,
-            symbol_count: 1,
-            line_count: 1,
-            content: Some("pub fn original_target() { println!(\"before\"); }\n".to_string()),
-        };
-        let symbol = julie_core::Symbol {
-            extracted: julie_extractors::Symbol {
-                id: "original_symbol".to_string(),
-                name: "original_target".to_string(),
-                kind: crate::extractors::SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: "src/test.rs".to_string(),
-                start_line: 1,
-                start_column: 0,
-                end_line: 1,
-                end_column: 25,
-                start_byte: 0,
-                end_byte: 25,
-                signature: Some("pub fn original_target()".to_string()),
-                doc_comment: None,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: None,
-        };
-        original_db.bulk_store_fresh_atomic(
-            &[file_info],
-            &[symbol],
-            &[],
-            &[],
-            &[],
-            &original_id,
+        let bytes = fs::read(original_root.join("src").join("test.rs"))?;
+        let guard = julie_core::workspace::mutation_gate::acquire_gate(&original_id).await;
+        original_ws.store.apply(
+            &[julie_index::checkout_store::PathChange::Upsert {
+                path: "src/test.rs".into(),
+                bytes,
+                language: "rust".into(),
+            }],
+            &guard,
         )?;
     }
 

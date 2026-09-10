@@ -142,7 +142,7 @@ mod workspace_management_token_tests {
     /// Test that recent files list respects token limits
     #[test]
     fn test_recent_files_with_many_files_applies_reduction() {
-        use crate::database::FileInfo;
+        use julie_pipeline::indexing_core::file_info::FileInfo;
 
         let reducer = ProgressiveReducer::new();
         let token_estimator = TokenEstimator::new();
@@ -203,7 +203,7 @@ mod workspace_management_token_tests {
     /// Test that recent files with few files doesn't apply reduction
     #[test]
     fn test_recent_files_with_few_files_unchanged() {
-        use crate::database::FileInfo;
+        use julie_pipeline::indexing_core::file_info::FileInfo;
 
         let reducer = ProgressiveReducer::new();
         let token_estimator = TokenEstimator::new();

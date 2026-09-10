@@ -1,4 +1,3 @@
-use crate::database::FactsStore;
 use crate::extractors::{ExtractionResults, ParseDiagnostic, ParseDiagnosticKind};
 use crate::indexing_core::extraction::extract_files_for_indexing_with_records;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -305,21 +304,6 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
     assert_eq!(file_info.symbol_count, 0);
     assert_eq!(file_info.content.as_deref(), Some(content));
 
-    let stored_path = file_info.path.clone();
-    let db_path = temp_dir.path().join("index.db");
-    let mut db = FactsStore::new(&db_path).unwrap();
-    db.bulk_store_fresh_atomic(&[file_info], &[], &[], &[], &[], "test-workspace")
-        .expect("zero-symbol degraded file should still be stored as a file row");
-    db.store_file_parse_diagnostics(&stored_path, &parse_diagnostics)
-        .expect("parse diagnostics should attach to stored zero-symbol file row");
-
-    let stats = db.get_stats().unwrap();
-    assert_eq!(stats.total_files, 1);
-    assert_eq!(stats.total_symbols, 0);
-    assert_eq!(
-        db.get_file_parse_diagnostics(&stored_path).unwrap(),
-        vec![expected_diagnostic]
-    );
 }
 
 #[tokio::test]

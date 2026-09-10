@@ -23,8 +23,6 @@ mod line_mode_second_pass_tests;
 mod primary_workspace_bug;
 mod quality; // STAYS: uses crate::utils::exact_match_boost + path_relevance (top-crate only)
 mod race_condition;
-mod relationship_text_test;
 mod source_regions;
-mod structural_facts_text_test;
 mod unified_pass_filter_test;
 mod zero_hit_reason_propagation_tests;

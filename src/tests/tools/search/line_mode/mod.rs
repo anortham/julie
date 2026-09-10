@@ -20,13 +20,12 @@ async fn ensure_primary_projection_current(handler: &JulieServerHandler) {
         .primary_workspace_snapshot()
         .await
         .expect("primary snapshot");
-    let search_index = snapshot.search_index.expect("primary search index");
-    let mut db = snapshot
-        .database
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let idx = search_index;
-    crate::search::SearchProjection::tantivy(snapshot.binding.workspace_id)
-        .ensure_current_with_gate(&mut db, &idx, &handler.indexing_status.search_ready)
-        .expect("projection current");
+    snapshot
+        .store
+        .rebuild_tantivy_if_needed(
+            &julie_core::workspace::mutation_gate::acquire_gate(&snapshot.binding.workspace_id)
+                .await,
+        )
+        .expect("tantivy current");
+    mark_index_ready(handler).await;
 }

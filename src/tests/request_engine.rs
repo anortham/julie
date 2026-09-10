@@ -30,7 +30,7 @@ impl RequestFixture {
         let workspace_id =
             julie_core::workspace::registry::generate_workspace_id(&root.to_string_lossy())
                 .expect("generate workspace_id");
-        let database_path = registry_paths.workspace_db_path(&workspace_id);
+        let database_path = registry_paths.workspace_facts_path(&workspace_id);
 
         let binding_resolver =
             BindingResolver::new(Some(root.clone()), false, registry_paths.clone());

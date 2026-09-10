@@ -49,13 +49,6 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
     )
     .await
     .unwrap();
-    {
-        let mut loaded_workspace = handler.workspace.write().await;
-        loaded_workspace
-            .as_mut()
-            .expect("loaded workspace should exist")
-            .search_index = None;
-    }
 
     let rebound_primary_path = rebound_primary_root.canonicalize().unwrap();
     let rebound_primary_path_str = rebound_primary_path.to_string_lossy().to_string();
@@ -73,7 +66,7 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
             .unwrap(),
     );
     {
-        let store = rebound_ws.store.as_ref().expect("rebound store");
+        let store = &rebound_ws.store;
         let bytes = fs::read(rebound_primary_path.join("lib.rs")).unwrap();
         let guard =
             julie_core::workspace::mutation_gate::acquire_gate(&rebound_primary_id).await;
@@ -182,7 +175,7 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
             .unwrap(),
     );
     {
-        let store = rebound_ws.store.as_ref().expect("rebound store");
+        let store = &rebound_ws.store;
         let bytes = fs::read(rebound_primary_path.join("lib.rs")).unwrap();
         let guard =
             julie_core::workspace::mutation_gate::acquire_gate(&rebound_primary_id).await;

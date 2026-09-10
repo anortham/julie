@@ -1,5 +1,6 @@
 use super::*;
 use crate::tests::helpers::workspace::mark_workspace_root;
+use rusqlite::OptionalExtension;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_edit_file_metrics_attribute_root_file_source_bytes() -> Result<()> {
@@ -12,7 +13,8 @@ async fn test_edit_file_metrics_attribute_root_file_source_bytes() -> Result<()>
     let original = "[package]\nname = \"before\"\nversion = \"0.1.0\"\n";
     std::fs::write(&cargo_toml, original)?;
 
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -46,23 +48,25 @@ async fn test_edit_file_metrics_attribute_root_file_source_bytes() -> Result<()>
         "edit_file should return a tool response"
     );
 
-    let db_arc = {
-        let workspace = handler.workspace.read().await;
-        workspace
-            .as_ref()
-            .and_then(|workspace| workspace.db.as_ref())
-            .expect("indexed workspace should have a database")
-            .clone()
-    };
     let source_bytes = tokio::time::timeout(Duration::from_secs(1), async {
         loop {
-            if let Some(summary) = {
-                let db = db_arc.lock().expect("workspace db should lock");
-                db.query_session_summary(&handler.session_metrics.session_id)?
-                    .into_iter()
-                    .find(|summary| summary.tool_name == "edit_file")
-            } {
-                break Ok::<u64, anyhow::Error>(summary.total_source_bytes);
+            let bytes: Option<i64> = {
+                let conn = handler
+                    .daemon_db
+                    .as_ref()
+                    .expect("registry.db")
+                    .conn_for_test();
+                conn.query_row(
+                    "SELECT source_bytes FROM tool_calls
+                     WHERE tool_name = 'edit_file'
+                     ORDER BY id DESC LIMIT 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?
+            };
+            if let Some(n) = bytes {
+                break Ok::<u64, anyhow::Error>(n as u64);
             }
             tokio::task::yield_now().await;
         }
@@ -86,7 +90,8 @@ async fn test_edit_file_validation_errors_are_recorded_as_failures() -> Result<(
     mark_workspace_root(temp_dir.path());
     std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
 
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -143,7 +148,8 @@ async fn test_edit_file_empty_old_text_validation_precedes_file_io() -> Result<(
     mark_workspace_root(temp_dir.path());
     std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
 
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -185,7 +191,8 @@ async fn test_edit_file_metrics_include_input_and_edit_outcome() -> Result<()> {
     let temp_dir = TempDir::new()?;
     mark_workspace_root(temp_dir.path());
     std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -236,7 +243,8 @@ async fn test_edit_file_apply_metrics_record_conversion_outcome() -> Result<()> 
     mark_workspace_root(temp_dir.path());
     let file_path = temp_dir.path().join("README.md");
     std::fs::write(&file_path, "hello\n")?;
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -281,7 +289,8 @@ async fn test_edit_file_failed_apply_metrics_record_applied_false() -> Result<()
     mark_workspace_root(temp_dir.path());
     let file_path = temp_dir.path().join("README.md");
     std::fs::write(&file_path, "hello\n")?;
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -331,7 +340,8 @@ async fn test_rewrite_symbol_metrics_include_symbol_span_and_failure_kind() -> R
         temp_dir.path().join("src/lib.rs"),
         "pub fn target() { println!(\"old\"); }\npub fn collide() {}\npub fn collide() {}\n",
     )?;
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -416,7 +426,8 @@ async fn test_rewrite_symbol_failed_apply_metrics_record_applied_false() -> Resu
     std::fs::create_dir_all(temp_dir.path().join("src"))?;
     let file_path = temp_dir.path().join("src/lib.rs");
     std::fs::write(&file_path, "pub fn target() { println!(\"old\"); }\n")?;
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -468,7 +479,8 @@ async fn test_rename_symbol_metrics_include_reference_and_change_counts() -> Res
         temp_dir.path().join("main.rs"),
         "fn getUserData() { getUserData(); }\n",
     )?;
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,

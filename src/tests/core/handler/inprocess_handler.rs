@@ -136,12 +136,12 @@ async fn test_inprocess_handler_f2_storage_under_index_root() {
         .await
         .expect("workspace initialization must succeed");
 
-    let expected_db = paths.workspace_db_path(&workspace_id);
-    assert!(expected_db.starts_with(&index_root));
+    let expected_facts = paths.workspace_facts_path(&workspace_id);
+    assert!(expected_facts.starts_with(&index_root));
     assert!(
-        expected_db.exists(),
-        "db missing at {}",
-        expected_db.display()
+        expected_facts.exists(),
+        "facts.sqlite missing at {}",
+        expected_facts.display()
     );
 
     let project_local_db = project_dir
@@ -149,8 +149,7 @@ async fn test_inprocess_handler_f2_storage_under_index_root() {
         .join(".julie")
         .join("indexes")
         .join(&workspace_id)
-        .join("db")
-        .join("symbols.db");
+        .join("facts.sqlite");
     assert!(!project_local_db.exists());
 }
 

@@ -204,16 +204,15 @@ fn test_workspace_index_path() {
 }
 
 #[test]
-fn test_workspace_db_path() {
+fn test_workspace_facts_path() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("explicit-test-home");
     let paths = RegistryPaths::with_home(home.clone());
     assert_eq!(
-        paths.workspace_db_path("myproject_abc12345"),
+        paths.workspace_facts_path("myproject_abc12345"),
         home.join("indexes")
             .join("myproject_abc12345")
-            .join("db")
-            .join("symbols.db"),
+            .join("facts.sqlite"),
     );
 }
 

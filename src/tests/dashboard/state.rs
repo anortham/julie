@@ -156,9 +156,8 @@ async fn test_dashboard_health_snapshot_reports_detached_projection_contract() {
     );
 
     let health = state.health_snapshot().await;
-    assert_eq!(health.data_plane.projections.len(), 2);
+    assert_eq!(health.data_plane.projections.len(), 1);
     assert_eq!(health.data_plane.projections[0].name, "tantivy");
-    assert_eq!(health.data_plane.projections[1].name, "web_edges");
     for projection in &health.data_plane.projections {
         assert_eq!(projection.level, HealthLevel::Unavailable);
         assert!(!projection.repair_needed);

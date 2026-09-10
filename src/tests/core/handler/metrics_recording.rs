@@ -11,7 +11,8 @@ async fn test_tool_failure_metrics_records_failed_handler_call() -> Result<()> {
     std::fs::create_dir_all(temp_dir.path().join("src"))?;
     std::fs::write(temp_dir.path().join("src/lib.rs"), "pub fn hi() {}\n")?;
 
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -40,20 +41,17 @@ async fn test_tool_failure_metrics_records_failed_handler_call() -> Result<()> {
     .await;
     assert!(result.is_err(), "get_symbols should fail for invalid mode");
 
-    let db_arc = {
-        let workspace = handler.workspace.read().await;
-        workspace
-            .as_ref()
-            .and_then(|workspace| workspace.db.as_ref())
-            .expect("indexed workspace should have a database")
-            .clone()
-    };
+    let db = handler
+        .daemon_db
+        .as_ref()
+        .expect("registry.db")
+        .clone();
 
     let recorded = tokio::time::timeout(Duration::from_secs(1), async {
         loop {
             let row = {
-                let db = db_arc.lock().expect("workspace db should lock");
-                let mut stmt = db.conn.prepare(
+                let conn = db.conn_for_test();
+                let mut stmt = conn.prepare(
                     "SELECT id, tool_name, success, output_bytes, metadata
                      FROM tool_calls
                      WHERE tool_name = 'get_symbols'
@@ -110,8 +108,8 @@ async fn test_tool_failure_metrics_records_failed_handler_call() -> Result<()> {
     let missing_recorded = tokio::time::timeout(Duration::from_secs(1), async {
         loop {
             let row = {
-                let db = db_arc.lock().expect("workspace db should lock");
-                let mut stmt = db.conn.prepare(
+                let conn = db.conn_for_test();
+                let mut stmt = conn.prepare(
                     "SELECT id, success, output_bytes, metadata
                      FROM tool_calls
                      WHERE tool_name = 'get_symbols'
@@ -170,7 +168,8 @@ async fn test_deep_dive_failure_metrics_records_failed_handler_call() -> Result<
     std::fs::create_dir_all(temp_dir.path().join("src"))?;
     std::fs::write(temp_dir.path().join("src/lib.rs"), "pub fn hi() {}\n")?;
 
-    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
@@ -202,20 +201,17 @@ async fn test_deep_dive_failure_metrics_records_failed_handler_call() -> Result<
         "deep_dive should fail for unknown workspace id"
     );
 
-    let db_arc = {
-        let workspace = handler.workspace.read().await;
-        workspace
-            .as_ref()
-            .and_then(|workspace| workspace.db.as_ref())
-            .expect("indexed workspace should have a database")
-            .clone()
-    };
+    let db = handler
+        .daemon_db
+        .as_ref()
+        .expect("registry.db")
+        .clone();
 
     let recorded = tokio::time::timeout(Duration::from_secs(1), async {
         loop {
             let row = {
-                let db = db_arc.lock().expect("workspace db should lock");
-                let mut stmt = db.conn.prepare(
+                let conn = db.conn_for_test();
+                let mut stmt = conn.prepare(
                     "SELECT success, metadata
                      FROM tool_calls
                      WHERE tool_name = 'deep_dive'

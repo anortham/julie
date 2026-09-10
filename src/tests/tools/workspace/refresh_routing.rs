@@ -204,14 +204,14 @@ async fn test_daemon_rebound_primary_storage_anchor_keeps_shared_index_root() {
     let rebound_id = generate_workspace_id(&rebound_path.to_string_lossy()).unwrap();
     handler.set_current_primary_binding(rebound_id.clone(), rebound_path.clone());
 
-    let db_path = handler
-        .workspace_db_file_path_for(&rebound_id)
+    let index_dir = handler
+        .workspace_index_dir_for(&rebound_id)
         .await
-        .expect("rebound current primary should still resolve a daemon DB path");
+        .expect("rebound current primary should still resolve a shared index dir");
 
     assert_eq!(
-        db_path,
-        indexes_dir.join(&rebound_id).join("db").join("symbols.db"),
+        index_dir,
+        indexes_dir.join(&rebound_id),
         "daemon rebound primary should keep the shared daemon index root instead of falling back to the rebound workspace's local .julie store"
     );
 }
@@ -392,12 +392,9 @@ async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_
     // storage even when the primary is rebound (the deleted WorkspacePool used
     // to carry this anchor).
     assert_eq!(
-        route.db_path,
-        indexes_dir
-            .join(&route.workspace_id)
-            .join("db")
-            .join("symbols.db"),
-        "reference workspace DB stays under the shared indexes_dir under a rebound primary"
+        route.index_dir,
+        indexes_dir.join(&route.workspace_id),
+        "reference workspace index stays under the shared indexes_dir under a rebound primary"
     );
     assert_eq!(
         route.tantivy_path,
