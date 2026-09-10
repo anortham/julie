@@ -8,6 +8,7 @@ async fn two_checkouts_share_one_embedding_child() {
     let fake = crate::tests::helpers::fake_sidecar::write(fake_dir.path());
     let mut env = crate::tests::helpers::env::EnvVarGuard::new();
     env.set("JULIE_NATIVE_SIDECAR_PROGRAM", fake.as_os_str());
+    env.set("JULIE_NATIVE_SIDECAR_MODEL", "fake");
     env.set("JULIE_EMBEDDING_PROVIDER", "native");
     let running = Running::start(None).await;
     let a = tempfile::tempdir().unwrap();

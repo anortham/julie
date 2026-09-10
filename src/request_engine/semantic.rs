@@ -303,9 +303,6 @@ impl DefaultSemanticRuntime {
     }
 
     pub fn child_status(&self) -> EmbeddingChildStatus {
-        if julie_pipeline::embeddings::init::embeddings_disabled_by_env() {
-            return EmbeddingChildStatus::Absent;
-        }
         if let Some(provider) = self.provider() {
             if let Some(pid) = provider.child_pid() {
                 let dev = provider.device_info();
@@ -371,14 +368,13 @@ impl DefaultSemanticRuntime {
         deadline: Instant,
         cancellation: &CancellationToken,
     ) -> Result<Option<Arc<dyn EmbeddingProvider>>, RequestFailure> {
-        if julie_pipeline::embeddings::init::embeddings_disabled_by_env() {
-            return Ok(None);
-        }
-
         // 1. Fast path: check cached provider and probe health
         {
             let cache = self.provider_cache.read().await;
             let st = self.state.read().await;
+            if matches!(&*st, RuntimeProviderState::Disabled) {
+                return Ok(None);
+            }
             if let (Some(p), RuntimeProviderState::Ready) = (cache.as_ref(), &*st) {
                 let p_clone = Arc::clone(p);
                 let remaining = deadline.saturating_duration_since(Instant::now());
@@ -418,6 +414,9 @@ impl DefaultSemanticRuntime {
             {
                 let cache = self.provider_cache.read().await;
                 let st = self.state.read().await;
+                if matches!(&*st, RuntimeProviderState::Disabled) {
+                    return Ok(None);
+                }
                 if let (Some(p), RuntimeProviderState::Ready) = (cache.as_ref(), &*st) {
                     return Ok(Some(Arc::clone(p)));
                 }
@@ -509,11 +508,8 @@ impl SemanticRuntime for DefaultSemanticRuntime {
             ));
         }
 
-        // Rule 1 & 2: Off mode, Requirement None, or env-disabled performs zero work
-        if mode == SemanticMode::Off
-            || requirement.is_none()
-            || julie_pipeline::embeddings::init::embeddings_disabled_by_env()
-        {
+        // Rule 1 & 2: Off mode or Requirement None performs zero work
+        if mode == SemanticMode::Off || requirement.is_none() {
             return Ok(SemanticReadiness::Disabled);
         }
 
