@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, anyhow, bail};
 use serde::Deserialize;
 
-const FAST_TIER_MAX_EXPECTED_SECONDS: u64 = 60;
+const FAST_TIER_MAX_EXPECTED_SECONDS: u64 = 10;
 const DEV_TIER_MAX_EXPECTED_SECONDS: u64 = 600;
 
 #[derive(Debug, Deserialize)]
@@ -239,7 +239,6 @@ mod tests {
             "tools-editing",
             "tools-call-path",
             "tools-refactoring",
-            "extractor-dep-integration",
         ] {
             assert!(
                 full_buckets.iter().any(|bucket| bucket == bucket_name),

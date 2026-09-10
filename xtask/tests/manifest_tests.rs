@@ -352,7 +352,7 @@ fn manifest_tests_reject_over_budget_fast_tier() {
 fast = ["cli"]
 
 [buckets.cli]
-expected_seconds = 61
+expected_seconds = 11
 timeout_seconds = 120
 commands = ["cargo test --lib tests::cli_tests"]
 "#,
@@ -361,10 +361,10 @@ commands = ["cargo test --lib tests::cli_tests"]
 
     let message = error.to_string();
     assert!(
-        message.contains("fast tier expected runtime must stay under 60s"),
+        message.contains("fast tier expected runtime must stay under 10s"),
         "unexpected error: {message}"
     );
-    assert!(message.contains("got 61s"), "unexpected error: {message}");
+    assert!(message.contains("got 11s"), "unexpected error: {message}");
 }
 
 #[test]
@@ -375,7 +375,7 @@ fn manifest_tests_accept_valid_fast_tier() {
 fast = ["cli"]
 
 [buckets.cli]
-expected_seconds = 60
+expected_seconds = 10
 timeout_seconds = 120
 commands = ["cargo test --lib tests::cli_tests"]
 "#,

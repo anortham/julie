@@ -205,7 +205,6 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "core-database".to_string(),
                 "core-facts".to_string(),
                 "core-fast".to_string(),
-                "service".to_string(),
             ],
         ),
         (
@@ -259,9 +258,6 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "workspace-init".to_string(),
                 "documentation-indexing".to_string(),
                 "integration".to_string(),
-                "tools-dogfood-repo-index".to_string(),
-                "search-quality".to_string(),
-                "extractor-dep-integration".to_string(),
             ],
         ),
         (

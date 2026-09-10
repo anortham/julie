@@ -36,7 +36,7 @@ cargo build                    # Debug build
 cargo build --release          # Release build (for live MCP testing)
 cargo nextest run --lib <test_name>  # Default: narrowest test first
 cargo xtask test nano          # Minimal regression check (nano ⊆ fast)
-cargo xtask test fast          # Default ≤60s-declared local gate (warm bucket wall)
+cargo xtask test fast          # Default ≤10s-declared local gate (warm bucket wall)
 cargo xtask test bucket extractor-dep-integration  # Parser/extractor dependency upgrade gate
 cargo xtask test changed       # Diff-scoped buckets; OverBudget unless under fast budget
 cargo xtask test changed --scale  # OverBudget only: unique(mapped ∪ dev)
@@ -105,7 +105,7 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 | Tier | Command | What it covers | When to use |
 |------|---------|----------------|-------------|
 | **Nano** | `cargo xtask test nano` | Smallest core slice (`nano ⊆ fast`) | Ultra-tight loop between edit batches |
-| **Fast** | `cargo xtask test fast` | Declared ≤60s local confidence gate (warm bucket wall) | Default local gate when you want more than a single test |
+| **Fast** | `cargo xtask test fast` | Declared ≤10s local confidence gate (warm bucket wall) | Default local gate when you want more than a single test |
 | **Smoke** | `cargo xtask test smoke` | Small confidence slice of the fastest buckets | Quick sanity check when you want a tiny run |
 | **Dev** | `cargo xtask test dev` | Fast batch-level regression tier for ordinary code changes (<10m expected) | Once per completed batch, before handoff |
 | **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
@@ -150,7 +150,7 @@ For the tight edit-test loop during implementation:
 3. **Batch before broader testing** — Make 3-5 edits before running
    `cargo xtask test changed` or `cargo xtask test fast` / `dev`.
 4. **`cargo xtask test nano`** or **`cargo xtask test fast`** — Quick local
-   confidence between batches (`nano ⊆ fast`; declared fast sum ≤60s warm wall).
+   confidence between batches (`nano ⊆ fast`; declared fast sum ≤10s warm wall).
 
 ### Known Pre-Existing Failures
 

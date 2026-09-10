@@ -51,7 +51,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "core-database",
             ExpectedBucket {
-                expected_seconds: 5,
+                expected_seconds: 2,
                 timeout_seconds: 90,
                 commands: &["cargo nextest run -p julie-core"],
             },
@@ -101,7 +101,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "core-fast",
             ExpectedBucket {
-                expected_seconds: 26,
+                expected_seconds: 5,
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
@@ -693,7 +693,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "core",
                 owner: "lead",
                 expensive: false,
-                notes: Some("misc fast core coverage (Task 6 warm p95≈23s → expected=26)"),
+                notes: Some("misc fast core coverage (warm ≈2.5s → expected=5)"),
             },
         ),
         (

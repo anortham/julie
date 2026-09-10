@@ -40,7 +40,7 @@ struct EditingTestCase {
 ## Running Tests
 
 ```bash
-# Default ≤60s-declared local confidence gate (warm bucket wall)
+# Default ≤10s-declared local confidence gate (warm bucket wall)
 cargo xtask test fast
 
 # Smallest core slice (nano ⊆ fast)
@@ -98,7 +98,7 @@ The `cargo xtask …` frontend stays lean. Runner prebuild compiles only the Rus
 | Tier | Command | When to use |
 |------|---------|-------------|
 | nano | `cargo xtask test nano` | Ultra-tight loop (`nano ⊆ fast`) |
-| fast | `cargo xtask test fast` | Default local gate (declared sum ≤60s; warm wall) |
+| fast | `cargo xtask test fast` | Default local gate (declared sum ≤10s; warm wall) |
 | smoke | `cargo xtask test smoke` | Quick sanity check |
 | changed | `cargo xtask test changed` | Diff-scoped; **OverBudget** if mapped sum > fast budget (no bare `dev` fallback) |
 | changed --scale | `cargo xtask test changed --scale` | OverBudget escalate: `unique(mapped ∪ dev)` |
