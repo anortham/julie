@@ -213,7 +213,7 @@ async fn status_carries_every_checkout() {
     assert_eq!(checkout["file_count"], 1);
     assert_eq!(checkout["symbol_count"], 1);
     assert_eq!(checkout["tantivy"], "present");
-    assert!(checkout["db_bytes"].as_u64().unwrap() > 0);
+    assert!(checkout["facts_bytes"].as_u64().unwrap() > 0);
     assert_eq!(checkout["vector_count"], 0);
     assert!(checkout["last_write_at"].is_string());
 }
