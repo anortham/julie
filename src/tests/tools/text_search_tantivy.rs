@@ -393,6 +393,9 @@ pub fn example() {
 #[tokio::test(flavor = "multi_thread")]
 #[serial(embedding_env)]
 async fn test_nl_definition_search_can_enable_hybrid_without_prior_index_embedding() -> Result<()> {
+    let mut env = crate::tests::helpers::env::EnvVarGuard::new();
+    env.set("JULIE_EMBEDDING_PROVIDER", "auto");
+
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
