@@ -71,10 +71,14 @@ fn writer_source_only_updates_or_deletes_paths() {
         for keyword in ["UPDATE", "DELETE FROM"] {
             for (offset, _) in source.match_indices(keyword) {
                 let rest = &source[offset + keyword.len()..];
-                let target = rest.split_whitespace().next().unwrap_or("");
-                assert_eq!(
-                    target, "paths",
-                    "{keyword} must target paths, found `{target}`"
+                let target = rest
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                assert!(
+                    target == "paths" || target == "vectors" || target == "encoder",
+                    "{keyword} must target paths, or vectors and encoder on an encoder change; found `{target}`"
                 );
             }
         }
