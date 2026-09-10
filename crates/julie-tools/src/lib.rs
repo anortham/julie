@@ -14,6 +14,7 @@ pub mod patterns;
 pub mod refactoring;
 pub mod search;
 pub mod shared;
+pub mod snapshot_rows;
 pub mod symbols;
 
 // Re-export the public tool types so the top-crate shim can re-export them.

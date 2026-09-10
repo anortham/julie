@@ -5,9 +5,8 @@
 
 use std::cmp::Ordering;
 
-use julie_core::Symbol;
-use julie_extractors::{NormalizedSpan, SymbolKind};
-use julie_facts::rows::{Span, SymbolRow};
+use julie_extractors::SymbolKind;
+use julie_facts::rows::SymbolRow;
 use julie_index::graph::{Graph, SymbolId};
 use serde_json::Value;
 
@@ -111,48 +110,7 @@ fn normalize_path_suffix(value: &str) -> String {
     components.join("/")
 }
 
-fn normalized(span: Span) -> NormalizedSpan {
-    NormalizedSpan {
-        start_line: span.start_line,
-        start_column: span.start_col,
-        end_line: span.end_line,
-        end_column: span.end_col,
-        start_byte: span.start_byte,
-        end_byte: span.end_byte,
-    }
-}
-
-/// The graph row of `id` shaped as the `Symbol` the formatters take.
-pub fn to_symbol(graph: &Graph, id: SymbolId) -> Symbol {
-    let row = graph.symbol(id);
-    julie_extractors::Symbol {
-        id: row.id.clone(),
-        name: row.name.clone(),
-        kind: row.kind.clone(),
-        language: row.language.clone(),
-        file_path: row.path.clone(),
-        start_line: row.span.start_line,
-        start_column: row.span.start_col,
-        end_line: row.span.end_line,
-        end_column: row.span.end_col,
-        start_byte: row.span.start_byte,
-        end_byte: row.span.end_byte,
-        body_span: row.body_span.map(normalized),
-        body_hash: row.body_hash.clone(),
-        signature: row.signature.clone(),
-        doc_comment: row.doc_comment.clone(),
-        visibility: row.visibility.clone(),
-        parent_id: row
-            .parent_ordinal
-            .map(|ordinal| format!("{}:{ordinal}", row.blob_hash)),
-        metadata: row.metadata.clone(),
-        annotations: row.annotations.clone(),
-        semantic_group: row.semantic_group.clone(),
-        confidence: row.confidence,
-        content_type: row.content_type.clone(),
-    }
-    .into()
-}
+pub use crate::snapshot_rows::to_symbol;
 
 fn is_lookup_stub(kind: &SymbolKind) -> bool {
     matches!(kind, SymbolKind::Import | SymbolKind::Export)

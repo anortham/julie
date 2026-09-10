@@ -9,12 +9,12 @@ use anyhow::Result;
 use julie_context::ToolContext;
 use julie_core::Symbol;
 use julie_extractors::SymbolKind;
-use julie_facts::rows::SymbolRow;
 use julie_index::search::SearchFilter;
 use julie_index::search::index::{SearchView, UnifiedHit};
 use julie_index::snapshot::Snapshot;
 
 use crate::navigation::resolution::WorkspaceTarget;
+use crate::snapshot_rows::symbol_from_row;
 
 /// Search-pipeline fixture for unit tests: `search_symbols` plus the NL path
 /// prior, over a hand-built `SearchIndex`.
@@ -105,55 +105,6 @@ fn unified_hit_to_symbol(hit: UnifiedHit) -> Symbol {
         hit.doc_comment,
         hit.tantivy_score,
     )
-}
-
-fn normalized_span(span: julie_facts::rows::Span) -> julie_extractors::NormalizedSpan {
-    julie_extractors::NormalizedSpan {
-        start_line: span.start_line,
-        start_column: span.start_col,
-        end_line: span.end_line,
-        end_column: span.end_col,
-        start_byte: span.start_byte,
-        end_byte: span.end_byte,
-    }
-}
-
-/// A `julie_core::Symbol` for one facts row. `code_context` is the row's span
-/// sliced from `text` when the checkout still matches the facts.
-pub(crate) fn symbol_from_row(row: &SymbolRow, text: Option<&str>) -> Symbol {
-    let code_context = text.and_then(|text| {
-        text.get(row.span.start_byte as usize..row.span.end_byte as usize)
-            .map(str::to_string)
-    });
-    Symbol {
-        extracted: julie_extractors::Symbol {
-            id: row.id.clone(),
-            name: row.name.clone(),
-            kind: row.kind.clone(),
-            language: row.language.clone(),
-            file_path: row.path.clone(),
-            start_line: row.span.start_line,
-            start_column: row.span.start_col,
-            end_line: row.span.end_line,
-            end_column: row.span.end_col,
-            start_byte: row.span.start_byte,
-            end_byte: row.span.end_byte,
-            body_span: row.body_span.clone().map(normalized_span),
-            body_hash: row.body_hash.clone(),
-            signature: row.signature.clone(),
-            doc_comment: row.doc_comment.clone(),
-            visibility: row.visibility.clone(),
-            parent_id: row
-                .parent_ordinal
-                .map(|ordinal| format!("{}:{ordinal}", row.blob_hash)),
-            metadata: row.metadata.clone(),
-            annotations: row.annotations.clone(),
-            semantic_group: row.semantic_group.clone(),
-            confidence: row.confidence,
-            content_type: row.content_type.clone(),
-        },
-        code_context,
-    }
 }
 
 /// Fill `code_context`, `visibility`, `metadata`, `body_span`, and `body_hash`
