@@ -332,8 +332,8 @@ mod tests {
         let fixture = JulieTestFixture::load()?;
         let temp = fixture.copy_to_temp()?;
 
-        let copied_db = temp.path().join("symbols.db");
-        assert!(copied_db.exists(), "Copied database should exist");
+        let copied_db = temp.path().join("facts.sqlite");
+        assert!(copied_db.exists(), "Copied facts store should exist");
 
         // Verify size matches
         let original_size = fs::metadata(fixture.db_path())?.len();
