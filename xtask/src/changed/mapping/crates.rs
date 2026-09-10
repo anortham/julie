@@ -15,6 +15,9 @@ fn mapped_buckets_for_path(path: &str) -> &'static [&'static str] {
     if path == "crates/julie-core/src/paths.rs" {
         return &["core-database", "core-fast"];
     }
+    if matches_prefix(path, &["crates/julie-facts/"]) {
+        return &["core-facts"];
+    }
     if matches_prefix(path, &["crates/julie-core/src/"]) {
         // database/**, lib.rs, test_support/**, tests/** — covered by `-p julie-core`.
         return &["core-database"];

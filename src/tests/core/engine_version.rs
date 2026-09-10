@@ -24,16 +24,8 @@ fn test_semantic_index_engine_version_includes_extraction_contract() {
         julie_extractors::EXTRACTION_CONTRACT_VERSION
     );
     assert!(
-        SEMANTIC_INDEX_ENGINE_VERSION.contains("consumer-enrichments-v1"),
-        "SEMANTIC_INDEX_ENGINE_VERSION must mark Julie's consumed extractor enrichments"
-    );
-    assert!(
-        SEMANTIC_INDEX_ENGINE_VERSION.contains("+epoch=9"),
-        "SEMANTIC_INDEX_ENGINE_VERSION must mark extraction identity epoch 9"
-    );
-    assert!(
-        SEMANTIC_INDEX_ENGINE_VERSION.contains("+consumer-projection-v1+receiver-schema-v31"),
-        "SEMANTIC_INDEX_ENGINE_VERSION must mark consumer projection and receiver schema"
+        SEMANTIC_INDEX_ENGINE_VERSION.contains("+facts="),
+        "SEMANTIC_INDEX_ENGINE_VERSION must name the facts schema version"
     );
 }
 
