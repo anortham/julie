@@ -365,13 +365,13 @@ ls -lh .julie/logs/
 ## 🔥 WORKSPACE ARCHITECTURE (Overview)
 
 **Each workspace has SEPARATE PHYSICAL FILES:**
-- MCP/server storage: `$JULIE_HOME/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
-- Standalone CLI storage: `.julie/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
+- MCP/server storage: `$JULIE_HOME/indexes/{workspace_id}/facts.sqlite` + `tantivy/`
+- Standalone CLI storage: `.julie/indexes/{workspace_id}/facts.sqlite` + `tantivy/`
 
 **WORKSPACE ISOLATION HAPPENS AT FILE LEVEL, NOT QUERY LEVEL:**
-- Tool receives workspace param → Routes to correct .db file → Opens connection
-- Connection is LOCKED to that workspace
-- Database functions can ONLY query that workspace
+- Tool receives workspace param → Routes to that checkout's `facts.sqlite` and snapshot
+- The checkout store is locked to that workspace
+- Tools read `ToolContext::snapshot` only
 
 **For detailed architecture info**, use Julie's code intelligence tools:
 ```
@@ -402,15 +402,15 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
    - The machine service serves Streamable HTTP at `/mcp`, JSON API at `/api/<tool>`, and dashboard at `/`.
    - The no-args `julie-server` runs the stdio shim, forwarding JSON-RPC to the service over localhost.
    - One machine service process (`julie-server service`) owns every workspace index. Its handler for a checkout is the only writer for that checkout: it runs the watcher, startup catch-up, and Tantivy writes. There is no leader election, no per-workspace lock file, and no read-only session. `RuntimeFactory` binds one handler per `(root, index_root)`.
-   - Durable files per checkout: `$JULIE_HOME/indexes/<id>/db/symbols.db` (plus `-wal`/`-shm`) and `$JULIE_HOME/indexes/<id>/tantivy/`. Per machine: `$JULIE_HOME/registry.db` and the runtime file `service.json`. Nothing else.
-   - `symbols.db` is never migrated. A schema version other than `LATEST_SCHEMA_VERSION` (32, `crates/julie-core/src/database/schema.rs`) or a `SEMANTIC_INDEX_ENGINE_VERSION` mismatch deletes `indexes/<id>/` and reindexes. `registry.db` keeps its own small migrations.
-   - `manage_workspace open` on a checkout whose `git rev-parse --git-common-dir` matches a registered workspace seeds from that sibling: it copies `symbols.db` and `tantivy/`, rewrites the workspace id, and runs the incremental scan.
+   - Durable files per checkout: `$JULIE_HOME/indexes/<id>/facts.sqlite` (plus `-wal`/`-shm`) and `$JULIE_HOME/indexes/<id>/tantivy/`. Per machine: `$JULIE_HOME/registry.db` and the runtime file `service.json`. Nothing else.
+   - `facts.sqlite` is never migrated. A schema or `SEMANTIC_INDEX_ENGINE_VERSION` mismatch deletes `indexes/<id>/` and reindexes. `registry.db` keeps its own small migrations.
+   - `manage_workspace open` on a checkout whose `git rev-parse --git-common-dir` matches a registered workspace seeds from that sibling: it copies blobs and fact rows by hash, extracts missing blobs, rebuilds `tantivy/`, and runs the incremental scan.
    - `registry.db` tracks known workspaces, cleanup events, codehealth snapshots, and tool calls.
 4. **Native Rust Core**: No FFI, no CGO — core indexing/search has zero external dependencies
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
-6. **SQLite Storage**: Symbols, identifiers, relationships, types, files
+6. **SQLite Storage**: Blob-keyed facts in `facts.sqlite` (symbols, identifiers, relationships, types, vectors)
 7. **Single Binary + Native Sidecar**: Core features work standalone; semantics run through the native `julie-semantic-sidecar` binary. There is no Python runtime.
-8. **Semantic Embeddings + KNN Vector Search**: Symbol embeddings from the native sidecar stored in SQLite, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2). `JULIE_EMBEDDING_PROVIDER` accepts `auto` (native when the sidecar binary is found, else none), `native`, or `none`; cargo sets `none` for every test binary via `.cargo/config.toml`.
+8. **Semantic Embeddings + brute-force vector scan**: Symbol embeddings from the native sidecar stored as a `vectors` table in `facts.sqlite`, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2). `JULIE_EMBEDDING_PROVIDER` accepts `auto` (native when the sidecar binary is found, else none), `native`, or `none`; cargo sets `none` for every test binary via `.cargo/config.toml`.
 9. **Instant Search**: Tantivy index available immediately after indexing
 10. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
 11. **Language-Agnostic Everything**: See below — this is critical

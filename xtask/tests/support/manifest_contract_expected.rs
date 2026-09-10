@@ -510,7 +510,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 100,
                 timeout_seconds: 180,
                 commands: &[
-                    "cargo nextest run -p julie-tools --lib tests::search_annotation_search_tests",
                     "cargo nextest run --lib tests::tools::search::content_scoring_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::fast_search_regression_tests -- --skip search_quality",
                     "cargo nextest run -p julie-tools --lib tests::search_lean_format_tests",

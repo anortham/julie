@@ -25,10 +25,10 @@ $JULIE_HOME/                     # Default: ~/.julie
 +-- registry.db                  # Workspaces, cleanup events, snapshots, tool calls
 +-- indexes/
     +-- julie_316c0b08/
-    |   +-- db/symbols.db        # Canonical SQLite symbol database (plus -wal/-shm)
+    |   +-- facts.sqlite         # Blob-keyed facts (plus -wal/-shm)
     |   +-- tantivy/             # Projected full-text search index
     +-- coa-mcp-framework_c77f81e4/
-        +-- db/symbols.db
+        +-- facts.sqlite
         +-- tantivy/
 
 <source_root>/.julie/            # Project-local source coordination (independent of JULIE_HOME)
@@ -41,7 +41,7 @@ $JULIE_HOME/                     # Default: ~/.julie
 There is a single long-running service per machine (or user account), with a
 lightweight stdio shim for clients that speak stdio MCP. All MCP sessions share
 the service's memory, caches, and runtime pipelines. `service.json`, `registry.db`,
-and `indexes/<id>/{db,tantivy}` are the only durable files under `$JULIE_HOME`.
+and `indexes/<id>/{facts.sqlite,tantivy}` are the only durable files under `$JULIE_HOME`.
 
 `JULIE_HOME` overrides the shared home directory directly. The path is used
 as-is; `.julie` is not appended. All Julie processes must see the same value,
@@ -99,9 +99,9 @@ Each workspace has its own physical database and Tantivy index. Workspace
 selection happens before opening the database connection:
 
 1. A tool receives a `workspace` parameter.
-2. The handler routes to `indexes/{workspace_id}/db/symbols.db`.
-3. The connection is scoped to that workspace and cannot query other workspace
-   databases.
+2. The handler routes to `indexes/{workspace_id}/facts.sqlite`.
+3. The checkout store is scoped to that workspace and cannot query other
+   checkouts.
 
 Tool-level `workspace` parameters are essential. They choose which workspace
 database and Tantivy index are opened for that request.
@@ -119,24 +119,21 @@ epoch, no `WriterPermit`, no publication lock, and no host admission slot.
   gated writers are: watcher event-processor, watcher repair scan, watcher
   repair-replay, watcher Tantivy retry, startup catch-up, force-reindex,
   `refresh`, and `rebuild`.
-- **Durable roots**: `$JULIE_HOME/indexes/<id>/db/symbols.db` (plus `-wal`/`-shm`)
+- **Durable roots**: `$JULIE_HOME/indexes/<id>/facts.sqlite` (plus `-wal`/`-shm`)
   and `$JULIE_HOME/indexes/<id>/tantivy/` per checkout; `$JULIE_HOME/registry.db`
   and `service.json` per machine. Project logs stay under `<project>/.julie/logs/`.
-- **Schema drift rebuilds**: `symbols.db` is never migrated. A schema version other
-  than `LATEST_SCHEMA_VERSION` (32, `crates/julie-core/src/database/schema.rs`) or a
-  `SEMANTIC_INDEX_ENGINE_VERSION` mismatch (the engine string ends with
-  `+schema=32`) deletes `indexes/<id>/` and reindexes. `registry.db` keeps its own
-  small migrations. `manage_workspace(operation="rebuild")` forces the same delete
-  and reindex.
+- **Schema drift rebuilds**: `facts.sqlite` is never migrated. A schema or
+  `SEMANTIC_INDEX_ENGINE_VERSION` mismatch deletes `indexes/<id>/` and reindexes.
+  `registry.db` keeps its own small migrations. `manage_workspace(operation="rebuild")`
+  forces the same delete and reindex.
 - **Sibling seeding**: `manage_workspace(operation="open", path=<new checkout>)`
   on a path whose `git rev-parse --git-common-dir` matches a registered workspace
-  copies the sibling's `symbols.db` and `tantivy/`, rewrites the workspace id, runs
-  the incremental scan, and reports
-  `Seeded from <sibling>: <copied> files copied, <reextracted> re-extracted, <removed> removed in <ms> ms`.
-  Measured on the Julie tree: 14.0 s seeded vs 35.9 s from scratch.
+  copies blobs and fact rows by hash, extracts missing blobs, rebuilds `tantivy/`,
+  and reports
+  `Seeded from <sibling>: <copied> blobs copied, <extracted> extracted, <removed> removed in <ms> ms`.
 - **Status**: `manage_workspace(operation="status")` returns a per-checkout
   `CheckoutStatus` (workspace_id, root, root_exists, watcher, last_file_event_at,
-  file_count, symbol_count, db_bytes, tantivy, tantivy_age_seconds, vector_count,
+  file_count, symbol_count, facts_bytes, tantivy, tantivy_age_seconds, vector_count,
   last_write_at). `GET /status` carries the same list under `checkouts`.
 
 Source edits are independent of index writes:

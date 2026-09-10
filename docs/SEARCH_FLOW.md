@@ -416,8 +416,7 @@ The AND/OR fallback adds at most one extra Tantivy search call.
 **Machine service path** (shared under `$JULIE_HOME`):
 ```
 $JULIE_HOME/indexes/{workspace_id}/
-  ├── db/
-  │   └── symbols.db           # SQLite (symbols, files, relationships, types)
+  ├── facts.sqlite             # Blob-keyed facts (symbols, identifiers, relationships, vectors)
   └── tantivy/
       ├── meta.json            # Tantivy index metadata
       ├── {segment_id}.fast    # Fast fields (stored data)
@@ -433,8 +432,7 @@ The registry of all known workspaces and dashboard-visible metrics lives in
 **Standalone CLI path** (per-project, no shared registry):
 ```
 <project>/.julie/indexes/{workspace_id}/
-  ├── db/
-  │   └── symbols.db           # SQLite (symbols, files, relationships, types)
+  ├── facts.sqlite             # Blob-keyed facts (symbols, identifiers, relationships, vectors)
   └── tantivy/
       ├── meta.json            # Tantivy index metadata
       ├── {segment_id}.fast    # Fast fields (stored data)
@@ -447,10 +445,9 @@ The registry of all known workspaces and dashboard-visible metrics lives in
 Each workspace (primary and reference) gets its own Tantivy index directory.
 See `docs/OPERATIONS.md` for the `JULIE_HOME` override and migration workflow.
 
-The `SearchIndex` supports `open_or_create` semantics -- if a Tantivy
-directory doesn't exist, it creates one. If it exists, it opens it. A v1-to-v2
-backfill path (`backfill_tantivy_if_needed`) reads symbols and files from
-SQLite when the Tantivy index is empty.
+The checkout store opens `facts.sqlite` and the Tantivy projection together.
+A version mismatch deletes `indexes/<id>/` and reindexes. There is no migration
+and no SQLite-to-Tantivy backfill path.
 
 ---
 
@@ -480,10 +477,10 @@ tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
 
 ```bash
 # Check symbol count
-sqlite3 .julie/indexes/{workspace_id}/db/symbols.db "SELECT COUNT(*) FROM symbols;"
+sqlite3 .julie/indexes/{workspace_id}/facts.sqlite "SELECT COUNT(*) FROM symbols;"
 
-# Check file count
-sqlite3 .julie/indexes/{workspace_id}/db/symbols.db "SELECT COUNT(*) FROM files;"
+# Check path count
+sqlite3 .julie/indexes/{workspace_id}/facts.sqlite "SELECT COUNT(*) FROM paths;"
 ```
 
 ### Tantivy Index Verification
