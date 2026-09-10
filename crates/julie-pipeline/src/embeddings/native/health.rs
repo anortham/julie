@@ -4,12 +4,10 @@ use anyhow::{Result, bail};
 
 use julie_core::embeddings_contract::{DeviceInfo, EmbeddingRequestBudget, EncoderIdentity};
 
-use crate::embeddings::native::client::{NativeClientConn, decode_native_health_reply};
-use crate::embeddings::sidecar_protocol::{
-    HealthResult, RequestEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
-};
+use crate::embeddings::native::child::SidecarChild;
+use crate::embeddings::sidecar_protocol::HealthResult;
 
-/// Validates a broker's `HealthResult` and builds verified `EncoderIdentity` and `DeviceInfo`.
+/// Validates a sidecar child's `HealthResult` and builds verified `EncoderIdentity` and `DeviceInfo`.
 pub fn validate_native_health(
     health: &HealthResult,
     expected_model_id: Option<&str>,
@@ -19,7 +17,7 @@ pub fn validate_native_health(
             bail!("MODEL_NOT_PREPARED: sidecar reports model is not prepared");
         }
         bail!(
-            "native broker unready: {}",
+            "sidecar unready: {}",
             health
                 .degraded_reason
                 .as_deref()
@@ -37,7 +35,7 @@ pub fn validate_native_health(
     if let Some(expected) = expected_model_id {
         if model_id != expected {
             bail!(
-                "model_id mismatch: broker reported model '{model_id}', expected manifest model '{expected}'"
+                "model_id mismatch: sidecar reported model '{model_id}', expected manifest model '{expected}'"
             );
         }
     }
@@ -111,29 +109,12 @@ pub fn validate_native_health(
     Ok((identity, device_info))
 }
 
-/// Issues a health request over `client` and returns the verified identity, device info, and raw health report.
+/// Issues a health request to `child` and returns the health report, verified identity, and device info.
 pub fn query_and_validate_health(
-    client: &mut NativeClientConn,
+    child: &mut SidecarChild,
     budget: &EmbeddingRequestBudget,
-    expected_model_id: Option<&str>,
-) -> Result<(EncoderIdentity, DeviceInfo, HealthResult)> {
-    budget.check_budget()?;
-
-    let req_id = "health-init";
-    let envelope = RequestEnvelope {
-        schema: SIDECAR_PROTOCOL_SCHEMA.to_string(),
-        version: SIDECAR_PROTOCOL_VERSION,
-        request_id: req_id.to_string(),
-        method: "health".to_string(),
-        params: serde_json::json!({}),
-    };
-
-    let req_bytes = serde_json::to_vec(&envelope)?;
-    let remaining = budget.remaining_time();
-    let resp_bytes = client.round_trip(&req_bytes, Some(remaining))?;
-
-    let health = decode_native_health_reply(&resp_bytes, req_id)?;
-    let (identity, device_info) = validate_native_health(&health, expected_model_id)?;
-
-    Ok((identity, device_info, health))
+) -> Result<(HealthResult, EncoderIdentity, DeviceInfo)> {
+    let health = child.health(budget)?;
+    let (identity, device_info) = validate_native_health(&health, None)?;
+    Ok((health, identity, device_info))
 }

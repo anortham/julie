@@ -431,11 +431,11 @@ impl NativeEmbeddingProvider {
 **Step 6.** Commit: `refactor(semantics): replace the sidecar broker with one stdio serve child`.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run -p julie-pipeline native_child` passes (3 tests).
-- [ ] `cargo check --workspace --all-targets` is clean of errors.
-- [ ] `native/client.rs`, `native/lifecycle.rs`, and the four broker test files are deleted; `libc` is gone from `crates/julie-pipeline/Cargo.toml`.
-- [ ] No `embedding-host`, `accelerator_lock`, `BrokerPaths`, or `/home/murphy` string remains under `src/` or `crates/`.
-- [ ] `cargo nextest run --lib tests::service::durable_roots` passes.
+- [x] `cargo nextest run -p julie-pipeline native_child` passes (3 tests).
+- [x] `cargo check --workspace --all-targets` is clean of errors.
+- [x] `native/client.rs`, `native/lifecycle.rs`, and the four broker test files are deleted; `libc` is gone from `crates/julie-pipeline/Cargo.toml`.
+- [x] No `embedding-host`, `accelerator_lock`, `BrokerPaths`, or `/home/murphy` string remains under `src/` or `crates/`.
+- [x] `cargo nextest run --lib tests::service::durable_roots` passes.
 
 ---
 

@@ -1890,7 +1890,6 @@ dependencies = [
  "julie-extractors",
  "julie-facts",
  "julie-index",
- "libc",
  "rusqlite",
  "serde",
  "serde_json",

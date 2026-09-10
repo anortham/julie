@@ -55,14 +55,14 @@ impl SemanticRequirement {
     }
 }
 
-/// Unified runtime provider state machine governing lifecycle, late broker attachment, and dynamic recovery.
+/// Unified runtime provider state machine governing lifecycle, late sidecar attachment, and dynamic recovery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum RuntimeProviderState {
     /// Semantics explicitly disabled (mode=Off or JULIE_EMBEDDING_PROVIDER=none/off/disabled).
     Disabled,
 
-    /// Provider is actively initializing or acquiring the sidecar broker.
+    /// Provider is actively initializing or acquiring the sidecar child.
     Starting,
 
     /// Provider is active, connected, and ready to serve embeddings.

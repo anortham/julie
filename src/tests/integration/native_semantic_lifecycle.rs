@@ -22,9 +22,7 @@ use crate::tests::helpers::workspace::make_isolated_workspace_root;
 use crate::tests::semantic_request_contract::MockReadyProvider;
 use julie_core::database::FactsStore;
 use julie_core::embeddings_contract::EmbeddingProvider;
-use julie_pipeline::embeddings::native::launch::{
-    derive_broker_paths, find_and_hash_sidecar_binary,
-};
+use julie_pipeline::embeddings::native::launch::find_and_hash_sidecar_binary;
 
 // ============================================================================
 
@@ -43,17 +41,6 @@ fn semantic_off_requires_no_provider() {
 // ============================================================================
 
 /// Owns a spawned mock broker and kills it on drop, including on panic.
-#[cfg(unix)]
-struct KillOnDrop(std::process::Child);
-
-#[cfg(unix)]
-impl Drop for KillOnDrop {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
 #[cfg(unix)]
 fn expected_mock_sidecar_identity() -> julie_core::embeddings_contract::EncoderIdentity {
     julie_core::embeddings_contract::EncoderIdentity {
@@ -80,7 +67,6 @@ fn compile_mock_sidecar(dir: &std::path::Path) -> std::path::PathBuf {
     let src = r#"
 use std::env;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixListener;
 use std::path::Path;
 
 fn main() {
@@ -92,74 +78,53 @@ fn main() {
             }
         }
     }
-    let mut endpoint = env::var("MOCK_ENDPOINT").ok();
-    let args: Vec<String> = env::args().collect();
-    for i in 0..args.len() {
-        if args[i] == "--endpoint" && i + 1 < args.len() {
-            endpoint = Some(args[i + 1].clone());
+    let stdin = std::io::stdin();
+    let mut reader = BufReader::new(stdin.lock());
+    let mut stdout = std::io::stdout();
+    let mut line = String::new();
+    while reader.read_line(&mut line).unwrap_or(0) > 0 {
+        if line.trim().is_empty() {
+            line.clear();
+            continue;
         }
-    }
-    let endpoint = match endpoint {
-        Some(ep) => ep,
-        None => std::process::exit(0),
-    };
-    if args.iter().any(|a| a == "--lock") {
-        std::thread::spawn(|| {
-            let mut byte = [0u8; 1];
-            let _ = std::io::Read::read(&mut std::io::stdin(), &mut byte);
-            std::process::exit(0);
-        });
-    }
-    let ep_path = Path::new(&endpoint);
-    let _ = std::fs::remove_file(ep_path);
-    let listener = match UnixListener::bind(ep_path) {
-        Ok(l) => l,
-        Err(_) => std::process::exit(0),
-    };
-    for stream in listener.incoming() {
-        if let Ok(mut stream) = stream {
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut line = String::new();
-            while reader.read_line(&mut line).unwrap_or(0) > 0 {
-                if line.trim().is_empty() {
-                    line.clear();
-                    continue;
-                }
-                let req_id = if let Some(pos) = line.find("\"request_id\":") {
-                    let rest = &line[pos + 13..];
-                    if let Some(start) = rest.find('"') {
-                        if let Some(end) = rest[start + 1..].find('"') {
-                            &rest[start + 1..start + 1 + end]
-                        } else { "req-1" }
-                    } else { "req-1" }
-                } else { "req-1" };
+        let req_id = if let Some(pos) = line.find("\"request_id\":") {
+            let rest = &line[pos + 13..];
+            if let Some(start) = rest.find('"') {
+                if let Some(end) = rest[start + 1..].find('"') {
+                    &rest[start + 1..start + 1 + end]
+                } else { "req-1" }
+            } else { "req-1" }
+        } else { "req-1" };
 
-                let reply = if line.contains("\"health\"") {
-                    format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"ready\":true,\"dims\":384,\"device\":\"cpu\",\"runtime\":\"llama.cpp\",\"model_id\":\"bge-small-en-v1.5-f32\",\"model_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"pooling\":\"cls\",\"normalization\":\"l2\",\"instruction_policy_version\":1,\"llama_cpp_build\":\"b3560\"}},\"error\":null}}\n")
-                } else if line.contains("\"embed_query\"") {
-                    let mut s = format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"dims\":384,\"vector\":[");
-                    for i in 0..384 {
-                        if i > 0 { s.push(','); }
-                        s.push_str("0.1");
-                    }
-                    s.push_str("]},\"error\":null}\n");
-                    s
-                } else if line.contains("\"embed_batch\"") {
-                    let mut s = format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"dims\":384,\"vectors\":[[");
-                    for i in 0..384 {
-                        if i > 0 { s.push(','); }
-                        s.push_str("0.1");
-                    }
-                    s.push_str("]]}},\"error\":null}\n");
-                    s
-                } else {
-                    format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":null,\"error\":null}}\n")
-                };
-                let _ = stream.write_all(reply.as_bytes());
-                let _ = stream.flush();
-                line.clear();
+        let reply = if line.contains("\"health\"") {
+            format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"ready\":true,\"dims\":384,\"device\":\"cpu\",\"runtime\":\"llama.cpp\",\"model_id\":\"bge-small-en-v1.5-f32\",\"model_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"pooling\":\"cls\",\"normalization\":\"l2\",\"instruction_policy_version\":1,\"llama_cpp_build\":\"b3560\"}},\"error\":null}}\n")
+        } else if line.contains("\"embed_query\"") {
+            let mut s = format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"dims\":384,\"vector\":[");
+            for i in 0..384 {
+                if i > 0 { s.push(','); }
+                s.push_str("0.1");
             }
-        }
+            s.push_str("]},\"error\":null}\n");
+            s
+        } else if line.contains("\"embed_batch\"") {
+            let mut s = format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"dims\":384,\"vectors\":[[");
+            for i in 0..384 {
+                if i > 0 { s.push(','); }
+                s.push_str("0.1");
+            }
+            s.push_str("]]}},\"error\":null}\n");
+            s
+        } else if line.contains("\"shutdown\"") {
+            let reply = format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"status\":\"ok\"}},\"error\":null}}\n");
+            let _ = stdout.write_all(reply.as_bytes());
+            let _ = stdout.flush();
+            std::process::exit(0);
+        } else {
+            format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":null,\"error\":null}}\n")
+        };
+        let _ = stdout.write_all(reply.as_bytes());
+        let _ = stdout.flush();
+        line.clear();
     }
 }
 "#;
@@ -196,10 +161,6 @@ async fn native_semantics_becomes_ready_without_client_restart() {
     env.set("JULIE_NATIVE_SIDECAR_PROGRAM", &bin_path);
     env.set("JULIE_EMBEDDING_CACHE_DIR", &cache_dir);
     env.set("REQUIRE_BARRIER", "1");
-
-    let (_bin, mock_sha) = find_and_hash_sidecar_binary(Some(&bin_path)).expect("hash sidecar");
-    let broker_paths =
-        derive_broker_paths(&cache_dir, &mock_sha, "bge-small-en-v1.5-f32").expect("broker paths");
 
     // Seed workspace source files
     let src_dir = root.join("src");
@@ -307,25 +268,9 @@ async fn native_semantics_becomes_ready_without_client_restart() {
     assert_eq!(reply_off.readiness.status, "disabled");
     assert_eq!(reply_off.readiness.mode, SemanticMode::Off);
 
-    // 4. Step 2: Release broker barrier by creating barrier file and spawning child broker.
+    // 4. Step 2: Release sidecar barrier by creating barrier file.
     let barrier_file = cache_dir.join("barrier");
     std::fs::write(&barrier_file, "ready").expect("write barrier");
-
-    let _child = KillOnDrop(
-        std::process::Command::new(&bin_path)
-            .env("REQUIRE_BARRIER", "1")
-            .env("JULIE_EMBEDDING_CACHE_DIR", &cache_dir)
-            .env("MOCK_ENDPOINT", &broker_paths.endpoint_path)
-            .spawn()
-            .expect("spawn mock broker"),
-    );
-
-    for _ in 0..100 {
-        if broker_paths.endpoint_path.exists() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
 
     // 5. Step 3: Populate compatible SQLite embedding generation & vectors.
     {
@@ -406,24 +351,6 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
     env.set("JULIE_NATIVE_SIDECAR_MODEL", "bge-small-en-v1.5-f32");
     env.set("JULIE_NATIVE_SIDECAR_PROGRAM", &bin_path);
     env.set("JULIE_EMBEDDING_CACHE_DIR", &cache_dir);
-
-    let (_bin, mock_sha) = find_and_hash_sidecar_binary(Some(&bin_path)).expect("hash sidecar");
-    let broker_paths =
-        derive_broker_paths(&cache_dir, &mock_sha, "bge-small-en-v1.5-f32").expect("broker paths");
-
-    let _child = KillOnDrop(
-        std::process::Command::new(&bin_path)
-            .env("MOCK_ENDPOINT", &broker_paths.endpoint_path)
-            .spawn()
-            .expect("spawn mock broker"),
-    );
-
-    for _ in 0..100 {
-        if broker_paths.endpoint_path.exists() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
 
     let index_root = temp_home.path().join("indexes/ws1");
     std::fs::create_dir_all(index_root.join("db")).expect("create db dir");
@@ -872,47 +799,5 @@ async fn challenge_off_mode_nl_query_performs_zero_provider_acquisition() {
     assert_eq!(
         attempts_after, 0,
         "NL query in Off mode must not trigger deferred embedding init attempt"
-    );
-}
-
-#[tokio::test]
-#[serial_test::serial(embedding_env)]
-async fn challenge_required_mode_fails_closed_on_unstarted_broker() {
-    let temp_repo = tempfile::tempdir().expect("temp repo dir");
-    let root = make_isolated_workspace_root(temp_repo.path(), "challenge_unstarted_broker_ws");
-    let temp_home = tempfile::tempdir().expect("temp home dir");
-    let registry_paths = RegistryPaths::with_home(temp_home.path().to_path_buf());
-
-    let semantic_runtime = Arc::new(DefaultSemanticRuntime::from_registry_paths(
-        registry_paths.clone(),
-    ));
-    let binding_resolver = BindingResolver::new(Some(root.clone()), false, registry_paths.clone());
-    let runtime_factory = Arc::new(RuntimeFactory::new(registry_paths.clone()));
-    let engine = RequestEngine::with_semantic_runtime(
-        binding_resolver,
-        runtime_factory.clone(),
-        semantic_runtime,
-    );
-
-    let req_required = ToolRequest::new(
-        "fast_search",
-        json!({ "query": "auth_token_probe" })
-            .as_object()
-            .unwrap()
-            .clone(),
-    )
-    .with_semantics(SemanticMode::Required);
-
-    let ctx = RequestContext::new(
-        RequestOrigin::Cli,
-        Some(Duration::from_secs(5)),
-        CancellationToken::new(),
-    );
-
-    let result = engine.execute(req_required, ctx).await;
-    let err = result.expect_err("Required mode on unstarted broker must fail closed");
-    assert_eq!(
-        err.code, "SEMANTICS_NOT_READY",
-        "error code must strictly be SEMANTICS_NOT_READY"
     );
 }

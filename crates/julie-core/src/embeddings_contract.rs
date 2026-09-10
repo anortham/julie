@@ -291,7 +291,7 @@ pub trait EmbeddingProvider: Send + Sync {
     }
 
     /// Explicitly shut down the provider, releasing any child processes.
-    /// Default is a no-op; the native provider overrides to drop its broker connection.
+    /// Default is a no-op; the native provider overrides to shut down its sidecar child.
     fn shutdown(&self) {}
 
     /// Wait for the provider's underlying child process to exit, up to `timeout`.

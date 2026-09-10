@@ -5,7 +5,7 @@ mod tests {
     use crate::embeddings::sidecar_protocol::{
         DeviceBackendCapabilities, DeviceBackendCapability, DeviceLoadPolicy, EmbedBatchResult,
         EmbedQueryResult, HealthResult, ProtocolError, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA,
-        SIDECAR_PROTOCOL_VERSION, check_reconnect_health_match, validate_batch_response,
+        SIDECAR_PROTOCOL_VERSION, validate_batch_response,
         validate_health_response, validate_query_response, validate_response_envelope,
     };
     use serde_json::json;
@@ -426,31 +426,5 @@ mod tests {
                 && message.contains("req-actual"),
             "expected clear request id mismatch error, got: {message}"
         );
-    }
-
-    #[test]
-    fn test_check_reconnect_health_match_rejects_runtime_and_llama_cpp_build_mismatch() {
-        let expected = ok_health();
-
-        // Runtime mismatch
-        let mut actual_runtime = expected.clone();
-        actual_runtime.runtime = Some("different-runtime".to_string());
-        let err = check_reconnect_health_match(&expected, &actual_runtime).unwrap_err();
-        assert!(
-            err.contains("runtime="),
-            "expected runtime mismatch in {err}"
-        );
-
-        // Llama cpp build mismatch
-        let mut actual_build = expected.clone();
-        actual_build.llama_cpp_build = Some("b1234".to_string());
-        let err = check_reconnect_health_match(&expected, &actual_build).unwrap_err();
-        assert!(
-            err.contains("llama_cpp_build="),
-            "expected llama_cpp_build mismatch in {err}"
-        );
-
-        // Exact match
-        assert!(check_reconnect_health_match(&expected, &expected).is_ok());
     }
 }
