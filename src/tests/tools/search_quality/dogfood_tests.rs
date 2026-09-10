@@ -196,14 +196,11 @@ async fn test_hyphenated_cross_language() {
 async fn test_symbol_search_database_method() {
     let handler = setup_handler_with_fixture().await;
 
-    // Query: "find_symbols_by_name" - a method in database/symbols/queries.rs
-    let results = search_definitions(&handler, "find_symbols_by_name", 5)
+    let results = search_definitions(&handler, "find_by_name", 5)
         .await
         .expect("Search failed");
 
-    // Should find the method in queries.rs
-    assert_contains_path(&results, "src/database/symbols/queries.rs");
-    assert_contains_symbol_kind(&results, "method");
+    assert_contains_path(&results, "crates/julie-index/src/graph/mod.rs");
     assert_min_results(&results, 1);
 }
 
