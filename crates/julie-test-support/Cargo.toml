@@ -16,5 +16,8 @@ julie-index = { path = "../julie-index" }
 async-trait = "0.1"
 anyhow = "1.0"
 
+# SnapshotFixture keeps its facts.sqlite in a temp dir for the fixture's lifetime.
+tempfile = "3.13"
+
 [dev-dependencies]
 tokio = { version = "1.47.1", features = ["full"] }

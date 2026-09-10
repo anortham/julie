@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 use crate::reader::FactsReader;
 use crate::schema;
@@ -51,6 +51,20 @@ impl FactsStore {
             path: Some(path),
             conn,
         }))
+    }
+
+    /// A second, read-only connection to a file another `FactsStore` writes.
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let conn = Connection::open_with_flags(
+            &path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(Duration::from_millis(5000))?;
+        Ok(Self {
+            path: Some(path),
+            conn,
+        })
     }
 
     pub fn in_memory() -> Result<Self> {

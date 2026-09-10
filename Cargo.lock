@@ -1866,6 +1866,7 @@ name = "julie-index"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "julie-core",
  "julie-extractors",
  "julie-facts",
@@ -1941,6 +1942,7 @@ dependencies = [
  "julie-context",
  "julie-core",
  "julie-index",
+ "tempfile",
  "tokio",
 ]
 

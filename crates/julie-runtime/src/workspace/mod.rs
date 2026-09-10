@@ -22,6 +22,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 // Import IncrementalIndexer from watcher module
 use crate::watcher::IncrementalIndexer;
+use julie_index::checkout_store::{CheckoutStore, STORE_DIR, VersionMismatch};
 
 // Forward declarations for types we'll implement later
 pub type SqliteDB = julie_core::database::SymbolDatabase;
@@ -44,6 +45,11 @@ pub struct JulieWorkspace {
 
     /// Tantivy search index for full-text code search
     pub search_index: Option<Arc<julie_index::search::SearchIndex>>,
+
+    /// Facts, graph, and Tantivy projection written beside `db` and
+    /// `search_index` until Task 13 retires those. `None` after a facts
+    /// version mismatch.
+    pub store: Option<Arc<CheckoutStore>>,
 
     /// File watcher for incremental updates
     pub watcher: Option<IncrementalIndexer>,
@@ -97,6 +103,7 @@ impl Clone for JulieWorkspace {
             julie_dir: self.julie_dir.clone(),
             db: self.db.clone(),
             search_index: self.search_index.clone(),
+            store: self.store.clone(),
             watcher: None, // Don't clone file watcher - create new if needed
             embedding_provider: self.embedding_provider.clone(),
             embedding_runtime_status: self.embedding_runtime_status.clone(),
@@ -104,6 +111,25 @@ impl Clone for JulieWorkspace {
             index_root_override: self.index_root_override.clone(),
             indexing_runtime: Arc::clone(&self.indexing_runtime),
         }
+    }
+}
+
+/// Open `<index dir>/store` next to `symbols.db`. A facts version mismatch
+/// leaves the store closed; Task 11 owns the delete-and-reindex path.
+pub fn open_checkout_store(db_path: &Path, root: &Path) -> Result<Option<Arc<CheckoutStore>>> {
+    let index_dir = db_path
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| anyhow!("database path {} has no index dir", db_path.display()))?;
+    match CheckoutStore::open(&index_dir.join(STORE_DIR), root) {
+        Ok(store) => Ok(Some(Arc::new(store))),
+        Err(err) => match err.downcast_ref::<VersionMismatch>() {
+            Some(mismatch) => {
+                warn!(%mismatch, index_dir = %index_dir.display(), "checkout store left closed");
+                Ok(None)
+            }
+            None => Err(err),
+        },
     }
 }
 
@@ -158,6 +184,7 @@ impl JulieWorkspace {
             julie_dir,
             db: None,
             search_index: None,
+            store: None,
             watcher: None,
             embedding_provider: None,
             embedding_runtime_status: None,
@@ -205,6 +232,7 @@ impl JulieWorkspace {
                     julie_dir: julie_path,
                     db: None,
                     search_index: None,
+                    store: None,
                     watcher: None,
                     embedding_provider: None,
                     embedding_runtime_status: None,
@@ -520,6 +548,7 @@ impl JulieWorkspace {
             julie_dir,
             db: None,
             search_index: None,
+            store: None,
             watcher: None,
             embedding_provider: None,
             embedding_runtime_status: None,
@@ -611,6 +640,7 @@ impl JulieWorkspace {
 
         let database = SqliteDB::new(&db_path)?;
         self.db = Some(Arc::new(std::sync::Mutex::new(database)));
+        self.store = open_checkout_store(&db_path, &self.root)?;
 
         info!("Database initialized successfully");
         Ok(())
@@ -719,7 +749,8 @@ impl JulieWorkspace {
             self.search_index.clone(),
             shared_provider,
             Arc::clone(&self.indexing_runtime),
-        )?;
+        )?
+        .with_store(self.store.clone());
 
         self.watcher = Some(file_watcher);
 

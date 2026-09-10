@@ -27,7 +27,7 @@ use rmcp::{
     },
     service::{NotificationContext, RequestContext},
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::Duration;
@@ -43,6 +43,7 @@ use crate::workspace::JulieWorkspace;
 use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
+use julie_index::checkout_store::{CheckoutStore, STORE_DIR};
 use tokio::sync::RwLock;
 
 use self::tool_metrics::{MetricsTask, run_metrics_writer};
@@ -176,6 +177,8 @@ pub struct JulieServerHandler {
     /// the resolved physical db path so root-anchor changes in stdio do not reuse
     /// stale handles across different `.julie/indexes/...` trees.
     ref_db_cache: Arc<RwLock<HashMap<String, (PathBuf, Arc<std::sync::Mutex<SymbolDatabase>>)>>>,
+    /// Checkout stores opened for non-primary workspaces, keyed by workspace_id.
+    ref_store_cache: Arc<RwLock<HashMap<String, Arc<CheckoutStore>>>>,
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     /// True when this handler was built by an in-process constructor; gates the
@@ -333,6 +336,7 @@ impl JulieServerHandler {
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
+            ref_store_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx: None,
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
@@ -430,6 +434,7 @@ impl JulieServerHandler {
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
+            ref_store_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
@@ -512,6 +517,7 @@ impl JulieServerHandler {
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
+            ref_store_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
@@ -1490,6 +1496,37 @@ impl JulieServerHandler {
         }
 
         Ok(db)
+    }
+
+    /// The checkout store for `workspace_id`: the loaded primary's own store, or
+    /// one opened from `indexes/{workspace_id}/store` and cached for the session.
+    pub(crate) async fn checkout_store_for_workspace(
+        &self,
+        workspace_id: &str,
+        workspace_root: &Path,
+    ) -> Result<Arc<CheckoutStore>> {
+        if self.loaded_workspace_id().as_deref() == Some(workspace_id) {
+            if let Some(store) = self.get_workspace().await?.and_then(|ws| ws.store) {
+                self.ref_store_cache.write().await.remove(workspace_id);
+                return Ok(store);
+            }
+        }
+        if let Some(store) = self.ref_store_cache.read().await.get(workspace_id) {
+            return Ok(Arc::clone(store));
+        }
+        let store_dir = self
+            .workspace_index_dir_for(workspace_id)
+            .await?
+            .join(STORE_DIR);
+        let root = workspace_root.to_path_buf();
+        let store =
+            tokio::task::spawn_blocking(move || CheckoutStore::open(&store_dir, &root)).await??;
+        let store = Arc::new(store);
+        self.ref_store_cache
+            .write()
+            .await
+            .insert(workspace_id.to_string(), Arc::clone(&store));
+        Ok(store)
     }
 
     /// Get the search index for a specific workspace by ID.

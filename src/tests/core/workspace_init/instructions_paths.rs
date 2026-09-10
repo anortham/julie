@@ -60,6 +60,7 @@ fn test_workspace_paths_differ_per_workspace_id_with_override() {
         julie_dir: julie_dir.clone(),
         db: None,
         search_index: None,
+        store: None,
         watcher: None,
         embedding_provider: None,
         embedding_runtime_status: None,

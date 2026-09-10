@@ -38,6 +38,7 @@ use tracing::{debug, error, info, warn};
 use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 use julie_core::database::SymbolDatabase;
 use julie_core::indexing_state::SharedIndexingRuntime;
+use julie_index::checkout_store::CheckoutStore;
 
 pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 
@@ -70,6 +71,8 @@ pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<StdMutex<SymbolDatabase>>,
     search_index: Option<Arc<julie_index::search::SearchIndex>>,
+    /// Written beside `db` and `search_index` for every processed event.
+    store: Option<Arc<CheckoutStore>>,
 
     /// Embedding provider for incremental semantic updates.
     /// Shared with the workspace via Arc<RwLock<...>> so lazy initialization
@@ -161,6 +164,7 @@ impl IncrementalIndexer {
             watcher: None,
             db,
             search_index,
+            store: None,
             embedding_provider,
             lang_configs,
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
@@ -177,6 +181,11 @@ impl IncrementalIndexer {
             event_task: None,
             queue_task: None,
         })
+    }
+
+    pub fn with_store(mut self, store: Option<Arc<CheckoutStore>>) -> Self {
+        self.store = store;
+        self
     }
 
     /// Update the shared embedding provider after lazy initialization.
@@ -287,7 +296,8 @@ impl IncrementalIndexer {
             Arc::clone(&self.tantivy_dirty),
             Arc::clone(&self.indexing_runtime),
             Arc::clone(&self.mutation_gate_registry),
-        );
+        )
+        .with_store(self.store.clone());
 
         let queue_handle = tokio::spawn(async move {
             use tokio::time::{Duration, interval};

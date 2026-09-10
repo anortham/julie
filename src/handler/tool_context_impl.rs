@@ -23,6 +23,7 @@ use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_core::health_types::SystemStatus;
 use julie_core::mcp_compat::CallToolResult;
 use julie_index::search::SearchIndex;
+use julie_index::snapshot::Snapshot;
 
 use crate::handler::JulieServerHandler;
 
@@ -89,6 +90,23 @@ impl ToolContext for JulieServerHandler {
 
     async fn get_workspace_root_for_target(&self, workspace_id: &str) -> Result<PathBuf> {
         JulieServerHandler::get_workspace_root_for_target(self, workspace_id).await
+    }
+
+    async fn snapshot(&self, target: &WorkspaceTarget) -> Result<Arc<Snapshot>> {
+        let (workspace_id, root) = match target {
+            WorkspaceTarget::Primary => (
+                JulieServerHandler::require_primary_workspace_identity(self)?,
+                JulieServerHandler::require_primary_workspace_root(self)?,
+            ),
+            WorkspaceTarget::Target(id) => (
+                id.clone(),
+                JulieServerHandler::get_workspace_root_for_target(self, id).await?,
+            ),
+        };
+        Ok(self
+            .checkout_store_for_workspace(&workspace_id, &root)
+            .await?
+            .current())
     }
 
     // ── Embeddings (async) ───────────────────────────────────────────────

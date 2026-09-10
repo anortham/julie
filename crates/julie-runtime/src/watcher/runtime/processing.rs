@@ -1,5 +1,8 @@
 use super::*;
 
+use julie_core::file_policy::detect_language_for_indexing_with_content;
+use julie_index::checkout_store::PathChange;
+
 impl QueueRuntime {
     pub(super) async fn drain_for_shutdown_inner(&self) {
         let remaining = self.index_queue.lock().await.len();
@@ -17,8 +20,10 @@ impl QueueRuntime {
                 };
                 let mut drained_any = false;
                 let mut affected_paths = HashSet::new();
+                let mut store_changes = Vec::new();
                 while let Some(event) = self.index_queue.lock().await.pop_front() {
                     affected_paths.extend(self.projection_paths_for_event(&event));
+                    store_changes.extend(self.store_changes_for_event(&event));
                     let provider_snapshot = self
                         .embedding_provider
                         .read()
@@ -41,8 +46,9 @@ impl QueueRuntime {
                 if drained_any {
                     self.commit_search_index("shutdown drain", &affected_paths)
                         .await;
+                    self.apply_store_changes(store_changes, guard).await;
                 }
-            } // guard dropped here, gate released
+            }
         }
 
         self.retry_dirty_tantivy().await;
@@ -72,6 +78,7 @@ impl QueueRuntime {
         let mut deletes = 0usize;
         let mut renames = 0usize;
         let mut affected_paths = HashSet::new();
+        let mut store_changes = Vec::new();
         let max_this_tick = queue_size;
         let mut iterations = 0usize;
 
@@ -133,6 +140,7 @@ impl QueueRuntime {
 
             debug!("Background task processing: {:?}", event.path);
             affected_paths.extend(self.projection_paths_for_event(&event));
+            store_changes.extend(self.store_changes_for_event(&event));
 
             let provider_snapshot = self
                 .embedding_provider
@@ -185,9 +193,77 @@ impl QueueRuntime {
 
         if processed_count > 0 {
             self.commit_search_index("batch", &affected_paths).await;
+            self.apply_store_changes(store_changes, guard).await;
         }
 
         processed_count
+    }
+
+    fn store_changes_for_event(&self, event: &FileChangeEvent) -> Vec<PathChange> {
+        if self.store.is_none() {
+            return Vec::new();
+        }
+        let relative = |path: &Path| {
+            julie_core::paths::to_relative_unix_style(path, &self.workspace_root).ok()
+        };
+        let upsert = |path: &Path| {
+            let relative = relative(path)?;
+            let bytes = std::fs::read(path).ok()?;
+            let language = detect_language_for_indexing_with_content(
+                Path::new(&relative),
+                &String::from_utf8_lossy(&bytes),
+            );
+            Some(PathChange::Upsert {
+                path: relative,
+                bytes,
+                language,
+            })
+        };
+        let remove = |path: &Path| {
+            (!path.exists())
+                .then(|| relative(path))
+                .flatten()
+                .map(|path| PathChange::Remove { path })
+        };
+        match &event.change_type {
+            FileChangeType::Created | FileChangeType::Modified => {
+                upsert(&event.path).into_iter().collect()
+            }
+            FileChangeType::Deleted => remove(&event.path).into_iter().collect(),
+            FileChangeType::Renamed { from, to } => {
+                remove(from).into_iter().chain(upsert(to)).collect()
+            }
+        }
+    }
+
+    /// Runs the store write on the blocking pool with the gate still held. The
+    /// guard is consumed here because nothing else in the batch needs it.
+    async fn apply_store_changes(&self, changes: Vec<PathChange>, guard: MutationGuard<'static>) {
+        let Some(store) = self.store.clone().filter(|_| !changes.is_empty()) else {
+            return;
+        };
+        let outcome = tokio::task::spawn_blocking(move || {
+            let result = store.apply(&changes, &guard);
+            drop(guard);
+            result
+        })
+        .await;
+        match outcome {
+            Ok(Ok(applied)) => debug!(
+                new_blobs = applied.new_blobs,
+                reused_blobs = applied.reused_blobs,
+                removed_paths = applied.removed_paths,
+                "Checkout store applied watcher batch"
+            ),
+            Ok(Err(err)) => {
+                warn!("Checkout store apply failed for watcher batch: {err:#}");
+                self.needs_rescan.store(true, Ordering::Release);
+            }
+            Err(join) => {
+                warn!("Checkout store apply task panicked: {join}");
+                self.needs_rescan.store(true, Ordering::Release);
+            }
+        }
     }
 
     fn projection_paths_for_event(&self, event: &FileChangeEvent) -> Vec<String> {

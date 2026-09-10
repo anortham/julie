@@ -18,6 +18,7 @@ use crate::tools::workspace::indexing::state::{
     IndexedFileDisposition, IndexingOperation, IndexingStage,
 };
 use crate::workspace::JulieWorkspace;
+use crate::workspace::mutation_gate::acquire_gate;
 
 fn workspace_tool() -> ManageWorkspaceTool {
     ManageWorkspaceTool {
@@ -260,6 +261,7 @@ async fn test_indexing_pipeline_reports_stage_history_for_parser_backed_files() 
         vec![workspace_root.join("lib.rs")],
         &route,
         IndexingOperation::Incremental,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -303,6 +305,7 @@ async fn test_full_indexing_replaces_canonical_database_state() -> Result<()> {
         vec![workspace_root.join("old.rs")],
         &route,
         IndexingOperation::Incremental,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -317,6 +320,7 @@ async fn test_full_indexing_replaces_canonical_database_state() -> Result<()> {
         vec![workspace_root.join("new.rs")],
         &route,
         IndexingOperation::Full,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -424,6 +428,7 @@ void health_probe() {
         ],
         &route,
         IndexingOperation::Incremental,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -513,6 +518,7 @@ async fn test_indexing_pipeline_reports_stage_history_for_text_only_files() -> R
         vec![workspace_root.join("notes.txt")],
         &route,
         IndexingOperation::Incremental,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -548,6 +554,7 @@ async fn test_indexing_pipeline_marks_missing_parser_files_as_repair_needed() ->
         vec![workspace_root.join("missing.rs")],
         &route,
         IndexingOperation::Incremental,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -591,6 +598,7 @@ async fn test_indexing_pipeline_keeps_search_unready_when_projection_fails() -> 
         vec![workspace_root.join("lib.rs")],
         &route,
         IndexingOperation::Incremental,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -664,6 +672,7 @@ async fn test_projection_waiting_on_tantivy_lock_releases_database_mutex() -> Re
             vec![workspace_file],
             &route_for_task,
             IndexingOperation::Full,
+            &acquire_gate(&route_for_task.workspace_id).await,
         )
         .await
     });
@@ -761,6 +770,7 @@ export function registerRoutes() {
         ],
         &route,
         IndexingOperation::Full,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -787,6 +797,7 @@ export function registerRoutes() {
         vec![client_path.clone()],
         &route,
         IndexingOperation::Incremental,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 
@@ -811,6 +822,7 @@ export function registerRoutes() {
         vec![client_path.clone()],
         &route,
         IndexingOperation::Incremental,
+        &acquire_gate(&route.workspace_id).await,
     )
     .await?;
 

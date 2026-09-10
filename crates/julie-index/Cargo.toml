@@ -35,6 +35,9 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 # Regex (reranker pattern matching)
 regex = "1.11"
 
+# Blob hashing (checkout bytes verified against facts.sqlite)
+blake3 = "1.8"
+
 [features]
 # Expose test-helper constructors to the top-level crate's test tree
 # (ADR-0006 pattern — see julie-core for precedent).

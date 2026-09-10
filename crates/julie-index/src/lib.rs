@@ -7,8 +7,11 @@
 //! (no handler, tools, daemon, watcher, or workspace references).
 
 pub mod analysis;
+pub mod checkout_store;
 pub mod graph;
 pub mod search;
+pub mod snapshot;
+pub mod vectors;
 
 #[cfg(test)]
 mod tests;

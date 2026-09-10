@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 
 mod enrichment_domains;
 mod repair_projection;
+mod store_double_write;
 
 /// Regression test for Bug: File watcher drops identifiers, types, and relationships
 ///

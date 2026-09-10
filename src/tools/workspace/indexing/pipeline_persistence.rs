@@ -1,15 +1,117 @@
 //! src/tools/workspace/indexing/pipeline_persistence.rs
 //! Canonical persistence operations for the indexing pipeline.
 
+use std::collections::{BTreeSet, HashSet};
+use std::sync::Arc;
+
 use anyhow::Result;
 use tracing::{debug, info, warn};
 
 use super::route::IndexRoute;
 use super::state::IndexingOperation;
 use crate::database::SymbolDatabase;
+use crate::handler::JulieServerHandler;
 use crate::indexing_core::batch::ExtractedBatch;
 use julie_core::Symbol;
+use julie_core::workspace::mutation_gate::MutationGuard;
+use julie_index::checkout_store::{CheckoutStore, PathChange};
 use julie_pipeline::indexing_core::web_edges::rebuild_web_edges_for_workspace;
+
+async fn store_for_route(
+    handler: &JulieServerHandler,
+    route: &IndexRoute,
+) -> Result<Arc<CheckoutStore>> {
+    if route.is_primary {
+        if let Some(store) = handler.get_workspace().await?.and_then(|ws| ws.store) {
+            return Ok(store);
+        }
+    }
+    handler
+        .checkout_store_for_workspace(&route.workspace_id, &route.workspace_root)
+        .await
+}
+
+fn store_changes(
+    route: &IndexRoute,
+    batch: &ExtractedBatch,
+    operation: IndexingOperation,
+    store: &CheckoutStore,
+) -> Vec<PathChange> {
+    let upserted: HashSet<&str> = batch
+        .all_file_infos
+        .iter()
+        .map(|info| info.path.as_str())
+        .collect();
+    let mut removed: BTreeSet<&str> = batch
+        .files_to_clean
+        .iter()
+        .map(String::as_str)
+        .filter(|path| !upserted.contains(path))
+        .collect();
+    let snapshot = store.current();
+    if matches!(operation, IndexingOperation::Full) {
+        removed.extend(
+            snapshot
+                .graph()
+                .paths()
+                .iter()
+                .map(String::as_str)
+                .filter(|path| !upserted.contains(path)),
+        );
+    }
+    let mut changes: Vec<PathChange> = removed
+        .into_iter()
+        .map(|path| PathChange::Remove {
+            path: path.to_string(),
+        })
+        .collect();
+    for info in &batch.all_file_infos {
+        let bytes = match &info.content {
+            Some(content) => content.as_bytes().to_vec(),
+            None => match std::fs::read(route.workspace_root.join(&info.path)) {
+                Ok(bytes) => bytes,
+                Err(_) => continue,
+            },
+        };
+        changes.push(PathChange::Upsert {
+            path: info.path.clone(),
+            bytes,
+            language: info.language.clone(),
+        });
+    }
+    changes
+}
+
+/// Write the batch into the checkout store beside the canonical persist. A
+/// failure is logged, not fatal, while the old store still serves the tools.
+pub(crate) async fn apply_checkout_store(
+    handler: &JulieServerHandler,
+    route: &IndexRoute,
+    batch: &ExtractedBatch,
+    operation: IndexingOperation,
+    guard: &MutationGuard<'_>,
+) {
+    let store = match store_for_route(handler, route).await {
+        Ok(store) => store,
+        Err(err) => {
+            warn!(workspace_id = %route.workspace_id, "checkout store unavailable: {err:#}");
+            return;
+        }
+    };
+    let changes = store_changes(route, batch, operation, &store);
+    match store.apply(&changes, guard) {
+        Ok(applied) => info!(
+            workspace_id = %route.workspace_id,
+            new_blobs = applied.new_blobs,
+            reused_blobs = applied.reused_blobs,
+            removed_paths = applied.removed_paths,
+            "Checkout store applied batch"
+        ),
+        Err(err) => {
+            warn!(workspace_id = %route.workspace_id, "checkout store apply failed: {err:#}")
+        }
+    }
+}
 
 pub(crate) struct PersistBatchResult {
     pub(crate) canonical_revision: Option<i64>,

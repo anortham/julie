@@ -113,6 +113,12 @@ impl julie_context::ToolContext for IsolatedStorageHandler {
             .get_workspace_root_for_target(workspace_id)
             .await
     }
+    async fn snapshot(
+        &self,
+        target: &julie_context::WorkspaceTarget,
+    ) -> anyhow::Result<std::sync::Arc<julie_index::snapshot::Snapshot>> {
+        julie_context::ToolContext::snapshot(&self.handler, target).await
+    }
     async fn embedding_provider(
         &self,
     ) -> Option<Arc<dyn julie_core::embeddings_contract::EmbeddingProvider>> {

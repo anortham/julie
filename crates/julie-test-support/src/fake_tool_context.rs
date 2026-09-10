@@ -29,6 +29,9 @@ use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_core::health_types::SystemStatus;
 use julie_core::mcp_compat::CallToolResult;
 use julie_index::search::SearchIndex;
+use julie_index::snapshot::Snapshot;
+
+use crate::SnapshotFixture;
 
 /// Hermetic test double for [`ToolContext`].
 ///
@@ -52,6 +55,8 @@ pub struct FakeToolContext {
     pub workspace_db_paths: HashMap<String, PathBuf>,
     /// Optional search index to return from index methods.
     pub primary_search_index: Option<Arc<SearchIndex>>,
+    /// Snapshot served for every target by `ToolContext::snapshot`.
+    pub snapshot_fixture: Option<Arc<SnapshotFixture>>,
 
     // ── Embeddings ──────────────────────────────────────────────────────────
     pub embedding_provider_val: Option<Arc<dyn EmbeddingProvider>>,
@@ -73,6 +78,7 @@ impl Default for FakeToolContext {
             primary_db_path: None,
             workspace_db_paths: HashMap::new(),
             primary_search_index: None,
+            snapshot_fixture: None,
             embedding_provider_val: None,
             resolved_target: WorkspaceTarget::Primary,
             system_status: SystemStatus::FullyReady { symbol_count: 0 },
@@ -128,6 +134,11 @@ impl FakeToolContext {
 
     pub fn with_search_index(mut self, index: Arc<SearchIndex>) -> Self {
         self.primary_search_index = Some(index);
+        self
+    }
+
+    pub fn with_snapshot_fixture(mut self, fixture: SnapshotFixture) -> Self {
+        self.snapshot_fixture = Some(Arc::new(fixture));
         self
     }
 
@@ -244,6 +255,17 @@ impl ToolContext for FakeToolContext {
                  — inject via with_primary_root"
             )
         })
+    }
+
+    async fn snapshot(&self, _target: &WorkspaceTarget) -> Result<Arc<Snapshot>> {
+        self.snapshot_fixture
+            .as_ref()
+            .map(|fixture| fixture.snapshot())
+            .ok_or_else(|| {
+                anyhow!(
+                    "FakeToolContext::snapshot not configured — inject via with_snapshot_fixture"
+                )
+            })
     }
 
     // ── Embeddings (async) ───────────────────────────────────────────────────

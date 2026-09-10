@@ -8,6 +8,7 @@ use super::state::{IndexingOperation, IndexingRepairReason};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::{Context, Result};
+use julie_core::workspace::mutation_gate::MutationGuard;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -69,6 +70,7 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         workspace_path: &Path,
         force_reindex: bool,
+        guard: &MutationGuard<'_>,
     ) -> Result<IndexResult> {
         let index_start = std::time::Instant::now();
         info!("🔍 Scanning workspace: {}", workspace_path.display());
@@ -265,10 +267,16 @@ impl ManageWorkspaceTool {
                     IndexingOperation::Incremental
                 }
             });
-        let pipeline_result =
-            run_indexing_pipeline(self, handler, files_to_index, &route, indexing_operation)
-                .await
-                .context("running indexing pipeline after projection backfill")?;
+        let pipeline_result = run_indexing_pipeline(
+            self,
+            handler,
+            files_to_index,
+            &route,
+            indexing_operation,
+            guard,
+        )
+        .await
+        .context("running indexing pipeline after projection backfill")?;
         let total_files = pipeline_result.files_processed;
         if pipeline_result.state.repair_needed() {
             warn!(

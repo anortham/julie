@@ -31,6 +31,7 @@ const MAX_TANTIVY_RETRY_ATTEMPTS: u32 = 10;
 pub(super) struct QueueRuntime {
     db: Arc<StdMutex<SymbolDatabase>>,
     search_index: Option<Arc<julie_index::search::SearchIndex>>,
+    store: Option<Arc<julie_index::checkout_store::CheckoutStore>>,
     embedding_provider: SharedEmbeddingProvider,
     lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
     index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -58,6 +59,7 @@ impl QueueRuntime {
         Self {
             db: Arc::clone(&indexer.db),
             search_index: indexer.search_index.as_ref().map(Arc::clone),
+            store: indexer.store.clone(),
             embedding_provider: Arc::clone(&indexer.embedding_provider),
             lang_configs: Arc::clone(&indexer.lang_configs),
             index_queue: Arc::clone(&indexer.index_queue),
@@ -95,6 +97,7 @@ impl QueueRuntime {
         Self {
             db,
             search_index,
+            store: None,
             embedding_provider,
             lang_configs,
             index_queue,
@@ -111,6 +114,14 @@ impl QueueRuntime {
             #[cfg(test)]
             fail_commit_for_test: false,
         }
+    }
+
+    pub(super) fn with_store(
+        mut self,
+        store: Option<Arc<julie_index::checkout_store::CheckoutStore>>,
+    ) -> Self {
+        self.store = store;
+        self
     }
 
     async fn acquire_gate_or_mark_rescan(&self, context: &str) -> Option<MutationGuard<'static>> {

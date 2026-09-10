@@ -4,6 +4,7 @@ use std::sync::atomic::Ordering;
 
 use anyhow::Context;
 use anyhow::Result;
+use julie_core::workspace::mutation_gate::MutationGuard;
 use tracing::{debug, info, warn};
 
 use super::finalize::{analyze_batch, resolve_pending_relationships};
@@ -29,7 +30,7 @@ pub(crate) struct IndexingPipelineResult {
     pub source_check_state: julie_core::workspace::projection_stamp::SourceCheckState,
 }
 
-pub(crate) use super::pipeline_persistence::persist_batch;
+pub(crate) use super::pipeline_persistence::{apply_checkout_store, persist_batch};
 
 pub(crate) async fn run_indexing_pipeline(
     tool: &ManageWorkspaceTool,
@@ -37,6 +38,7 @@ pub(crate) async fn run_indexing_pipeline(
     files_to_index: Vec<PathBuf>,
     route: &IndexRoute,
     operation: IndexingOperation,
+    guard: &MutationGuard<'_>,
 ) -> Result<IndexingPipelineResult> {
     let mut state = IndexingBatchState::new(route.workspace_id.clone());
     update_runtime_begin(route, operation);
@@ -124,6 +126,7 @@ pub(crate) async fn run_indexing_pipeline(
         &batch.all_pending_relationships,
         &batch.all_structured_pending_relationships,
     );
+    apply_checkout_store(handler, route, &batch, operation, guard).await;
 
     if let Ok(barrier_dir) = std::env::var("JULIE_IPC_BARRIER_DIR") {
         if std::env::var("JULIE_FAULT_INJECTION").as_deref() == Ok("pause_after_canonical_commit") {

@@ -8,6 +8,7 @@ use julie_core::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDa
 mod apply;
 mod document;
 mod facts_text;
+pub mod from_facts;
 
 pub use apply::apply_documents;
 #[cfg(any(test, feature = "test-support"))]

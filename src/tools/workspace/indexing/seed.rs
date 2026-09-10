@@ -138,7 +138,7 @@ impl ManageWorkspaceTool {
         root: &Path,
         index_root: &Path,
         sibling: Option<&Path>,
-        _guard: &MutationGuard<'_>,
+        guard: &MutationGuard<'_>,
     ) -> Result<Option<(SeedReport, IndexResult)>> {
         let Some(sibling) = sibling else {
             return Ok(None);
@@ -186,7 +186,9 @@ impl ManageWorkspaceTool {
             return Ok(None);
         }
 
-        let result = self.index_workspace_files(handler, root, false).await?;
+        let result = self
+            .index_workspace_files(handler, root, false, guard)
+            .await?;
         let report = SeedReport {
             sibling_root: sibling.to_path_buf(),
             copied_files: result.files_total.saturating_sub(result.files_processed),

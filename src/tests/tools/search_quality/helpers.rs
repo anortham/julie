@@ -429,6 +429,7 @@ incremental_updates = true
         julie_dir: julie_dir.clone(),
         db: Some(Arc::new(Mutex::new(db_struct))),
         search_index: Some(Arc::new(search_index)),
+        store: None,
         watcher: None,
         embedding_provider: None,
         embedding_runtime_status: None,

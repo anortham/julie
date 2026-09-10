@@ -442,6 +442,7 @@ mod relationship_text_test {
         use crate::tools::workspace::indexing::route::IndexRoute;
         use crate::tools::workspace::indexing::state::IndexingOperation;
         use crate::workspace::JulieWorkspace;
+        use crate::workspace::mutation_gate::acquire_gate;
 
         let dir = TempDir::new().unwrap();
         let caller = dir.path().join("caller.rs");
@@ -487,6 +488,7 @@ mod relationship_text_test {
             vec![caller, callee],
             &route,
             IndexingOperation::Full,
+            &acquire_gate(&route.workspace_id).await,
         )
         .await
         .unwrap();

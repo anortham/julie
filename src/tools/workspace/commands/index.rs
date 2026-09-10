@@ -438,7 +438,7 @@ impl ManageWorkspaceTool {
         workspace_path: &Path,
         force_reindex: bool,
     ) -> Result<crate::tools::workspace::indexing::index::IndexResult> {
-        self.index_workspace_files(handler, workspace_path, force_reindex)
+        self.index_workspace_files(handler, workspace_path, force_reindex, _guard)
             .await
     }
 }

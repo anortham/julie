@@ -19,6 +19,7 @@ use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_core::health_types::SystemStatus;
 use julie_core::mcp_compat::CallToolResult;
 use julie_index::search::SearchIndex;
+use julie_index::snapshot::Snapshot;
 
 use crate::workspace_target::WorkspaceTarget;
 
@@ -81,6 +82,10 @@ pub trait ToolContext: Send + Sync {
 
     /// Returns the on-disk root path for the given workspace ID.
     async fn get_workspace_root_for_target(&self, workspace_id: &str) -> Result<PathBuf>;
+
+    /// The current immutable snapshot (graph, searcher, facts, vectors) of the
+    /// target workspace. Tools hold it for the whole call; writes publish a new one.
+    async fn snapshot(&self, target: &WorkspaceTarget) -> Result<Arc<Snapshot>>;
 
     // ── Embeddings (async) ───────────────────────────────────────────────
 
