@@ -129,3 +129,17 @@ fn find_by_name_is_exact_and_suffix_lookup_prefers_the_named_parent() {
         vec![id_of(&graph, "a.rs", "Foo")]
     );
 }
+
+#[test]
+fn symbol_by_row_id_finds_the_symbol_from_its_row_id() {
+    let (_, store) = store_with(vec![
+        file("a.rs")
+            .symbol("a", "a", SymbolKind::Function)
+            .symbol("b", "b", SymbolKind::Function),
+    ]);
+    let graph = graph_of(&store);
+    let b = id_of(&graph, "a.rs", "b");
+
+    assert_eq!(graph.symbol_by_row_id(&graph.symbol(b).id), Some(b));
+    assert_eq!(graph.symbol_by_row_id("nope:0"), None);
+}

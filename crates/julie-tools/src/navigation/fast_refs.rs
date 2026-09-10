@@ -210,7 +210,7 @@ fn edge_relationship_kind(kind: EdgeKind) -> RelationshipKind {
         EdgeKind::Imports => RelationshipKind::Imports,
         EdgeKind::Implements => RelationshipKind::Implements,
         EdgeKind::Extends => RelationshipKind::Extends,
-        EdgeKind::References | EdgeKind::Contains | EdgeKind::WebRoute => {
+        EdgeKind::References | EdgeKind::Contains | EdgeKind::WebRoute | EdgeKind::SqlQuery => {
             RelationshipKind::References
         }
     }
@@ -221,7 +221,12 @@ fn referencing_symbols(graph: &Graph, to: SymbolId) -> Vec<(SymbolId, EdgeKind)>
     let mut sources: Vec<(SymbolId, EdgeKind)> = graph
         .incoming(to)
         .iter()
-        .filter(|(_, kind)| !matches!(kind, EdgeKind::Contains | EdgeKind::WebRoute))
+        .filter(|(_, kind)| {
+            !matches!(
+                kind,
+                EdgeKind::Contains | EdgeKind::WebRoute | EdgeKind::SqlQuery
+            )
+        })
         .copied()
         .collect();
     sources.dedup_by_key(|(from, _)| *from);

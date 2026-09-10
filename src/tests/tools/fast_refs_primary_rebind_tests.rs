@@ -89,7 +89,6 @@ async fn test_fast_refs_primary_keeps_rebound_source_name_resolution_after_rebin
 }
 
 #[tokio::test]
-#[ignore = "the graph resolves identifiers by leaf name, so `FastRefsTool::call_tool` is ambiguous while `OtherTool::call_tool` exists (Task 2 gap, see task-6 report)"]
 async fn test_fast_refs_primary_qualified_identifier_fallback_respects_parent_filter() -> Result<()>
 {
     let (_dir, context) = context(&[

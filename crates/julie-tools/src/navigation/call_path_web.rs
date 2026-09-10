@@ -1,4 +1,4 @@
-//! Web-mode call-path search: follows `Calls` and derived `WebRoute` edges so a
+//! Web-mode call-path search: follows `Calls`, `WebRoute`, and `SqlQuery` edges so a
 //! frontend client call traces through to its backend handler, and reports the
 //! external endpoints of client calls that matched no handler.
 
@@ -45,7 +45,7 @@ fn client_calls(reader: &FactsReader<'_>, symbol: &SymbolRow) -> Result<Vec<(u32
         .collect())
 }
 
-/// Run a web-mode `call_path` traversal over `Calls` and `WebRoute` edges.
+/// Run a web-mode `call_path` traversal over `Calls`, `WebRoute`, and `SqlQuery` edges.
 ///
 /// External endpoints are collected from every frontier symbol the BFS
 /// explores, not only from symbols on the final path.
@@ -80,6 +80,7 @@ pub(super) fn run_web_call_path(
             .filter_map(|(to, kind)| match kind {
                 EdgeKind::Calls => Some((*to, "call")),
                 EdgeKind::WebRoute => Some((*to, "http_call")),
+                EdgeKind::SqlQuery => Some((*to, "sql_query")),
                 _ => None,
             })
             .collect()

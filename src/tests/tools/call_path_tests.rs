@@ -431,7 +431,6 @@ async fn test_non_call_edge_not_traversed() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "the graph resolves call identifiers by leaf name: a crate-scoped call to one of two same-named functions is ambiguous, and `HashMap::new()` binds to a same-file `new` (Task 2 gap, see task-6 report)"]
 async fn test_call_path_resolves_rust_crate_scoped_call_to_namespaced_target() -> Result<()> {
     let (_temp_dir, handler) = setup_indexed_workspace_files(&[
         (

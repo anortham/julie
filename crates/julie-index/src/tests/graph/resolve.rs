@@ -216,3 +216,71 @@ fn self_edges_are_dropped() {
 
     assert!(edge_labels(&graph).is_empty());
 }
+
+#[test]
+fn qualified_call_prefers_the_candidate_whose_parent_matches_the_qualifier() {
+    let (_, store) = store_with(vec![
+        file("caller.rs")
+            .symbol("caller", "caller_fast_refs", SymbolKind::Function)
+            .qualified_call("caller", "FastRefsTool::call_tool"),
+        file("fast_refs.rs")
+            .symbol("tool", "FastRefsTool", SymbolKind::Struct)
+            .child("tool_call", "call_tool", SymbolKind::Method, Some("tool")),
+        file("other.rs")
+            .symbol("other", "OtherTool", SymbolKind::Struct)
+            .child("other_call", "call_tool", SymbolKind::Method, Some("other")),
+    ]);
+    let graph = graph_of(&store);
+
+    assert_eq!(
+        edges_of_kind(&graph, EdgeKind::Calls),
+        vec![pair("caller.rs:caller_fast_refs", "fast_refs.rs:call_tool")]
+    );
+}
+
+#[test]
+fn qualified_call_prefers_the_candidate_whose_path_matches_the_qualifier() {
+    let (_, store) = store_with(vec![
+        file("src/main.rs")
+            .symbol("caller", "caller", SymbolKind::Function)
+            .qualified_call(
+                "caller",
+                "crate::search::hybrid::should_use_semantic_fallback",
+            )
+            .qualified_call("caller", "crate::util::helper"),
+        file("src/search/hybrid.rs").symbol(
+            "h1",
+            "should_use_semantic_fallback",
+            SymbolKind::Function,
+        ),
+        file("src/other.rs")
+            .symbol("h2", "should_use_semantic_fallback", SymbolKind::Function)
+            .symbol("helper_other", "helper", SymbolKind::Function),
+        file("src/util/mod.rs").symbol("helper_util", "helper", SymbolKind::Function),
+    ]);
+    let graph = graph_of(&store);
+
+    assert_eq!(
+        edges_of_kind(&graph, EdgeKind::Calls),
+        vec![
+            pair(
+                "src/main.rs:caller",
+                "src/search/hybrid.rs:should_use_semantic_fallback"
+            ),
+            pair("src/main.rs:caller", "src/util/mod.rs:helper"),
+        ]
+    );
+}
+
+#[test]
+fn external_qualifier_matching_no_candidate_drops_the_edge() {
+    let (_, store) = store_with(vec![
+        file("src/main.rs")
+            .symbol("std_caller", "std_caller", SymbolKind::Function)
+            .qualified_call("std_caller", "std::collections::HashMap::new")
+            .symbol("new", "new", SymbolKind::Function),
+    ]);
+    let graph = graph_of(&store);
+
+    assert!(edges_of_kind(&graph, EdgeKind::Calls).is_empty());
+}

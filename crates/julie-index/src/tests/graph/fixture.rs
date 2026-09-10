@@ -126,6 +126,22 @@ impl FileBuilder {
 
     pub fn pending(mut self, from: &str, callee: &str, kind: RelationshipKind) -> Self {
         let line = self.next_line();
+        self.push_pending(from, callee, kind, line);
+        self
+    }
+
+    /// What the Rust extractor emits for `Qualifier::leaf()`: a `Call`
+    /// identifier named `leaf` and a pending `Calls` row naming the full path,
+    /// both on the same line.
+    pub fn qualified_call(mut self, from: &str, qualified: &str) -> Self {
+        let leaf = qualified.rsplit("::").next().unwrap();
+        self = self.identifier(from, leaf, IdentifierKind::Call);
+        let line = self.line;
+        self.push_pending(from, qualified, RelationshipKind::Calls, line);
+        self
+    }
+
+    fn push_pending(&mut self, from: &str, callee: &str, kind: RelationshipKind, line: u32) {
         self.results
             .pending_relationships
             .push(PendingRelationship {
@@ -136,7 +152,6 @@ impl FileBuilder {
                 line_number: line,
                 confidence: 1.0,
             });
-        self
     }
 
     pub fn fact(

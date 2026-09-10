@@ -13,7 +13,7 @@ use julie_facts::rows::{
 
 use super::edges::Adjacency;
 use super::scores::reference_scores;
-use super::web_edges::{http_pattern_ids, web_route_edges};
+use super::web_edges::{edge_pattern_ids, sql_query_edges, web_route_edges};
 use super::{Graph, GraphStats, SymbolId, SymbolTable, resolve};
 
 const READ_CHUNK: usize = 500;
@@ -57,9 +57,9 @@ fn read_files(reader: &FactsReader<'_>, paths: &[String]) -> Result<Vec<FileRows
     Ok(files)
 }
 
-fn read_http_facts(reader: &FactsReader<'_>) -> Result<Vec<StructuralFactRow>> {
+fn read_edge_facts(reader: &FactsReader<'_>) -> Result<Vec<StructuralFactRow>> {
     reader.structural_facts(&StructuralFactQuery {
-        pattern_ids: http_pattern_ids(),
+        pattern_ids: edge_pattern_ids(),
         path_pattern: None,
         language: None,
         limit: i64::MAX as usize,
@@ -81,7 +81,7 @@ impl Graph {
             None => reader.paths()?.into_iter().map(|p| p.path).collect(),
         };
         let files = read_files(reader, &paths)?;
-        let facts = read_http_facts(reader)?;
+        let facts = read_edge_facts(reader)?;
         Ok(Self::build(files, &facts, started))
     }
 
@@ -107,7 +107,7 @@ impl Graph {
             .collect();
         files.extend(read_files(reader, &changed)?);
         files.sort_by(|a, b| a.path.cmp(&b.path));
-        let facts = read_http_facts(reader)?;
+        let facts = read_edge_facts(reader)?;
         Ok(Self::build(files, &facts, started))
     }
 
@@ -119,6 +119,7 @@ impl Graph {
             table.files().iter().flat_map(|f| f.relationships.iter()),
         );
         edges.extend(web_route_edges(&table, facts));
+        edges.extend(sql_query_edges(&table, facts));
         let scores = reference_scores(&table, &edges);
         let adjacency = Adjacency::build(table.len(), &edges);
         let symbol_ids: Vec<SymbolId> = (0..table.len() as u32).map(SymbolId).collect();
@@ -156,5 +157,6 @@ fn resident_bytes(
     rows + adjacency.resident_bytes()
         + size_of_val(symbol_ids)
         + size_of_val(scores)
-        + table.len() * (size_of::<String>() + size_of::<Vec<SymbolId>>())
+        + table.len()
+            * (2 * size_of::<String>() + size_of::<Vec<SymbolId>>() + size_of::<SymbolId>())
 }

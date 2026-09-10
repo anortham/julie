@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use julie_extractors::SymbolKind;
+use serde_json::json;
 
 use super::fixture::{edges_of_kind, file, graph_of, store_with};
 use crate::graph::EdgeKind;
@@ -79,4 +82,81 @@ fn equally_confident_handlers_in_different_symbols_are_ambiguous() {
     let graph = graph_of(&store);
 
     assert!(edges_of_kind(&graph, EdgeKind::WebRoute).is_empty());
+}
+
+fn table_fact(name: &str) -> HashMap<String, serde_json::Value> {
+    HashMap::from([("table_name".to_string(), json!(name))])
+}
+
+#[test]
+fn sql_mutation_links_the_routine_to_the_unique_table_definition() {
+    let (_, store) = store_with(vec![
+        file("schema/tables.sql")
+            .symbol("users", "users", SymbolKind::Class)
+            .fact(
+                "sql.table_definition.v1",
+                Some("users"),
+                1.0,
+                table_fact("users"),
+            )
+            .symbol("dup", "dup", SymbolKind::Class)
+            .fact(
+                "sql.table_definition.v1",
+                Some("dup"),
+                1.0,
+                table_fact("dup"),
+            ),
+        file("schema/more.sql")
+            .symbol("dup2", "dup", SymbolKind::Class)
+            .fact(
+                "sql.table_definition.v1",
+                Some("dup2"),
+                1.0,
+                table_fact("dup"),
+            ),
+        file("schema/routines.sql")
+            .symbol("touch", "touch_users", SymbolKind::Function)
+            .fact(
+                "sql.update_statement.v1",
+                Some("touch"),
+                1.0,
+                table_fact("users"),
+            )
+            .symbol("view", "user_view", SymbolKind::Function)
+            .fact(
+                "sql.view_definition.v1",
+                Some("view"),
+                1.0,
+                HashMap::from([(
+                    "source_tables".to_string(),
+                    json!(["users", "orders", "dup"]),
+                )]),
+            )
+            .symbol("merge", "merge_users", SymbolKind::Function)
+            .fact(
+                "sql.merge_statement.v1",
+                Some("merge"),
+                1.0,
+                HashMap::from([("target_table".to_string(), json!("users"))]),
+            ),
+    ]);
+    let graph = graph_of(&store);
+
+    assert_eq!(
+        edges_of_kind(&graph, EdgeKind::SqlQuery),
+        vec![
+            (
+                "schema/routines.sql:merge_users".to_string(),
+                "schema/tables.sql:users".to_string()
+            ),
+            (
+                "schema/routines.sql:touch_users".to_string(),
+                "schema/tables.sql:users".to_string()
+            ),
+            (
+                "schema/routines.sql:user_view".to_string(),
+                "schema/tables.sql:users".to_string()
+            ),
+        ]
+    );
 }

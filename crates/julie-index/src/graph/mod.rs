@@ -18,7 +18,7 @@ use julie_facts::rows::SymbolRow;
 pub use edges::Adjacency;
 pub use load::FileRows;
 pub use resolve::resolve;
-pub use web_edges::web_route_edges;
+pub use web_edges::{sql_query_edges, web_route_edges};
 
 /// Dense graph id: assigned at load in path order, then ordinal order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -33,6 +33,7 @@ pub enum EdgeKind {
     Extends,
     Contains,
     WebRoute,
+    SqlQuery,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -58,6 +59,7 @@ pub struct SymbolTable {
     file_base: Vec<u32>,
     path_index: HashMap<String, u32>,
     by_name: HashMap<String, Vec<SymbolId>>,
+    by_row_id: HashMap<String, SymbolId>,
 }
 
 impl SymbolTable {
@@ -65,6 +67,7 @@ impl SymbolTable {
     pub(crate) fn new(files: Vec<FileRows>) -> Self {
         let mut file_base = Vec::with_capacity(files.len() + 1);
         let mut by_name: HashMap<String, Vec<SymbolId>> = HashMap::new();
+        let mut by_row_id = HashMap::new();
         let mut next = 0u32;
         for file in &files {
             file_base.push(next);
@@ -73,6 +76,7 @@ impl SymbolTable {
                     .entry(row.name.clone())
                     .or_default()
                     .push(SymbolId(next));
+                by_row_id.insert(row.id.clone(), SymbolId(next));
                 next += 1;
             }
         }
@@ -89,6 +93,7 @@ impl SymbolTable {
             file_base,
             path_index,
             by_name,
+            by_row_id,
         }
     }
 
@@ -144,6 +149,11 @@ impl SymbolTable {
 
     pub fn find_by_name(&self, name: &str) -> &[SymbolId] {
         self.by_name.get(name).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// Lookup by the row id `"<blob_hash>:<ordinal>"`.
+    pub fn symbol_by_row_id(&self, row_id: &str) -> Option<SymbolId> {
+        self.by_row_id.get(row_id).copied()
     }
 
     /// `Parent::leaf` / `Parent.leaf` lookup: symbols named `leaf`, narrowed to
@@ -211,6 +221,10 @@ impl Graph {
 
     pub fn find_by_name_suffix(&self, qualified: &str) -> Vec<SymbolId> {
         self.table.find_by_name_suffix(qualified)
+    }
+
+    pub fn symbol_by_row_id(&self, row_id: &str) -> Option<SymbolId> {
+        self.table.symbol_by_row_id(row_id)
     }
 
     pub fn symbols_in_path(&self, path: &str) -> &[SymbolId] {

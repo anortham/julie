@@ -1,5 +1,5 @@
-//! HTTP client call -> route handler edges derived from structural facts, by
-//! the same matching rules the SQL-era `web_edges` projection used.
+//! Edges derived from structural facts by the rules of the SQL-era `web_edges`
+//! projection: HTTP client call -> route handler, and SQL routine -> table.
 
 use std::collections::HashMap;
 
@@ -37,11 +37,24 @@ pub const ROUTE_HANDLER_PATTERN_IDS: &[&str] = &[
     "razor.page_directive.v1",
 ];
 
-/// Every pattern id `web_route_edges` reads; use it to filter the facts query.
-pub fn http_pattern_ids() -> Vec<String> {
+/// SELECT is absent: the extractor records no source table names for it.
+pub const SQL_QUERY_PATTERN_IDS: &[&str] = &[
+    "sql.view_definition.v1",
+    "sql.update_statement.v1",
+    "sql.insert_statement.v1",
+    "sql.delete_statement.v1",
+    "sql.merge_statement.v1",
+];
+
+pub const SQL_TABLE_DEFINITION_PATTERN_ID: &str = "sql.table_definition.v1";
+
+/// Every pattern id the edge derivations read; use it to filter the facts query.
+pub fn edge_pattern_ids() -> Vec<String> {
     HTTP_CLIENT_CALL_PATTERN_IDS
         .iter()
         .chain(ROUTE_HANDLER_PATTERN_IDS)
+        .chain(SQL_QUERY_PATTERN_IDS)
+        .chain([SQL_TABLE_DEFINITION_PATTERN_ID].iter())
         .map(|id| id.to_string())
         .collect()
 }
@@ -179,6 +192,77 @@ pub fn web_route_edges(symbols: &SymbolTable, facts: &[StructuralFactRow]) -> Ve
                 })
             }
             _ => {}
+        }
+    }
+    edges
+}
+
+fn meta_str_array(fact: &StructuralFactRow, key: &str) -> Vec<String> {
+    fact.metadata
+        .as_ref()
+        .and_then(|m| m.get(key)?.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn query_target_tables(fact: &StructuralFactRow) -> Vec<String> {
+    match fact.pattern_id.as_str() {
+        "sql.view_definition.v1" => meta_str_array(fact, "source_tables"),
+        "sql.update_statement.v1" | "sql.insert_statement.v1" | "sql.delete_statement.v1" => {
+            meta_str(fact, "table_name").into_iter().collect()
+        }
+        "sql.merge_statement.v1" => meta_str(fact, "target_table").into_iter().collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// One `SqlQuery` edge per table a view, update, insert, delete, or merge
+/// fact names, when exactly one table-definition fact defines that name.
+pub fn sql_query_edges(symbols: &SymbolTable, facts: &[StructuralFactRow]) -> Vec<Edge> {
+    let mut tables: HashMap<String, Option<SymbolId>> = HashMap::new();
+    for fact in facts {
+        if fact.pattern_id != SQL_TABLE_DEFINITION_PATTERN_ID {
+            continue;
+        }
+        let (Some(name), Some(symbol)) = (
+            meta_str(fact, "table_name"),
+            containing_symbol(symbols, fact),
+        ) else {
+            continue;
+        };
+        tables
+            .entry(name)
+            .and_modify(|existing| {
+                if *existing != Some(symbol) {
+                    *existing = None;
+                }
+            })
+            .or_insert(Some(symbol));
+    }
+
+    let mut edges = Vec::new();
+    for fact in facts {
+        if !SQL_QUERY_PATTERN_IDS.contains(&fact.pattern_id.as_str()) {
+            continue;
+        }
+        let Some(from) = containing_symbol(symbols, fact) else {
+            continue;
+        };
+        for table in query_target_tables(fact) {
+            if let Some(Some(to)) = tables.get(&table)
+                && *to != from
+            {
+                edges.push(Edge {
+                    from,
+                    to: *to,
+                    kind: EdgeKind::SqlQuery,
+                });
+            }
         }
     }
     edges

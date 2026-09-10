@@ -514,7 +514,6 @@ fn seeded_sql_context() -> Result<(Seeded, FakeToolContext)> {
 }
 
 #[tokio::test]
-#[ignore = "the graph has no SqlQuery edge kind, so web mode cannot follow a routine to its table (plan mismatch, see task-6 report)"]
 async fn trace_web_mode_follows_sql_query_edge_to_table() -> Result<()> {
     let (_temp, context) = seeded_sql_context()?;
 

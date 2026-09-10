@@ -213,3 +213,44 @@ fn rows(store: &FactsStore) -> Vec<(String, String, u32, Option<u32>)> {
         .map(|s| (s.id, s.name, s.ordinal, s.parent_ordinal))
         .collect()
 }
+
+#[test]
+fn structured_pending_namespace_path_qualifies_the_to_name() {
+    use julie_extractors::{
+        ExtractionResults, RelationshipKind, StructuredPendingRelationship, UnresolvedTarget,
+    };
+
+    struct ScopedCall;
+    impl crate::writer::Extractor for ScopedCall {
+        fn extract(&self, path: &str, _content: &str, language: &str) -> ExtractionResults {
+            let mut results = super::fixture_results(path, language);
+            let target = UnresolvedTarget {
+                display_name: "crate::search::hybrid::remote_fn".to_string(),
+                terminal_name: "remote_fn".to_string(),
+                receiver: None,
+                namespace_path: vec!["crate".into(), "search".into(), "hybrid".into()],
+                import_context: None,
+            };
+            results
+                .structured_pending_relationships
+                .push(StructuredPendingRelationship::new(
+                    super::INNER_ID.to_string(),
+                    target,
+                    None,
+                    RelationshipKind::Calls,
+                    path.to_string(),
+                    4,
+                    0.8,
+                ));
+            results
+        }
+    }
+
+    let mut store = FactsStore::in_memory().unwrap();
+    let mut writer = FactsWriter::new(&mut store, &ScopedCall, Normalization::default());
+    writer.apply(&[upsert("a.ts", "v1")]).unwrap();
+
+    let relationships = store.reader().relationships_for_paths(&["a.ts"]).unwrap();
+    assert_eq!(relationships[1].to_name, "crate::search::hybrid::remote_fn");
+    assert_eq!(relationships[1].to_ordinal, None);
+}

@@ -185,12 +185,21 @@ fn insert_relationships(
         ])?;
         ordinal += 1;
     }
+    let qualified = qualified_pending_names(results);
     for p in &results.pending_relationships {
+        let to_name = qualified
+            .get(&(
+                p.from_symbol_id.as_str(),
+                p.line_number,
+                p.callee_name.as_str(),
+            ))
+            .copied()
+            .unwrap_or(p.callee_name.as_str());
         stmt.execute(params![
             blob_hash,
             ordinal,
             ordinal_of(symbols, Some(&p.from_symbol_id)),
-            p.callee_name,
+            to_name,
             Option::<String>::None,
             Option::<u32>::None,
             p.kind.to_string(),
@@ -203,6 +212,27 @@ fn insert_relationships(
         ordinal += 1;
     }
     Ok(())
+}
+
+/// `(from id, line, leaf name)` -> qualified display name for pending rows
+/// whose structured target carries a namespace path (`crate::a::b::leaf`).
+/// Receiver-based targets (`obj.method`) keep the leaf.
+fn qualified_pending_names(results: &ExtractionResults) -> HashMap<(&str, u32, &str), &str> {
+    results
+        .structured_pending_relationships
+        .iter()
+        .filter(|s| !s.target.namespace_path.is_empty() && s.target.receiver.is_none())
+        .map(|s| {
+            (
+                (
+                    s.pending.from_symbol_id.as_str(),
+                    s.pending.line_number,
+                    s.target.terminal_name.as_str(),
+                ),
+                s.target.display_name.as_str(),
+            )
+        })
+        .collect()
 }
 
 fn insert_types(

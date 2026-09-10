@@ -15,7 +15,7 @@ fn weight(kind: EdgeKind) -> f64 {
         EdgeKind::Calls => 3.0,
         EdgeKind::Implements | EdgeKind::Imports | EdgeKind::Extends => 2.0,
         EdgeKind::References => 1.0,
-        EdgeKind::Contains | EdgeKind::WebRoute => 0.0,
+        EdgeKind::Contains | EdgeKind::WebRoute | EdgeKind::SqlQuery => 0.0,
     }
 }
 

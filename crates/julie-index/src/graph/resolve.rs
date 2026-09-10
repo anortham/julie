@@ -2,6 +2,8 @@
 //! `IMPACT_IDENTIFIER_KINDS` (call, type_usage, import), exact match then
 //! qualified suffix, definition priority, and ambiguity drops the edge.
 
+use std::collections::HashSet;
+
 use julie_extractors::{IdentifierKind, RelationshipKind, SymbolKind};
 use julie_facts::rows::{IdentifierRow, RelationshipRow};
 
@@ -32,6 +34,7 @@ pub fn resolve<'a>(
             );
         }
     }
+    let mut qualified_sites: HashSet<(SymbolId, u32, &str)> = HashSet::new();
     for row in relationships {
         let Some(file) = symbols.file_index(&row.path) else {
             continue;
@@ -41,7 +44,13 @@ pub fn resolve<'a>(
         };
         let to = match row.to_ordinal {
             Some(ordinal) => symbols.id_at(file, ordinal),
-            None => resolve_target(symbols, &row.to_name, file),
+            None => {
+                let (leaf, qualifier) = split_qualified(&row.to_name);
+                if !qualifier.is_empty() {
+                    qualified_sites.insert((from, row.line_number, leaf));
+                }
+                resolve_target(symbols, &row.to_name, file)
+            }
         };
         if let Some(to) = to {
             push(&mut edges, from, to, relationship_edge_kind(&row.kind));
@@ -57,6 +66,9 @@ pub fn resolve<'a>(
         let Some(from) = row.containing_ordinal.and_then(|o| symbols.id_at(file, o)) else {
             continue;
         };
+        if qualified_sites.contains(&(from, row.span.start_line, row.name.as_str())) {
+            continue;
+        }
         if let Some(to) = resolve_target(symbols, &row.name, file) {
             push(&mut edges, from, to, kind);
         }
@@ -113,19 +125,58 @@ fn is_definition(kind: &SymbolKind) -> bool {
     !matches!(kind, SymbolKind::Import | SymbolKind::Export)
 }
 
-/// Exact name, else qualified suffix; same-file definitions win; then the best
-/// definition priority. A tie at the best priority is ambiguous: no target.
+/// `a::b::leaf` or `a.b.leaf` -> `("leaf", ["a", "b"])`. Leading `crate`,
+/// `self`, `Self`, and `super` say nothing about the target and are dropped.
+fn split_qualified(name: &str) -> (&str, Vec<&str>) {
+    let mut segments: Vec<&str> = name
+        .split("::")
+        .flat_map(|s| s.split('.'))
+        .filter(|s| !s.is_empty())
+        .collect();
+    let Some(leaf) = segments.pop() else {
+        return (name, Vec::new());
+    };
+    segments.retain(|s| !matches!(*s, "crate" | "self" | "Self" | "super"));
+    (leaf, segments)
+}
+
+/// `search::hybrid` matches `src/search/hybrid.rs` and `src/search/hybrid/mod.rs`.
+fn path_matches_qualifier(path: &str, qualifier: &[&str]) -> bool {
+    let stem = path.rsplit_once('.').map_or(path, |(stem, _)| stem);
+    let mut components: Vec<&str> = stem.split('/').filter(|c| !c.is_empty()).collect();
+    if matches!(components.last(), Some(&"mod" | &"index" | &"__init__")) {
+        components.pop();
+    }
+    components.ends_with(qualifier)
+}
+
+fn qualifier_matches(symbols: &SymbolTable, id: SymbolId, qualifier: &[&str]) -> bool {
+    let parent_matches = symbols.parent(id).is_some_and(|parent| {
+        Some(symbols.symbol(parent).name.as_str()) == qualifier.last().copied()
+    });
+    parent_matches || path_matches_qualifier(&symbols.symbol(id).path, qualifier)
+}
+
+/// Exact name, else the leaf of a qualified name narrowed to candidates whose
+/// parent or file path matches the qualifier (none left drops the edge);
+/// same-file definitions win; then the best definition priority. A tie at
+/// the best priority is ambiguous: no target.
 pub fn resolve_target(symbols: &SymbolTable, name: &str, from_file: u32) -> Option<SymbolId> {
     let exact = symbols.find_by_name(name);
-    let found = if exact.is_empty() {
-        symbols.find_by_name_suffix(name)
+    let (leaf, qualifier) = if exact.is_empty() {
+        split_qualified(name)
     } else {
-        exact.to_vec()
+        (name, Vec::new())
     };
-    let mut candidates: Vec<SymbolId> = found
-        .into_iter()
+    let mut candidates: Vec<SymbolId> = symbols
+        .find_by_name(leaf)
+        .iter()
+        .copied()
         .filter(|id| is_definition(&symbols.symbol(*id).kind))
         .collect();
+    if !qualifier.is_empty() {
+        candidates.retain(|id| qualifier_matches(symbols, *id, &qualifier));
+    }
     if candidates
         .iter()
         .any(|id| symbols.file_of(*id) == from_file)
