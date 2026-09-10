@@ -289,11 +289,7 @@ async fn test_startup_empty_database_repair_runs_embeddings_after_initial_index(
         .await
         .unwrap();
 
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     assert_eq!(
         embedding_count_for_primary(&handler).await,
@@ -332,11 +328,7 @@ async fn test_startup_stale_file_repair_refreshes_embeddings_for_changed_file() 
         .await
         .unwrap();
 
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(BatchMarkerEmbeddingProvider::default()));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(BatchMarkerEmbeddingProvider::default())));
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),

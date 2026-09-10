@@ -29,11 +29,7 @@ async fn test_startup_noop_repair_does_not_mark_catchup_active_while_planning() 
 
     // Inject a deterministic provider so the initial index produces
     // embeddings without depending on a real sidecar being present.
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -107,11 +103,7 @@ async fn test_startup_semantic_repair_runs_embeddings_after_full_reindex() {
         .await
         .unwrap();
 
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -199,11 +191,7 @@ async fn test_startup_repair_schedules_embeddings_when_workspace_has_symbols_but
         .await
         .unwrap();
 
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     // First index with force=true populates symbols AND embeddings.
     let index_tool = ManageWorkspaceTool {
@@ -292,11 +280,7 @@ async fn test_startup_missing_embeddings_only_repair_reconciles_web_edges() {
         .await
         .unwrap();
 
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -408,11 +392,7 @@ async fn test_startup_repair_does_not_schedule_missing_embeddings_when_task_alre
         .await
         .unwrap();
 
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     // Initial index produces symbols + embeddings.
     let index_tool = ManageWorkspaceTool {

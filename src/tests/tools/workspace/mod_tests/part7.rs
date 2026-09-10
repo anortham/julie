@@ -26,11 +26,7 @@ async fn test_refresh_treats_semantic_version_drift_as_full_reindex() {
         .await
         .unwrap();
 
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     daemon_db
         .upsert_workspace(&workspace_id, &workspace_path_str, "ready")
@@ -236,11 +232,7 @@ async fn test_refresh_no_changes_skips_embedding_pipeline() {
     // Inject a real embedding provider so spawn_workspace_embedding would
     // return non-zero if called. Without this, the test could pass trivially
     // because no provider means embed_count=0 regardless of the gate.
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     // Register workspace in daemon db
     daemon_db

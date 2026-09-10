@@ -63,11 +63,7 @@ async fn test_primary_index_schedules_embedding_when_provider_available() {
         .unwrap();
 
     // Inject deterministic provider so embedding scheduling is enabled in test.
-    {
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
-    }
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
 
     let tool = ManageWorkspaceTool {
         operation: "index".to_string(),
