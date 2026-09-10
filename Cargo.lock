@@ -1868,6 +1868,7 @@ dependencies = [
  "anyhow",
  "julie-core",
  "julie-extractors",
+ "julie-facts",
  "julie-test-support",
  "regex",
  "rusqlite",

@@ -5,4 +5,5 @@
 //! julie-test-support — no handler, tools, daemon, or watcher imports.
 
 pub mod analysis;
+pub mod graph;
 pub mod search;

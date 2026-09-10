@@ -7,6 +7,7 @@
 //! (no handler, tools, daemon, watcher, or workspace references).
 
 pub mod analysis;
+pub mod graph;
 pub mod search;
 
 #[cfg(test)]
