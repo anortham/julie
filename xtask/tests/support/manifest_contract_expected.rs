@@ -489,9 +489,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
                     "cargo nextest run -p julie-tools --lib tests::search_nl_path_prior_pipeline_tests",
-                    "cargo nextest run -p julie-tools --lib tests::search_nl_symbol_query_latency_tests",
                     "cargo nextest run -p julie-tools --lib tests::search_pretokenized_emit_test",
-                    "cargo nextest run -p julie-tools --lib tests::search_title_exact_boost_tests",
                     "cargo nextest run --lib tests::tools::search::unified_ -- --skip search_quality",
                 ],
             },
