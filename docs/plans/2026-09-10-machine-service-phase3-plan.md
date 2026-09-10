@@ -195,9 +195,9 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Start with `julie-server symbols crates/julie-tools/src/search/tool_execution.rs --workspace .` and `refs get_symbols_by_ids`. Port the tests first: replace `index_workspace(...)` helpers in `src/tests/tools/search/**` with `SnapshotFixture::from_tree(tempdir)`; keep every assertion string. Then port the code until the tests are green. Delete `execution/semantic.rs` generation checks (`get_latest_ready_generation`, `embedding_generation_ready`, `get_latest_canonical_revision_number`) rather than porting them.
 
 **Acceptance criteria:**
-- [ ] `rg -n 'SymbolDatabase|pooled_database|get_search_index_for_workspace|with_read_transaction' crates/julie-tools/src/search` returns nothing.
-- [ ] `cargo nextest run -p julie-tools --lib tests::search` and `cargo nextest run --lib tests::tools::search` pass on `SnapshotFixture`.
-- [ ] `cargo build` green; worker scope green; handed to the lead per commit mode.
+- [x] `rg -n 'SymbolDatabase|pooled_database|get_search_index_for_workspace|with_read_transaction' crates/julie-tools/src/search` returns nothing.
+- [x] `cargo nextest run -p julie-tools --lib tests::search` and `cargo nextest run --lib tests::tools::search` pass on `SnapshotFixture`.
+- [x] `cargo build` green; worker scope green; handed to the lead per commit mode.
 
 ---
 
@@ -223,9 +223,9 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Tests first on `SnapshotFixture`; the `patterns` tests in `src/tests/tools/patterns.rs` currently run in no bucket, so run them by name during the port.
 
 **Acceptance criteria:**
-- [ ] `rg -n 'SymbolDatabase|pooled_database|into_read_snapshot' crates/julie-tools/src/symbols crates/julie-tools/src/patterns` returns nothing.
-- [ ] `cargo nextest run --lib tests::tools::get_symbols` and `cargo nextest run --lib tests::tools::patterns` pass; `cargo nextest run -p xtask` passes with the bucket change.
-- [ ] `cargo build` green; worker scope green; handed to the lead per commit mode.
+- [x] `rg -n 'SymbolDatabase|pooled_database|into_read_snapshot' crates/julie-tools/src/symbols crates/julie-tools/src/patterns` returns nothing.
+- [x] `cargo nextest run --lib tests::tools::get_symbols` and `cargo nextest run --lib tests::tools::patterns` pass; `cargo nextest run -p xtask` passes with the bucket change.
+- [x] `cargo build` green; worker scope green; handed to the lead per commit mode.
 
 ---
 
@@ -251,9 +251,9 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Port `target_workspace.rs` first (it is the smaller mirror of `fast_refs.rs`), then delete the duplication if both paths become one function over a snapshot. `web_navigation.rs` tests currently run in no bucket; run them by name during the port.
 
 **Acceptance criteria:**
-- [ ] `rg -n 'SymbolDatabase|pooled_database|get_relationships_to_symbols|get_identifiers_by_names' crates/julie-tools/src/navigation` returns nothing.
-- [ ] `cargo nextest run --lib tests::tools::call_path_tests tests::tools::call_path_disambiguation_tests tests::tools::fast_refs_primary_rebind_tests tests::tools::target_workspace_fast_refs_tests tests::tools::web_navigation` passes; a new test proves a `pub use` re-export line is listed once.
-- [ ] `cargo build` green; worker scope green; handed to the lead per commit mode.
+- [x] `rg -n 'SymbolDatabase|pooled_database|get_relationships_to_symbols|get_identifiers_by_names' crates/julie-tools/src/navigation` returns nothing.
+- [x] `cargo nextest run --lib tests::tools::call_path_tests tests::tools::call_path_disambiguation_tests tests::tools::fast_refs_primary_rebind_tests tests::tools::target_workspace_fast_refs_tests tests::tools::web_navigation` passes; a new test proves a `pub use` re-export line is listed once.
+- [x] `cargo build` green; worker scope green; handed to the lead per commit mode.
 
 ---
 
@@ -279,9 +279,9 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Tests first on `SnapshotFixture`; the incoming/outgoing/children/implementations sections map one-to-one onto graph accessors.
 
 **Acceptance criteria:**
-- [ ] `rg -n 'SymbolDatabase|pooled_database|into_read_snapshot|get_latest_ready_generation' crates/julie-tools/src/deep_dive` returns nothing.
-- [ ] `cargo nextest run -p julie-tools --lib tests::deep_dive` and `cargo nextest run --lib tests::tools::deep_dive` pass.
-- [ ] `cargo build` green; worker scope green; handed to the lead per commit mode.
+- [x] `rg -n 'SymbolDatabase|pooled_database|into_read_snapshot|get_latest_ready_generation' crates/julie-tools/src/deep_dive` returns nothing.
+- [x] `cargo nextest run -p julie-tools --lib tests::deep_dive` and `cargo nextest run --lib tests::tools::deep_dive` pass.
+- [x] `cargo build` green; worker scope green; handed to the lead per commit mode.
 
 ---
 
@@ -307,9 +307,9 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** `walk.rs` currently does per-hop SQL (`get_relationships_to_symbols`, `web_edges_to_symbols`); replace each with an array read. Delete the `revision_file_changes` seed and its tests rather than porting them (sequencing decision 3).
 
 **Acceptance criteria:**
-- [ ] `rg -n 'SymbolDatabase|pooled_database|get_revision_file_changes_between|web_edges_to_symbols' crates/julie-tools/src/impact` returns nothing.
-- [ ] `cargo nextest run --lib tests::tools::blast_radius` and `cargo nextest run -p julie-tools --lib tests::blast_radius` pass.
-- [ ] `cargo build` green; worker scope green; handed to the lead per commit mode.
+- [x] `rg -n 'SymbolDatabase|pooled_database|get_revision_file_changes_between|web_edges_to_symbols' crates/julie-tools/src/impact` returns nothing.
+- [x] `cargo nextest run --lib tests::tools::blast_radius` and `cargo nextest run -p julie-tools --lib tests::blast_radius` pass.
+- [x] `cargo build` green; worker scope green; handed to the lead per commit mode.
 
 ---
 
@@ -335,9 +335,9 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** `expand_graph_from_ids` (`graph.rs:89`) becomes `graph.references_to` + `graph.references_from` + identifier edges already merged in the graph; `get_all_indexed_files` becomes `graph.paths()`.
 
 **Acceptance criteria:**
-- [ ] `rg -n 'SymbolDatabase|pooled_database|into_read_snapshot' crates/julie-tools/src/get_context crates/julie-index/src/search/hybrid.rs` returns nothing.
-- [ ] `cargo nextest run -p julie-tools --lib tests::get_context` and `cargo nextest run --lib tests::tools::get_context` pass.
-- [ ] `cargo build` green; worker scope green; handed to the lead per commit mode.
+- [x] `rg -n 'SymbolDatabase|pooled_database|into_read_snapshot' crates/julie-tools/src/get_context crates/julie-index/src/search/hybrid.rs` returns nothing.
+- [x] `cargo nextest run -p julie-tools --lib tests::get_context` and `cargo nextest run --lib tests::tools::get_context` pass.
+- [x] `cargo build` green; worker scope green; handed to the lead per commit mode.
 
 ---
 
