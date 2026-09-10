@@ -477,19 +477,3 @@ pub struct RewriteArgs {
     #[arg(id = "target_workspace", long = "target-workspace")]
     pub workspace: Option<String>,
 }
-
-// ---------------------------------------------------------------------------
-// spillover
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Parser)]
-pub struct SpilloverArgs {
-    /// Spillover handle token
-    pub spillover_handle: String,
-    /// Maximum items to fetch
-    #[arg(short = 'n', long)]
-    pub limit: Option<u32>,
-    /// Spillover page layout: readable or compact
-    #[arg(id = "page_format", long = "page-format", value_parser = ["readable", "compact"])]
-    pub format: Option<String>,
-}

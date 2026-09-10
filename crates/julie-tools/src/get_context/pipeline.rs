@@ -15,7 +15,6 @@ use super::task_signals::{
     TaskSignals, hydrate_failing_test_links, merge_task_signal_seed_results,
 };
 use crate::navigation::resolution::WorkspaceTarget;
-use crate::spillover::{SpilloverFormat, SpilloverStore};
 use julie_context::ToolContext;
 use julie_core::database::SymbolDatabase;
 use julie_core::embeddings_contract::{EmbeddingRequestBudget, SemanticMode, TaggedQueryEmbedding};
@@ -42,8 +41,6 @@ pub fn run_pipeline(
         embedding_provider,
         None, // precomputed_embedding: caller doesn't hold the index lock
         None,
-        None,
-        None,
     )
 }
 
@@ -66,8 +63,6 @@ pub fn run_pipeline_with_options(
     embedding_provider: Option<&dyn julie_pipeline::embeddings::EmbeddingProvider>,
     precomputed_embedding: Option<TaggedQueryEmbedding>,
     task_signals: Option<&TaskSignals>,
-    spillover_store: Option<&SpilloverStore>,
-    spillover_session: Option<(&str, SpilloverFormat)>,
 ) -> Result<String> {
     run_pipeline_with_mode(
         query,
@@ -80,8 +75,6 @@ pub fn run_pipeline_with_options(
         embedding_provider,
         precomputed_embedding,
         task_signals,
-        spillover_store,
-        spillover_session,
         SemanticMode::Auto,
     )
 }
@@ -99,13 +92,11 @@ pub fn run_pipeline_with_mode(
     embedding_provider: Option<&dyn julie_pipeline::embeddings::EmbeddingProvider>,
     precomputed_embedding: Option<TaggedQueryEmbedding>,
     task_signals: Option<&TaskSignals>,
-    spillover_store: Option<&SpilloverStore>,
-    spillover_session: Option<(&str, SpilloverFormat)>,
     semantic_mode: SemanticMode,
 ) -> Result<String> {
     use super::allocation::TokenBudget;
     use super::entries::{build_neighbor_entries, build_pivot_entries};
-    use super::formatting::{ContextData, format_context_with_mode, format_neighbor_rows};
+    use super::formatting::{ContextData, format_context_with_mode};
     use julie_index::search::index::SearchFilter;
 
     let mut resolved_signals = task_signals.cloned().unwrap_or_default();
@@ -150,7 +141,7 @@ pub fn run_pipeline_with_mode(
             pivots: vec![],
             neighbors: vec![],
             allocation: TokenBudget::new(0).allocate(0, 0),
-            spillover_handle: None,
+            truncated: false,
         };
         return Ok(format_context_with_mode(&empty_data, output_format));
     }
@@ -214,33 +205,12 @@ pub fn run_pipeline_with_mode(
         allocation.neighbor_tokens,
         resolved_signals.prefer_tests,
     );
-    let spillover_handle = if !neighbor_output.overflow_entries.is_empty() {
-        spillover_store.zip(spillover_session).and_then(
-            |(store, (session_id, spillover_format))| {
-                store.store_rows(
-                    session_id,
-                    "gc",
-                    "get_context overflow",
-                    format_neighbor_rows(
-                        &neighbor_output.overflow_entries,
-                        &allocation.neighbor_mode,
-                    ),
-                    0,
-                    10,
-                    spillover_format,
-                )
-            },
-        )
-    } else {
-        None
-    };
-
     let context_data = ContextData {
         query: query.to_string(),
         pivots: pivot_entries,
         neighbors: neighbor_output.entries,
         allocation,
-        spillover_handle,
+        truncated: !neighbor_output.overflow_entries.is_empty(),
     };
 
     Ok(format_context_with_mode(&context_data, output_format))
@@ -281,9 +251,6 @@ pub async fn run_with_target_and_budget(
     let file_pattern = tool.file_pattern.clone();
     let format = tool.format.clone();
     let task_signals = TaskSignals::from_tool(tool);
-    let spillover_store = handler.spillover_store();
-    let session_id = handler.session_id().to_string();
-    let spillover_format = SpilloverFormat::from_option(tool.format.as_deref());
 
     let semantic_mode = tool.semantics.unwrap_or(SemanticMode::Auto);
 
@@ -334,8 +301,6 @@ pub async fn run_with_target_and_budget(
                     None, // provider already consumed above; precomputed_embedding carries the result
                     precomputed_embedding,
                     Some(&task_signals),
-                    Some(&spillover_store),
-                    Some((&session_id, spillover_format)),
                     semantic_mode,
                 )
             })
@@ -375,8 +340,6 @@ pub async fn run_with_target_and_budget(
                     None, // provider already consumed above; precomputed_embedding carries the result
                     precomputed_embedding,
                     Some(&task_signals),
-                    Some(&spillover_store),
-                    Some((&session_id, spillover_format)),
                     semantic_mode,
                 )
             })

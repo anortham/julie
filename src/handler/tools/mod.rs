@@ -20,4 +20,3 @@ pub(crate) mod manage_workspace;
 pub(crate) mod patterns;
 pub(crate) mod rename_symbol;
 pub(crate) mod rewrite_symbol;
-pub(crate) mod spillover_get;

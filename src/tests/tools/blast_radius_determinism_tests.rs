@@ -162,7 +162,7 @@ async fn seed_identifier_walk_fixture(
     ];
 
     let symbols = vec![
-        make_symbol("seed", "SpilloverStore", "src/store.ts", Some(linkage)),
+        make_symbol("seed", "SnapshotStore", "src/store.ts", Some(linkage)),
         make_symbol("handler_caller", "setupHandler", "src/handler.ts", None),
         make_symbol("pipeline_caller", "buildPipeline", "src/pipeline.ts", None),
         make_symbol("other_caller", "configureServer", "src/other.ts", None),
@@ -185,7 +185,7 @@ async fn seed_identifier_walk_fixture(
     let identifiers = vec![
         make_identifier(
             "id1",
-            "SpilloverStore",
+            "SnapshotStore",
             "src/pipeline.ts",
             Some("pipeline_caller"),
             Some("seed"),
@@ -195,7 +195,7 @@ async fn seed_identifier_walk_fixture(
         ),
         make_identifier(
             "id2",
-            "SpilloverStore",
+            "SnapshotStore",
             "src/other.ts",
             Some("other_caller"),
             Some("seed"),
@@ -205,7 +205,7 @@ async fn seed_identifier_walk_fixture(
         ),
         make_identifier(
             "id3",
-            "SpilloverStore",
+            "SnapshotStore",
             "src/handler.ts",
             Some("handler_caller"),
             Some("seed"),
@@ -215,7 +215,7 @@ async fn seed_identifier_walk_fixture(
         ),
         make_identifier(
             "id4",
-            "SpilloverStore",
+            "SnapshotStore",
             "tests/store_tests.ts",
             Some("test_caller"),
             Some("seed"),

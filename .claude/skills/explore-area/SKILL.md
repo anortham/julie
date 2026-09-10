@@ -3,7 +3,7 @@ name: explore-area
 description: Orient on a new codebase area using get_context for token-budgeted exploration. Use when the user asks "what does this module do", "explain this part", or wants to understand an unfamiliar area before making changes.
 user-invocable: true
 arguments: "<query or concept>"
-allowed-tools: mcp__julie__get_context, mcp__julie__fast_search, mcp__julie__deep_dive, mcp__julie__get_symbols, mcp__julie__call_path, mcp__julie__spillover_get, mcp__julie__manage_workspace
+allowed-tools: mcp__julie__get_context, mcp__julie__fast_search, mcp__julie__deep_dive, mcp__julie__get_symbols, mcp__julie__call_path, mcp__julie__manage_workspace
 ---
 
 # Explore Area
@@ -142,12 +142,6 @@ Suggested Starting Point:
   Reach for `blast_radius` when the real question is "what would this change affect?"
 - **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls
 
-## Paging long neighbor lists
+## Long neighbor lists
 
-For broad queries, `get_context` may return `spillover_handle=gc_xxx` in its response when the neighbor list didn't fit in the first page. Fetch the rest without re-running the query:
-
-```
-spillover_get(spillover_handle="gc_xxx")
-```
-
-Keep paging until the handle stops appearing. The same mechanism backs `blast_radius` spillovers (`br_xxx`).
+For broad queries, `get_context` ends with `Output truncated at <N> results; narrow the query or pass a smaller limit.` when the neighbor list did not fit. Narrow the query (`file_pattern`, `language`, `entry_symbols`) or raise `max_tokens` and run it again. `blast_radius` reports overflow the same way.

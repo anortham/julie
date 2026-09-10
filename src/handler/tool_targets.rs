@@ -5,7 +5,6 @@ use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
 use crate::tools::get_context::GetContextTool;
 use crate::tools::navigation::{CallPathTool, FastRefsTool};
 use crate::tools::patterns::PatternsTool;
-use crate::tools::spillover::SpilloverGetTool;
 use crate::tools::{BlastRadiusTool, DeepDiveTool, GetSymbolsTool, RenameSymbolTool};
 
 fn target_metadata(symbol_name: Option<&str>, file_path: Option<&str>, line: Option<u32>) -> Value {
@@ -105,15 +104,6 @@ pub(crate) fn get_context_metadata(params: &GetContextTool) -> Value {
         "max_hops": params.max_hops,
         "prefer_tests": params.prefer_tests,
         "workspace": params.workspace,
-        "target": target_metadata(None, None, None),
-    })
-}
-
-pub(crate) fn spillover_get_metadata(params: &SpilloverGetTool) -> Value {
-    json!({
-        "spillover_handle": params.spillover_handle,
-        "limit": params.limit,
-        "format": params.format,
         "target": target_metadata(None, None, None),
     })
 }

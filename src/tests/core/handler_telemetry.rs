@@ -16,7 +16,6 @@ use crate::tools::search::trace::{
     FilePatternDiagnostic, HintKind, LineEnrichmentStatus, SearchExecutionKind,
     SearchExecutionResult, SearchHit, ZeroHitReason,
 };
-use crate::tools::spillover::SpilloverGetTool;
 use crate::tools::{BlastRadiusTool, DeepDiveDepth, DeepDiveTool, GetContextTool, GetSymbolsTool};
 use julie_core::Symbol;
 use tempfile::TempDir;
@@ -753,22 +752,6 @@ fn test_deep_dive_metadata_carries_symbol_and_context_file_target() {
         metadata["target"]["target_file_path"],
         "src/dashboard/routes/search.rs"
     );
-}
-
-#[test]
-fn test_spillover_get_metadata_carries_handle_and_limit() {
-    let params = SpilloverGetTool {
-        spillover_handle: "br_123".to_string(),
-        limit: Some(5),
-        format: Some("compact".to_string()),
-        workspace: None,
-    };
-
-    let metadata = tool_targets::spillover_get_metadata(&params);
-
-    assert_eq!(metadata["spillover_handle"], "br_123");
-    assert_eq!(metadata["limit"], 5);
-    assert_eq!(metadata["format"], "compact");
 }
 
 #[test]

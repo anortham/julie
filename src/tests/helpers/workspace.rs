@@ -71,9 +71,6 @@ impl julie_context::ToolContext for IsolatedStorageHandler {
     fn session_id(&self) -> &str {
         julie_context::ToolContext::session_id(&self.handler)
     }
-    fn spillover_store(&self) -> Arc<julie_context::SpilloverStore> {
-        julie_context::ToolContext::spillover_store(&self.handler)
-    }
     async fn primary_pooled_database(
         &self,
     ) -> anyhow::Result<julie_core::database::SymbolDatabase> {

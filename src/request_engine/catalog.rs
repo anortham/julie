@@ -1,4 +1,4 @@
-//! Tool catalog registering all 13 tools with typed decoding, schemas, and access classes.
+//! Tool catalog registering all 12 tools with typed decoding, schemas, and access classes.
 
 use crate::request_engine::semantic::SemanticRequirement;
 use crate::request_engine::types::{AccessClass, RequestFailure};
@@ -234,15 +234,6 @@ register_tool_catalog! {
         description: "Rewrite a symbol by name without reading the file first. Preview with dry_run=true.",
         access: |p| if p.dry_run { AccessClass::Preview } else { AccessClass::SourceEdit },
         workspace: |p| p.workspace.as_deref(),
-        unbound: |_p| false,
-        semantics: |_p| SemanticRequirement::None,
-    },
-    "spillover_get" => {
-        variant: SpilloverGet,
-        type: crate::tools::SpilloverGetTool,
-        description: "Retrieve a page of results using a spillover handle.",
-        access: |_p| AccessClass::Read,
-        workspace: |_p| None,
         unbound: |_p| false,
         semantics: |_p| SemanticRequirement::None,
     },

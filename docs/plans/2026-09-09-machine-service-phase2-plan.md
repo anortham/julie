@@ -105,10 +105,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** Start with Miller `trace(target='is_leader')` and `trace(target='is_follower')` (19 non-test call sites). At each site keep the leader arm and delete the other. `RequestRuntime::check_access` becomes `Ok(())` and is then inlined away with its call in `dispatch.rs:126-134`. Delete `follower_rejects_manage_workspace_mutation` and `RequestFixture::as_follower` in `src/tests/request_engine.rs`. In `workspace_runtime/mod.rs` collapse `RuntimePhase` to `Owner` and `Terminal`; delete `allowed_transition` cases that no longer exist. Delete the promotion probe loop in `manager.rs` and `DEFAULT_PROBE_INTERVAL`. Do not delete `LeadershipState` or `DaemonLockGuard` yet; construct `LeadershipState::leader_in_process()` everywhere so Task 2 is a pure type deletion. Delete the nine listed test files and their `mod` lines; they test loser, follower, handoff, and kill-writer behavior that no longer exists.
 
 **Acceptance criteria:**
-- [ ] `grep -rn 'is_follower\|follower_read_only\|as_follower' src crates --include='*.rs'` returns nothing.
-- [ ] `RuntimePhase` has no `Follower`, `Recovering`, or `Draining` variant and `manager.rs` has no probe interval.
-- [ ] `cargo nextest run --lib tests::request_engine` and `cargo nextest run --lib tests::core::handler` pass; the nine deleted test files are gone from `src/tests/mod.rs` and submodule lists.
-- [ ] `cargo build` green; worker-scope verification passes and the change is committed per commit mode.
+- [x] `grep -rn 'is_follower\|follower_read_only\|as_follower' src crates --include='*.rs'` returns nothing.
+- [x] `RuntimePhase` has no `Follower`, `Recovering`, or `Draining` variant and `manager.rs` has no probe interval.
+- [x] `cargo nextest run --lib tests::request_engine` and `cargo nextest run --lib tests::core::handler` pass; the nine deleted test files are gone from `src/tests/mod.rs` and submodule lists.
+- [x] `cargo build` green; worker-scope verification passes and the change is committed per commit mode.
 
 ---
 
@@ -137,10 +137,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** Use Miller `trace` on `DaemonLockGuard`, `OwnerEpoch`, `WriterPermit`, `PublicationLock`, `IndexJobPermit`, `ExternalExtractOperationLock` before deleting each; delete callers top-down so the tree compiles at each step. Keep `mutation_gate` and its test. The force-reindex carve-out that preserved the held `leader.lock` inode (`handler.rs:1731-1758`) goes away entirely: force-reindex now deletes the whole index directory under the gate. Remove the buckets whose only tests are deleted from `xtask/test_tiers.toml` and the expected list in `xtask/tests/support/manifest_contract_expected.rs`; run `cargo nextest run -p xtask` to prove the manifest contract test agrees. `crates/julie-runtime/src/tests/helpers.rs` loses its epoch helpers.
 
 **Acceptance criteria:**
-- [ ] The thirteen listed files no longer exist and `grep -rn 'DaemonLockGuard\|OwnerEpoch\|WriterPermit\|PublicationLock\|IndexJobPermit\|leader\.lock\|workspace_leader_lock' src crates xtask --include='*.rs'` returns nothing.
-- [ ] `grep -rn 'WriterPermit' crates/julie-runtime/src` returns nothing and `dispatch_file_event` takes `&MutationGuard<'_>`.
-- [ ] After `manage_workspace index` on a temp workspace, `indexes/<id>/` contains only `db/` and `tantivy/` (asserted in the updated `crates/julie-core/src/tests/paths.rs` layout test or a new test in `src/tests/tools/workspace/isolation.rs`).
-- [ ] `cargo nextest run -p julie-runtime --lib tests::watcher_mutation_gate`, `cargo nextest run --lib tests::request_engine`, `cargo nextest run -p xtask` pass; `cargo build` green; committed per commit mode.
+- [x] The thirteen listed files no longer exist and `grep -rn 'DaemonLockGuard\|OwnerEpoch\|WriterPermit\|PublicationLock\|IndexJobPermit\|leader\.lock\|workspace_leader_lock' src crates xtask --include='*.rs'` returns nothing.
+- [x] `grep -rn 'WriterPermit' crates/julie-runtime/src` returns nothing and `dispatch_file_event` takes `&MutationGuard<'_>`.
+- [x] After `manage_workspace index` on a temp workspace, `indexes/<id>/` contains only `db/` and `tantivy/` (asserted in the updated `crates/julie-core/src/tests/paths.rs` layout test or a new test in `src/tests/tools/workspace/isolation.rs`).
+- [x] `cargo nextest run -p julie-runtime --lib tests::watcher_mutation_gate`, `cargo nextest run --lib tests::request_engine`, `cargo nextest run -p xtask` pass; `cargo build` green; committed per commit mode.
 
 ---
 
@@ -168,10 +168,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** Miller `inspect(target='PrimarySwapRollback', depth=overview)` and `trace` on `switch_primary_workspace_with_root`, `attach_workspace_once`, `deferred_auto_index_pending`. The deferred auto-index flags exist because a session could attach before the leader indexed; with one writer, `RuntimeFactory::acquire` already runs `initialize_workspace_with_force` and the catch-up, so the flags and their gate are deleted and the tests in `deferred_open.rs`, `embedding_deferred.rs`, `deferred_sessions.rs`, `target_activation.rs`, `primary_swap_guards.rs` are deleted or reduced to the "open binds and indexes" case. Keep `initialize_workspace_with_force` and `startup::run_primary_workspace_repair` (catch-up on start) unchanged.
 
 **Acceptance criteria:**
-- [ ] `grep -rn 'PrimarySwapRollback\|switch_primary_workspace\|attach_workspace_once\|deferred_auto_index' src --include='*.rs'` returns nothing.
-- [ ] `cargo nextest run --lib tests::tools::workspace::global_targeting` and `cargo nextest run --lib tests::dashboard` pass with the deleted cases removed.
-- [ ] `src/handler.rs` is at least 400 lines shorter than at Task 1's start (record both numbers in the commit message).
-- [ ] `cargo build` green; committed per commit mode.
+- [x] `grep -rn 'PrimarySwapRollback\|switch_primary_workspace\|attach_workspace_once\|deferred_auto_index' src --include='*.rs'` returns nothing.
+- [x] `cargo nextest run --lib tests::tools::workspace::global_targeting` and `cargo nextest run --lib tests::dashboard` pass with the deleted cases removed.
+- [x] `src/handler.rs` is at least 400 lines shorter than at Task 1's start (record both numbers in the commit message).
+- [x] `cargo build` green; committed per commit mode.
 
 ---
 
@@ -199,9 +199,9 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** Miller `trace(target='spillover_store')` to find the writers in `tool_context_impl.rs`; replace each write with the truncation line. Rename `catalog_schemas_valid_and_match_all_13_tools` to `..._12_tools`. Update the 13-tool expectations in `src/tests/mcp_protocol_contract.rs` and the host-gate finding is not edited (it is a record). Remove the allowlist entry from `.claude/settings.local.json` and the tool description from `JULIE_AGENT_INSTRUCTIONS.md`.
 
 **Acceptance criteria:**
-- [ ] `grep -rni 'continuation\|spillover' src crates --include='*.rs'` returns nothing outside `docs/`.
-- [ ] `ToolCatalog::list().len() == 12` is asserted in `src/tests/request_engine.rs`.
-- [ ] `cargo nextest run --lib tests::request_engine`, `cargo nextest run --lib tests::mcp_protocol_contract`, `cargo nextest run --lib tests::cli_tests` pass; `cargo build` green; handed to the lead per commit mode.
+- [x] `grep -rni 'continuation\|spillover' src crates --include='*.rs'` returns nothing outside `docs/`.
+- [x] `ToolCatalog::list().len() == 12` is asserted in `src/tests/request_engine.rs`.
+- [x] `cargo nextest run --lib tests::request_engine`, `cargo nextest run --lib tests::mcp_protocol_contract`, `cargo nextest run --lib tests::cli_tests` pass; `cargo build` green; handed to the lead per commit mode.
 
 ---
 
@@ -229,10 +229,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** Read `initialize_schema` with Miller `inspect(target='initialize_schema', depth=full)`. Copy the `CREATE TABLE` statements that only migrations created (`schema_version`, `embedding_config`, `tool_calls`, `symbol_vectors`, `memory_vectors`) into `schema.rs` as `create_*_table` methods. Write the version row in `initialize_schema`. The test `src/tests/integration/stale_index_detection/upgrade.rs` is rewritten to: create a DB, set `schema_version` to `LATEST_SCHEMA_VERSION - 1`, run `index`, assert the directory was recreated and reindexed. Delete tests that assert migration steps.
 
 **Acceptance criteria:**
-- [ ] `crates/julie-core/src/database/migrations/` does not exist and `grep -rn 'run_migrations\|apply_migration\|migration_0' crates src --include='*.rs'` returns nothing.
-- [ ] A fresh `SymbolDatabase::new` creates every table `initialize_schema` lists plus the five moved tables; asserted by a test that enumerates `sqlite_master`.
-- [ ] An out-of-date `schema_version` triggers directory recreation and reindex (`tests::integration::stale_index_detection::upgrade`).
-- [ ] `cargo nextest run -p julie-core --lib tests::database` and `cargo nextest run --lib tests::integration::stale_index_detection` pass; `cargo build` green; handed to the lead per commit mode.
+- [x] `crates/julie-core/src/database/migrations/` does not exist and `grep -rn 'run_migrations\|apply_migration\|migration_0' crates src --include='*.rs'` returns nothing.
+- [x] A fresh `SymbolDatabase::new` creates every table `initialize_schema` lists plus the five moved tables; asserted by a test that enumerates `sqlite_master`.
+- [x] An out-of-date `schema_version` triggers directory recreation and reindex (`tests::integration::stale_index_detection::upgrade`).
+- [x] `cargo nextest run -p julie-core --lib tests::database` and `cargo nextest run --lib tests::integration::stale_index_detection` pass; `cargo build` green; handed to the lead per commit mode.
 
 ---
 

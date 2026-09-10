@@ -121,7 +121,6 @@ pub mod tools {
 
     // hybrid_search_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     // query_classification_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
-    pub mod spillover_tests; // Spillover store and spillover_get paging tests
 
     pub mod fast_refs_primary_rebind_tests; // FastRefsTool current-primary rebound routing tests
     // formatting_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
@@ -316,7 +315,6 @@ pub mod request_engine;
 pub mod request_process_helpers;
 mod request_scenarios;
 mod request_transport_parity;
-pub mod runtime_continuation;
 pub mod semantic_m1_challenges;
 pub mod semantic_request_contract;
 pub mod service;

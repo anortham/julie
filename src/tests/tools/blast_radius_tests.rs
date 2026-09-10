@@ -10,7 +10,6 @@ use crate::extractors::{
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::impact::BlastRadiusTool;
-use crate::tools::spillover::SpilloverGetTool;
 
 fn make_file(path: &str, hash: &str) -> FileInfo {
     FileInfo {
@@ -132,14 +131,6 @@ fn extract_text(result: &CallToolResult) -> String {
         .join("\n")
 }
 
-fn extract_spillover_handle(text: &str) -> Option<String> {
-    text.lines().find_map(|line| {
-        line.trim()
-            .strip_prefix("More available: spillover_handle=")
-            .map(ToString::to_string)
-    })
-}
-
 async fn setup_handler() -> Result<(TempDir, JulieServerHandler, String)> {
     let temp_dir = TempDir::new()?;
     let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
@@ -151,7 +142,7 @@ async fn setup_handler() -> Result<(TempDir, JulieServerHandler, String)> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_blast_radius_ranks_direct_callers_and_uses_spillover() -> Result<()> {
+async fn test_blast_radius_ranks_direct_callers_and_truncates() -> Result<()> {
     let (_temp_dir, handler, workspace_id) = setup_handler().await?;
 
     let mut linkage = HashMap::new();
@@ -231,22 +222,10 @@ async fn test_blast_radius_ranks_direct_callers_and_uses_spillover() -> Result<(
         "linked tests should be listed: {text}"
     );
 
-    let spillover_handle =
-        extract_spillover_handle(&text).expect("first page should emit spillover handle");
-    let spillover_text = extract_text(
-        &SpilloverGetTool {
-            spillover_handle,
-            limit: Some(5),
-            format: Some("readable".to_string()),
-            workspace: None,
-        }
-        .call_tool(&handler)
-        .await?,
-    );
-
     assert!(
-        spillover_text.contains("app_entry"),
-        "spillover page should contain indirect caller: {spillover_text}"
+        text.trim_end()
+            .ends_with("Output truncated at 1 results; narrow the query or pass a smaller limit."),
+        "overflowing impacts must end with the truncation line: {text}"
     );
 
     Ok(())
@@ -364,7 +343,7 @@ async fn test_blast_radius_likely_tests_include_resolved_refs_to_impacted_symbol
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_blast_radius_likely_test_path_overflow_is_retrievable() -> Result<()> {
+async fn test_blast_radius_likely_test_path_overflow_is_counted() -> Result<()> {
     let (_temp_dir, handler, workspace_id) = setup_handler().await?;
 
     let linked_test_paths: Vec<String> = (0..12)
@@ -427,34 +406,16 @@ async fn test_blast_radius_likely_test_path_overflow_is_retrievable() -> Result<
         "overflow likely tests should stay out of the first page: {text}"
     );
 
-    let spillover_handle =
-        extract_spillover_handle(&text).expect("likely-test overflow should emit spillover handle");
-    let spillover_text = extract_text(
-        &SpilloverGetTool {
-            spillover_handle,
-            limit: Some(10),
-            format: Some("readable".to_string()),
-            workspace: None,
-        }
-        .call_tool(&handler)
-        .await?,
-    );
-
     assert!(
-        spillover_text.contains("Blast radius likely-test paths"),
-        "spillover title should identify likely-test paths: {spillover_text}"
-    );
-    assert!(
-        spillover_text.contains("tests/generated/test_10.rs")
-            && spillover_text.contains("tests/generated/test_11.rs"),
-        "spillover page should include hidden likely-test paths: {spillover_text}"
+        text.contains("…and 2 more"),
+        "hidden likely-test paths must be counted: {text}"
     );
 
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_blast_radius_related_test_symbol_overflow_is_retrievable() -> Result<()> {
+async fn test_blast_radius_related_test_symbol_overflow_is_counted() -> Result<()> {
     let (_temp_dir, handler, workspace_id) = setup_handler().await?;
 
     let linked_tests: Vec<String> = (0..12)
@@ -517,27 +478,9 @@ async fn test_blast_radius_related_test_symbol_overflow_is_retrievable() -> Resu
         "overflow related test symbols should stay out of the first page: {text}"
     );
 
-    let spillover_handle = extract_spillover_handle(&text)
-        .expect("related-test-symbol overflow should emit spillover handle");
-    let spillover_text = extract_text(
-        &SpilloverGetTool {
-            spillover_handle,
-            limit: Some(10),
-            format: Some("readable".to_string()),
-            workspace: None,
-        }
-        .call_tool(&handler)
-        .await?,
-    );
-
     assert!(
-        spillover_text.contains("Blast radius related test symbols"),
-        "spillover title should identify related test symbols: {spillover_text}"
-    );
-    assert!(
-        spillover_text.contains("test_generated_case_10")
-            && spillover_text.contains("test_generated_case_11"),
-        "spillover page should include hidden related test symbols: {spillover_text}"
+        text.contains("…and 2 more"),
+        "hidden related test symbols must be counted: {text}"
     );
 
     Ok(())

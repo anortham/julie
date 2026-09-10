@@ -3,7 +3,7 @@ name: impact-analysis
 description: "Analyze what would break if a symbol changes: finds callers, groups by risk level, assesses impact. Use when the user asks about blast radius, who uses a symbol, or is planning a refactor."
 user-invocable: true
 arguments: "<symbol, file path, or change target>"
-allowed-tools: mcp__julie__fast_search, mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__call_path, mcp__julie__blast_radius, mcp__julie__spillover_get, mcp__julie__manage_workspace
+allowed-tools: mcp__julie__fast_search, mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__call_path, mcp__julie__blast_radius, mcp__julie__manage_workspace
 ---
 
 # Impact Analysis
@@ -36,7 +36,7 @@ You can seed it three ways:
 - `symbol_ids=["<id>"]` — tighter impact when another Julie result already gave you concrete symbol IDs
 - `from_revision=<number>`, `to_revision=<number>` — advanced mode using Julie's canonical revision numbers, not Git refs or SHAs
 
-If the impact list is large, the first page includes `spillover_handle=br_xxx`. Hold onto it for Step 4.
+If the impact list is large, the output ends with `Output truncated at <N> results; narrow the query or pass a smaller limit.` See Step 4.
 
 ### Step 3: Drill down into high-risk callers
 
@@ -53,15 +53,9 @@ If `deep_dive` returns the wrong symbol (common names like `new`, `result`, `con
 deep_dive(symbol="<caller>", context_file="<partial_file_path>")
 ```
 
-### Step 4: Page long impact lists
+### Step 4: Narrow long impact lists
 
-If Step 2 returned `spillover_handle=br_xxx`, fetch the rest without rerunning the walk:
-
-```
-spillover_get(spillover_handle="br_xxx")
-```
-
-Keep paging until the handle stops appearing.
+If Step 2 ended with the truncation line, rerun `blast_radius` with a larger `limit`, a smaller `max_depth`, or a tighter seed (`symbol_ids` instead of `file_paths`).
 
 ### Reviewing what changed since a revision
 

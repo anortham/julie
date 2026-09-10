@@ -13,8 +13,7 @@ use crate::request_engine::RequestFailure;
 use super::CliToolCommand;
 use super::subcommands::{
     BlastRadiusArgs, CallPathArgs, ContextArgs, DeepDiveArgs, EditArgs, GenericToolArgs,
-    PatternsArgs, RefsArgs, RenameArgs, RewriteArgs, SearchArgs, SpilloverArgs, SymbolsArgs,
-    WorkspaceArgs,
+    PatternsArgs, RefsArgs, RenameArgs, RewriteArgs, SearchArgs, SymbolsArgs, WorkspaceArgs,
 };
 
 fn resolve_git_diff_file_paths(rev: &str) -> Result<Vec<String>> {
@@ -459,32 +458,6 @@ impl CliToolCommand for RewriteArgs {
         map.insert("dry_run".into(), Value::Bool(self.dry_run));
         if let Some(ref ws) = self.workspace {
             map.insert("workspace".into(), Value::String(ws.clone()));
-        }
-        Ok(map)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// spillover -> spillover_get
-// ---------------------------------------------------------------------------
-
-#[async_trait]
-impl CliToolCommand for SpilloverArgs {
-    fn tool_name(&self) -> &'static str {
-        "spillover_get"
-    }
-
-    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
-        let mut map = Map::new();
-        map.insert(
-            "spillover_handle".into(),
-            Value::String(self.spillover_handle.clone()),
-        );
-        if let Some(l) = self.limit {
-            map.insert("limit".into(), Value::Number(l.into()));
-        }
-        if let Some(ref f) = self.format {
-            map.insert("format".into(), Value::String(f.clone()));
         }
         Ok(map)
     }

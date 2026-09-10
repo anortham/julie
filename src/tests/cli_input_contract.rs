@@ -10,7 +10,7 @@ use crate::cli_tools::input::{
 };
 use crate::cli_tools::replay::parse_replay_line;
 use crate::cli_tools::subcommands::{
-    DeepDiveArgs, EditArgs, GenericToolArgs, RenameArgs, RewriteArgs, SpilloverArgs,
+    DeepDiveArgs, EditArgs, GenericToolArgs, RenameArgs, RewriteArgs,
 };
 use crate::request_engine::RequestFailure;
 
@@ -220,16 +220,6 @@ fn cli_subcommands_map_to_canonical_mcp_tools() {
     assert_eq!(rewrite.tool_name(), "rewrite_symbol");
     let map = rewrite.to_tool_args_map().unwrap();
     assert_eq!(map["symbol"], "func");
-
-    let spillover = SpilloverArgs {
-        spillover_handle: "spill_123".into(),
-        limit: Some(10),
-        format: None,
-    };
-    assert_eq!(spillover.tool_name(), "spillover_get");
-    let map = spillover.to_tool_args_map().unwrap();
-    assert_eq!(map["spillover_handle"], "spill_123");
-    assert_eq!(map["limit"], 10);
 }
 
 #[test]
@@ -868,7 +858,7 @@ fn cli_subcommands_parse_with_global_and_target_workspace_flags() {
     }
 
     // 2. Subcommands that support only global --workspace:
-    // (search, symbols, context, blast-radius, workspace, patterns, spillover)
+    // (search, symbols, context, blast-radius, workspace, patterns)
     let global_only_cases: &[(&str, &[&str])] = &[
         ("search", &["my_query"]),
         ("symbols", &["src/lib.rs"]),
@@ -876,7 +866,6 @@ fn cli_subcommands_parse_with_global_and_target_workspace_flags() {
         ("blast-radius", &["-f", "src/lib.rs"]),
         ("workspace", &["list"]),
         ("patterns", &[]),
-        ("spillover", &["spill_123"]),
     ];
 
     for &(subcommand, extra_args) in global_only_cases {
@@ -905,79 +894,4 @@ fn cli_subcommands_parse_with_global_and_target_workspace_flags() {
             "subcommand {subcommand} unexpectedly accepted --target-workspace"
         );
     }
-
-    // 3. Spillover format flag isolation and page-format validation:
-    // Verify spillover parses with --page-format readable
-    let argv = [
-        "julie-server",
-        "spillover",
-        "spill_123",
-        "--page-format",
-        "readable",
-    ];
-    let cli = Cli::try_parse_from(&argv).expect("spillover must parse with --page-format readable");
-    match cli.command.as_ref().unwrap() {
-        Command::Spillover(args) => {
-            assert_eq!(args.spillover_handle, "spill_123");
-            assert_eq!(args.format.as_deref(), Some("readable"));
-        }
-        _ => panic!("expected Spillover command"),
-    }
-
-    // Verify spillover parses with --page-format compact
-    let argv = [
-        "julie-server",
-        "spillover",
-        "spill_123",
-        "--page-format",
-        "compact",
-    ];
-    let cli = Cli::try_parse_from(&argv).expect("spillover must parse with --page-format compact");
-    match cli.command.as_ref().unwrap() {
-        Command::Spillover(args) => {
-            assert_eq!(args.spillover_handle, "spill_123");
-            assert_eq!(args.format.as_deref(), Some("compact"));
-        }
-        _ => panic!("expected Spillover command"),
-    }
-
-    // Verify spillover parses with global --format json before subcommand
-    let argv = [
-        "julie-server",
-        "--format",
-        "json",
-        "spillover",
-        "spill_123",
-        "--page-format",
-        "readable",
-    ];
-    let cli = Cli::try_parse_from(&argv)
-        .expect("spillover must parse with global --format json and --page-format");
-    assert_eq!(cli.tool_flags.format, Some(OutputFormat::Json));
-    match cli.command.as_ref().unwrap() {
-        Command::Spillover(args) => {
-            assert_eq!(args.spillover_handle, "spill_123");
-            assert_eq!(args.format.as_deref(), Some("readable"));
-        }
-        _ => panic!("expected Spillover command"),
-    }
-
-    // Verify spillover parses with global --format json trailing
-    let argv = ["julie-server", "spillover", "spill_123", "--format", "json"];
-    let cli = Cli::try_parse_from(&argv)
-        .expect("spillover must parse with trailing global --format json");
-    assert_eq!(cli.tool_flags.format, Some(OutputFormat::Json));
-
-    // Verify spillover rejects invalid page-format
-    let argv = [
-        "julie-server",
-        "spillover",
-        "spill_123",
-        "--page-format",
-        "invalid_format",
-    ];
-    assert!(
-        Cli::try_parse_from(&argv).is_err(),
-        "spillover unexpectedly accepted invalid --page-format"
-    );
 }

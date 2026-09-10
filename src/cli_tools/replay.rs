@@ -6,7 +6,7 @@
 //! - Auto-assignment of 1-based line number for missing request_id
 //! - Rejection of duplicate request_id within a replay session
 //! - Immediate halt on framing errors (to avoid ambiguous mutation state)
-//! - Continuation across ordinary request/tool failures
+//! - Keeps going after ordinary request/tool failures
 //! - Reporting the first non-zero exit code encountered in input order
 
 use std::collections::HashSet;

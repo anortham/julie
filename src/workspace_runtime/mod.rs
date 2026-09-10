@@ -2,8 +2,6 @@
 //! Workspace runtime lifecycle management, phases, and errors.
 
 pub mod builder;
-pub mod continuation;
-pub mod continuation_store;
 pub mod dirty_queue;
 pub mod edit_journal;
 pub mod manager;
@@ -21,12 +19,6 @@ use std::sync::atomic::Ordering;
 use thiserror::Error;
 
 pub use builder::WorkspaceRuntimeManagerBuilder;
-pub use continuation::{
-    ContinuationBinding, ContinuationError, ContinuationFailure, DEFAULT_CONTINUATION_TTL_SECS,
-    MAX_SNAPSHOT_SIZE_BYTES, MAX_WORKSPACE_CONTINUATION_BUDGET_BYTES, is_valid_continuation_token,
-    validate_handle_binding,
-};
-pub use continuation_store::ContinuationStore;
 pub use dirty_queue::{
     DEFAULT_DIRTY_QUEUE_CAPACITY, DirtyChunk, DirtyEntry, DirtyOp, DirtyQueue,
     normalize_relative_path,

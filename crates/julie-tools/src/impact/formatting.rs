@@ -1,7 +1,28 @@
 use crate::impact::LikelyTests;
 use crate::impact::ranking::RankedImpact;
 use crate::impact::seed::SeedContext;
-use crate::spillover::{SpilloverFormat, SpilloverStore, more_available_marker};
+use crate::shared::truncation_line;
+
+/// Output layout for blast-radius text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlastRadiusFormat {
+    Readable,
+    Compact,
+}
+
+impl BlastRadiusFormat {
+    /// Case-insensitive parse that rejects typos and empty strings.
+    pub fn parse_strict(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "readable" => Ok(Self::Readable),
+            "compact" => Ok(Self::Compact),
+            "" => Err("format must be \"readable\" or \"compact\" (got empty string)".to_string()),
+            other => Err(format!(
+                "unknown format \"{other}\" (expected \"readable\" or \"compact\")"
+            )),
+        }
+    }
+}
 
 /// Extra context that shapes the blast-radius header line.
 ///
@@ -15,19 +36,12 @@ pub struct BlastRadiusHeader {
     /// True when deleted files are present. Julie does not keep historical
     /// caller graphs for removed files, so that section is path-only.
     pub deleted_files_path_only: bool,
-    /// Spillover handle for high-impact rows beyond the first visible page.
-    pub impact_overflow_handle: Option<String>,
-    /// Spillover handle for likely-test paths beyond the visible cap.
-    pub likely_test_paths_overflow_handle: Option<String>,
-    /// Spillover handle for related test symbols beyond the visible cap.
-    pub related_test_symbols_overflow_handle: Option<String>,
+    /// True when more impact rows existed than the visible page kept.
+    pub impact_overflow: bool,
     /// Pre-formatted `web`-mode caller rows (e.g. `"fetchUser  src/client.ts:3  via http_call GET /api/users/123"`).
     /// Empty in `default` mode, so the legacy blast-radius output is byte-identical.
-    /// Truncated to the visible cap; the remainder is reachable via
-    /// `web_callers_overflow_handle`.
+    /// Truncated to the visible cap.
     pub web_callers: Vec<String>,
-    /// Spillover handle for web callers beyond the visible cap.
-    pub web_callers_overflow_handle: Option<String>,
     /// Pre-truncate total count of web callers, driving the overflow marker.
     pub web_callers_total: usize,
 }
@@ -37,12 +51,12 @@ pub fn format_blast_radius(
     impacts: &[RankedImpact],
     likely_tests: &LikelyTests,
     deleted_files: &[String],
-    format: SpilloverFormat,
+    format: BlastRadiusFormat,
     header: BlastRadiusHeader,
 ) -> String {
     let newline = match format {
-        SpilloverFormat::Readable => "\n\n",
-        SpilloverFormat::Compact => "\n",
+        BlastRadiusFormat::Readable => "\n\n",
+        BlastRadiusFormat::Compact => "\n",
     };
 
     let mut sections = Vec::new();
@@ -66,8 +80,6 @@ pub fn format_blast_radius(
             "Likely tests",
             &likely_tests.likely_test_paths,
             likely_tests.likely_test_paths_total,
-            "likely-test paths",
-            header.likely_test_paths_overflow_handle.as_deref(),
         ));
     }
 
@@ -76,8 +88,6 @@ pub fn format_blast_radius(
             "Related test symbols",
             &likely_tests.related_test_symbols,
             likely_tests.related_test_symbols_total,
-            "related test symbols",
-            header.related_test_symbols_overflow_handle.as_deref(),
         ));
     }
 
@@ -105,31 +115,19 @@ pub fn format_blast_radius(
         let effective_total = header.web_callers_total.max(shown);
         if effective_total > shown {
             let remaining = effective_total - shown;
-            match header.web_callers_overflow_handle.as_deref() {
-                Some(handle) => web_block.push_str(&format!(
-                    "\n- …and {remaining} more web callers available\n{}",
-                    more_available_marker(handle)
-                )),
-                None => web_block.push_str(&format!("\n- …and {remaining} more")),
-            }
+            web_block.push_str(&format!("\n- …and {remaining} more web callers"));
         }
         sections.push(web_block);
     }
 
-    if let Some(handle) = header.impact_overflow_handle.as_deref() {
-        sections.push(more_available_marker(handle));
+    if header.impact_overflow {
+        sections.push(truncation_line(impacts.len()));
     }
 
     sections.join(newline)
 }
 
-fn tests_block(
-    heading: &str,
-    entries: &[String],
-    total: usize,
-    overflow_label: &str,
-    overflow_handle: Option<&str>,
-) -> String {
+fn tests_block(heading: &str, entries: &[String], total: usize) -> String {
     let mut block = format!("{}\n", heading);
     block.push_str(
         &entries
@@ -146,17 +144,7 @@ fn tests_block(
     let effective_total = total.max(shown);
     if effective_total > shown {
         let remaining = effective_total - shown;
-        match overflow_handle {
-            Some(handle) => {
-                block.push_str(&format!(
-                    "\n- …and {remaining} more {overflow_label} available\n{}",
-                    more_available_marker(handle)
-                ));
-            }
-            None => {
-                block.push_str(&format!("\n- …and {remaining} more"));
-            }
-        }
+        block.push_str(&format!("\n- …and {remaining} more"));
     }
     block
 }
@@ -208,26 +196,6 @@ fn format_impact_group(impacts: &[RankedImpact], start_rank: usize) -> String {
         ));
     }
     block
-}
-
-pub(super) fn store_list_overflow(
-    spillover_store: &SpilloverStore,
-    session_id: &str,
-    prefix: &str,
-    title: &str,
-    entries: &[String],
-    visible_limit: usize,
-    format: SpilloverFormat,
-) -> Option<String> {
-    if entries.len() <= visible_limit {
-        return None;
-    }
-
-    let rows = entries[visible_limit..]
-        .iter()
-        .map(|entry| format!("- {}", entry))
-        .collect();
-    spillover_store.store_rows(session_id, prefix, title, rows, 0, visible_limit, format)
 }
 
 fn header_line(seed_context: &SeedContext, header: &BlastRadiusHeader) -> String {

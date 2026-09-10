@@ -381,11 +381,10 @@ commands = [
 expected_seconds = 10
 timeout_seconds = 45
 scope_label = "tooling"
-notes = "blast_radius and spillover coverage"
+notes = "blast_radius coverage"
 commands = [
   "cargo nextest run --lib tests::tools::blast_radius -- --skip search_quality",
   "cargo nextest run -p julie-tools --lib tests::blast_radius_formatting_tests",
-  "cargo nextest run --lib tests::tools::spillover_tests -- --skip search_quality",
 ]
 
 [buckets.tools-refactoring]

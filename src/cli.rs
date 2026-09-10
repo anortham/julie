@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::cli_tools::subcommands::{
     BlastRadiusArgs, CallPathArgs, ContextArgs, DeepDiveArgs, EditArgs, GenericToolArgs,
     GlobalToolFlags, PatternsArgs, RefsArgs, RenameArgs, RewriteArgs, SearchArgs, SignalsArgs,
-    SpilloverArgs, SymbolsArgs, ToolsArgs, WorkspaceArgs,
+    SymbolsArgs, ToolsArgs, WorkspaceArgs,
 };
 use crate::external_extract::ExternalExtractRawArgs;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
@@ -65,9 +65,6 @@ pub enum Command {
     /// Rewrite a symbol definition
     #[command(name = "rewrite", alias = "rewrite_symbol")]
     Rewrite(RewriteArgs),
-    /// Retrieve paginated results via spillover handle
-    #[command(name = "spillover", alias = "spillover_get")]
-    Spillover(SpilloverArgs),
     /// Manage workspaces (index, list, stats, health, etc.)
     #[command(name = "workspace")]
     Workspace(WorkspaceArgs),

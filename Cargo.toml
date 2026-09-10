@@ -54,7 +54,7 @@ julie-pipeline = { path = "crates/julie-pipeline", features = ["embeddings-sidec
 # Julie runtime crate (watcher + workspace lifecycle, above julie-pipeline)
 julie-runtime = { path = "crates/julie-runtime" }
 
-# Julie context crate (ToolContext facade trait + SpilloverStore + WorkspaceTarget)
+# Julie context crate (ToolContext facade trait + WorkspaceTarget)
 julie-context = { path = "crates/julie-context" }
 
 # Julie tools crate (handler-free MCP tool implementations)

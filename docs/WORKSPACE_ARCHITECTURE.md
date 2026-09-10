@@ -214,21 +214,6 @@ processes:
   interrupted, followers report `PROJECTION_LAG` or set `index_refresh_pending: true` honestly
   rather than returning inconsistent hybrid results.
 
-## Durable Continuation Snapshots
-
-Paginated query results (e.g. `fast_search`, `get_symbols`, `spillover_get`) are backed by a
-private SQLite database:
-
-- **Storage Path**: `$JULIE_HOME/indexes/<ws_id>/continuations.db` (mode 0o600, private to user).
-- **Binding Guards**: Tokens are random 256-bit identifiers bound to `workspace_id`, tool
-  name, argument hash, and source generation hashes.
-- **Budgeting & Retention**: Default TTL is 15 minutes; individual page snapshots are capped at
-  8 MiB; total continuation storage is capped at 64 MiB per workspace.
-- **Safety**: Continuation tokens grant no file-system authority, SQL access, or edit rights.
-  Cross-process reads succeed if the workspace and token match; attempts to use a token
-  across different worktrees or with stale source revisions fail with `CONTINUATION_INVALID`
-  or `CONTINUATION_STALE`.
-
 ## Host Admission Scheduling
 
 Concurrent indexing across multiple repositories or worktrees is governed by a global

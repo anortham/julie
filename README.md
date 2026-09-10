@@ -392,13 +392,11 @@ relationships. Those typed tables power region search, `patterns`, and
   - Extract specific symbols with complete code bodies
   - Structure/minimal/full reading modes
 - `blast_radius` - Deterministic impact analysis for changed files, internal symbol IDs, or revision ranges
-  - Returns ranked impacted symbols, likely tests, deleted files, and spillover handles for long lists
+  - Returns ranked impacted symbols, likely tests, deleted files, and a truncation line when more rows exist than `limit`
   - Seed with `file_paths`, internal `symbol_ids`, or Julie revision numbers
   - Prefer `file_paths` when you know a symbol name or file path
   - Use before refactoring or after a change to see affected callers and tests
   - CLI: `julie-server blast-radius --files src/auth/login_flow.rs`
-- `spillover_get` - Fetch the next page for large `get_context` or `blast_radius` results
-  - Reuses the stored spillover handle instead of rerunning the underlying query
 
 ### Editing
 
@@ -608,7 +606,6 @@ julie-server call-path "fn_a" "fn_b" --workspace . --json
 julie-server blast-radius --files src/lib.rs --workspace . --json
 julie-server deep-dive "SymbolName" --workspace . --json
 julie-server patterns --operation search --pattern-id http.request --workspace . --json
-julie-server spillover-get --handle <handle_id> --page 2 --json          # alias: spillover
 
 # Editing & Refactoring (Preview dry-run by default; execute mutation without --dry-run)
 julie-server edit-file --file src/lib.rs --find "old" --replace "new" --dry-run     # alias: edit
@@ -762,7 +759,6 @@ src/
 │   ├── patterns/    # patterns
 │   ├── refactoring/ # rename_symbol
 │   ├── search/      # fast_search
-│   ├── spillover/   # spillover_get
 │   ├── symbols/     # get_symbols
 │   └── workspace/   # manage_workspace
 ├── workspace/       # Multi-workspace management and registry

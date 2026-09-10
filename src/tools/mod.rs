@@ -20,7 +20,6 @@ pub use julie_tools::patterns;
 pub use julie_tools::refactoring;
 pub use julie_tools::search;
 pub use julie_tools::shared;
-pub use julie_tools::spillover;
 pub use julie_tools::symbols;
 
 // Re-export all tools for external use (backward compat)
@@ -31,7 +30,6 @@ pub use navigation::{CallPathTool, FastRefsTool};
 pub use patterns::{PatternsFormat, PatternsGroupBy, PatternsOperation, PatternsTool};
 pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;
-pub use spillover::SpilloverGetTool;
 pub use symbols::GetSymbolsTool;
 pub use workspace::ManageWorkspaceTool;
 

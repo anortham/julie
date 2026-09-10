@@ -4,7 +4,7 @@
 //! a file map, and centrality hints into a structured text response.
 
 use super::allocation::{Allocation, NeighborMode};
-use crate::spillover::more_available_marker;
+use crate::shared::truncation_line;
 
 /// All data needed to format a get_context response.
 ///
@@ -20,8 +20,8 @@ pub struct ContextData {
     pub neighbors: Vec<NeighborEntry>,
     /// Token allocation (determines rendering modes).
     pub allocation: Allocation,
-    /// Optional handle for overflow neighbors or second-hop results.
-    pub spillover_handle: Option<String>,
+    /// True when neighbors beyond the token budget were dropped.
+    pub truncated: bool,
 }
 
 /// Output rendering style.
@@ -186,9 +186,9 @@ fn format_context_readable(data: &ContextData) -> String {
         }
     }
 
-    if let Some(handle) = &data.spillover_handle {
+    if data.truncated {
         out.push('\n');
-        out.push_str(&more_available_marker(handle));
+        out.push_str(&truncation_line(data.pivots.len() + data.neighbors.len()));
         out.push('\n');
     }
 
@@ -248,8 +248,8 @@ fn format_context_compact(data: &ContextData) -> String {
         out.push('\n');
     }
 
-    if let Some(handle) = &data.spillover_handle {
-        out.push_str(&more_available_marker(handle));
+    if data.truncated {
+        out.push_str(&truncation_line(data.pivots.len() + data.neighbors.len()));
         out.push('\n');
     }
 

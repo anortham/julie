@@ -373,7 +373,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 commands: &[
                     "cargo nextest run --lib tests::tools::blast_radius -- --skip search_quality",
                     "cargo nextest run -p julie-tools --lib tests::blast_radius_formatting_tests",
-                    "cargo nextest run --lib tests::tools::spillover_tests -- --skip search_quality",
                 ],
             },
         ),
@@ -897,7 +896,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("blast_radius and spillover coverage"),
+                notes: Some("blast_radius coverage"),
             },
         ),
         (

@@ -24,7 +24,6 @@ pub const AVAILABLE_TOOLS: &[&str] = &[
     "patterns",
     "rename_symbol",
     "rewrite_symbol",
-    "spillover_get",
 ];
 
 /// Dispatch a tool call by name, deserializing JSON params into the correct
@@ -64,10 +63,6 @@ pub async fn dispatch_generic_tool(
         }
         "call_path" => {
             let tool: crate::tools::CallPathTool = deserialize_params(name, params)?;
-            tool.call_tool(handler).await
-        }
-        "spillover_get" => {
-            let tool: crate::tools::SpilloverGetTool = deserialize_params(name, params)?;
             tool.call_tool(handler).await
         }
         "rename_symbol" => {
@@ -117,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_available_tools_count() {
-        assert_eq!(AVAILABLE_TOOLS.len(), 13, "All 13 MCP tools must be listed");
+        assert_eq!(AVAILABLE_TOOLS.len(), 12, "All 12 MCP tools must be listed");
     }
 
     #[test]
@@ -144,7 +139,6 @@ mod tests {
         assert!(err_msg.contains("deep_dive"));
         assert!(err_msg.contains("edit_file"));
         assert!(err_msg.contains("rewrite_symbol"));
-        assert!(err_msg.contains("spillover_get"));
     }
 
     #[test]
@@ -319,20 +313,6 @@ mod tests {
         assert_eq!(tool.operation, "replace_body");
         assert_eq!(tool.content, "{ return 42; }");
         assert!(tool.dry_run); // default is true
-    }
-
-    #[test]
-    fn test_deserialize_params_spillover_get() {
-        use crate::tools::SpilloverGetTool;
-
-        let params = serde_json::json!({
-            "spillover_handle": "abc123",
-            "limit": 5
-        });
-
-        let tool: SpilloverGetTool = deserialize_params("spillover_get", params).unwrap();
-        assert_eq!(tool.spillover_handle, "abc123");
-        assert_eq!(tool.limit, Some(5));
     }
 
     #[test]

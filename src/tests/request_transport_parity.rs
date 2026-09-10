@@ -580,30 +580,6 @@ async fn test_parity_12_rewrite_symbol_preview() {
 }
 
 #[tokio::test]
-async fn test_parity_13_spillover_get() {
-    let mut fixture = ProcessFixture::from_env().await;
-    let ws = fixture.root().to_string_lossy().to_string();
-
-    let mcp_res = fixture
-        .rpc(json!({
-            "jsonrpc": "2.0", "id": 13, "method": "tools/call", "params": {
-                "name": "spillover_get",
-                "arguments": { "spillover_handle": "probe_token_123" },
-                "_meta": modern_meta()
-            }
-        }))
-        .await;
-
-    let (_exit, cli_res) = fixture
-        .cli_json(&["spillover", "probe_token_123", "--workspace", &ws, "--json"])
-        .await;
-
-    // Error / not found handling matches across transports
-    assert_error_parity(&cli_res, &mcp_res, "TOOL_ERROR");
-    fixture.shutdown().await;
-}
-
-#[tokio::test]
 async fn test_parity_generic_tool_subcommand() {
     let mut fixture = ProcessFixture::from_env().await;
     let ws = fixture.root().to_string_lossy().to_string();

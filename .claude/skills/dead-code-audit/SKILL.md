@@ -1,7 +1,7 @@
 ---
 name: dead-code-audit
 description: Use when auditing Julie for dead code, test-only code paths, stale helpers, graph gaps, or cleanup candidates before deleting, privatizing, or simplifying code.
-allowed-tools: mcp__julie__manage_workspace, mcp__julie__fast_search, mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__blast_radius, mcp__julie__get_context, mcp__julie__spillover_get, Bash
+allowed-tools: mcp__julie__manage_workspace, mcp__julie__fast_search, mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__blast_radius, mcp__julie__get_context, Bash
 ---
 
 # Dead Code Audit

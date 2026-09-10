@@ -11,11 +11,10 @@ use serde::Deserialize;
 use tracing::debug;
 
 use crate::navigation::resolution::WorkspaceTarget;
-use crate::spillover::{SpilloverFormat, SpilloverStore};
 use julie_context::ToolContext;
 use julie_core::database::SymbolDatabase;
 
-use self::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows, store_list_overflow};
+use self::formatting::{BlastRadiusFormat, BlastRadiusHeader, format_blast_radius};
 pub use self::likely_tests::LikelyTests;
 use self::likely_tests::collect_likely_tests;
 use self::ranking::RankedImpact;
@@ -38,7 +37,6 @@ fn default_workspace() -> Option<String> {
 }
 
 /// Cap on visible paths/names under Likely tests / Related test symbols.
-/// Overflow entries are stored in spillover pages.
 const LIKELY_TESTS_LIMIT: usize = 10;
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -73,7 +71,7 @@ pub struct BlastRadiusTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
     )]
     pub max_depth: u32,
-    /// Maximum visible impact rows in the first response. Extra rows use spillover.
+    /// Maximum visible impact rows. Extra rows are dropped and reported by the truncation line.
     #[serde(
         default = "default_limit",
         deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
@@ -127,8 +125,6 @@ pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<St
     let workspace_target = handler
         .resolve_workspace_target(tool.workspace.as_deref())
         .await?;
-    let spillover_store = handler.spillover_store();
-    let session_id = handler.session_id().to_string();
     let tool = tool.clone();
 
     match workspace_target {
@@ -141,13 +137,7 @@ pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<St
 
             tokio::task::spawn_blocking(move || {
                 let pooled_db = pooled_db.into_read_snapshot()?;
-                run_with_db(
-                    &tool,
-                    &pooled_db,
-                    &target_workspace_id,
-                    &spillover_store,
-                    &session_id,
-                )
+                run_with_db(&tool, &pooled_db, &target_workspace_id)
             })
             .await?
         }
@@ -157,26 +147,14 @@ pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<St
 
             tokio::task::spawn_blocking(move || {
                 let db_guard = db.into_read_snapshot()?;
-                run_with_db(
-                    &tool,
-                    &db_guard,
-                    &workspace_id,
-                    &spillover_store,
-                    &session_id,
-                )
+                run_with_db(&tool, &db_guard, &workspace_id)
             })
             .await?
         }
     }
 }
 
-fn run_with_db(
-    tool: &BlastRadiusTool,
-    db: &SymbolDatabase,
-    workspace_id: &str,
-    spillover_store: &SpilloverStore,
-    session_id: &str,
-) -> Result<String> {
+fn run_with_db(tool: &BlastRadiusTool, db: &SymbolDatabase, workspace_id: &str) -> Result<String> {
     match tool.mode.as_deref() {
         None | Some("default") | Some("web") => {}
         Some(other) => return Ok(format!("mode must be 'default' or 'web'; got '{other}'")),
@@ -219,44 +197,12 @@ fn run_with_db(
 
     let visible_impacts: Vec<RankedImpact> =
         ranked_impacts.iter().take(page_limit).cloned().collect();
-    // Keep first-page and overflow-page formats aligned. Compact is the
-    // denser default for agent-mediated tool chains. Unknown values error
-    // instead of silently coercing, so typos fail loudly.
+    // Unknown format values error instead of silently coercing, so typos fail loudly.
     let format = match tool.format.as_deref() {
-        Some(value) => SpilloverFormat::parse_strict(value).map_err(|msg| anyhow!(msg))?,
-        None => SpilloverFormat::Compact,
+        Some(value) => BlastRadiusFormat::parse_strict(value).map_err(|msg| anyhow!(msg))?,
+        None => BlastRadiusFormat::Compact,
     };
-    let impact_overflow_handle = if ranked_impacts.len() > page_limit {
-        spillover_store.store_rows(
-            session_id,
-            "br",
-            "Blast radius overflow",
-            impact_rows(&ranked_impacts[page_limit..], page_limit + 1),
-            0,
-            page_limit,
-            format,
-        )
-    } else {
-        None
-    };
-    let likely_test_paths_overflow_handle = store_list_overflow(
-        spillover_store,
-        session_id,
-        "brltp",
-        "Blast radius likely-test paths overflow",
-        &likely_tests.likely_test_paths,
-        LIKELY_TESTS_LIMIT,
-        format,
-    );
-    let related_test_symbols_overflow_handle = store_list_overflow(
-        spillover_store,
-        session_id,
-        "brlts",
-        "Blast radius related test symbols overflow",
-        &likely_tests.related_test_symbols,
-        LIKELY_TESTS_LIMIT,
-        format,
-    );
+    let impact_overflow = ranked_impacts.len() > page_limit;
     let visible_likely_tests = likely_tests.visible(LIKELY_TESTS_LIMIT);
 
     let mut web_caller_rows: Vec<String> = web_callers
@@ -273,15 +219,6 @@ fn run_with_db(
         })
         .collect();
     let web_callers_total = web_caller_rows.len();
-    let web_callers_overflow_handle = store_list_overflow(
-        spillover_store,
-        session_id,
-        "brwc",
-        "Blast radius web callers overflow",
-        &web_caller_rows,
-        page_limit,
-        format,
-    );
     web_caller_rows.truncate(page_limit);
 
     let header = BlastRadiusHeader {
@@ -290,11 +227,8 @@ fn run_with_db(
             _ => None,
         },
         deleted_files_path_only: !seed_context.deleted_files.is_empty(),
-        impact_overflow_handle,
-        likely_test_paths_overflow_handle,
-        related_test_symbols_overflow_handle,
+        impact_overflow,
         web_callers: web_caller_rows,
-        web_callers_overflow_handle,
         web_callers_total,
     };
 

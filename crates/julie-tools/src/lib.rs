@@ -14,7 +14,6 @@ pub mod patterns;
 pub mod refactoring;
 pub mod search;
 pub mod shared;
-pub mod spillover;
 pub mod symbols;
 
 // Re-export the public tool types so the top-crate shim can re-export them.
@@ -26,7 +25,6 @@ pub use navigation::{CallPathTool, FastRefsTool};
 pub use patterns::{PatternsFormat, PatternsGroupBy, PatternsOperation, PatternsTool};
 pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;
-pub use spillover::SpilloverGetTool;
 pub use symbols::GetSymbolsTool;
 
 pub use shared::{

@@ -7,8 +7,6 @@ mod tests {
     use crate::get_context::pipeline::run_pipeline_with_options;
     use crate::get_context::scoring::select_pivots_with_task_signals_for_query;
     use crate::get_context::task_signals::{TaskSignals, hydrate_failing_test_links};
-    use crate::spillover::SpilloverFormat;
-    use crate::spillover::store::SpilloverStore;
     use julie_core::Symbol;
     use julie_core::database::{FileInfo, SymbolDatabase};
     use julie_extractors::{Relationship, RelationshipKind, SymbolKind, Visibility};
@@ -205,8 +203,6 @@ mod tests {
             None,
             None, // precomputed_embedding
             Some(&signals),
-            None,
-            None,
         )
         .unwrap();
 
@@ -257,8 +253,6 @@ mod tests {
             None,
             None, // precomputed_embedding
             Some(&signals),
-            None,
-            None,
         )
         .unwrap();
 
@@ -301,8 +295,6 @@ mod tests {
             None,
             None, // precomputed_embedding
             Some(&signals),
-            None,
-            None,
         )
         .unwrap();
 
@@ -341,8 +333,6 @@ mod tests {
             None,
             None, // precomputed_embedding
             Some(&signals),
-            None,
-            None,
         )
         .unwrap();
 
@@ -400,8 +390,6 @@ mod tests {
             None,
             None, // precomputed_embedding
             Some(&signals),
-            None,
-            None,
         )
         .unwrap();
 
@@ -412,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_pipeline_with_task_signals_emits_spillover_handle_for_overflow_neighbors() {
+    fn test_run_pipeline_with_task_signals_ends_with_truncation_line_for_overflow_neighbors() {
         let mut symbols = vec![make_symbol(
             "pivot",
             "process_request",
@@ -446,7 +434,6 @@ mod tests {
         }
 
         let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &relationships);
-        let spillover_store = SpilloverStore::new(32, std::time::Duration::from_secs(60));
         let signals = TaskSignals {
             entry_symbols: vec!["process_request".to_string()],
             max_hops: 1,
@@ -464,18 +451,18 @@ mod tests {
             None,
             None, // precomputed_embedding
             Some(&signals),
-            Some(&spillover_store),
-            Some(("session-a", SpilloverFormat::Readable)),
         )
         .unwrap();
 
         assert!(
-            output.contains("More available: spillover_handle=gc_"),
-            "neighbor overflow should spill into follow-up pages: {output}"
+            output
+                .trim_end()
+                .ends_with("; narrow the query or pass a smaller limit."),
+            "neighbor overflow should end with the truncation line: {output}"
         );
         assert!(
-            output.contains("Next page: spillover_get(spillover_handle=\"gc_"),
-            "neighbor overflow should include a paging call hint: {output}"
+            output.contains("Output truncated at "),
+            "truncation line must report the kept count: {output}"
         );
     }
 

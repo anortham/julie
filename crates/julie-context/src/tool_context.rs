@@ -20,7 +20,6 @@ use julie_core::health_types::SystemStatus;
 use julie_core::mcp_compat::CallToolResult;
 use julie_index::search::SearchIndex;
 
-use crate::spillover::SpilloverStore;
 use crate::workspace_target::WorkspaceTarget;
 
 #[async_trait::async_trait]
@@ -44,11 +43,6 @@ pub trait ToolContext: Send + Sync {
     /// NEW accessor wrapping the raw `session_metrics.session_id` field.
     /// Callers that need an owned `String` call `.to_string()`.
     fn session_id(&self) -> &str;
-
-    /// Returns the spillover store for this session.
-    ///
-    /// NEW accessor wrapping the raw `Arc<SpilloverStore>` field.
-    fn spillover_store(&self) -> Arc<SpilloverStore>;
 
     // ── Primary db / index (async) ───────────────────────────────────────
 

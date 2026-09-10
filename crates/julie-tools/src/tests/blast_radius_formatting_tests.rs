@@ -1,8 +1,9 @@
 use crate::impact::LikelyTests;
-use crate::impact::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows};
+use crate::impact::formatting::{
+    BlastRadiusFormat, BlastRadiusHeader, format_blast_radius, impact_rows,
+};
 use crate::impact::ranking::RankedImpact;
 use crate::impact::seed::SeedContext;
-use crate::spillover::SpilloverFormat;
 use julie_core::Symbol;
 use julie_extractors::{RelationshipKind, SymbolKind};
 
@@ -62,9 +63,9 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
         &impacts,
         &likely_tests,
         &seed_context.deleted_files,
-        SpilloverFormat::Readable,
+        BlastRadiusFormat::Readable,
         BlastRadiusHeader {
-            impact_overflow_handle: Some("br_123".to_string()),
+            impact_overflow: true,
             ..BlastRadiusHeader::default()
         },
     );
@@ -78,8 +79,9 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
     assert!(text.contains("test_handle_request"));
     assert!(text.contains("Deleted files"));
     assert!(text.contains("src/legacy.rs"));
-    assert!(text.contains("More available: spillover_handle=br_123"));
-    assert!(text.contains("Next page: spillover_get(spillover_handle=\"br_123\")"));
+    assert!(
+        text.ends_with("Output truncated at 1 results; narrow the query or pass a smaller limit.")
+    );
 }
 
 #[test]
@@ -135,7 +137,7 @@ fn test_format_header_includes_revision_range_when_set() {
         &[],
         &likely_tests,
         &[],
-        SpilloverFormat::Compact,
+        BlastRadiusFormat::Compact,
         BlastRadiusHeader {
             revision_range: Some((42, 48)),
             ..BlastRadiusHeader::default()
@@ -175,7 +177,7 @@ fn test_likely_tests_overflow_marker_appears_when_truncated() {
         &[],
         &likely_tests,
         &[],
-        SpilloverFormat::Compact,
+        BlastRadiusFormat::Compact,
         BlastRadiusHeader::default(),
     );
 
@@ -207,7 +209,7 @@ fn test_related_test_symbols_overflow_marker_independent_of_paths() {
         &[],
         &likely_tests,
         &[],
-        SpilloverFormat::Compact,
+        BlastRadiusFormat::Compact,
         BlastRadiusHeader::default(),
     );
 
@@ -247,11 +249,10 @@ fn test_web_callers_overflow_marker_appears_when_truncated() {
         &[],
         &LikelyTests::default(),
         &[],
-        SpilloverFormat::Compact,
+        BlastRadiusFormat::Compact,
         BlastRadiusHeader {
             web_callers,
             web_callers_total: 15,
-            web_callers_overflow_handle: Some("brwc_1".to_string()),
             ..BlastRadiusHeader::default()
         },
     );
@@ -261,27 +262,57 @@ fn test_web_callers_overflow_marker_appears_when_truncated() {
         "web callers heading must be present: {text}"
     );
     assert!(
-        text.contains("…and 5 more web callers available"),
+        text.contains("…and 5 more web callers"),
         "expected overflow marker for web callers: {text}"
-    );
-    assert!(
-        text.contains("spillover_handle=brwc_1"),
-        "expected web-callers spillover handle: {text}"
     );
 }
 
 #[test]
-fn test_spillover_format_parse_strict_rejects_unknown_value() {
-    use crate::spillover::SpilloverFormat;
-
-    assert!(SpilloverFormat::parse_strict("readible").is_err());
-    assert!(SpilloverFormat::parse_strict("").is_err());
+fn test_blast_radius_format_parse_strict_rejects_unknown_value() {
+    assert!(BlastRadiusFormat::parse_strict("readible").is_err());
+    assert!(BlastRadiusFormat::parse_strict("").is_err());
     assert_eq!(
-        SpilloverFormat::parse_strict("readable").unwrap(),
-        SpilloverFormat::Readable
+        BlastRadiusFormat::parse_strict("readable").unwrap(),
+        BlastRadiusFormat::Readable
     );
     assert_eq!(
-        SpilloverFormat::parse_strict("Compact").unwrap(),
-        SpilloverFormat::Compact
+        BlastRadiusFormat::parse_strict("Compact").unwrap(),
+        BlastRadiusFormat::Compact
+    );
+}
+
+#[test]
+fn test_format_blast_radius_ends_with_truncation_line_when_impacts_overflow() {
+    let seed_context = SeedContext {
+        seed_symbols: vec![make_symbol("run_pipeline", "src/worker.rs", 10)],
+        changed_files: vec![],
+        deleted_files: vec![],
+    };
+    let impacts = vec![RankedImpact {
+        symbol: make_symbol("handle_request", "src/api.rs", 20),
+        distance: 1,
+        relationship_kind: RelationshipKind::Calls,
+        reference_score: 4.0,
+        why: "direct caller, 1 hop, centrality=medium".to_string(),
+    }];
+    let text = format_blast_radius(
+        &seed_context,
+        &impacts,
+        &LikelyTests::default(),
+        &[],
+        BlastRadiusFormat::Compact,
+        BlastRadiusHeader {
+            impact_overflow: true,
+            ..BlastRadiusHeader::default()
+        },
+    );
+
+    assert!(
+        text.ends_with("Output truncated at 1 results; narrow the query or pass a smaller limit."),
+        "truncated output must end with the truncation line: {text}"
+    );
+    assert!(
+        !text.contains("handle="),
+        "no handle may be emitted: {text}"
     );
 }

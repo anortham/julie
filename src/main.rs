@@ -69,9 +69,6 @@ async fn run_main(cli: Cli) -> anyhow::Result<()> {
         Some(Command::Rewrite(args)) => {
             run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
-        Some(Command::Spillover(args)) => {
-            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
-        }
         Some(Command::Workspace(args)) => {
             run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }

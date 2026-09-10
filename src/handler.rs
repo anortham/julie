@@ -140,8 +140,6 @@ pub struct JulieServerHandler {
     pub indexing_status: Arc<IndexingStatus>,
     /// Per-session operational metrics (tool call timing, output sizes)
     pub session_metrics: Arc<SessionMetrics>,
-    /// In-memory spillover pages for graph-heavy tool outputs.
-    pub(crate) spillover_store: Arc<crate::tools::spillover::store::SpilloverStore>,
     /// Per-workspace embedding pipeline: cancellation flag + task handle.
     /// Keyed by workspace_id so concurrent workspaces don't cancel each other.
     pub(crate) embedding_tasks: Arc<
@@ -329,7 +327,6 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
-            spillover_store: Arc::new(crate::tools::spillover::store::SpilloverStore::default()),
             embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log: None,
@@ -431,7 +428,6 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(already_indexed)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
-            spillover_store: Arc::new(crate::tools::spillover::store::SpilloverStore::default()),
             embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log,
@@ -514,7 +510,6 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
-            spillover_store: Arc::new(crate::tools::spillover::store::SpilloverStore::default()),
             embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log: if enable_project_writes {
@@ -1628,7 +1623,6 @@ impl JulieServerHandler {
             + Self::tool_router_deep_dive()
             + Self::tool_router_get_context()
             + Self::tool_router_blast_radius()
-            + Self::tool_router_spillover_get()
             + Self::tool_router_rename_symbol()
             + Self::tool_router_manage_workspace()
             + Self::tool_router_patterns()

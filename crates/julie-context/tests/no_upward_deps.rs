@@ -1,7 +1,7 @@
 //! Dependency-direction tripwire for the `julie-context` crate (Phase 2 PR 2b;
 //! see `docs/plans/2026-06-04-julie-phase2-crate-split-plan.md` and ADR-0006).
 //!
-//! `julie-context` holds the `ToolContext` facade trait, `SpilloverStore`, and
+//! `julie-context` holds the `ToolContext` facade trait and
 //! `WorkspaceTarget`. In the target DAG it sits ABOVE `julie-core` and
 //! `julie-index` and BELOW `julie-tools` / `julie-runtime` / the top `julie`
 //! crate. It is a SIBLING of `julie-pipeline` (neither depends on the other).

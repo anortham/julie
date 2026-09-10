@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use julie_context::{SpilloverStore, ToolContext, WorkspaceTarget};
+use julie_context::{ToolContext, WorkspaceTarget};
 use julie_core::database::SymbolDatabase;
 use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_core::health_types::SystemStatus;
@@ -42,9 +42,6 @@ pub struct FakeToolContext {
     /// Injected workspace root — returned verbatim by `require_primary_workspace_root`.
     /// No filesystem walk. Tests inject e.g. a `TempDir` path.
     pub primary_workspace_root: Option<PathBuf>,
-
-    // ── Spillover ───────────────────────────────────────────────────────────
-    pub spillover: Arc<SpilloverStore>,
 
     // ── DB / index injection ────────────────────────────────────────────────
     /// Path to a SQLite database file. If set, DB methods open a new
@@ -73,7 +70,6 @@ impl Default for FakeToolContext {
             primary_workspace_id: None,
             loaded_workspace_id_val: None,
             primary_workspace_root: None,
-            spillover: Arc::new(SpilloverStore::default()),
             primary_db_path: None,
             workspace_db_paths: HashMap::new(),
             primary_search_index: None,
@@ -196,10 +192,6 @@ impl ToolContext for FakeToolContext {
 
     fn session_id(&self) -> &str {
         &self.session_id
-    }
-
-    fn spillover_store(&self) -> Arc<SpilloverStore> {
-        Arc::clone(&self.spillover)
     }
 
     // ── Primary DB / index (async) ───────────────────────────────────────────
@@ -382,15 +374,6 @@ mod tests {
             ctx2.system_readiness(Some("ws-1")).await.unwrap(),
             SystemStatus::NotReady
         );
-    }
-
-    #[tokio::test]
-    async fn spillover_store_is_shared() {
-        let ctx = FakeToolContext::new();
-        let s1 = ctx.spillover_store();
-        let s2 = ctx.spillover_store();
-        // Both arcs point to the same allocation.
-        assert!(Arc::ptr_eq(&s1, &s2));
     }
 
     #[tokio::test]

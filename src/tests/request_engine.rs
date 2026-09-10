@@ -174,10 +174,10 @@ async fn unknown_tool_rejects_before_runtime() {
 }
 
 #[tokio::test]
-async fn catalog_schemas_valid_and_match_all_13_tools() {
+async fn catalog_schemas_valid_and_match_all_12_tools() {
     use crate::request_engine::catalog::ToolCatalog;
     let list = ToolCatalog::list();
-    assert_eq!(list.len(), 13);
+    assert_eq!(list.len(), 12);
     for tool in &list {
         assert!(
             tool.schema.is_object(),

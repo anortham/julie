@@ -12,10 +12,9 @@ fn test_tool_kind_ordinal_covers_all_tools() {
     assert_eq!(ToolKind::RenameSymbol as u8, 6);
     assert_eq!(ToolKind::ManageWorkspace as u8, 7);
     assert_eq!(ToolKind::QueryMetrics as u8, 8);
-    assert_eq!(ToolKind::SpilloverGet as u8, 9);
-    assert_eq!(ToolKind::CallPath as u8, 10);
-    assert_eq!(ToolKind::EditFile as u8, 11);
-    assert_eq!(ToolKind::RewriteSymbol as u8, 12);
+    assert_eq!(ToolKind::CallPath as u8, 9);
+    assert_eq!(ToolKind::EditFile as u8, 10);
+    assert_eq!(ToolKind::RewriteSymbol as u8, 11);
 }
 
 #[test]
@@ -44,10 +43,6 @@ fn test_tool_kind_from_name() {
         ToolKind::from_name("rewrite_symbol"),
         Some(ToolKind::RewriteSymbol)
     ));
-    assert!(matches!(
-        ToolKind::from_name("spillover_get"),
-        Some(ToolKind::SpilloverGet)
-    ));
     assert!(ToolKind::from_name("nonexistent").is_none());
 }
 
@@ -65,10 +60,9 @@ fn test_tool_kind_name_roundtrip() {
             6 => ToolKind::RenameSymbol,
             7 => ToolKind::ManageWorkspace,
             8 => ToolKind::QueryMetrics,
-            9 => ToolKind::SpilloverGet,
-            10 => ToolKind::CallPath,
-            11 => ToolKind::EditFile,
-            12 => ToolKind::RewriteSymbol,
+            9 => ToolKind::CallPath,
+            10 => ToolKind::EditFile,
+            11 => ToolKind::RewriteSymbol,
             _ => unreachable!(),
         };
         let name = kind.name();

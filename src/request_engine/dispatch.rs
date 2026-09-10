@@ -259,7 +259,6 @@ impl RequestEngine {
                     )
                     .await
             }
-            DecodedTool::SpilloverGet(p) => handler.execute_spillover_get(p).await,
         };
 
         result.map_err(|e| {

@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-use julie_context::{SpilloverStore, ToolContext, WorkspaceTarget};
+use julie_context::{ToolContext, WorkspaceTarget};
 use julie_core::database::SymbolDatabase;
 use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_core::health_types::SystemStatus;
@@ -50,11 +50,6 @@ impl ToolContext for JulieServerHandler {
     /// NEW accessor — wraps the raw `session_metrics.session_id` field.
     fn session_id(&self) -> &str {
         &self.session_metrics.session_id
-    }
-
-    /// NEW accessor — wraps the raw `Arc<SpilloverStore>` field.
-    fn spillover_store(&self) -> Arc<SpilloverStore> {
-        Arc::clone(&self.spillover_store)
     }
 
     // ── Primary db / index (async) ───────────────────────────────────────

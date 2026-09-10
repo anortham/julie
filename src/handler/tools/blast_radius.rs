@@ -15,7 +15,7 @@ use crate::tools::metrics::session::ToolCallReport;
 impl JulieServerHandler {
     #[tool(
         name = "blast_radius",
-        description = "Deterministic impact analysis for changed symbols, files, or revision ranges. Returns impacts ranked by centrality and hops, likely tests, deleted files, and a spillover handle for long lists. **Use before refactoring or after a change** to see affected callers and tests.",
+        description = "Deterministic impact analysis for changed symbols, files, or revision ranges. Returns impacts ranked by centrality and hops, likely tests, deleted files, and a truncation line when more rows exist than `limit`. **Use before refactoring or after a change** to see affected callers and tests.",
         annotations(
             title = "Blast Radius",
             read_only_hint = true,

@@ -316,7 +316,7 @@ builds after `cargo clean`.
 2. **CLI-First Tool Testing**: Julie's CLI provides first-class autonomous dogfooding without rebuilding release binaries or restarting live MCP clients:
    - Run `cargo build` for a debug binary
    - Direct named subcommands:
-     - Navigation & Search: `fast-search` (alias `search`), `fast-refs` (alias `refs`), `get-symbols` (alias `symbols`), `get-context` (alias `context`), `call-path`, `blast-radius`, `deep-dive`, `patterns`, `spillover-get` (alias `spillover`)
+     - Navigation & Search: `fast-search` (alias `search`), `fast-refs` (alias `refs`), `get-symbols` (alias `symbols`), `get-context` (alias `context`), `call-path`, `blast-radius`, `deep-dive`, `patterns`
      - Safe Editing: `edit-file` (alias `edit`), `rewrite-symbol` (alias `rewrite`), `rename-symbol` (alias `rename`)
      - Workspace: `manage-workspace` (alias `workspace`), `dashboard --foreground`
    - Generic tool runner: `./target/debug/julie-server tool <name> --params '{"key":"value"}' --json` (supports `--params`, `--params-file`, and `--params-stdin` with 16 MiB ceiling)
