@@ -408,7 +408,7 @@ Each phase becomes one implementation plan after this design is approved.
    that phase 2 left in place move to phase 4.
 4. **Semantics.** Sidecar child, `vectors` table, brute-force scan, encoder identity, model scorecard
    finding.
-   *Landed:* commits `90558c0a..36a558c0` (sidecar child, shared runtime, embedding child and vector scan status, scorecard finding).
+   *Landed:* commits `90558c0a..967a0918` plus Task 5 docs/ledger commit (sidecar child, shared runtime, embedding child and vector scan status, scorecard finding, gate finding).
 5. **Edit and content.** `edit` and `content` on the new engine, per-path in-process mutex.
 6. **Contract and guidance.** Miller tool names, compact output, hooks, skills, merged benchmark
    harness. Head-to-head run against Miller.

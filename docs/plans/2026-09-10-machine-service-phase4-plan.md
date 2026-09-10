@@ -631,9 +631,9 @@ In `src/tests/service/http_api.rs`, in the existing status test (find it with `g
 6. Commit: `docs(machine-service): phase 4 gate finding and ledger`.
 
 **Acceptance criteria:**
-- [ ] Every gate command in the ledger has a row with SHA, result, and timestamp.
-- [ ] The finding states pass or fail per budget with the numbers.
-- [ ] `CLAUDE.md` equals `AGENTS.md`.
+- [x] Every gate command in the ledger has a row with SHA, result, and timestamp.
+- [x] The finding states pass or fail per budget with the numbers.
+- [x] `CLAUDE.md` equals `AGENTS.md`.
 
 ---
 
