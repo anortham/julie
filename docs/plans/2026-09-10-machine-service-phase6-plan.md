@@ -21,9 +21,9 @@
 - `JULIE_AGENT_INSTRUCTIONS.md` is at most 1,900 characters (Claude Code truncates merged server instructions near 2 KB; Miller's ceiling).
 - `registry.db` migration 008 renames historical `tool_calls.tool_name` values to the new names. No dual-read code.
 - Telemetry keeps logging the full parameter object and `target` in `tool_calls.metadata` (`src/handler/tool_targets.rs`).
-- Head-to-head corpus: the ten public repos in `docs/eval/semantic-value/scorecard.toml` (express, flask, gson, moshi, Alamofire, cobra, sinatra, nlohmann-json, Newtonsoft.Json, jq) at the commits recorded in the manifest. Never index the manifest, expected answers, or results.
+- Head-to-head corpus: the ten public repos in `docs/eval/semantic-value/scorecard.toml` (express, flask, gson, moshi, Alamofire, cobra, sinatra, nlohmann-json, Newtonsoft.Json, jq) under `/home/murphy/source/`. Task 8 records each repo's `git rev-parse HEAD` in `cases.json` before the first run. Never index the manifest, expected answers, or results.
 - Net lines: this phase must be negative against `main` at its start (`tokei` before and after, recorded in the gate finding).
-- Commit messages: conventional commits, one commit per task, on branch `contract` in `/home/murphy/source/julie/.worktrees/contract`.
+- Branch `contract` is cut from `main` after phase 4 merges (phase 4 carries the corrected ten-repo `docs/eval/semantic-value/scorecard.toml`, commit 5bc37b6a). Commit messages: conventional commits, one commit per task, in `/home/murphy/source/julie/.worktrees/contract`.
 - No pushes, no releases, no `.gitignore` or `.git/info/exclude` edits, no tool caches committed, no edits to `~/source/miller` or `~/source/julie-plugin`.
 - File size: no line limit. Split only by responsibility.
 - Test rules from `CLAUDE.md`: workers run exact tests only, at most two runs per change. The lead runs `cargo xtask test changed` and `cargo xtask test dev`.
@@ -64,7 +64,7 @@
 | Task 4: `trace` | None - serial | Create `crates/julie-tools/src/navigation/trace.rs`, `src/handler/tools/trace.rs`, `crates/julie-tools/src/tests/trace_tests.rs`. Delete `src/handler/tools/{fast_refs,call_path}.rs`. Modify `crates/julie-tools/src/navigation/mod.rs`, `crates/julie-tools/src/tests/mod.rs`, `src/tools/mod.rs`, `src/request_engine/catalog.rs`, `src/request_engine/dispatch.rs`, `src/handler.rs`, `src/handler/tools/mod.rs`, `src/handler/tool_targets.rs`, `src/cli.rs`, `src/cli_tools/{commands,subcommands}.rs`, `src/tools/metrics/session.rs`, tests listed in the task. | Yes | Needs Task 3's catalog. |
 | Task 5: `search` shape, compact output, paging | None - serial | Modify `crates/julie-tools/src/search/{params,tool_execution,formatting}.rs`, `crates/julie-tools/src/shared.rs`, `crates/julie-tools/src/impact/formatting.rs`, `crates/julie-tools/src/get_context/formatting.rs`, `crates/julie-tools/src/navigation/{trace,formatting}.rs`, `crates/julie-tools/src/inspect.rs`, `crates/julie-tools/src/symbols/formatting.rs`, `src/request_engine/catalog.rs`, `src/handler/tools/search.rs`, `src/handler/search_telemetry.rs`, `src/cli_tools/subcommands.rs`, `docs/eval/semantic-value/run_scorecard.py`, `docs/eval/semantic-value/scorecard.toml`, tests listed in the task. | Yes | Needs Tasks 3 and 4's structs for the shared trailer. |
 | Task 6: `impact` shape | None - serial | Create `crates/julie-tools/src/impact/params.rs`, `crates/julie-tools/src/tests/impact_params_tests.rs`. Modify `crates/julie-tools/src/impact/mod.rs`, `crates/julie-tools/src/tests/mod.rs`, `src/request_engine/catalog.rs`, `src/request_engine/dispatch.rs`, `src/handler/tools/impact.rs`, `src/handler/tool_targets.rs`, `src/cli_tools/{commands,subcommands}.rs`, tests listed in the task. | Yes | Needs Task 5's trailer helper. |
-| Task 7: Guidance, hooks, skills, docs | None - serial | Modify `JULIE_AGENT_INSTRUCTIONS.md`, `README.md`, `docs/site/index.html`, `docs/site/script.js`, `.claude/hooks/hooks.json`, `.claude/skills/{dead-code-audit,explore-area,impact-analysis,search-debug,web-research}/SKILL.md`, `xtask/tests/docs_contract_tests.rs`, `src/tests/core/workspace_init/instructions_paths.rs`, `CLAUDE.md`, `AGENTS.md`. Create `.claude/hooks/julie-routing-block.md`, `.claude/hooks/session-start.cjs`, `.claude/skills/large-file/SKILL.md`. Delete `.claude/hooks/pretool-edit.cjs`. | Yes | Names must be final. |
+| Task 7: Guidance, hooks, skills, docs | None - serial | Modify `JULIE_AGENT_INSTRUCTIONS.md`, `README.md`, `docs/site/index.html`, `docs/site/script.js`, `.claude/hooks/hooks.json`, `.claude/skills/{dead-code-audit,explore-area,impact-analysis,search-debug,web-research}/SKILL.md`, `xtask/tests/docs_contract_tests.rs`, `src/tests/core/workspace_init/instructions_paths.rs`, `CLAUDE.md`, `AGENTS.md`. Create `.claude/hooks/julie-routing-block.md`, `.claude/hooks/session-start.cjs`, `.claude/skills/large-file/SKILL.md`. Delete `.claude/hooks/pretool-edit.cjs`, `.claude/hooks/pretool-agent.cjs`. | Yes | Names must be final. |
 | Task 8: Head-to-head run | None - serial | Create `docs/eval/head-to-head/{run_matrix.py,mcp_client.py,cases.json,README.md}`, `docs/eval/head-to-head/results/<timestamp>.{json,md}`, `docs/findings/2026-09-1X-head-to-head-miller.md`. | Yes | Needs the finished contract. |
 | Task 9: Phase 6 gate finding | None - serial | Create `docs/findings/2026-09-1X-machine-service-phase6-gate.md`, `docs/plans/2026-09-10-machine-service-phase6-ledger.md`. Modify `docs/plans/2026-09-09-machine-service-design.md` (phase 6 note), `CLAUDE.md`, `AGENTS.md` (tool list and CLI names). | Yes | Measures the finished branch. |
 
@@ -247,8 +247,8 @@ fn migration_008_renames_historical_tool_call_names() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("registry.db");
     {
-        let conn = rusqlite::Connection::open(&path).unwrap();
-        crate::registry::database::migrations::run_migrations_up_to(&conn, 7).unwrap();
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        crate::registry::database::migrations::run_migrations_up_to(&mut conn, 7).unwrap();
         conn.execute(
             "INSERT INTO tool_calls (workspace_id, session_id, timestamp, tool_name, duration_ms)
              VALUES ('w', 's', 1, 'fast_search', 1.0), ('w', 's', 2, 'blast_radius', 1.0),
@@ -258,8 +258,8 @@ fn migration_008_renames_historical_tool_call_names() {
         .unwrap();
     }
     let db = crate::registry::database::RegistryDatabase::open(&path).unwrap();
-    let names: Vec<String> = db
-        .connection()
+    let conn = db.conn_for_test();
+    let names: Vec<String> = conn
         .prepare("SELECT tool_name FROM tool_calls ORDER BY timestamp")
         .unwrap()
         .query_map([], |r| r.get(0))
@@ -270,7 +270,7 @@ fn migration_008_renames_historical_tool_call_names() {
 }
 ```
 
-`run_migrations_up_to(conn, n)` is new: it is `run_migrations` with an upper bound, and `run_migrations` calls it with `i32::MAX`. If `RegistryDatabase` exposes its connection under another name, use that name; do not add a new accessor for the test.
+`run_migrations_up_to(conn: &mut Connection, max_version: i32)` is new and `pub(crate)`: it is `run_migrations` (today `pub(super)`) with an upper bound, and `run_migrations` calls it with `i32::MAX`. `conn_for_test()` is the existing test accessor on `RegistryDatabase` (it returns a mutex guard).
 
 **Step 2: Run test to verify it fails**
 
@@ -329,8 +329,8 @@ fn migration_008_rename_tool_calls_to_contract_names(conn: &mut Connection) -> R
 }
 ```
 
-   Register it as `if current < 8 { migration_008_rename_tool_calls_to_contract_names(conn)?; }`. Add `run_migrations_up_to(conn, max_version)` and make `run_migrations` call it with `i32::MAX`. Edit tool names (`edit_file`, `rewrite_symbol`, `rename_symbol`) are left as they are in history; they are no longer a tool and the dashboard ignores unknown names.
-13. Tests: update every string literal in the files from the Task 1 list that names one of the four renamed tools (`grep -rln '"fast_search"\|"get_context"\|"blast_radius"\|"manage_workspace"' src crates xtask xtask-eval --include='*.rs'`), plus `/api/manage_workspace` in `src/tests/service/durable_roots.rs:38`, `src/tests/service/control.rs:55`, `src/tests/service/http_api.rs`, `src/tests/service/mcp_http.rs`, `src/tests/service/shim.rs`, and the fixture files `fixtures/search-quality/zero-hit-replay-task3.json:40` and `zero-hit-replay-task3-results.json:510`.
+   Register it as `if current < 8 { migration_008_rename_tool_calls_to_contract_names(conn)?; }`. Add `pub(crate) fn run_migrations_up_to(conn: &mut Connection, max_version: i32)` and make `run_migrations` call it with `i32::MAX`. Edit tool names (`edit_file`, `rewrite_symbol`, `rename_symbol`) are left as they are in history; they are no longer a tool and the dashboard ignores unknown names.
+13. Tests: update every string literal in the files from the Task 1 list that names one of the four renamed tools (`grep -rln '"fast_search"\|"get_context"\|"blast_radius"\|"manage_workspace"' src crates xtask xtask-eval --include='*.rs'`), plus `/api/manage_workspace` in `src/tests/service/durable_roots.rs:38`, `src/tests/service/control.rs:55`, `src/tests/service/http_api.rs`, `src/tests/service/mcp_http.rs`, `src/tests/service/shim.rs`. Leave `fixtures/search-quality/zero-hit-replay-task3.json` and `zero-hit-replay-task3-results.json` alone: the strings there are recorded search queries, not tool names.
 
 **Step 4: Run test to verify it passes**
 
@@ -361,7 +361,7 @@ Expected: PASS
 - Test: `crates/julie-tools/src/tests/inspect_tests.rs`, `src/tests/request_engine.rs`
 
 **Interfaces:**
-- Consumes: `GetSymbolsTool` (`crates/julie-tools/src/symbols/mod.rs:80`, fields `file_path`, `max_depth`, `target`, `limit`, `mode`, `workspace`) and its `call_tool`; `DeepDiveTool` (`crates/julie-tools/src/deep_dive/mod.rs:40`, fields `symbol`, `depth: DeepDiveDepth {Overview, Context, Full}`, `context_file`, `workspace`, `semantics`) and its `call_tool`; `handler.execute_get_symbols` and `handler.execute_deep_dive` (`src/handler/tools/{get_symbols,deep_dive}.rs:36`).
+- Consumes: `GetSymbolsTool` (`crates/julie-tools/src/symbols/mod.rs:80`, fields `file_path`, `max_depth`, `target`, `limit`, `mode`, `workspace`) and its `call_tool`; `DeepDiveTool` (`crates/julie-tools/src/deep_dive/mod.rs:54`, fields `symbol`, `depth: DeepDiveDepth {Overview, Context, Full}`, `context_file`, `workspace`, `semantics`) and its `call_tool`; `handler.execute_get_symbols` and `handler.execute_deep_dive` (`src/handler/tools/{get_symbols,deep_dive}.rs:36`).
 - Produces: `julie_tools::inspect::InspectTool { target, depth: InspectDepth, scope, limit, offset, workspace, semantics }` with `InspectTool::call_tool(&self, handler)`; `handler.execute_inspect(params)`; catalog row `"inspect"`; CLI `julie-server inspect <target> [--depth …] [--scope …]`. Task 5 adds the paging trailer to the file listing.
 
 **Contract inputs:** the two consumed structs above; `SemanticRequirement::Symbols` for symbol targets (deep dive semantics), `None` for file targets.
@@ -558,7 +558,7 @@ impl InspectTool {
 }
 ```
 
-`DeepDiveDepth` (`crates/julie-tools/src/deep_dive/mod.rs:8`) needs `#[derive(PartialEq, Eq)]` added for the depth-mapping test; add it. If `GetSymbolsTool` or `DeepDiveTool` has private fields or a different field set, use their public constructors; do not change their fields. `offset` is stored here and consumed in Task 5.
+`DeepDiveDepth` (`crates/julie-tools/src/deep_dive/mod.rs:20-22`) already derives `PartialEq` and `Eq`. If `GetSymbolsTool` or `DeepDiveTool` has private fields or a different field set, use their public constructors; do not change their fields. `offset` is stored here and consumed in Task 5.
 
 `src/handler/tools/inspect.rs` follows the shape of `src/handler/tools/get_symbols.rs` (rmcp `#[tool(name = "inspect", …)]`, `execute_inspect(params: InspectTool)`), records telemetry with `tool_targets::inspect_metadata(&params)` whose `target` sub-object carries `target_file_path` for file targets and `target_symbol_name` for symbol targets, and sets `annotations(title = "Inspect")`.
 
@@ -867,7 +867,7 @@ Expected: PASS. This is the first task where the Task 1 contract test goes green
 - Test: `crates/julie-tools/src/tests/search_params_tests.rs` (new), `crates/julie-tools/src/tests/formatting_tests.rs`, `crates/julie-tools/src/tests/search_promotion_tests.rs`
 
 **Interfaces:**
-- Consumes: `FastSearchTool` fields (`query`, `language`, `file_pattern`, `limit`, `context_lines`, `exclude_tests`, `backend: Option<SearchBackend>`, `workspace`, `return_format: String`, `semantics`), wrapper `FastSearchParams { search, regions }`; `text_search_impl(query, language, file_pattern, limit, workspace_ids, search_target: &str, context_lines, exclude_tests, handler)` in `crates/julie-tools/src/search/text_search.rs:224` where `search_target` accepts `"definitions"`; `execute_search_unified` in `crates/julie-tools/src/search/execution/mod.rs:70`; `SearchHit` kinds (symbol row versus file row).
+- Consumes: `FastSearchTool` fields (`query`, `language`, `file_pattern`, `limit`, `context_lines`, `exclude_tests`, `backend: Option<SearchBackend>`, `workspace`, `return_format: String`, `semantics`), wrapper `FastSearchParams { search, regions }`; `execute_search_unified` in `crates/julie-tools/src/search/execution/mod.rs:70`, whose result mixes symbol rows and file rows (`SearchHit` with `SearchHitBacking`). `text_search_impl` in `crates/julie-tools/src/search/text_search.rs:224` is test-only (`#[cfg(any(test, feature = "test-support"))]`) and must not be called from production code.
 - Produces: `search` parameters `mode: SearchMode {Auto, Symbol, File, Text}` (default `Auto`), `retrieval: Option<SearchBackend>` (JSON name `retrieval`, values `lexical|semantic|hybrid`), `format: SearchFormat {Compact, Full}` (default `Compact`), `offset: u32`; the shared trailer `julie_tools::shared::next_line(tool, args, next_offset) -> String`; compact renderer output shape below. Tasks 6 and 8 rely on `next_line` and on `format=compact` being the default.
 
 **Contract inputs:** the compact shape, exactly:
@@ -949,7 +949,7 @@ fn compact_search_groups_repeated_files_and_appends_next_when_rows_remain() {
 }
 ```
 
-`hit(path, line, name, kind)` is the fixture builder already in `formatting_tests.rs`; if it has another name, use that name.
+`formatting_tests.rs` has no `SearchHit` builder today (its `make_test_symbol` builds a `Symbol`). Write `fn hit(path: &str, line: u32, name: &str, kind: &str) -> SearchHit` in that file: build the symbol-backed variant of `SearchHit` with `SearchHitBacking` the way `make_line_hit` in `search_lean_format_tests.rs` builds the line-backed variant.
 
 **Step 2: Run test to verify it fails**
 
@@ -1005,7 +1005,7 @@ pub fn next_line(tool: &str, args: &[(&str, &str)], next_offset: usize) -> Strin
 ```
 
    Update the three `truncation_line` call sites: `impact/formatting.rs:100` becomes `next_line("impact", &impact_args, offset + kept)`, `get_context/formatting.rs:191,252` keep truncating without a trailer (context is budgeted, not paged; delete the line), and add trailers in `navigation/formatting.rs` (refs) and `symbols/formatting.rs` (file listing).
-3. `crates/julie-tools/src/search/tool_execution.rs`: route on `mode`: `Symbol` calls `text_search_impl(…, "definitions", …)`; `File` runs the unified search and keeps only file-row hits; `Text` runs the unified search with `context_lines` and honors `regions`; `Auto` is today's path. Fetch `limit + offset` rows, skip `offset`, keep `limit`, and pass `more = fetched.len() > offset + limit` to the renderer. Read `format` instead of `return_format == "locations"`. Delete the `"locations"` string handling in `region_search.rs:126`.
+3. `crates/julie-tools/src/search/tool_execution.rs`: every mode runs `execute_search_unified` once, then filters: `Symbol` keeps symbol-row hits only; `File` keeps file-row hits only; `Text` keeps line-level hits with `context_lines` and honors `regions`; `Auto` keeps everything (today's path). Request `min(500, (limit + offset) * 3)` rows from the engine so a filtered mode still fills a page, skip `offset`, keep `limit`, and pass `more = filtered.len() > offset + limit` to the renderer. Read `format` instead of `return_format == "locations"`. Delete the `"locations"` string handling in `region_search.rs:126`.
 4. `crates/julie-tools/src/search/formatting.rs`: add `render_compact(query, mode, retrieval, hits, offset, kept, more) -> String` producing the shape in **Contract inputs**. Render the retrieval label as `lexical`, `semantic`, `hybrid`, or `auto`.
 5. `src/request_engine/catalog.rs`: the `search` `semantics` closure reads `p.search.retrieval`. `src/handler/search_telemetry.rs`: add `mode` and `retrieval` keys to the metadata. `src/cli_tools/subcommands.rs` `SearchArgs`: `--mode`, `--retrieval`, `--format`, `--offset`; delete `--return-format` and `--backend`.
 6. `docs/eval/semantic-value/run_scorecard.py` and `scorecard.toml`: send `retrieval` and `format="compact"`; the parser reads `<path>:<line>` and `<path>:` group headers. Run one lexical dry run to confirm ranks (`JULIE_EMBEDDING_PROVIDER=none python3 docs/eval/semantic-value/run_scorecard.py --binary target/release/julie-server --retrieval lexical --no-write --timeout 300`) and record the top-5 count in the commit body.
@@ -1243,7 +1243,7 @@ Expected: PASS (4 tests).
 **Files:**
 - Modify: `JULIE_AGENT_INSTRUCTIONS.md` (rewrite, at most 1,900 characters), `README.md` (43 tool-name occurrences), `docs/site/index.html:312-347,403-539` (four skill cards, twelve tool cards become seven), `docs/site/script.js` (six occurrences), `.claude/hooks/hooks.json`, `.claude/skills/{dead-code-audit,explore-area,impact-analysis,search-debug,web-research}/SKILL.md` (names, `allowed-tools`, examples), `xtask/tests/docs_contract_tests.rs:133-160,222-249` (seven cards; instructions must contain `search`, `inspect`, `trace`, `impact`, `patterns`, `regions`, `structural_facts`, `complexity_metrics`; add the 1,900-character test), `src/tests/core/workspace_init/instructions_paths.rs:34` (asserts `search`), `CLAUDE.md` and `AGENTS.md` (Quick Reference CLI names, "Adding a new MCP tool", `fast_search(...)` examples)
 - Create: `.claude/hooks/julie-routing-block.md`, `.claude/hooks/session-start.cjs`, `.claude/skills/large-file/SKILL.md`
-- Delete: `.claude/hooks/pretool-edit.cjs`
+- Delete: `.claude/hooks/pretool-edit.cjs`, `.claude/hooks/pretool-agent.cjs`
 - Test: `xtask/tests/docs_contract_tests.rs`
 
 **Interfaces:**
@@ -1252,7 +1252,7 @@ Expected: PASS (4 tests).
 
 **Contract inputs:** Miller's routing block (`~/source/miller/hooks/miller-routing-block.md`, read-only) and session hook (`~/source/miller/hooks/miller-session-hook.cjs`, read-only) are the models. Copy the hook's stdin parsing, envelope shape (`{hookSpecificOutput:{hookEventName, additionalContext}}`), fail-open behavior, and kill switch (`JULIE_SESSION_HOOKS=0`); drop the candidate-root appendix (the shim binds the working directory).
 
-**File ownership:** Modify `JULIE_AGENT_INSTRUCTIONS.md`, `README.md`, `docs/site/index.html`, `docs/site/script.js`, `.claude/hooks/hooks.json`, `.claude/skills/{dead-code-audit,explore-area,impact-analysis,search-debug,web-research}/SKILL.md`, `xtask/tests/docs_contract_tests.rs`, `src/tests/core/workspace_init/instructions_paths.rs`, `CLAUDE.md`, `AGENTS.md`. Create `.claude/hooks/julie-routing-block.md`, `.claude/hooks/session-start.cjs`, `.claude/skills/large-file/SKILL.md`. Delete `.claude/hooks/pretool-edit.cjs`.
+**File ownership:** Modify `JULIE_AGENT_INSTRUCTIONS.md`, `README.md`, `docs/site/index.html`, `docs/site/script.js`, `.claude/hooks/hooks.json`, `.claude/skills/{dead-code-audit,explore-area,impact-analysis,search-debug,web-research}/SKILL.md`, `xtask/tests/docs_contract_tests.rs`, `src/tests/core/workspace_init/instructions_paths.rs`, `CLAUDE.md`, `AGENTS.md`. Create `.claude/hooks/julie-routing-block.md`, `.claude/hooks/session-start.cjs`, `.claude/skills/large-file/SKILL.md`. Delete `.claude/hooks/pretool-edit.cjs`, `.claude/hooks/pretool-agent.cjs`.
 
 **Serialization required:** Yes
 
@@ -1280,7 +1280,7 @@ fn docs_contract_tests_agent_instructions_fit_the_server_instruction_budget() {
         "JULIE_AGENT_INSTRUCTIONS.md is {} characters; the ceiling is 1900",
         instructions.chars().count()
     );
-    for name in ["search", "inspect", "context", "trace", "impact", "patterns", "workspace"] {
+    for name in ["search", "inspect", "context", "trace", "impact", "patterns", "workspace", "regions", "source_regions", "structural_facts", "complexity_metrics"] {
         assert!(instructions.contains(&format!("`{name}`")), "instructions must name {name}");
     }
     for old in ["fast_search", "get_symbols", "deep_dive", "fast_refs", "call_path", "blast_radius", "get_context", "manage_workspace", "edit_file", "rewrite_symbol", "rename_symbol"] {
@@ -1312,7 +1312,7 @@ fn docs_contract_tests_skills_and_site_use_contract_names_only() {
 }
 ```
 
-`repo_path` is the helper `read_repo_file` uses to build its path; if it has another name, use that. Update `docs_contract_tests_extractor_enrichment_surfaces_are_documented` (`:228-249`) to look for `patterns`, `regions`, `structural_facts`, `complexity_metrics` in the instructions and README as it does today, and the site card count (`:133-160`) to seven.
+`repo_file` is the existing path helper in that file; use it in place of `repo_path` above. Update `docs_contract_tests_extractor_enrichment_surfaces_are_documented` (`:228-249`) to look for `patterns`, `regions`, `structural_facts`, `complexity_metrics` in the instructions and README as it does today, and the site card count (`:133-160`) to seven.
 
 **Step 2: Run test to verify it fails**
 
@@ -1321,7 +1321,7 @@ Expected: FAIL (`9400 characters`).
 
 **Step 3: Write minimal implementation**
 
-1. `JULIE_AGENT_INSTRUCTIONS.md`, complete text (1,489 characters; keep it under 1,900 after any edit):
+1. `JULIE_AGENT_INSTRUCTIONS.md`, complete text (1,713 characters; keep it under 1,900 after any edit):
 
 ```markdown
 # Julie - code intelligence for this workspace
@@ -1337,6 +1337,8 @@ One Julie call beats shell greps and full-file reads. Results come from a fresh 
 5. `impact` before a refactor and after edits: impacted symbols and likely tests. With no arguments it reads the working-tree git diff.
 6. `patterns` for extracted code shapes: routes, config keys, SQL, document structure. Call with no arguments to list pattern ids.
 7. `workspace` for index status, refresh, rebuild, health, and opening another checkout for cross-workspace calls.
+
+Extractor facts: `search` takes `regions` (`source_regions`: comment, doc_comment, string_literal), `patterns` reads `structural_facts`, and `inspect` reports `complexity_metrics`. Use those tools, never the SQLite tables.
 
 Output is compact by default; a result that has more rows ends with a `next:` line holding the exact call for the next page. `format=full` adds code context. Julie has no edit tool: edit with your own editor, then run `impact`.
 
@@ -1358,7 +1360,7 @@ Every call takes `workspace`: omit it or pass `primary` for the checkout this se
 }
 ```
 
-   Read `.claude/hooks/pretool-agent.cjs` and `session-start-tests.cjs`; delete `pretool-edit.cjs` (it steers to the deleted edit tools). Leave the other two unless they name a deleted tool; if they do, delete them too and say so in the commit body.
+   `.claude/hooks/hooks.json` is `{"hooks": {}}` today and registers nothing. Delete `pretool-edit.cjs` and `pretool-agent.cjs`; both name the deleted edit tools. Read `session-start-tests.cjs`; keep it only if it names no deleted tool, otherwise delete it and say so in the commit body.
 3. Skills: rewrite the five `SKILL.md` files so every example uses the new names and parameters (`inspect(target=…, depth=…)`, `trace(target=…, mode=…)`, `impact(target=… | changed_paths=… | none)`, `search(query=…, mode=…, retrieval=…)`), update `allowed-tools` to `mcp__julie__<name>` for the seven names, and remove every reference to `edit_file`, `rewrite_symbol`, `rename_symbol`. Delete `.claude/skills/editing/`. Create `.claude/skills/large-file/SKILL.md`:
 
 ```markdown
@@ -1447,8 +1449,8 @@ Expected: fails (`validate_manifest` not defined).
 **Step 3: Write minimal implementation**
 
 1. Copy `~/source/miller/scripts/benchlib/mcp_client.py` to `docs/eval/head-to-head/mcp_client.py` unchanged except the module docstring.
-2. `run_matrix.py`: a trimmed port of `bench-foundation-matrix.py` with these changes: binaries come from `--julie-bin` (default `target/release/julie-server`) and `--miller-bin` (default `~/source/miller/src/Miller.Server/bin/Release/net10.0/miller`); repos come from `--repos-toml` (default `docs/eval/semantic-value/scorecard.toml`, read the `[[repos]]` table); Julie is spawned as `[julie_bin]` with `cwd=repo_path` (the shim binds `primary` to cwd); Miller is spawned as `[miller_bin, "serve"]` and every Miller row passes `workspace_id` from `workspace operation=open path=<repo>` once per repo; `SUPPORTED_JULIE_TOOLS = {"search","inspect","context","trace","impact","patterns"}`; scoring modes `path_top` (expected path is the first hit) and `path_top5`; per row record latency and response bytes for both products; output JSON and Markdown to `docs/eval/head-to-head/results/<UTC timestamp>.{json,md}` with a per-task-class table and a per-tool latency table. Keep `--validate`, `--self-check`, `--skip-miller`, `--skip-julie`, `--repos`, `--tasks`.
-3. `cases.json`: 46 rows. The 23 search rows come from `scorecard.toml` (`julie: search query=<query> limit=5`, `miller: search query=<query> limit=5 format=json mode=auto`, `expected.path` = first `expected_any`, `scoring.mode = path_top5`, `task_class = retrieval.concept` or `retrieval.implementation` per the case's `category`). Add 23 more rows, one per search case, for the symbol named in the case's `intent` (`julie: inspect target=<Name> depth=summary`, `miller: inspect target=<Name> depth=summary format=json`, `scoring.mode = path_top`, `task_class = inspect.symbol`). Verify each expected path exists before committing (`--validate`).
+2. `run_matrix.py`: a trimmed port of `bench-foundation-matrix.py` with these changes: binaries come from `--julie-bin` (default `target/release/julie-server`) and `--miller-bin` (default `~/source/miller/src/Miller.Server/bin/Release/net10.0/miller`); repos come from the `repos` object in `cases.json` (paths and pinned commits; `--validate` checks both); Julie is spawned as `[julie_bin]` with `cwd=repo_path` (the shim binds `primary` to cwd); Miller is spawned as `[miller_bin, "serve"]` and every Miller row passes `workspace_id` from `workspace operation=open path=<repo>` once per repo; `SUPPORTED_JULIE_TOOLS = {"search","inspect","context","trace","impact","patterns"}`; scoring modes `path_top` (expected path is the first hit) and `path_top5`; per row record latency and response bytes for both products; output JSON and Markdown to `docs/eval/head-to-head/results/<UTC timestamp>.{json,md}` with a per-task-class table and a per-tool latency table. Keep `--validate`, `--self-check`, `--skip-miller`, `--skip-julie`, `--repos`, `--tasks`.
+3. `cases.json`: 46 rows. The 23 search rows come from `scorecard.toml` (`julie: search query=<query> limit=5`, `miller: search query=<query> limit=5 format=json mode=auto`, `expected.path` = first `expected_any`, `scoring.mode = path_top5`, `task_class = retrieval.concept` or `retrieval.implementation` per the case's `category`). Add 23 more rows, one per search case, with `task_class = inspect.symbol`: before any matrix run, list the case's expected file with `julie-server inspect <expected path> --json` and take its first top-level symbol name as `target` (record the name in the row's `intent`); `julie: inspect target=<Name> depth=summary`, `miller: inspect target=<Name> depth=summary format=json`, `scoring.mode = path_top`, expected path unchanged. This uses only the answer file, never candidate search output. Add a top-level `repos` object to `cases.json`: `{name: {path, commit}}` with `commit` from `git -C <path> rev-parse HEAD`; `--validate` fails when the checkout's HEAD differs. Verify each expected path exists before committing (`--validate`).
 4. `README.md`: how to run, how rows are scored, and the two statements from the frozen contract this run honors (cases were written before any candidate output was viewed; the manifest and results live under `docs/eval/`, which neither product indexes as a corpus because the corpus roots are the ten external repos).
 5. Run: `python3 docs/eval/head-to-head/run_matrix.py --validate`, then the full run twice (`--out-dir` default), and keep the second pair (the first warms both indexes; say so in the finding). Total wall time under one hour.
 6. `docs/findings/2026-09-1X-head-to-head-miller.md`: per task class top-1 and top-5 for both products, per tool p50 and p95 latency, response bytes, the rows where the products disagree with a one-line reason each (read the responses; do not guess), and an honest scope line: retrieval matrix only, one machine, fresh indexes, no agent episodes. No winner by construction: report the numbers and the trade-offs.
