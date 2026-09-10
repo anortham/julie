@@ -720,7 +720,11 @@ impl JulieServerHandler {
                 return Some(Arc::clone(p));
             }
         }
-        self.semantic_runtime().provider()
+        if let Some(provider) = self.semantic_runtime().provider() {
+            return Some(provider);
+        }
+        let ws = self.workspace.read().await;
+        ws.as_ref().and_then(|ws| ws.embedding_provider.clone())
     }
 
     /// Access the shared semantic runtime.
