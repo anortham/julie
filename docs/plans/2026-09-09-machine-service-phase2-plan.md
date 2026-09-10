@@ -384,10 +384,10 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 6, 7, 8, 9. `parallel-lea
 **Approach:** Run `cargo xtask test dev`, `system`, `bucket service-process`, then `full`, recording each in the ledger with the HEAD SHA. Run `tokei src crates xtask --exclude 'src/tests' --exclude '*/tests/*' -t Rust` and compare with the baseline. If lines are not net negative, the phase does not pass; report which task fell short rather than adjusting the gate.
 
 **Acceptance criteria:**
-- [ ] The finding states the verdict, the before/after line counts, the deletion-list ledger, and the report-only numbers.
-- [ ] `CLAUDE.md`, `AGENTS.md`, `docs/WORKSPACE_ARCHITECTURE.md` no longer mention leader, follower, `leader.lock`, writer fencing, or the Python sidecar as product behavior (`grep -n` in the finding).
-- [ ] The ledger has rows for `dev`, `system`, `service-process`, and `full` at the final HEAD, all `pass`.
-- [ ] `cargo xtask test dev` green at the final commit.
+- [x] The finding states the verdict, the before/after line counts, the deletion-list ledger, and the report-only numbers.
+- [x] `CLAUDE.md`, `AGENTS.md`, `docs/WORKSPACE_ARCHITECTURE.md` no longer mention leader, follower, `leader.lock`, writer fencing, or the Python sidecar as product behavior (`grep -n` in the finding).
+- [x] The ledger has rows for `dev`, `system`, `service-process`, and `full` at the final HEAD, all `pass`.
+- [x] `cargo xtask test dev` green at the final commit.
 
 ## Execution handoff
 
