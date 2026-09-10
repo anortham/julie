@@ -14,7 +14,7 @@
 | Full suite, Linux | under 120 s warm; exclude model download, real-repo fixtures, Windows | `cargo xtask test full` at `967a0918` | pass. 48 buckets PASS, warm 97.4s, cold wall 142.3s |
 | Dev tier | fast batch-level regression tier (<10m expected) | `cargo xtask test dev` at `967a0918` | pass. 30 buckets PASS, warm 48.2s |
 | System tier | workspace init + integration | `cargo xtask test system` at `967a0918` | pass. 4 buckets PASS, warm 6.5s |
-| Net lines | Phase 4 net negative | `git diff --shortstat 974b4549..HEAD`; `tokei` Rust lines | pass. Git diff: −149 lines (4,410 ins / 4,559 del). Tokei: 164,870 at base → 98,043 at HEAD (net −66,827 lines, −56,508 code) |
+| Net lines | Phase 4 net negative | `git diff --shortstat 974b4549..HEAD`; `tokei` Rust lines | pass. Git diff: −149 lines (4,410 ins / 4,559 del). Tokei: 101,300 at `eacfc98f` → 98,043 at `1ba06354` (net phase 4: −3,257 lines, −2,767 code) |
 | Clean build time | report, then +20% later | `cargo clean && time cargo build` | not measured (would wipe worktree build cache) |
 | Resident memory | Shared child across checkouts; Julie and Miller `/status` | temp `JULIE_HOME`, `workspace index`, 5 semantic searches, `/status` | pass. Julie: rss 817,823,744; graph 86,043,992; vectors 50; child PID 2511180 (VmRSS 329,340 kB). Miller: rss 3,624,103,936; graph 330,214,728; child PID 2511180 (VmRSS 394,220 kB). Exactly one child process shared across checkouts saves ~1.2 GB across 5 checkouts vs per-checkout sidecars |
 | Vector scan latency | Brute-force in-memory cosine scan | recorded in `CheckoutStatus.vector_scan_millis` | pass. <1 ms for indexed vectors |
