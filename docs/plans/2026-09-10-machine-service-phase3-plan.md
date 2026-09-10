@@ -364,8 +364,8 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Keep the pipeline's batching and enrichment (`embedding_metadata*`); replace `begin_/publish_/store_embeddings_for_generation` with `store_vectors`. Scan test: 10,000 random 384-d vectors, top-5 by cosine matches a naive reference, under 50 ms. Readiness test through `FakeToolContext`: no encoder row -> `SEMANTICS_NOT_READY`; encoder and vectors -> ready.
 
 **Acceptance criteria:**
-- [ ] `rg -n 'embedding_generation|symbol_vectors|sqlite_vec|sqlite-vec|knn_search' crates src --glob '!**/tests/**'` returns nothing.
-- [ ] `cargo nextest run -p julie-index --lib tests::vectors`, `cargo nextest run -p julie-pipeline --lib tests::embedding`, and `cargo nextest run --lib tests::core::embedding_provider` pass.
+- [x] `rg -n 'embedding_generation|symbol_vectors|sqlite_vec|sqlite-vec|knn_search' crates src --glob '!**/tests/**'` returns nothing.
+- [x] `cargo nextest run -p julie-index --lib tests::vectors`, `cargo nextest run -p julie-pipeline --lib tests::embedding`, and `cargo nextest run --lib tests::core::embedding_provider` pass.
 - [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
@@ -392,8 +392,8 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Delete `pipeline_persistence.rs`'s old branch and the double write from Task 3 in this task for the full-index path (the watcher's double write goes in Task 13). `runtime_factory.rs` opens the store through `CheckoutStore::open`; `VersionMismatch` deletes `index_root` and reopens.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run --lib tests::tools::workspace` and `cargo nextest run --lib tests::core::workspace_init` pass; the seed test copies 6 blobs and extracts 2 on `fixtures/seed/{a,b}`.
-- [ ] `rg -n 'incremental_update_atomic|bulk_store_fresh_atomic|record_indexing_repair|upsert_projection_state' src/tools/workspace src/startup*.rs src/request_engine` returns nothing.
+- [x] `cargo nextest run --lib tests::tools::workspace` and `cargo nextest run --lib tests::core::workspace_init` pass; the seed test copies 6 blobs and extracts 2 on `fixtures/seed/{a,b}`.
+- [x] `rg -n 'incremental_update_atomic|bulk_store_fresh_atomic|record_indexing_repair|upsert_projection_state' src/tools/workspace src/startup*.rs src/request_engine` returns nothing.
 - [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---

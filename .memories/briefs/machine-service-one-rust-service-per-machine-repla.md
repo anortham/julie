@@ -4,7 +4,7 @@ title: "Machine service: one Rust service per machine replaces per-session
   Miller and Julie"
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-09T21:12:03.049Z
+updated: 2026-09-10T14:18:52.667Z
 tags:
   - machine-service
   - architecture
@@ -13,29 +13,29 @@ tags:
 
 ## Direction
 
-Build `julie-service`: one process per developer machine, stateless MCP 2026-07-28 over HTTP, a stdio shim, and a plain JSON API, all over the existing request engine. Approved design: `docs/plans/2026-09-09-machine-service-design.md`. Phase 1 plan: `docs/plans/2026-09-09-machine-service-phase1-plan.md`.
+Build `julie-service`: one process per developer machine, stateless MCP 2026-07-28 over HTTP, a stdio shim, and a plain JSON API, all over the existing request engine. Approved design: `docs/plans/2026-09-09-machine-service-design.md`.
+
+Phase 1 and phase 2 are done on branch `machine-service` (phase 2 gate at `46bb53da`, docs at `63cefbcf` on main). Phase 3 plan: `docs/plans/2026-09-10-machine-service-phase3-plan.md`. Execution is in worktree `/home/murphy/source/julie/.worktrees/machine-service`.
 
 ## Non-negotiable rules (design section 4)
 
 - When a task needs a lock, lease, fence, generation, epoch, cursor, claim, pin, coordinator, broker, journal, repair, continuation, or handoff, stop and find a simpler design. Do not power through.
 - Two durable roots per checkout (`facts.sqlite`, `tantivy/`), one registry per machine. Derived indexes are deleted and rebuilt, never migrated.
 - Delete what you replace in the same change. Phases 2 and 3 must be net negative in lines.
-- `src/service/` process model stays under 600 lines (design section 16; Julie's June 2026 daemon was 11.5k lines and was deleted for it).
+- `src/service/` process model stays under 600 lines.
 
-## Decisions already made
+## Phase 3 status (2026-09-10)
 
-- One store per checkout, seeded by copying from a sibling worktree. No shared family storage (user accepted 2026-09-09).
-- No MCP Tasks extension, no live version handoff, no continuations, no vacuum job, no usearch file, no Python embedding host.
-- Native sidecar in `serve` mode is the embedding runtime. Model chosen by scorecard in phase 4.
-- Miller's ten-tool contract carries over in phase 6. CT deferred to phase 7 as its own design.
-- Reviewer choice for pre-merge review: Codex.
+- Tasks 1-10 complete at `88e78c74` (`julie-facts`, graph, snapshot/store, tool ports, vectors).
+- Task 11 (workspace commands, startup, seed on facts) is next. A prior implementer died on a Claude session limit with no commit.
+- Then Task 12 (edit/health/dashboard/extract), Task 13 (delete `symbols.db`), Task 14 (gates and docs, lead).
+- Reviewer choice for this phase: none (user said `approved` with no reviewer name).
+- Push and PR authority: missing.
 
-## Phase gates
+## Known in-scope failure for Task 11
 
-1. After phase 1: three real hosts (Claude Code, Codex, Cursor) work over HTTP and the shim with no session state and no Tasks extension. Else stop.
-2. After phase 2: deletion list in design section 5.4 is empty; net lines negative.
-3. After phase 3: every budget in design section 12 holds on the Julie and Miller repos. Else stop and redesign before phase 4.
+Project-local store predates the Task 10 `encoder` table. Julie CLI currently fails with `no such table: encoder`. Open-mismatch must delete `index_root` and reindex.
 
 ## Where work happens
 
-Worktree `/home/murphy/source/julie/.worktrees/machine-service`, branch `machine-service`, off `main` at 8b07074b. Run `razorback:subagent-driven-development` with the phase 1 plan.
+Worktree `/home/murphy/source/julie/.worktrees/machine-service`, branch `machine-service`. Run `razorback:subagent-driven-development` from Task 11. Do not implement on the main checkout.
