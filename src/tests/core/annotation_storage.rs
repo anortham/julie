@@ -1,7 +1,6 @@
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, SymbolKind};
 use julie_core::Symbol;
-use rusqlite::Connection;
 use tempfile::TempDir;
 
 fn file_info(path: &str, language: &str) -> FileInfo {
@@ -130,42 +129,6 @@ fn new_database_creates_symbol_annotations_with_indexes() {
     let indexes = annotation_indexes(&db);
 
     assert_eq!(table_count, 1);
-    assert!(
-        indexes
-            .iter()
-            .any(|name| name == "idx_symbol_annotations_annotation_key")
-    );
-    assert!(
-        indexes
-            .iter()
-            .any(|name| name == "idx_symbol_annotations_carrier")
-    );
-}
-
-#[test]
-fn migration_020_creates_symbol_annotations_for_existing_database() {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("migrated.db");
-
-    {
-        let conn = Connection::open(&db_path).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE schema_version (
-                version INTEGER PRIMARY KEY,
-                applied_at INTEGER NOT NULL,
-                description TEXT NOT NULL
-            );
-            INSERT INTO schema_version (version, applied_at, description)
-            VALUES (19, 1, 'Add revision_file_changes table');",
-        )
-        .unwrap();
-    }
-
-    let db = SymbolDatabase::new(&db_path).unwrap();
-    let version = db.get_schema_version().unwrap();
-    let indexes = annotation_indexes(&db);
-
-    assert_eq!(version, crate::database::LATEST_SCHEMA_VERSION);
     assert!(
         indexes
             .iter()

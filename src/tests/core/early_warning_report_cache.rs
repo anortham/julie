@@ -3,7 +3,7 @@ use crate::database::{FileInfo, ProjectionStatus, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, SymbolKind};
 use crate::search::language_config::LanguageConfigs;
 use julie_core::Symbol;
-use rusqlite::{Connection, params};
+use rusqlite::params;
 use tempfile::TempDir;
 
 fn file_info(path: &str, language: &str) -> FileInfo {
@@ -162,45 +162,6 @@ fn fresh_database_creates_early_warning_reports() {
     let (_temp_dir, db) = open_db("fresh.db");
     let indexes = report_indexes(&db);
 
-    assert_eq!(table_count(&db), 1);
-    assert!(
-        indexes
-            .iter()
-            .any(|name| name == "idx_early_warning_reports_workspace_generated")
-    );
-    assert!(
-        indexes
-            .iter()
-            .any(|name| name == "idx_early_warning_reports_cache_key")
-    );
-}
-
-#[test]
-fn migration_021_creates_early_warning_reports_for_existing_database() {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("migrated.db");
-
-    {
-        let conn = Connection::open(&db_path).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE schema_version (
-                version INTEGER PRIMARY KEY,
-                applied_at INTEGER NOT NULL,
-                description TEXT NOT NULL
-            );
-            INSERT INTO schema_version (version, applied_at, description)
-            VALUES (20, 1, 'Add symbol_annotations table');",
-        )
-        .unwrap();
-    }
-
-    let db = SymbolDatabase::new(&db_path).unwrap();
-    let indexes = report_indexes(&db);
-
-    assert_eq!(
-        db.get_schema_version().unwrap(),
-        crate::database::LATEST_SCHEMA_VERSION
-    );
     assert_eq!(table_count(&db), 1);
     assert!(
         indexes

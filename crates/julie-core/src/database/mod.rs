@@ -30,7 +30,6 @@ mod identifiers;
 pub mod impact_graph;
 mod index_engine;
 mod memory_vectors;
-mod migrations;
 mod projections;
 mod relationships;
 mod repairs;
@@ -74,7 +73,7 @@ fn register_sqlite_vec() {
 // Re-export public types
 pub use files::{calculate_file_hash, create_file_info};
 pub use identifiers::IdentifierRef;
-pub use migrations::LATEST_SCHEMA_VERSION;
+pub use schema::LATEST_SCHEMA_VERSION;
 pub use types::*;
 
 /// Backing storage for a `SymbolDatabase` connection — either an owned
@@ -133,7 +132,7 @@ impl SymbolDatabase {
             Connection::open(&file_path).map_err(|e| anyhow!("Failed to open database: {}", e))?;
 
         // 🚨 CRITICAL: Set WAL mode IMMEDIATELY after connection open
-        // This MUST happen before ANY other database operations (including migrations)
+        // This MUST happen before ANY other database operations (including schema creation)
         // to prevent corruption when multiple processes access the same database.
         // WAL mode allows concurrent readers + single writer without corruption.
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))
@@ -168,35 +167,18 @@ impl SymbolDatabase {
         // This prevents WAL from growing to 20MB+ which causes "database malformed" errors
         conn.pragma_update(None, "wal_autocheckpoint", 2000)?;
 
+        conn.execute("PRAGMA foreign_keys = ON", [])?;
+
         let mut db = Self {
             conn: SymbolDatabaseConn::Owned(conn),
             file_path,
         };
 
-        // 🔥 DEVELOPMENT MODE SAFETY: Detect schema version mismatches during development
-        // When building a new version with schema changes while old MCP is running,
-        // we can hit corruption. In dev mode, warn and optionally rebuild.
-        let current_schema = db.get_schema_version().unwrap_or(0);
-        let target_schema = crate::database::LATEST_SCHEMA_VERSION;
-
-        if current_schema > target_schema {
-            // Downgrade scenario - old database with newer schema
-            return Err(anyhow!(
-                "Database schema version ({}) is NEWER than code expects ({}). \
-                 This means you're running old Julie code against a database created by newer Julie. \
-                 Solutions:\n\
-                 1. Build and run the latest Julie version (recommended)\n\
-                 2. Delete .julie/indexes/ directory to rebuild with current schema\n\
-                 3. Checkout the newer Julie version that created this database",
-                current_schema,
-                target_schema
-            ));
+        // A database that already carries a schema version is opened as-is; the
+        // index tool deletes and rebuilds it when the version is not current.
+        if db.get_schema_version()? == 0 {
+            db.initialize_schema()?;
         }
-
-        // Run schema migrations AFTER WAL mode is configured
-        db.run_migrations()?;
-
-        db.initialize_schema()?;
 
         info!("Database initialized successfully");
         Ok(db)
@@ -269,9 +251,9 @@ impl SymbolDatabase {
     /// Wrap a pooled connection in a `SymbolDatabase`.
     ///
     /// The caller is responsible for schema state — this constructor assumes
-    /// the database has already been fully initialized (migrations + schema)
+    /// the database has already been fully initialized (schema creation)
     /// by a prior `SymbolDatabase::new` call on the same file.  It does NOT
-    /// run migrations or WAL setup.
+    /// run schema creation or WAL setup.
     pub fn from_pooled(pooled: PooledConn, file_path: PathBuf) -> Self {
         Self {
             conn: SymbolDatabaseConn::Pooled(pooled),

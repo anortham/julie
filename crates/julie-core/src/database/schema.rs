@@ -1,21 +1,20 @@
 // Database schema initialization and table creation
 
 use super::*;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
+use rusqlite::params;
 use tracing::debug;
 
+/// Schema version written into a fresh `symbols.db`. Derived indexes are never
+/// migrated: a database whose stored version differs is deleted and rebuilt.
+pub const LATEST_SCHEMA_VERSION: i32 = 32;
+
 impl SymbolDatabase {
-    /// Initialize the complete database schema
+    /// Create every table of a fresh database and record `LATEST_SCHEMA_VERSION`.
     pub(super) fn initialize_schema(&mut self) -> Result<()> {
         debug!("Creating database schema");
 
-        // Enable foreign key constraints
-        self.conn.execute("PRAGMA foreign_keys = ON", [])?;
-
-        // NOTE: WAL mode is now set in SymbolDatabase::new() BEFORE migrations run
-        // This ensures WAL is active for all operations including schema changes
-
-        // Create tables in dependency order
+        self.create_schema_version_table()?;
         self.create_workspaces_table()?;
         self.create_canonical_revisions_table()?;
         self.create_revision_file_changes_table()?;
@@ -37,9 +36,44 @@ impl SymbolDatabase {
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
         self.create_embedding_generations_table()?;
+        self.create_embedding_config_table()?;
+        self.create_tool_calls_table()?;
+        self.create_symbol_vectors_table()?;
+        self.create_memory_vectors_table()?;
+        self.record_schema_version()?;
 
         debug!("Database schema created successfully");
         Ok(())
+    }
+
+    fn create_schema_version_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at INTEGER NOT NULL,
+                description TEXT NOT NULL
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    fn record_schema_version(&self) -> Result<()> {
+        let applied_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .map_err(|e| anyhow!("System time error: {}", e))?;
+        self.conn.execute(
+            "INSERT OR REPLACE INTO schema_version (version, applied_at, description)
+             VALUES (?, ?, 'Fresh schema')",
+            params![LATEST_SCHEMA_VERSION, applied_at],
+        )?;
+        Ok(())
+    }
+
+    /// True when the stored schema version equals `LATEST_SCHEMA_VERSION`.
+    pub fn schema_version_matches(&self) -> Result<bool> {
+        Ok(self.get_schema_version()? == LATEST_SCHEMA_VERSION)
     }
 
     /// Create the workspaces table for tracking workspace metadata

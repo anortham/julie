@@ -15,9 +15,9 @@ impl SymbolDatabase {
     /// is a flat `DELETE ... WHERE file_path = ?1` with no dependency on
     /// identifier delete-ordering (cross-cutting Rule 1).
     ///
-    /// `pub(crate)` so `migration_027_add_type_arguments` can call it; the
-    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for both
-    /// fresh DBs (via `initialize_schema`) and upgrades (via migration 027).
+    /// `pub(crate)`; the
+    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for
+    /// fresh DBs via `initialize_schema`.
     pub(crate) fn create_type_arguments_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS type_arguments (
@@ -74,9 +74,9 @@ impl SymbolDatabase {
     /// `DELETE ... WHERE file_path = ?1` independent of identifier
     /// delete-ordering (cross-cutting Rule 1).
     ///
-    /// `pub(crate)` so `migration_028_add_literals` can call it; the
-    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for both
-    /// fresh DBs (via `initialize_schema`) and upgrades (via migration 028).
+    /// `pub(crate)`; the
+    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for
+    /// fresh DBs via `initialize_schema`.
     pub(crate) fn create_literals_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS literals (
@@ -230,9 +230,9 @@ impl SymbolDatabase {
     /// its own `file_path` so per-file cleanup is a flat `DELETE ... WHERE
     /// file_path = ?1` (cross-cutting Rule 1).
     ///
-    /// `pub(crate)` so `migration_030_add_web_edges` can call it; the
-    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for both
-    /// fresh DBs (via `initialize_schema`) and upgrades (via migration 030).
+    /// `pub(crate)`; the
+    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for
+    /// fresh DBs via `initialize_schema`.
     pub(crate) fn create_web_edges_table(&self) -> Result<()> {
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS web_edges (
@@ -262,6 +262,67 @@ impl SymbolDatabase {
                 ON web_edges(to_external);",
         )?;
         debug!("Created web_edges table and indexes");
+        Ok(())
+    }
+
+    /// Single-row table naming the active embedding model and its dimensions.
+    pub(super) fn create_embedding_config_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS embedding_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                model_name TEXT NOT NULL,
+                dimensions INTEGER NOT NULL,
+                format_version INTEGER NOT NULL DEFAULT 1
+            );
+            INSERT OR IGNORE INTO embedding_config (id, model_name, dimensions, format_version)
+            VALUES (1, 'bge-small-en-v1.5', 384, 1);",
+        )?;
+        Ok(())
+    }
+
+    pub(super) fn create_tool_calls_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS tool_calls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                tool_name TEXT NOT NULL,
+                duration_ms REAL NOT NULL,
+                result_count INTEGER,
+                source_bytes INTEGER,
+                input_bytes INTEGER,
+                output_bytes INTEGER,
+                success INTEGER NOT NULL DEFAULT 1,
+                metadata TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_tool_calls_timestamp ON tool_calls(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name);
+            CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id);",
+        )?;
+        Ok(())
+    }
+
+    /// 384-dimensional default; `recreate_vectors_table` rebuilds it when the
+    /// active model uses a different dimension.
+    pub(super) fn create_symbol_vectors_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS symbol_vectors USING vec0(
+                symbol_id TEXT PRIMARY KEY,
+                embedding float[384]
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub(super) fn create_memory_vectors_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0(
+                checkpoint_id TEXT PRIMARY KEY,
+                embedding float[384]
+            )",
+            [],
+        )?;
         Ok(())
     }
 }

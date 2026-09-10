@@ -298,10 +298,9 @@ fn test_get_embedded_symbol_ids() {
 }
 
 #[test]
-fn test_migration_010_is_idempotent() {
+fn symbol_vectors_table_exists_on_fresh_database() {
     let (db, _dir) = create_test_db();
 
-    // The migration ran during SymbolDatabase::new(). Verify the table exists.
     let table_exists: bool = db
         .conn
         .query_row(
@@ -313,10 +312,9 @@ fn test_migration_010_is_idempotent() {
 
     assert!(
         table_exists,
-        "symbol_vectors table should exist after migration"
+        "symbol_vectors table should exist on a fresh database"
     );
 
-    // Verify schema version was bumped
     let version = db.get_schema_version().unwrap();
     assert_eq!(
         version, LATEST_SCHEMA_VERSION,

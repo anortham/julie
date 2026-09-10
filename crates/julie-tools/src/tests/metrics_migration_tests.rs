@@ -2,7 +2,7 @@ use julie_core::database::SymbolDatabase;
 use tempfile::TempDir;
 
 #[test]
-fn test_migration_013_creates_tool_calls_table() {
+fn fresh_database_creates_tool_calls_table() {
     let tmp = TempDir::new().unwrap();
     let db_path = tmp.path().join("test.db");
     let db = SymbolDatabase::new(&db_path).unwrap();
@@ -15,11 +15,14 @@ fn test_migration_013_creates_tool_calls_table() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(count, 1, "tool_calls table should exist after migration");
+    assert_eq!(
+        count, 1,
+        "tool_calls table should exist on a fresh database"
+    );
 }
 
 #[test]
-fn test_migration_013_tool_calls_has_expected_columns() {
+fn tool_calls_has_expected_columns() {
     let tmp = TempDir::new().unwrap();
     let db_path = tmp.path().join("test.db");
     let db = SymbolDatabase::new(&db_path).unwrap();
@@ -54,7 +57,7 @@ fn test_migration_013_tool_calls_has_expected_columns() {
 }
 
 #[test]
-fn test_migration_013_adds_line_count_to_files() {
+fn files_table_has_line_count() {
     let tmp = TempDir::new().unwrap();
     let db_path = tmp.path().join("test.db");
     let db = SymbolDatabase::new(&db_path).unwrap();
@@ -66,7 +69,7 @@ fn test_migration_013_adds_line_count_to_files() {
 }
 
 #[test]
-fn test_migration_013_tool_calls_indexes_exist() {
+fn tool_calls_indexes_exist() {
     let tmp = TempDir::new().unwrap();
     let db_path = tmp.path().join("test.db");
     let db = SymbolDatabase::new(&db_path).unwrap();

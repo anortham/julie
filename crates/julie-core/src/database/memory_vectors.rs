@@ -1,7 +1,7 @@
 //! Vector storage and KNN search for memory embeddings using sqlite-vec.
 //!
 //! Provides CRUD operations for checkpoint embeddings stored in the `memory_vectors`
-//! virtual table (created by migration 012). Mirrors `vectors.rs` but keyed by
+//! virtual table (created by `initialize_schema`). Mirrors `vectors.rs` but keyed by
 //! `checkpoint_id` instead of `symbol_id`.
 
 use anyhow::{Context, Result};

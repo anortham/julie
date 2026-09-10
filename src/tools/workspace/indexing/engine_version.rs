@@ -10,7 +10,9 @@ pub const SEMANTIC_INDEX_ENGINE_COMPONENT: &str = "semantic_index_engine";
 
 /// Composed engine version compared verbatim against the stored value to decide
 /// whether persisted derived data must be rebuilt. Any change to this literal
-/// forces a one-time reindex of every file.
+/// forces a one-time reindex of every file. The trailing `+schema=` component
+/// carries `julie_core::database::LATEST_SCHEMA_VERSION`, so a `symbols.db` at
+/// any other schema version is also rebuilt by this single comparison.
 ///
 /// It embeds `julie_extractors::EXTRACTION_CONTRACT_VERSION`, but that substring
 /// alone does not detect drift: the contract version can stay byte-identical
@@ -19,4 +21,4 @@ pub const SEMANTIC_INDEX_ENGINE_COMPONENT: &str = "semantic_index_engine";
 /// updated on every extractor re-pin**, even when the contract version is
 /// unchanged. The regression test in `src/tests/core/engine_version.rs` reads
 /// the tag straight out of `Cargo.toml` and enforces both links.
-pub const SEMANTIC_INDEX_ENGINE_VERSION: &str = "extractors=2026-06-30.ecmascript-swift-shape-v3.source-regions-v1.structural-facts-v1.complexity-metrics-v1.file-derived-component-symbols-v1.framework-route-facts-v1.react-nextjs-route-facts-v1.nuxt-route-facts-v1.web-route-facts-v3.http-boundary-facts-v1.containing-symbol-binding-v2.backend-http-boundary-v1.backend-http-boundary-v2.sql-tsql-facts-v1.test-role-strings-v2.csharp-visibility-v2.go-subtests-v1.rust-doc-test-facts-v1.fsharp-v1.marker-razorback-v1.receiver-type-facts-v1.receiver-type-facts-v2+consumer-enrichments-v1+schema=2026-05-05.reference-identifier-v3+web-edges-v1+extractors-tag=v2.42.0+epoch=9+consumer-projection-v1+receiver-schema-v31";
+pub const SEMANTIC_INDEX_ENGINE_VERSION: &str = "extractors=2026-06-30.ecmascript-swift-shape-v3.source-regions-v1.structural-facts-v1.complexity-metrics-v1.file-derived-component-symbols-v1.framework-route-facts-v1.react-nextjs-route-facts-v1.nuxt-route-facts-v1.web-route-facts-v3.http-boundary-facts-v1.containing-symbol-binding-v2.backend-http-boundary-v1.backend-http-boundary-v2.sql-tsql-facts-v1.test-role-strings-v2.csharp-visibility-v2.go-subtests-v1.rust-doc-test-facts-v1.fsharp-v1.marker-razorback-v1.receiver-type-facts-v1.receiver-type-facts-v2+consumer-enrichments-v1+schema=2026-05-05.reference-identifier-v3+web-edges-v1+extractors-tag=v2.42.0+epoch=9+consumer-projection-v1+receiver-schema-v31+schema=32";

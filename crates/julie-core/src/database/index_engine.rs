@@ -71,4 +71,35 @@ impl SymbolDatabase {
         )?;
         Ok(())
     }
+    /// Highest version recorded in `schema_version`; 0 when the table is absent.
+    pub fn get_schema_version(&self) -> Result<i32> {
+        match self.conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |row| row.get(0),
+        ) {
+            Ok(version) => Ok(version),
+            Err(rusqlite::Error::SqliteFailure(_, Some(message)))
+                if message.contains("no such table") =>
+            {
+                Ok(0)
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    pub fn has_column(&self, table: &str, column: &str) -> Result<bool> {
+        assert!(
+            table.chars().all(|c| c.is_alphanumeric() || c == '_'),
+            "has_column: table name must contain only alphanumeric chars and underscores: {:?}",
+            table
+        );
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({})", table))?;
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(columns.contains(&column.to_string()))
+    }
 }

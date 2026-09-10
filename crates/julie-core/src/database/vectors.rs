@@ -1,7 +1,7 @@
 //! Vector storage and KNN search using sqlite-vec.
 //!
 //! Provides CRUD operations for symbol embeddings stored in the `symbol_vectors`
-//! virtual table (created by migration 010).
+//! virtual table (created by `initialize_schema`).
 //!
 //! # Vector Format
 //!

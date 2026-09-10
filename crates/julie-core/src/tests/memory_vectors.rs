@@ -1,4 +1,4 @@
-//! Tests for memory embedding vector storage (migration 012 + CRUD + KNN).
+//! Tests for memory embedding vector storage (table creation + CRUD + KNN).
 //!
 //! Mirrors `vector_storage.rs` pattern but for the `memory_vectors` table.
 
@@ -12,10 +12,10 @@ fn create_test_db() -> (SymbolDatabase, TempDir) {
     (db, dir)
 }
 
-// ── Migration 012 ──────────────────────────────────────────────────
+// ── Table creation ──────────────────────────────────────────────────
 
 #[test]
-fn test_migration_012_creates_memory_vectors_table() {
+fn memory_vectors_table_exists_on_fresh_database() {
     let (db, _dir) = create_test_db();
 
     let table_exists: bool = db
@@ -29,16 +29,15 @@ fn test_migration_012_creates_memory_vectors_table() {
 
     assert!(
         table_exists,
-        "memory_vectors table should exist after migration 012"
+        "memory_vectors table should exist on a fresh database"
     );
 }
 
 #[test]
-fn test_migration_012_is_idempotent() {
+fn reopening_a_fresh_database_keeps_schema_version_current() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
 
-    // Create database (runs all migrations including 012)
     {
         let _db = SymbolDatabase::new(&db_path).unwrap();
     }

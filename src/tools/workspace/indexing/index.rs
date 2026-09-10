@@ -361,6 +361,9 @@ async fn semantic_index_engine_refresh_needed(
             poisoned.into_inner()
         }
     };
+    if !db.schema_version_matches()? {
+        return Ok(true);
+    }
     let stats = db.get_stats()?;
     let has_persisted_index_state =
         stats.total_files > 0 || stats.total_symbols > 0 || stats.total_relationships > 0;
