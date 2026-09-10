@@ -49,16 +49,23 @@ fn service_modules_contain_no_coordination_words() {
         "continuation",
         "handoff",
     ];
-    let allowlist = [("status.rs", "lock")];
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/service");
+    let allowlist = [("src/service/status.rs", "lock")];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(root.join("src/service"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("rs"))
+        .collect();
+    files.push(root.join("src/tools/workspace/indexing/seed.rs"));
+    files.push(root.join("src/tools/workspace/commands/registry/status.rs"));
     let mut hits = Vec::new();
     let mut allowed_hits = 0;
-    for entry in std::fs::read_dir(&dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-            continue;
-        }
-        let fname = path.file_name().unwrap().to_string_lossy().to_string();
+    for path in files {
+        let fname = path
+            .strip_prefix(root)
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         for (n, line) in std::fs::read_to_string(&path).unwrap().lines().enumerate() {
             let lower = line.to_lowercase();
             for word in banned {
@@ -77,11 +84,11 @@ fn service_modules_contain_no_coordination_words() {
     }
     assert_eq!(
         allowed_hits, 1,
-        "expected exactly 1 allowlisted lock() call in status.rs"
+        "expected exactly 1 allowlisted lock() call in src/service/status.rs"
     );
     assert!(
         hits.is_empty(),
-        "coordination words in src/service:\n{}",
+        "coordination words in service modules:\n{}",
         hits.join("\n")
     );
 }

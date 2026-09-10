@@ -28,7 +28,6 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 anyhow = "1.0"
 
 # File locking
-fs2 = "0.4"
 
 # Semantic embeddings
 sqlite-vec = "0.1"

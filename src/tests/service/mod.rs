@@ -1,6 +1,7 @@
 mod budget;
 mod client;
 mod control;
+mod durable_roots;
 mod http_api;
 mod mcp_http;
 mod process;

@@ -161,7 +161,16 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::service::shim",
                     "cargo nextest run --lib tests::service::control",
                     "cargo nextest run --lib tests::service::budget",
+                    "cargo nextest run --lib tests::service::durable_roots",
                 ],
+            },
+        ),
+        (
+            "complexity-words",
+            ExpectedBucket {
+                expected_seconds: 5,
+                timeout_seconds: 30,
+                commands: &["sh scripts/complexity-words.sh main"],
             },
         ),
         (
@@ -481,7 +490,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::nl_embeddings_daemon_tests -- --skip search_quality",
                     "cargo nextest run -p julie-tools --lib tests::search_nl_path_prior_pipeline_tests",
                     "cargo nextest run -p julie-tools --lib tests::search_nl_symbol_query_latency_tests",
                     "cargo nextest run -p julie-tools --lib tests::search_pretokenized_emit_test",
@@ -733,6 +741,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("Machine service bindings, in process on ephemeral ports"),
+            },
+        ),
+        (
+            "complexity-words",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("complexity-words script over git diff main...HEAD"),
             },
         ),
         (

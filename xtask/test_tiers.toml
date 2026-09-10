@@ -238,14 +238,13 @@ commands = [
 
 [buckets.tools-search-unified]
 # nl_path_prior_pipeline/nl_symbol_latency/pretokenized_emit/title_exact_boost relocated to julie-tools (T2b.6).
-# fast_search_unified_cutover/nl_embeddings_daemon/relationship_text/unified_ STAY (handler-bound).
+# fast_search_unified_cutover/relationship_text/unified_ STAY (handler-bound); nl_embeddings_daemon_tests deleted with the Python host.
 expected_seconds = 60
 timeout_seconds = 120
 scope_label = "tooling"
 notes = "unified search schema, ranking, reranker, and query-path coverage"
 commands = [
   "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::search::nl_embeddings_daemon_tests -- --skip search_quality",
   "cargo nextest run -p julie-tools --lib tests::search_nl_path_prior_pipeline_tests",
   "cargo nextest run -p julie-tools --lib tests::search_nl_symbol_query_latency_tests",
   "cargo nextest run -p julie-tools --lib tests::search_pretokenized_emit_test",
@@ -519,7 +518,16 @@ commands = [
   "cargo nextest run --lib tests::service::shim",
   "cargo nextest run --lib tests::service::control",
   "cargo nextest run --lib tests::service::budget",
+  "cargo nextest run --lib tests::service::durable_roots",
 ]
+
+[buckets.complexity-words]
+# On-demand gate, in no tier: fails when new product code adds a design section 4 coordination word.
+expected_seconds = 5
+timeout_seconds = 30
+scope_label = "tooling"
+notes = "complexity-words script over git diff main...HEAD"
+commands = ["sh scripts/complexity-words.sh main"]
 
 [buckets.service-process]
 # Real subprocesses: shim starts service, stale record recovery, idle exit, version mismatch, stop.
