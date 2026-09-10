@@ -7,9 +7,9 @@
 //! pid/discovery runtime surface and the retired search-compare data surface.
 //! Two guarantees:
 //!
-//!   1. **No-args path serves in-process.** `src/main.rs`'s `None =>` arm calls
-//!      `run_in_process_server` and NEVER `run_adapter` / `DaemonLauncher`. The
-//!      old fork-daemon-and-bridge-stdio path is gone from the default entry.
+//!   1. **No-args path is the stdio shim.** `src/main.rs`'s `None =>` arm calls
+//!      `run_stdio_shim` (machine service phase 1) and NEVER `run_adapter` /
+//!      `DaemonLauncher` / the deleted `run_in_process_server`.
 //!   2. **The 3d.2b-ii deletions actually happened, and 3d.3 deleted surfaces are gone.**
 //!      The daemon HTTP-server runtime + pool files MUST be gone; the pid/discovery
 //!      runtime surface MUST be gone; the search-compare data surface MUST be gone.
@@ -27,10 +27,10 @@ fn code_part(line: &str) -> &str {
     }
 }
 
-/// Guarantee 1: the no-args (`None =>`) arm of `main.rs` serves in-process and
+/// Guarantee 1: the no-args (`None =>`) arm of `main.rs` runs the stdio shim and
 /// does not touch the adapter/daemon-launch path.
 #[test]
-fn no_args_main_serves_in_process_not_adapter() {
+fn no_args_main_runs_stdio_shim_not_adapter() {
     let main_rs = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs");
     let content = fs::read_to_string(&main_rs).expect("read src/main.rs");
 
@@ -43,7 +43,7 @@ fn no_args_main_serves_in_process_not_adapter() {
     for (idx, line) in content.lines().enumerate() {
         let code = code_part(line);
         let lineno = idx + 1;
-        if code.contains("run_in_process_server") && in_process_line.is_none() {
+        if code.contains("run_stdio_shim") && in_process_line.is_none() {
             in_process_line = Some(lineno);
         }
         // The last match arm. `None =>` opens the no-args path.
@@ -59,9 +59,8 @@ fn no_args_main_serves_in_process_not_adapter() {
     }
 
     // The cutover must call the in-process server.
-    let in_process_line = in_process_line.expect(
-        "src/main.rs must call `run_in_process_server` — the no-args cutover (T10) is missing",
-    );
+    let in_process_line = in_process_line
+        .expect("src/main.rs must call `run_stdio_shim` — the no-args shim cutover is missing");
     let none_arm_line =
         none_arm_line.expect("src/main.rs must still have a `None =>` (no-args) arm");
 
@@ -69,7 +68,7 @@ fn no_args_main_serves_in_process_not_adapter() {
     // the `None =>` token (the None arm is the last match arm in main()).
     assert!(
         in_process_line > none_arm_line,
-        "`run_in_process_server` (line {in_process_line}) must be inside the `None =>` \
+        "`run_stdio_shim` (line {in_process_line}) must be inside the `None =>` \
          no-args arm (line {none_arm_line}); found it before the arm"
     );
 
@@ -146,6 +145,7 @@ fn pid_and_discovery_runtime_surface_deleted_in_3d3_task2() {
         "src/daemon/pid.rs",
         "src/daemon/discovery.rs",
         "src/registry/pid.rs",
+        "src/registry/discovery.rs",
     ];
 
     let still_present: Vec<&str> = deleted_in_3d3_task2
@@ -159,16 +159,6 @@ fn pid_and_discovery_runtime_surface_deleted_in_3d3_task2() {
         "3d.3 Task 2 deletes the pid-file runtime; these files MUST NOT exist. \
          Still present: {still_present:?}"
     );
-
-    let discovery_rs = fs::read_to_string(root.join("src/registry/discovery.rs"))
-        .expect("read src/registry/discovery.rs");
-    for symbol in ["DiscoveryRecord", "DiscoveryState", "DiscoveryFile"] {
-        assert!(
-            !discovery_rs.contains(symbol),
-            "3d.3 Task 2 deletes the discovery.json reader/writer surface; \
-             src/registry/discovery.rs must not contain `{symbol}`"
-        );
-    }
 }
 
 /// Guarantee 2c: the retired search-compare data surface deleted in 3d.3 Task 5
