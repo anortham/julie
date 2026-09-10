@@ -24,7 +24,7 @@ Do not use this as a blind deletion workflow. Dynamic dispatch, trait impls, CLI
 1. Get the current workspace id:
 
 ```text
-manage_workspace(operation="stats")
+manage_workspace(operation="status")
 ```
 
 2. Run the bundled inventory script from the repo root:

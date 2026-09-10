@@ -201,13 +201,16 @@ register_tool_catalog! {
     "manage_workspace" => {
         variant: ManageWorkspace,
         type: crate::tools::ManageWorkspaceTool,
-        description: "Manage workspaces: index, open, register metadata, remove, list, refresh, stats, and health-check.",
+        description: "Manage workspaces: index, list, open, remove, refresh, health, rebuild, and status.",
         access: |p| match p.operation.as_str() {
-            "list" | "stats" | "health" | "dashboard" => AccessClass::Read,
+            "list" | "health" | "dashboard" | "status" => AccessClass::Read,
             _ => AccessClass::IndexMutation,
         },
         workspace: |p| p.path.as_deref().or(p.workspace_id.as_deref()),
-        unbound: |p| p.operation == "list",
+        unbound: |p| {
+            p.operation == "list"
+                || (p.operation == "status" && p.path.is_none() && p.workspace_id.is_none())
+        },
         semantics: |_p| SemanticRequirement::None,
     },
     "patterns" => {

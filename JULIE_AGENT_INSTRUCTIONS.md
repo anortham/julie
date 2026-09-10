@@ -19,7 +19,7 @@
 - `blast_radius`: Deterministic impact analysis for changed files, internal symbol IDs, or revision ranges. Returns impacts ranked by centrality and hops plus linked tests. Use before refactoring or after a change. Prefer `file_paths` when you know a symbol name or file path; `symbol_ids` are internal Julie IDs, not names like `AuthService::validate`.
 - `patterns`: Query persisted `structural_facts` without writing raw grammar-specific tree-sitter queries. Use `operation="list"` to discover observed pattern IDs, `operation="search"` with `pattern_id` or `query`, and `operation="summary"` with `group_by` or `facet`. Optional filters are `path`, `language`, `where`, and `limit`.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
-- `manage_workspace`: Index, open, register/remove workspace metadata, list, refresh, stats, and health-check workspaces. For cross-workspace work, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
+- `manage_workspace`: Operations `index`, `list`, `open`, `remove`, `refresh`, `health`, `rebuild` (delete a checkout's index and index it again from scratch), `status` (every known checkout: root, watcher, file/symbol/vector counts, database size, Tantivy state and age, last write), `recover_edit`, and `dashboard`. For cross-workspace work, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
 - `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
 - `rewrite_symbol`: Rewrite a symbol by name. Operations: replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc. Always `dry_run=true` first.
 

@@ -971,11 +971,14 @@ async fn adversarial_request_engine_dispatch_integration() {
     assert_eq!(reply_off.readiness.status, "disabled");
     assert_eq!(reply_off.readiness.coverage, None);
 
-    // 4. manage_workspace operation="stats" (requires SemanticRequirement::None)
+    // 4. manage_workspace operation="health" (requires SemanticRequirement::None)
     // with Required mode MUST succeed with disabled readiness because requirement is None!
     let req_stats = ToolRequest::new(
         "manage_workspace",
-        json!({ "operation": "stats" }).as_object().unwrap().clone(),
+        json!({ "operation": "health" })
+            .as_object()
+            .unwrap()
+            .clone(),
     )
     .with_semantics(SemanticMode::Required);
     let ctx_stats = RequestContext::new(

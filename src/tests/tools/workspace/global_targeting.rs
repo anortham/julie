@@ -127,7 +127,7 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
 }
 
 mod global_remove;
-mod list_stats;
+mod list;
 mod open_lifecycle;
 mod rebind_index;
 mod resolution_failures;

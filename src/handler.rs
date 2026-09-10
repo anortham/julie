@@ -695,7 +695,7 @@ impl JulieServerHandler {
         workspace_guard
             .as_ref()
             .and_then(|workspace| workspace.watcher.as_ref())
-            .is_some_and(|watcher| watcher.is_running_for_test())
+            .is_some_and(|watcher| watcher.is_running())
     }
 
     #[cfg(test)]
@@ -1662,11 +1662,10 @@ pub(crate) fn is_write_exempt(
             op,
             Some(
                 ManageWorkspaceOperation::Index
-                    | ManageWorkspaceOperation::Register
                     | ManageWorkspaceOperation::Remove
-                    | ManageWorkspaceOperation::Clean
                     | ManageWorkspaceOperation::Refresh
                     | ManageWorkspaceOperation::Open
+                    | ManageWorkspaceOperation::Rebuild
             )
         );
     }

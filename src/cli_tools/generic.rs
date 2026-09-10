@@ -272,11 +272,11 @@ mod tests {
         use crate::tools::ManageWorkspaceTool;
 
         let params = serde_json::json!({
-            "operation": "stats"
+            "operation": "status"
         });
 
         let tool: ManageWorkspaceTool = deserialize_params("manage_workspace", params).unwrap();
-        assert_eq!(tool.operation, "stats");
+        assert_eq!(tool.operation, "status");
         assert_eq!(tool.path, None);
         assert_eq!(tool.force, None);
     }

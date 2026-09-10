@@ -291,9 +291,6 @@ impl CliToolCommand for WorkspaceArgs {
         if self.force {
             map.insert("force".into(), Value::Bool(true));
         }
-        if let Some(ref n) = self.name {
-            map.insert("name".into(), Value::String(n.clone()));
-        }
         if self.foreground {
             map.insert("foreground".into(), Value::Bool(true));
         }
@@ -303,7 +300,7 @@ impl CliToolCommand for WorkspaceArgs {
 
     fn validate_standalone(&self) -> Result<()> {
         match self.operation.as_str() {
-            "open" | "register" | "remove" | "refresh" | "stats" => {
+            "open" | "remove" | "refresh" => {
                 anyhow::bail!(
                     "Workspace operation '{}' is not available from the standalone CLI.\n\
                      Use the MCP manage_workspace tool instead.",

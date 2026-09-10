@@ -525,31 +525,26 @@ fn test_workspace_cmd_defaults() {
     assert_eq!(args.operation, "index");
     assert!(args.path.is_none());
     assert!(!args.force);
-    assert!(args.name.is_none());
 }
 
 #[test]
 fn test_workspace_cmd_all_flags() {
     let args = WorkspaceArgs::parse_from([
         "workspace",
-        "register",
+        "rebuild",
         "--path",
         "/code/myproject",
         "--force",
-        "--name",
-        "My Project",
     ]);
-    assert_eq!(args.operation, "register");
+    assert_eq!(args.operation, "rebuild");
     assert_eq!(args.path.as_deref(), Some("/code/myproject"));
     assert!(args.force);
-    assert_eq!(args.name.as_deref(), Some("My Project"));
 }
 
 #[test]
 fn test_workspace_cmd_short_flags() {
-    let args = WorkspaceArgs::parse_from(["workspace", "open", "-p", "/tmp/proj", "-n", "test"]);
+    let args = WorkspaceArgs::parse_from(["workspace", "open", "-p", "/tmp/proj"]);
     assert_eq!(args.path.as_deref(), Some("/tmp/proj"));
-    assert_eq!(args.name.as_deref(), Some("test"));
 }
 
 // ---------------------------------------------------------------------------

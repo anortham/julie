@@ -175,6 +175,50 @@ async fn status_lists_the_last_requests_newest_first() {
 }
 
 #[tokio::test]
+async fn status_carries_every_checkout() {
+    let running = Running::start(None).await;
+    let root_dir = tempfile::tempdir().unwrap();
+    let root = root_dir.path().canonicalize().unwrap();
+    std::fs::write(root.join(".git"), "gitdir: nowhere\n").unwrap();
+    std::fs::write(root.join("lib.rs"), "pub fn status_probe() {}\n").unwrap();
+    let indexed = running
+        .client()
+        .post(format!("{}/api/manage_workspace", running.base))
+        .bearer_auth(&running.token)
+        .json(&serde_json::json!({"operation": "index", "path": root.to_string_lossy()}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(indexed.status(), 200);
+
+    let body: serde_json::Value = running
+        .client()
+        .get(format!("{}/status", running.base))
+        .bearer_auth(&running.token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let checkouts = body["checkouts"].as_array().unwrap();
+    let expected_id =
+        crate::workspace::registry::generate_workspace_id(&root.to_string_lossy()).unwrap();
+    let checkout = checkouts
+        .iter()
+        .find(|c| c["workspace_id"] == expected_id)
+        .unwrap_or_else(|| panic!("checkout missing: {checkouts:?}"));
+    assert_eq!(checkout["root"], root.to_string_lossy().as_ref());
+    assert_eq!(checkout["root_exists"], true);
+    assert_eq!(checkout["file_count"], 1);
+    assert_eq!(checkout["symbol_count"], 1);
+    assert_eq!(checkout["tantivy"], "present");
+    assert!(checkout["db_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(checkout["vector_count"], 0);
+    assert!(checkout["last_write_at"].is_string());
+}
+
+#[tokio::test]
 async fn idle_exit_removes_service_json() {
     let running = Running::start(Some(Duration::from_millis(300))).await;
     let paths = running.paths.clone();

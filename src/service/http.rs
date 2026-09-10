@@ -1,6 +1,7 @@
 use crate::request_engine::RequestEngine;
 use crate::request_engine::types::{RequestContext, RequestFailure, RequestOrigin, ToolRequest};
 use crate::service::status::{ErrorRecord, RequestRecord, StatusLog, now_rfc3339};
+use crate::tools::workspace::commands::registry::CheckoutStatus;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -163,7 +164,29 @@ async fn require_token(
 }
 
 async fn status(State(state): State<AppState>) -> Json<crate::service::status::StatusDocument> {
-    Json(state.status.document())
+    Json(state.status.document(checkouts(&state).await))
+}
+
+async fn checkouts(state: &AppState) -> Vec<CheckoutStatus> {
+    let mut arguments = Map::new();
+    arguments.insert("operation".into(), Value::String("status".into()));
+    let context = RequestContext::new(
+        RequestOrigin::Mcp,
+        Some(state.request_timeout),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    let reply = state
+        .engine
+        .execute(ToolRequest::new("manage_workspace", arguments), context)
+        .await;
+    match reply {
+        Ok(reply) => serde_json::from_value(reply.result["structuredContent"]["checkouts"].clone())
+            .unwrap_or_default(),
+        Err(failure) => {
+            tracing::warn!(code = %failure.code, message = %failure.message, "status: checkout scan failed");
+            Vec::new()
+        }
+    }
 }
 
 async fn api_call(

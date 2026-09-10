@@ -256,20 +256,17 @@ pub struct PatternsArgs {
 // workspace
 // ---------------------------------------------------------------------------
 
-/// Manage workspaces (index, list, stats, health, etc.).
+/// Manage workspaces (index, list, status, health, etc.).
 #[derive(Debug, Clone, Parser)]
 pub struct WorkspaceArgs {
-    /// Operation: index, list, register, remove, stats, clean, refresh, open, health
+    /// Operation: index, list, open, remove, refresh, health, rebuild, status, recover_edit, dashboard
     pub operation: String,
-    /// Path to workspace (used by: index, register, open)
+    /// Path to workspace (used by: index, open, rebuild, status)
     #[arg(short = 'p', long)]
     pub path: Option<String>,
     /// Force complete re-indexing (used by: index, refresh, open)
     #[arg(long)]
     pub force: bool,
-    /// Display name for workspace metadata (used by: register)
-    #[arg(short = 'n', long)]
-    pub name: Option<String>,
     /// Run in foreground mode (required for interactive dashboard)
     #[arg(long)]
     pub foreground: bool,

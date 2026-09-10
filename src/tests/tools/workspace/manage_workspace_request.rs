@@ -21,16 +21,14 @@ fn request_targets_primary(value: Value) -> bool {
 
 #[test]
 fn manage_workspace_tool_keeps_flat_json_shape_for_representative_operations() {
-    let register = tool_from_json(json!({
-        "operation": "register",
+    let rebuild = tool_from_json(json!({
+        "operation": "rebuild",
         "path": "/repo",
-        "name": "Repo",
         "force": true
     }));
-    assert_eq!(register.operation, "register");
-    assert_eq!(register.path.as_deref(), Some("/repo"));
-    assert_eq!(register.name.as_deref(), Some("Repo"));
-    assert_eq!(register.force, Some(true));
+    assert_eq!(rebuild.operation, "rebuild");
+    assert_eq!(rebuild.path.as_deref(), Some("/repo"));
+    assert_eq!(rebuild.force, Some(true));
 
     let refresh = tool_from_json(json!({
         "operation": "refresh",
@@ -64,16 +62,14 @@ fn manage_workspace_request_parses_valid_operations_with_live_fields() {
     ));
 
     let request = request_from_json(json!({
-        "operation": "register",
-        "path": "/repo",
-        "name": "Repo",
-        "force": true
+        "operation": "rebuild",
+        "path": "/repo"
     }))
     .unwrap();
     assert!(matches!(
         request,
-        ManageWorkspaceRequest::Register { path, name, force }
-            if path == "/repo" && name.as_deref() == Some("Repo") && force
+        ManageWorkspaceRequest::Rebuild { path, workspace_id }
+            if path.as_deref() == Some("/repo") && workspace_id.is_none()
     ));
 
     let request = request_from_json(json!({
@@ -90,8 +86,14 @@ fn manage_workspace_request_parses_valid_operations_with_live_fields() {
     let request = request_from_json(json!({ "operation": "list" })).unwrap();
     assert!(matches!(request, ManageWorkspaceRequest::List));
 
-    let request = request_from_json(json!({ "operation": "clean" })).unwrap();
-    assert!(matches!(request, ManageWorkspaceRequest::Clean));
+    let request = request_from_json(json!({ "operation": "status" })).unwrap();
+    assert!(matches!(
+        request,
+        ManageWorkspaceRequest::Status {
+            workspace_id: None,
+            path: None
+        }
+    ));
 
     let request = request_from_json(json!({
         "operation": "refresh",
@@ -123,14 +125,14 @@ fn manage_workspace_request_parses_valid_operations_with_live_fields() {
     ));
 
     let request = request_from_json(json!({
-        "operation": "stats",
+        "operation": "status",
         "workspace_id": "workspace-1"
     }))
     .unwrap();
     assert!(matches!(
         request,
-        ManageWorkspaceRequest::Stats { workspace_id }
-            if workspace_id.as_deref() == Some("workspace-1")
+        ManageWorkspaceRequest::Status { workspace_id, path }
+            if workspace_id.as_deref() == Some("workspace-1") && path.is_none()
     ));
 
     let request = request_from_json(json!({
@@ -151,8 +153,8 @@ fn manage_workspace_request_parses_valid_operations_with_live_fields() {
 fn manage_workspace_request_rejects_missing_required_fields_and_unknown_operations() {
     let cases = [
         (
-            json!({ "operation": "register" }),
-            "'path' parameter required for 'register' operation",
+            json!({ "operation": "rebuild" }),
+            "'workspace_id' or 'path' parameter required for 'rebuild' operation",
         ),
         (
             json!({ "operation": "remove" }),
@@ -164,7 +166,7 @@ fn manage_workspace_request_rejects_missing_required_fields_and_unknown_operatio
         ),
         (
             json!({ "operation": "add" }),
-            "Unknown operation: 'add'. Valid operations: index, list, register, remove, stats, clean, refresh, open, health, dashboard",
+            "Unknown operation: 'add'. Valid operations: index, list, open, remove, refresh, health, rebuild, status, recover_edit, recover-edit, dashboard",
         ),
     ];
 
@@ -178,7 +180,7 @@ fn manage_workspace_request_rejects_missing_required_fields_and_unknown_operatio
 #[test]
 fn manage_workspace_preflight_classification_uses_shared_operation_parser() {
     assert!(!request_targets_primary(json!({
-        "operation": "register",
+        "operation": "rebuild",
         "path": "/repo"
     })));
     assert!(request_targets_primary(json!({ "operation": "list" })));
@@ -191,14 +193,14 @@ fn manage_workspace_preflight_classification_uses_shared_operation_parser() {
         json!({ "operation": "dashboard" })
     ));
 
-    assert!(request_targets_primary(json!({ "operation": "stats" })));
-    assert!(request_targets_primary(json!({
-        "operation": "stats",
-        "workspace_id": "primary"
+    assert!(request_targets_primary(json!({ "operation": "status" })));
+    assert!(!request_targets_primary(json!({
+        "operation": "status",
+        "workspace_id": "workspace-1"
     })));
     assert!(!request_targets_primary(json!({
-        "operation": "stats",
-        "workspace_id": "workspace-1"
+        "operation": "status",
+        "path": "/repo"
     })));
 
     assert!(request_targets_primary(json!({ "operation": "index" })));

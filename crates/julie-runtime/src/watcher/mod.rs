@@ -357,15 +357,18 @@ impl IncrementalIndexer {
         Ok(())
     }
 
-    // Test-only helper. Its sole consumer is the top crate's `#[cfg(test)]`
-    // `loaded_workspace_file_watcher_running_for_test`, so it is gated behind
-    // `test-support` (the top crate's dev-dep enables `julie-runtime/test-support`)
-    // to keep it out of the production library.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn is_running_for_test(&self) -> bool {
+    /// True while the notify watcher and both background tasks are alive.
+    pub fn is_running(&self) -> bool {
         self.watcher.is_some()
             && self.event_task.is_some()
             && self.queue_task.is_some()
             && !self.cancel_flag.load(Ordering::Acquire)
+    }
+
+    /// Time of the newest file event the queue processor handled. The dedup map
+    /// forgets entries older than its two-second window, so this is `None` once
+    /// the watcher has been idle longer than that.
+    pub async fn last_file_event_at(&self) -> Option<SystemTime> {
+        self.last_processed.lock().await.values().max().copied()
     }
 }

@@ -146,7 +146,6 @@ fn test_workspace_args_tool_name() {
         operation: "index".into(),
         path: None,
         force: false,
-        name: None,
         foreground: false,
         edit_id: None,
         action: None,
@@ -364,7 +363,6 @@ fn test_workspace_to_tool_args_with_force() {
         operation: "index".into(),
         path: Some("/code/project".into()),
         force: true,
-        name: Some("My Project".into()),
         foreground: false,
         edit_id: None,
         action: None,
@@ -373,7 +371,7 @@ fn test_workspace_to_tool_args_with_force() {
     assert_eq!(json["operation"], "index");
     assert_eq!(json["path"], "/code/project");
     assert_eq!(json["force"], true);
-    assert_eq!(json["name"], "My Project");
+    assert!(json.get("name").is_none());
 }
 
 #[test]
@@ -576,35 +574,65 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
     );
 }
 
-#[tokio::test]
-async fn test_run_cli_tool_standalone_workspace_stats_not_available_via_cli() {
-    let temp = tempfile::Builder::new()
-        .prefix("julie_cli_workspace_stats_")
-        .tempdir()
-        .unwrap();
-    let src_dir = temp.path().join("src");
-    std::fs::create_dir_all(&src_dir).unwrap();
-    std::fs::write(src_dir.join("main.rs"), "fn main() {}\n").unwrap();
-
-    let args = WorkspaceArgs {
-        operation: "stats".into(),
-        path: None,
+fn workspace_args(operation: &str, path: Option<&std::path::Path>) -> WorkspaceArgs {
+    WorkspaceArgs {
+        operation: operation.into(),
+        path: path.map(|p| p.to_string_lossy().to_string()),
         force: false,
-        name: None,
         foreground: false,
         edit_id: None,
         action: None,
-    };
+    }
+}
 
-    let result = run_cli_tool(&args, Some(temp.path().to_path_buf()), true).await;
+fn cli_probe_workspace(prefix: &str) -> tempfile::TempDir {
+    let temp = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
+    std::fs::write(temp.path().join(".git"), "gitdir: nowhere\n").unwrap();
+    std::fs::write(temp.path().join("main.rs"), "fn main() {}\n").unwrap();
+    temp
+}
 
-    let err = result.expect_err("workspace stats should refuse standalone mode");
-    let msg = err.to_string();
+#[tokio::test]
+async fn test_run_cli_tool_standalone_workspace_status_reports_the_checkout() {
+    let temp = cli_probe_workspace("julie_cli_workspace_status_");
+    let root = temp.path().canonicalize().unwrap();
+
+    let output = run_cli_tool(
+        &workspace_args("status", Some(&root)),
+        Some(root.clone()),
+        true,
+    )
+    .await
+    .expect("workspace status should run from the standalone CLI");
+
+    assert!(!output.is_error);
+    let checkouts = &output.result["structuredContent"]["checkouts"];
+    assert_eq!(checkouts.as_array().map(Vec::len), Some(1), "{checkouts}");
+    assert_eq!(checkouts[0]["root"], root.to_string_lossy().as_ref());
+    assert_eq!(checkouts[0]["symbol_count"], 1);
+    assert_eq!(checkouts[0]["tantivy"], "present");
+}
+
+#[tokio::test]
+async fn test_run_cli_tool_standalone_workspace_rebuild_reindexes_the_path() {
+    let temp = cli_probe_workspace("julie_cli_workspace_rebuild_");
+    let root = temp.path().canonicalize().unwrap();
+
+    let output = run_cli_tool(
+        &workspace_args("rebuild", Some(&root)),
+        Some(root.clone()),
+        true,
+    )
+    .await
+    .expect("workspace rebuild should run from the standalone CLI");
+
+    assert!(!output.is_error);
+    let text = output.result["content"][0]["text"].as_str().unwrap();
     assert!(
-        msg.contains("not available from the standalone CLI") && msg.contains("manage_workspace"),
-        "Expected post-daemon CLI guidance pointing at manage_workspace, got: {}",
-        err
+        text.starts_with(&format!("Rebuilt {}\n", root.display())),
+        "{text}"
     );
+    assert!(text.contains("Workspace indexing complete"), "{text}");
 }
 
 #[test]
@@ -613,7 +641,6 @@ fn test_workspace_dashboard_is_not_available_from_one_shot_cli_wrapper() {
         operation: "dashboard".into(),
         path: None,
         force: false,
-        name: None,
         foreground: false,
         edit_id: None,
         action: None,

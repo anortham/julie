@@ -21,16 +21,15 @@ pub(crate) mod recover_edit;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ManageWorkspaceOperation {
     Index,
-    Register,
-    Remove,
     List,
-    Clean,
-    Refresh,
     Open,
-    Stats,
+    Remove,
+    Refresh,
     Health,
-    Dashboard,
+    Rebuild,
+    Status,
     RecoverEdit,
+    Dashboard,
 }
 
 impl ManageWorkspaceOperation {
@@ -40,16 +39,15 @@ impl ManageWorkspaceOperation {
     const OPERATIONS: &'static [(&'static str, Self)] = &[
         ("index", Self::Index),
         ("list", Self::List),
-        ("register", Self::Register),
-        ("remove", Self::Remove),
-        ("stats", Self::Stats),
-        ("clean", Self::Clean),
-        ("refresh", Self::Refresh),
         ("open", Self::Open),
+        ("remove", Self::Remove),
+        ("refresh", Self::Refresh),
         ("health", Self::Health),
-        ("dashboard", Self::Dashboard),
+        ("rebuild", Self::Rebuild),
+        ("status", Self::Status),
         ("recover_edit", Self::RecoverEdit),
         ("recover-edit", Self::RecoverEdit),
+        ("dashboard", Self::Dashboard),
     ];
 
     pub(crate) fn parse(operation: &str) -> Result<Self> {
@@ -84,17 +82,11 @@ impl ManageWorkspaceOperation {
             return false;
         };
 
+        let unset = |key: &str| arguments.get(key).is_none_or(serde_json::Value::is_null);
         match Self::from_arguments(Some(arguments)) {
-            // `register` is intentionally excluded: it must not silently bind
-            // the startup-hint/CWD as primary on the user's behalf. The tool
-            // body resolves the target path without treating the request as a
-            // primary-targeting operation.
             Some(Self::List | Self::Remove | Self::Health) => true,
-            Some(Self::Stats) => arguments
-                .get("workspace_id")
-                .and_then(serde_json::Value::as_str)
-                .is_none_or(|workspace_id| workspace_id == "primary"),
-            Some(Self::Index) => arguments.get("path").is_none_or(serde_json::Value::is_null),
+            Some(Self::Status) => unset("workspace_id") && unset("path"),
+            Some(Self::Index) => unset("path"),
             _ => false,
         }
     }
@@ -114,16 +106,10 @@ pub(crate) enum ManageWorkspaceRequest {
         path: Option<String>,
         force: bool,
     },
-    Register {
-        path: String,
-        name: Option<String>,
-        force: bool,
-    },
     Remove {
         workspace_id: String,
     },
     List,
-    Clean,
     Refresh {
         workspace_id: String,
         force: bool,
@@ -133,8 +119,13 @@ pub(crate) enum ManageWorkspaceRequest {
         workspace_id: Option<String>,
         force: bool,
     },
-    Stats {
+    Rebuild {
+        path: Option<String>,
         workspace_id: Option<String>,
+    },
+    Status {
+        workspace_id: Option<String>,
+        path: Option<String>,
     },
     Health {
         detailed: bool,
@@ -158,17 +149,6 @@ impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
                 path: tool.path.clone(),
                 force,
             }),
-            ManageWorkspaceOperation::Register => {
-                let path = tool
-                    .path
-                    .clone()
-                    .ok_or_else(|| anyhow!("'path' parameter required for 'register' operation"))?;
-                Ok(Self::Register {
-                    path,
-                    name: tool.name.clone(),
-                    force,
-                })
-            }
             ManageWorkspaceOperation::Remove => {
                 let workspace_id = tool.workspace_id.clone().ok_or_else(|| {
                     anyhow!("'workspace_id' parameter required for 'remove' operation")
@@ -176,7 +156,6 @@ impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
                 Ok(Self::Remove { workspace_id })
             }
             ManageWorkspaceOperation::List => Ok(Self::List),
-            ManageWorkspaceOperation::Clean => Ok(Self::Clean),
             ManageWorkspaceOperation::Refresh => {
                 let workspace_id = tool.workspace_id.clone().ok_or_else(|| {
                     anyhow!("'workspace_id' parameter required for 'refresh' operation")
@@ -191,8 +170,20 @@ impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
                 workspace_id: tool.workspace_id.clone(),
                 force,
             }),
-            ManageWorkspaceOperation::Stats => Ok(Self::Stats {
+            ManageWorkspaceOperation::Rebuild => {
+                if tool.path.is_none() && tool.workspace_id.is_none() {
+                    return Err(anyhow!(
+                        "'workspace_id' or 'path' parameter required for 'rebuild' operation"
+                    ));
+                }
+                Ok(Self::Rebuild {
+                    path: tool.path.clone(),
+                    workspace_id: tool.workspace_id.clone(),
+                })
+            }
+            ManageWorkspaceOperation::Status => Ok(Self::Status {
                 workspace_id: tool.workspace_id.clone(),
+                path: tool.path.clone(),
             }),
             ManageWorkspaceOperation::Health => Ok(Self::Health {
                 detailed: tool.detailed.unwrap_or(false),
@@ -217,16 +208,16 @@ impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Operation to perform: "index", "list", "register", "remove", "stats", "clean", "refresh", "open", "health", "dashboard"
+    /// Operation to perform: "index", "list", "open", "remove", "refresh", "health", "rebuild", "status", "recover_edit", "dashboard"
     ///
     /// EXAMPLES:
     /// Index workspace:      {"operation": "index", "path": null, "force": false}
     /// List workspaces:      {"operation": "list"}
-    /// Show stats:           {"operation": "stats", "workspace_id": null}
-    /// Register workspace:   {"operation": "register", "path": "/path/to/project", "name": "My Project"}
+    /// Status of every checkout: {"operation": "status"}
+    /// Status of one checkout:   {"operation": "status", "path": "/path/to/project"}
+    /// Rebuild an index from scratch: {"operation": "rebuild", "path": "/path/to/project"}
     /// Open workspace:       {"operation": "open", "workspace_id": "workspace-id"}
     /// Open by path:         {"operation": "open", "path": "/path/to/project"}
-    /// Clean workspaces:     {"operation": "clean"}
     /// Refresh workspace:    {"operation": "refresh", "workspace_id": "workspace-id", "force": true}
     /// Open and force sync:   {"operation": "open", "workspace_id": "workspace-id", "force": true}
     /// Health check:         {"operation": "health", "detailed": true}
@@ -234,11 +225,11 @@ pub struct ManageWorkspaceTool {
     pub operation: String,
 
     // Optional parameters used by various operations
-    /// Path to workspace (used by: index, register, open)
+    /// Path to workspace (used by: index, open, rebuild, status)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 
-    /// Force complete re-indexing, bypassing incremental check (used by: index, register, refresh, open). Use when indexing code changed but source files are unchanged on disk
+    /// Force complete re-indexing, bypassing incremental check (used by: index, refresh, open). Use when indexing code changed but source files are unchanged on disk
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
@@ -246,11 +237,11 @@ pub struct ManageWorkspaceTool {
     )]
     pub force: Option<bool>,
 
-    /// Display name for workspace metadata (used by: register) or edit_id (used by: recover_edit)
+    /// edit_id (used by: recover_edit)
     #[serde(skip_serializing_if = "Option::is_none", alias = "edit_id")]
     pub name: Option<String>,
 
-    /// Workspace ID (used by: remove, refresh, open, stats) or recovery_action (used by: recover_edit)
+    /// Workspace ID (used by: remove, refresh, open, rebuild, status) or recovery_action (used by: recover_edit)
     #[serde(skip_serializing_if = "Option::is_none", alias = "recovery_action")]
     pub workspace_id: Option<String>,
 
@@ -299,15 +290,10 @@ impl ManageWorkspaceTool {
                 self.handle_index_command(handler, path, force, skip_embeddings)
                     .await
             }
-            ManageWorkspaceRequest::Register { path, name, force } => {
-                self.handle_register_command(handler, &path, name, force)
-                    .await
-            }
             ManageWorkspaceRequest::Remove { workspace_id } => {
                 self.handle_remove_command(handler, &workspace_id).await
             }
             ManageWorkspaceRequest::List => self.handle_list_command(handler).await,
-            ManageWorkspaceRequest::Clean => self.handle_clean_command(handler).await,
             ManageWorkspaceRequest::Refresh {
                 workspace_id,
                 force,
@@ -323,8 +309,13 @@ impl ManageWorkspaceTool {
                 self.handle_open_command(handler, path, workspace_id, force)
                     .await
             }
-            ManageWorkspaceRequest::Stats { workspace_id } => {
-                self.handle_stats_command(handler, workspace_id).await
+            ManageWorkspaceRequest::Rebuild { path, workspace_id } => {
+                self.handle_rebuild_command(handler, path, workspace_id)
+                    .await
+            }
+            ManageWorkspaceRequest::Status { workspace_id, path } => {
+                self.handle_status_command(handler, workspace_id, path)
+                    .await
             }
             ManageWorkspaceRequest::Health { detailed } => {
                 self.handle_health_command(handler, detailed).await

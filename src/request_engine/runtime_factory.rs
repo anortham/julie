@@ -232,6 +232,9 @@ impl RuntimeFactory {
             ))
         })?;
         let root = temp_root.path().to_path_buf();
+        let index_root = crate::workspace::registry::generate_workspace_id(&root.to_string_lossy())
+            .ok()
+            .map(|id| self.registry_paths.workspace_index_dir(&id));
         let startup_hint = WorkspaceStartupHint {
             path: root,
             source: Some(WorkspaceStartupSource::Cli),
@@ -239,12 +242,14 @@ impl RuntimeFactory {
         let daemon_db = DaemonDatabase::open(&self.registry_paths.registry_db())
             .ok()
             .map(Arc::new);
-        let handler =
-            JulieServerHandler::new_in_process_with_daemon_db(startup_hint, None, None, daemon_db)
-                .await
-                .map_err(|e| {
-                    RequestFailure::internal(format!("Failed to build unbound handler: {e}"))
-                })?;
+        let handler = JulieServerHandler::new_in_process_with_daemon_db(
+            startup_hint,
+            None,
+            index_root,
+            daemon_db,
+        )
+        .await
+        .map_err(|e| RequestFailure::internal(format!("Failed to build unbound handler: {e}")))?;
 
         Ok(Arc::new(RequestRuntime::new(Arc::new(handler), None)))
     }

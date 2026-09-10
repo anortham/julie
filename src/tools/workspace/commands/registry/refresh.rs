@@ -1,10 +1,11 @@
 use super::super::force_safeguards::{
     cancel_embedding_tasks, refresh_workspace_ids_for_force_reindex,
 };
-use super::ManageWorkspaceTool;
+use super::{ManageWorkspaceTool, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
+use std::path::PathBuf;
 use tracing::{info, warn};
 
 pub(crate) struct RefreshWorkspaceSuccess {
@@ -224,98 +225,65 @@ impl ManageWorkspaceTool {
         }
     }
 
-    /// Handle stats command - show workspace statistics
-    pub(crate) async fn handle_stats_command(
+    /// Handle rebuild command - delete the checkout's index directory and
+    /// index it again from scratch under the mutation guard.
+    pub(crate) async fn handle_rebuild_command(
         &self,
         handler: &JulieServerHandler,
+        path: Option<String>,
         workspace_id: Option<String>,
     ) -> Result<CallToolResult> {
-        info!("Showing workspace statistics");
-
-        // Daemon mode: use DaemonDatabase
-        if let Some(ref db) = handler.daemon_db {
-            match workspace_id {
-                Some(ref id) => match db.get_workspace(id) {
-                    Ok(Some(ws)) => {
-                        let message = format!(
-                            "Workspace Statistics: {}\n\n\
-                                {} ({})\n\
-                                Path: {}\n\
-                                Status: {}\n\
-                                Files: {} | Symbols: {}\n\
-                                Sessions: {}\n\
-                                Last Indexed: {}\n\
-                                Vector Count: {}",
-                            ws.workspace_id,
-                            ws.workspace_id
-                                .split('_')
-                                .next()
-                                .unwrap_or(&ws.workspace_id),
-                            ws.workspace_id,
-                            ws.path,
-                            ws.status,
-                            ws.file_count.unwrap_or(0),
-                            ws.symbol_count.unwrap_or(0),
-                            ws.session_count,
-                            ws.last_indexed
-                                .map(|t| t.to_string())
-                                .unwrap_or_else(|| "never".to_string()),
-                            ws.vector_count.unwrap_or(0),
-                        );
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                    }
-                    Ok(None) => {
-                        let message = format!("Workspace not found: {}", id);
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                    }
-                    Err(e) => {
-                        let message = format!("Failed to look up workspace: {}", e);
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                    }
-                },
-                None => {
-                    let all_workspaces = match db.list_workspaces() {
-                        Ok(workspaces) => workspaces,
-                        Err(e) => {
-                            let message = format!("Failed to list workspaces: {}", e);
-                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                        }
-                    };
-                    let current_workspace_id = handler.current_workspace_id();
-                    let active_workspace_count = handler.active_workspace_ids().await.len();
-
-                    let total_files: i64 = all_workspaces
-                        .iter()
-                        .map(|r| r.file_count.unwrap_or(0))
-                        .sum();
-                    let total_symbols: i64 = all_workspaces
-                        .iter()
-                        .map(|r| r.symbol_count.unwrap_or(0))
-                        .sum();
-
-                    let message = format!(
-                        "Overall Workspace Statistics\n\n\
-                        Registry Status\n\
-                        Current Workspace: {}\n\
-                        Known Workspaces: {}\n\
-                        Active Workspaces In Session: {}\n\n\
-                        Storage Usage\n\
-                        Total Files: {}\n\
-                        Total Symbols: {}",
-                        current_workspace_id.unwrap_or_else(|| "none".to_string()),
-                        all_workspaces.len(),
-                        active_workspace_count,
-                        total_files,
-                        total_symbols,
-                    );
-                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                }
+        let (workspace_id, root) = match (path, workspace_id) {
+            (Some(path), _) => {
+                let expanded = PathBuf::from(shellexpand::tilde(&path).to_string());
+                let root = expanded.canonicalize().map_err(|e| {
+                    anyhow::anyhow!("Failed to canonicalize workspace path '{}': {e}", path)
+                })?;
+                let id =
+                    crate::workspace::registry::generate_workspace_id(&root.to_string_lossy())?;
+                (id, root)
             }
-        }
+            (None, Some(id)) => {
+                let row = registry_store_for_handler(handler)?
+                    .map(|store| store.get_workspace(&id))
+                    .transpose()?
+                    .flatten()
+                    .ok_or_else(|| anyhow::anyhow!("Workspace not found: {id}"))?;
+                (row.workspace_id, PathBuf::from(row.path))
+            }
+            (None, None) => {
+                anyhow::bail!("'workspace_id' or 'path' parameter required for 'rebuild' operation")
+            }
+        };
 
-        // The in-process server does not wire a workspace registry.
-        let message =
-            "No workspace statistics available: the in-process server has no workspace registry.";
-        Ok(CallToolResult::error(vec![Content::text(message)]))
+        let guard = handler.acquire_mutation_guard(&workspace_id).await;
+        let index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
+        if index_dir.exists() {
+            std::fs::remove_dir_all(&index_dir)?;
+            info!(
+                workspace_id,
+                "Deleted index directory for rebuild: {}",
+                index_dir.display()
+            );
+        }
+        let indexed = self
+            .handle_index_command_with_guard(
+                handler,
+                Some(root.to_string_lossy().to_string()),
+                true,
+                false,
+                &guard,
+            )
+            .await?;
+        let message = format!(
+            "Rebuilt {}\n{}",
+            root.display(),
+            crate::mcp_compat::call_tool_result_text(&indexed)
+        );
+        Ok(if indexed.is_error.unwrap_or(false) {
+            CallToolResult::error(vec![Content::text(message)])
+        } else {
+            CallToolResult::text_content(vec![Content::text(message)])
+        })
     }
 }

@@ -91,11 +91,11 @@ fn test_is_write_exempt_manage_workspace_index_is_exempt() {
 }
 
 #[test]
-fn test_is_write_exempt_manage_workspace_stats_is_not_exempt() {
-    let a = args("stats");
+fn test_is_write_exempt_manage_workspace_status_is_not_exempt() {
+    let a = args("status");
     assert!(
         !is_write_exempt("manage_workspace", Some(&a)),
-        "manage_workspace stats (read-only) must be deadline-bounded"
+        "manage_workspace status (read-only) must be deadline-bounded"
     );
 }
 

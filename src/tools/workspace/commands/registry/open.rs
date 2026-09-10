@@ -7,7 +7,7 @@ use super::cleanup::{
     CLEANUP_ACTION_AUTO_PRUNE, CLEANUP_REASON_MISSING_PATH, WorkspaceCleanupState,
     WorkspaceDeleteOutcome, delete_workspace_if_allowed, inspect_workspace_cleanup_state,
 };
-use super::refresh_stats::RefreshWorkspaceOutcome;
+use super::refresh::RefreshWorkspaceOutcome;
 use super::{ManageWorkspaceTool, cleanup_activity_for_handler, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};

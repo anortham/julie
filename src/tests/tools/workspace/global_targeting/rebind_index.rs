@@ -41,19 +41,19 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
 
     handler.set_current_primary_binding(target_id.clone(), target_path.clone());
 
-    let stats_tool = ManageWorkspaceTool {
-        operation: "stats".to_string(),
+    let list_tool = ManageWorkspaceTool {
+        operation: "list".to_string(),
         path: None,
         force: Some(false),
         name: None,
         workspace_id: None,
         detailed: None,
     };
-    let stats_result = stats_tool.call_tool(&handler).await.unwrap();
-    let stats_text = extract_text_from_result(&stats_result);
+    let list_result = list_tool.call_tool(&handler).await.unwrap();
+    let list_text = extract_text_from_result(&list_result);
     assert!(
-        stats_text.contains(&format!("Current Workspace: {}", target_id)),
-        "stats should use session primary binding, not stale workspace_id: {stats_text}"
+        list_text.contains(&format!("({}) [CURRENT]", target_id)),
+        "list should use session primary binding, not stale workspace_id: {list_text}"
     );
 
     let renamed_target = temp_dir.path().join("target-renamed");

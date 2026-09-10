@@ -90,6 +90,7 @@ pub mod tools {
         // registry.rs relocated to crates/julie-runtime/src/tests/ (T2c.3 — tests julie-runtime's workspace::registry)
         pub mod resolver; // Cross-file relationship resolution tests
         pub mod seed; // Sibling checkout seed copy tests
+        pub mod status_rebuild; // manage_workspace status and rebuild operations
         // root_safety.rs relocated to crates/julie-runtime/src/tests/ (T2c.3 — tests julie-runtime's workspace::root_safety)
         pub mod utils; // Workspace utilities tests // Registry service tests
     }

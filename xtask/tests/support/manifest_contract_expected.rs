@@ -567,6 +567,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 commands: &[
                     "cargo nextest run --lib tests::tools::workspace::isolation -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::management_token -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::status_rebuild",
                 ],
             },
         ),

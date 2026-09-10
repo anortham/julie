@@ -290,6 +290,7 @@ notes = "workspace isolation and management output coverage"
 commands = [
   "cargo nextest run --lib tests::tools::workspace::isolation -- --skip search_quality",
   "cargo nextest run --lib tests::tools::workspace::management_token -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::workspace::status_rebuild",
 ]
 
 [buckets.tools-workspace-targeting]
