@@ -23,5 +23,6 @@ pub(crate) mod pipeline_runner;
 pub(crate) mod processor;
 pub(crate) mod resolver;
 pub(crate) mod route;
+pub(crate) mod seed;
 pub(crate) mod source_check;
 pub(crate) mod state;

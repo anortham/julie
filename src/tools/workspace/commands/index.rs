@@ -2,6 +2,7 @@ use super::ManageWorkspaceTool;
 use super::force_safeguards::cancel_embedding_tasks;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use crate::tools::workspace::indexing::seed::SeedReport;
 use anyhow::Result;
 use julie_core::workspace::mutation_gate::MutationGuard;
 use std::path::Path;
@@ -20,6 +21,20 @@ impl ManageWorkspaceTool {
         force: bool,
         skip_embeddings: bool,
     ) -> Result<CallToolResult> {
+        self.handle_index_command_reporting(handler, path, force, skip_embeddings)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    /// Like `handle_index_command`, but also returns the sibling seed report
+    /// when the checkout was seeded instead of indexed from scratch.
+    pub(crate) async fn handle_index_command_reporting(
+        &self,
+        handler: &JulieServerHandler,
+        path: Option<String>,
+        force: bool,
+        skip_embeddings: bool,
+    ) -> Result<(CallToolResult, Option<SeedReport>)> {
         self.handle_index_command_internal(handler, path, force, skip_embeddings, None)
             .await
     }
@@ -35,6 +50,7 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         self.handle_index_command_internal(handler, path, force, skip_embeddings, Some(guard))
             .await
+            .map(|(result, _)| result)
     }
 
     async fn handle_index_command_internal(
@@ -44,7 +60,7 @@ impl ManageWorkspaceTool {
         force: bool,
         skip_embeddings: bool,
         existing_guard: Option<&MutationGuard<'_>>,
-    ) -> Result<CallToolResult> {
+    ) -> Result<(CallToolResult, Option<SeedReport>)> {
         info!("📚 Starting workspace indexing...");
         let explicit_path_requested = path.is_some();
 
@@ -178,10 +194,25 @@ impl ManageWorkspaceTool {
             }
         }
 
-        // Perform indexing — permit is held for the duration.
-        let index_result = self
-            .index_workspace_inner(_guard, handler, &canonical_path, effective_force_reindex)
-            .await;
+        let seeded = if effective_force_reindex {
+            None
+        } else {
+            self.seed_if_index_missing(handler, &canonical_path, _guard)
+                .await?
+        };
+        let (index_result, seed_report) = match seeded {
+            Some((report, result)) => (Ok(result), Some(report)),
+            None => (
+                self.index_workspace_inner(
+                    _guard,
+                    handler,
+                    &canonical_path,
+                    effective_force_reindex,
+                )
+                .await,
+                None,
+            ),
+        };
 
         match index_result {
             Ok(result) => {
@@ -240,6 +271,9 @@ impl ManageWorkspaceTool {
                 );
                 if let Some(canonical_revision) = result.canonical_revision {
                     message.push_str(&format!("\nCanonical revision: {}", canonical_revision));
+                }
+                if let Some(report) = &seed_report {
+                    message.push_str(&format!("\n{report}"));
                 }
                 if let Some(ws_id) = indexed_workspace_id {
                     let skip_embedding_pipeline = skip_embeddings && !effective_force_reindex;
@@ -377,7 +411,10 @@ impl ManageWorkspaceTool {
                         }
                     }
                 }
-                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+                Ok((
+                    CallToolResult::text_content(vec![Content::text(message)]),
+                    seed_report,
+                ))
             }
             Err(e) => {
                 error!("Failed to index workspace: {:#}", e);
@@ -385,7 +422,7 @@ impl ManageWorkspaceTool {
                     "Workspace indexing failed: {:#}\nCheck that the path exists and contains source files",
                     e
                 );
-                Ok(CallToolResult::error(vec![Content::text(message)]))
+                Ok((CallToolResult::error(vec![Content::text(message)]), None))
             }
         }
     }

@@ -11,6 +11,7 @@ use super::refresh_stats::RefreshWorkspaceOutcome;
 use super::{ManageWorkspaceTool, cleanup_activity_for_handler, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use crate::tools::workspace::indexing::seed::SeedReport;
 use crate::workspace::registry::generate_workspace_id;
 
 struct OpenTarget {
@@ -21,11 +22,14 @@ struct OpenTarget {
 }
 
 impl ManageWorkspaceTool {
-    fn opened_message(target: &OpenTarget) -> CallToolResult {
-        let message = format!(
+    fn opened_message(target: &OpenTarget, seed: Option<&SeedReport>) -> CallToolResult {
+        let mut message = format!(
             "Workspace Opened\nWorkspace ID: {}\nPath: {}",
             target.workspace_id, target.canonical_path,
         );
+        if let Some(report) = seed {
+            message.push_str(&format!("\n{report}"));
+        }
         CallToolResult::text_content(vec![Content::text(message)])
     }
 
@@ -154,13 +158,20 @@ impl ManageWorkspaceTool {
         );
 
         if target.is_primary && !force {
-            return Ok(Self::opened_message(&target));
+            return Ok(Self::opened_message(&target, None));
         }
 
+        let mut seed_report = None;
         if target.status != "ready" {
-            let result = self
-                .handle_index_command(handler, Some(target.canonical_path.clone()), force, false)
+            let (result, report) = self
+                .handle_index_command_reporting(
+                    handler,
+                    Some(target.canonical_path.clone()),
+                    force,
+                    false,
+                )
                 .await?;
+            seed_report = report;
 
             let indexed_ready = registry_store
                 .get_workspace(&target.workspace_id)
@@ -184,6 +195,6 @@ impl ManageWorkspaceTool {
 
         handler.mark_workspace_active(&target.workspace_id);
 
-        Ok(Self::opened_message(&target))
+        Ok(Self::opened_message(&target, seed_report.as_ref()))
     }
 }

@@ -555,6 +555,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run -j 1 --lib tests::tools::workspace::mod_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::processor -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::workspace::resolver -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::seed",
                 ],
             },
         ),

@@ -2,6 +2,7 @@
 //!
 //! These are zero-dependency utilities shared across the workspace stack.
 
+pub mod git_identity;
 pub mod mutation_gate;
 pub mod projection_stamp;
 pub mod registry;

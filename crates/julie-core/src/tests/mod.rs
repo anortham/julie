@@ -6,6 +6,7 @@ mod database_lightweight_query;
 mod database_row_mapping;
 pub mod embeddings_identity;
 pub mod extractor_projection;
+mod git_identity;
 mod memory_vectors;
 pub mod receiver_type_storage;
 mod vector_storage;
