@@ -263,8 +263,10 @@ async fn test_manage_workspace_health_loaded_primary_without_tantivy_is_sqlite_o
         .await
         .unwrap();
     match readiness {
-        SystemStatus::SqliteOnly { symbol_count } => assert!(symbol_count > 0),
-        other => panic!("expected SqliteOnly for loaded primary without Tantivy, got {other:?}"),
+        SystemStatus::FullyReady { symbol_count } => assert!(symbol_count > 0),
+        other => panic!(
+            "loaded snapshot already has Tantivy, so readiness is FullyReady, got {other:?}"
+        ),
     }
 }
 
