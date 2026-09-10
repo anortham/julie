@@ -1,253 +1,89 @@
-//! Target Filtering Tests for GetSymbolsTool
-//!
-//! Tests that target parameter correctly filters symbols at ALL levels,
-//! not just top-level symbols.
-//!
-//! TDD: These tests define the expected behavior before implementing the fix.
+//! Target filtering tests for GetSymbolsTool: the target parameter matches
+//! symbols at every nesting level, not only top-level ones.
 
-#[cfg(test)]
-mod tests {
-    #![allow(unused_imports)]
+use anyhow::Result;
 
-    use crate::mcp_compat::{CallToolResult, CallToolResultExt};
-    use crate::tests::helpers::workspace::create_isolated_storage_handler;
-    use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
-    use anyhow::Result;
+use crate::tests::helpers::mcp::call_tool_result_text;
+use crate::tests::helpers::snapshot::snapshot_context;
+use crate::tools::GetSymbolsTool;
 
-    async fn repo_handler() -> Result<crate::tests::helpers::workspace::IsolatedStorageHandler> {
-        create_isolated_storage_handler(std::env::current_dir()?).await
-    }
+pub(crate) fn symbols_tool_source_tree() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/julie-tools/src/symbols")
+}
 
-    #[tokio::test]
-    #[ignore] // SLOW/HANGS: Indexes entire workspace (300+ files) - not critical for CLI tools
-    async fn test_target_filtering_matches_child_methods() -> Result<()> {
-        // GIVEN: A file with nested structure (struct with methods)
-        // WHEN: Target filtering for a method name (child symbol)
-        // THEN: Should show the parent struct WITH that method visible
+async fn targeted_text(file_path: &str, target: &str) -> Result<String> {
+    let handler = snapshot_context(symbols_tool_source_tree())?;
+    let tool = GetSymbolsTool {
+        file_path: file_path.to_string(),
+        max_depth: 2,
+        target: Some(target.to_string()),
+        limit: None,
+        mode: None,
+        workspace: None,
+    };
+    Ok(call_tool_result_text(&tool.call_tool(&handler).await?))
+}
 
-        let handler = repo_handler().await?;
+#[tokio::test]
+#[ignore = "target filtering returns matches and descendants only; ancestor inclusion was never implemented"]
+async fn test_target_filtering_matches_child_methods() -> Result<()> {
+    let text = targeted_text("mod.rs", "call_tool").await?;
 
-        // Index the symbols.rs file itself (has GetSymbolsTool with methods)
-        let index_tool = ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(std::env::current_dir()?.to_string_lossy().to_string()),
-            workspace_id: None,
-            name: None,
-            force: Some(true),
-            detailed: None,
-        };
-        index_tool.call_tool(&handler).await?;
+    assert!(
+        text.contains("GetSymbolsTool"),
+        "Should show parent struct when targeting child method.\nGot: {}",
+        text
+    );
+    assert!(
+        text.contains("call_tool"),
+        "Should show the targeted method.\nGot: {}",
+        text
+    );
+    assert!(
+        !text.contains("No symbols matching"),
+        "Should find matches for child symbols.\nGot: {}",
+        text
+    );
+    Ok(())
+}
 
-        // Target a method that exists inside GetSymbolsTool
-        let tool = GetSymbolsTool {
-            file_path: "src/tools/symbols.rs".to_string(),
-            max_depth: 2,
-            target: Some("call_tool".to_string()), // Method inside GetSymbolsTool
-            limit: None,
-            mode: None,
-            workspace: None,
-        };
+#[tokio::test]
+async fn test_target_filtering_top_level_still_works() -> Result<()> {
+    let text = targeted_text("mod.rs", "GetSymbolsTool").await?;
 
-        let result = tool.call_tool(&handler).await?;
+    assert!(
+        text.contains("GetSymbolsTool"),
+        "Should find top-level symbol.\nGot: {}",
+        text
+    );
+    assert!(
+        text.contains("call_tool"),
+        "Should show methods of matched struct.\nGot: {}",
+        text
+    );
+    Ok(())
+}
 
-        // Extract text from result
-        let text = result
-            .content
-            .iter()
-            .filter_map(|content_block| {
-                serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
-                })
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
+#[tokio::test]
+async fn test_target_filtering_case_insensitive() -> Result<()> {
+    let text = targeted_text("mod.rs", "getsymbolstool").await?;
 
-        // Should find GetSymbolsTool (parent) because it contains call_tool method
-        assert!(
-            text.contains("GetSymbolsTool"),
-            "Should show parent struct when targeting child method.\nGot: {}",
-            text
-        );
+    assert!(
+        text.contains("GetSymbolsTool"),
+        "Should match case-insensitively.\nGot: {}",
+        text
+    );
+    Ok(())
+}
 
-        // Should also show the targeted method
-        assert!(
-            text.contains("call_tool"),
-            "Should show the targeted method.\nGot: {}",
-            text
-        );
+#[tokio::test]
+async fn test_target_filtering_partial_match() -> Result<()> {
+    let text = targeted_text("formatting.rs", "format").await?;
 
-        // Should NOT show "0 symbols matching" error
-        assert!(
-            !text.contains("No symbols matching"),
-            "Should find matches for child symbols.\nGot: {}",
-            text
-        );
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore] // SLOW/HANGS: Indexes entire workspace (300+ files) - not critical for CLI tools
-    async fn test_target_filtering_top_level_still_works() -> Result<()> {
-        // GIVEN: A file with top-level symbols
-        // WHEN: Target filtering for a top-level symbol name
-        // THEN: Should show that symbol (existing behavior should still work)
-
-        let handler = repo_handler().await?;
-
-        let index_tool = ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(std::env::current_dir()?.to_string_lossy().to_string()),
-            workspace_id: None,
-            name: None,
-            force: Some(true),
-            detailed: None,
-        };
-        index_tool.call_tool(&handler).await?;
-
-        // Target a top-level struct
-        let tool = GetSymbolsTool {
-            file_path: "src/tools/symbols.rs".to_string(),
-            max_depth: 2,
-            target: Some("GetSymbolsTool".to_string()),
-            limit: None,
-            mode: None,
-            workspace: None,
-        };
-
-        let result = tool.call_tool(&handler).await?;
-
-        let text = result
-            .content
-            .iter()
-            .filter_map(|content_block| {
-                serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
-                })
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        // Should find the struct
-        assert!(
-            text.contains("GetSymbolsTool"),
-            "Should find top-level symbol.\nGot: {}",
-            text
-        );
-
-        // Should show its methods too (existing behavior)
-        assert!(
-            text.contains("call_tool"),
-            "Should show methods of matched struct.\nGot: {}",
-            text
-        );
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore] // SLOW/HANGS: Indexes entire workspace (300+ files) - not critical for CLI tools
-    async fn test_target_filtering_case_insensitive() -> Result<()> {
-        // GIVEN: Symbols with mixed case names
-        // WHEN: Target filtering with different case
-        // THEN: Should match case-insensitively
-
-        let handler = repo_handler().await?;
-
-        let index_tool = ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(std::env::current_dir()?.to_string_lossy().to_string()),
-            workspace_id: None,
-            name: None,
-            force: Some(true),
-            detailed: None,
-        };
-        index_tool.call_tool(&handler).await?;
-
-        // Target with lowercase while actual is CamelCase
-        let tool = GetSymbolsTool {
-            file_path: "src/tools/symbols.rs".to_string(),
-            max_depth: 2,
-            target: Some("getsymbolstool".to_string()), // lowercase
-            limit: None,
-            mode: None,
-            workspace: None,
-        };
-
-        let result = tool.call_tool(&handler).await?;
-
-        let text = result
-            .content
-            .iter()
-            .filter_map(|content_block| {
-                serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
-                })
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        assert!(
-            text.contains("GetSymbolsTool"),
-            "Should match case-insensitively.\nGot: {}",
-            text
-        );
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore] // SLOW/HANGS: Indexes entire workspace (300+ files) - not critical for CLI tools
-    async fn test_target_filtering_partial_match() -> Result<()> {
-        // GIVEN: Symbols with long names
-        // WHEN: Target filtering with partial name
-        // THEN: Should match substring
-
-        let handler = repo_handler().await?;
-
-        let index_tool = ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(std::env::current_dir()?.to_string_lossy().to_string()),
-            workspace_id: None,
-            name: None,
-            force: Some(true),
-            detailed: None,
-        };
-        index_tool.call_tool(&handler).await?;
-
-        // Partial match - just "format"
-        let tool = GetSymbolsTool {
-            file_path: "src/tools/symbols.rs".to_string(),
-            max_depth: 2,
-            target: Some("format".to_string()), // Should match "format_symbol"
-            limit: None,
-            mode: None,
-            workspace: None,
-        };
-
-        let result = tool.call_tool(&handler).await?;
-
-        let text = result
-            .content
-            .iter()
-            .filter_map(|content_block| {
-                serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
-                })
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        assert!(
-            text.contains("format_symbol"),
-            "Should match partial names.\nGot: {}",
-            text
-        );
-
-        Ok(())
-    }
+    assert!(
+        text.contains("format_symbol"),
+        "Should match partial names.\nGot: {}",
+        text
+    );
+    Ok(())
 }

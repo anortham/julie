@@ -9,7 +9,8 @@ use tracing::{debug, info};
 use super::body_extraction::extract_code_bodies;
 use super::filtering::apply_all_filters;
 use super::formatting::format_symbol_response;
-use julie_context::ToolContext;
+use super::rows::symbols_in_path;
+use julie_context::{ToolContext, WorkspaceTarget};
 
 /// Get symbols from a target workspace.
 pub async fn get_symbols_from_target_workspace(
@@ -26,18 +27,14 @@ pub async fn get_symbols_from_target_workspace(
         target_workspace_id, file_path, max_depth
     );
 
-    // Pooled DB: read-only access, no mutation gate required. Workspace root
-    // lookup supplies target-root normalization when available; absolute inputs
-    // keep their existing fallback if the root lookup fails.
-    let pooled_db = handler
-        .get_pooled_database_for_workspace(&target_workspace_id)
-        .await?
-        .into_read_snapshot()?;
+    let snapshot = handler
+        .snapshot(&WorkspaceTarget::Target(target_workspace_id.clone()))
+        .await?;
 
     // Strict contract: `resolve_workspace_file_input` rejects outside-workspace
     // paths with a typed `WorkspaceResolutionFailure`. We propagate via `?` so
     // the MCP boundary can surface `invalid_params` instead of silently feeding
-    // a raw path string to the database.
+    // a raw path string to the snapshot.
     let input_is_absolute = std::path::Path::new(file_path).is_absolute();
     let (query_path, absolute_path) = match handler
         .get_workspace_root_for_target(&target_workspace_id)
@@ -45,7 +42,7 @@ pub async fn get_symbols_from_target_workspace(
     {
         Ok(target_workspace_root) => {
             debug!(
-                "🗄️ Target workspace DB via handler helper, root: {}",
+                "🗄️ Target workspace root via handler helper: {}",
                 target_workspace_root.display()
             );
 
@@ -78,36 +75,13 @@ pub async fn get_symbols_from_target_workspace(
         file_path, query_path, absolute_path, target_workspace_id
     );
 
-    // Check if file exists before querying database
     if !std::path::Path::new(&absolute_path).exists() {
         bail!(super::file_not_found_message(file_path, target));
     }
 
-    // Query symbols using relative Unix-style path via pooled DB.
-    // In structure mode, use lightweight query that skips expensive columns.
-    let mode_owned = mode.to_string();
-    let query_path_clone = query_path.clone();
-    let mut symbols = if mode_owned == "structure" {
-        pooled_db
-            .get_symbols_for_file_lightweight(&query_path_clone)
-            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
-    } else {
-        pooled_db
-            .get_symbols_for_file(&query_path_clone)
-            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
-    };
-
+    let mut symbols = symbols_in_path(&snapshot, &query_path);
     if symbols.is_empty() && query_path != file_path {
-        let fallback_query = file_path.replace('\\', "/");
-        symbols = if mode_owned == "structure" {
-            pooled_db
-                .get_symbols_for_file_lightweight(&fallback_query)
-                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
-        } else {
-            pooled_db
-                .get_symbols_for_file(&fallback_query)
-                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
-        };
+        symbols = symbols_in_path(&snapshot, &file_path.replace('\\', "/"));
     }
 
     if symbols.is_empty() {
@@ -115,7 +89,6 @@ pub async fn get_symbols_from_target_workspace(
         return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }
 
-    // Apply all filters and get the final symbol list
     let (symbols_to_return, _was_truncated, _total_symbols) =
         apply_all_filters(symbols, max_depth, target, limit);
 
@@ -124,7 +97,6 @@ pub async fn get_symbols_from_target_workspace(
         return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }
 
-    // Extract code bodies based on mode
     // When target is set, upgrade "minimal" to "full" — the user explicitly asked for this
     // symbol, so always include its body even if it's a child (has parent_id).
     let body_mode = if target.is_some() && mode == "minimal" {
@@ -134,6 +106,5 @@ pub async fn get_symbols_from_target_workspace(
     };
     let symbols_to_return = extract_code_bodies(symbols_to_return, &absolute_path, body_mode)?;
 
-    // Format and return the response
     format_symbol_response(file_path, symbols_to_return, target)
 }

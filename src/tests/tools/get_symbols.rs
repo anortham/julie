@@ -1,35 +1,23 @@
 //! Tests for GetSymbolsTool - verify path normalization and symbol retrieval
-//!
-//! TDD: Write failing tests first, then fix the implementation
 
 use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
 use crate::extractors::{Symbol, SymbolKind};
-use crate::handler::JulieServerHandler;
 use crate::tests::helpers::mcp::call_tool_result_text;
+use crate::tests::helpers::snapshot::snapshot_context;
+use crate::tools::GetSymbolsTool;
 use crate::tools::symbols::formatting::format_symbol_response;
-use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 
 #[tokio::test]
 async fn test_get_symbols_with_relative_path() -> Result<()> {
-    // TDD: This test WILL FAIL initially because get_symbols doesn't normalize paths
-    //
-    // BUG: Database stores absolute paths like /tmp/workspace/src/main.rs
-    //      but get_symbols queries with relative path like src/main.rs
-    //      Result: "No symbols found" error even though symbols exist
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
-
-    // Create a simple Rust file with symbols
     let src_dir = workspace_path.join("src");
     fs::create_dir_all(&src_dir)?;
-
-    let test_file = src_dir.join("example.rs");
     fs::write(
-        &test_file,
+        src_dir.join("example.rs"),
         r#"
 pub struct User {
     pub id: String,
@@ -46,64 +34,19 @@ pub fn get_user(id: &str) -> User {
 pub const MAX_USERS: usize = 100;
 "#,
     )?;
+    let handler = snapshot_context(&workspace_path)?;
 
-    // Initialize handler and index the workspace
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Explicitly trigger indexing (initialize_workspace doesn't auto-index)
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    let index_result = index_tool.call_tool(&handler).await?;
-    println!(
-        "DEBUG: Indexing result: {:?}",
-        call_tool_result_text(&index_result)
-    );
-
-    // Wait a moment for indexing to complete
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // DEBUG: Check what path the database has AND what the file actually is
-    println!("DEBUG: Test file created at: {}", test_file.display());
-    println!("DEBUG: Test file exists: {}", test_file.exists());
-
-    let workspace = handler
-        .get_workspace()
-        .await?
-        .expect("Workspace should exist");
-    let db = workspace.db.as_ref().expect("DB should exist");
-    let db_lock = db.lock().unwrap();
-    let all_symbols = db_lock.get_all_symbols().expect("Should get symbols");
-    println!("DEBUG: Found {} symbols in database", all_symbols.len());
-    if let Some(first_symbol) = all_symbols.first() {
-        println!("DEBUG: First symbol file_path: {}", first_symbol.file_path);
-    } else {
-        println!("DEBUG: No symbols found - indexing may have failed");
-    }
-    drop(db_lock);
-
-    // Query using RELATIVE path (this should work but currently fails!)
     let tool = GetSymbolsTool {
-        file_path: "src/example.rs".to_string(), // RELATIVE path
+        file_path: "src/example.rs".to_string(),
         max_depth: 2,
         target: None,
         limit: None,
         mode: None,
         workspace: None,
     };
-
     let result = tool.call_tool(&handler).await?;
     let text_content = call_tool_result_text(&result);
 
-    // Should find symbols, not return "No symbols found" error
     assert!(
         !text_content.contains("No symbols found"),
         "Expected to find symbols but got: {}",
@@ -121,20 +64,15 @@ pub const MAX_USERS: usize = 100;
         text_content.contains("MAX_USERS"),
         "Should find MAX_USERS constant in symbols"
     );
-
     Ok(())
 }
 
 #[tokio::test]
 async fn test_get_symbols_with_absolute_path() -> Result<()> {
-    // This test should PASS even before the fix because absolute paths work
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
-
     let src_dir = workspace_path.join("src");
     fs::create_dir_all(&src_dir)?;
-
     let test_file = src_dir.join("example.rs");
     fs::write(
         &test_file,
@@ -144,36 +82,16 @@ pub fn process_data(input: &str) -> String {
 }
 "#,
     )?;
+    let handler = snapshot_context(&workspace_path)?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Explicitly trigger indexing
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // Query using ABSOLUTE path (should work even before fix)
-    let absolute_path = test_file.to_string_lossy().to_string();
     let tool = GetSymbolsTool {
-        file_path: absolute_path,
+        file_path: test_file.to_string_lossy().to_string(),
         max_depth: 1,
         target: None,
         limit: None,
         mode: None,
         workspace: None,
     };
-
     let result = tool.call_tool(&handler).await?;
     let text_content = call_tool_result_text(&result);
 
@@ -185,49 +103,19 @@ pub fn process_data(input: &str) -> String {
         text_content.contains("process_data"),
         "Should find process_data function"
     );
-
     Ok(())
 }
 
 #[tokio::test]
 async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
-    // Test that various path formats all work correctly after normalization
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
-
     let src_dir = workspace_path.join("src");
     fs::create_dir_all(&src_dir)?;
+    fs::write(src_dir.join("utils.rs"), "pub fn helper() -> i32 { 42 }")?;
+    let handler = snapshot_context(&workspace_path)?;
 
-    let test_file = src_dir.join("utils.rs");
-    fs::write(&test_file, "pub fn helper() -> i32 { 42 }")?;
-
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Explicitly trigger indexing
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // Test various path formats - all should work
-    let path_variants = vec![
-        "src/utils.rs",        // Simple relative
-        "./src/utils.rs",      // Relative with ./
-        "src/../src/utils.rs", // Relative with .. (should normalize)
-    ];
-
-    for path_variant in path_variants {
+    for path_variant in ["src/utils.rs", "./src/utils.rs", "src/../src/utils.rs"] {
         let tool = GetSymbolsTool {
             file_path: path_variant.to_string(),
             max_depth: 1,
@@ -236,7 +124,6 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
             mode: None,
             workspace: None,
         };
-
         let result = tool.call_tool(&handler).await?;
         let text_content = call_tool_result_text(&result);
 
@@ -252,74 +139,44 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
             path_variant
         );
     }
-
     Ok(())
 }
 
 #[tokio::test]
 async fn test_get_symbols_with_limit_parameter() -> Result<()> {
-    // Test that the limit parameter truncates results correctly
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
-
     let src_dir = workspace_path.join("src");
     fs::create_dir_all(&src_dir)?;
-
-    // Create a file with many symbols (20 functions)
-    let test_file = src_dir.join("many_symbols.rs");
     let mut content = String::new();
     for i in 1..=20 {
         content.push_str(&format!("pub fn function_{}() -> i32 {{ {} }}\n\n", i, i));
     }
-    fs::write(&test_file, content)?;
+    fs::write(src_dir.join("many_symbols.rs"), content)?;
+    let handler = snapshot_context(&workspace_path)?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // Test 1: No limit - should return all 20 symbols
     let tool_no_limit = GetSymbolsTool {
         file_path: "src/many_symbols.rs".to_string(),
         max_depth: 1,
         target: None,
         limit: None,
-        mode: None, // Default → "structure" → lean overview
+        mode: None,
         workspace: None,
     };
-
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
     let text_no_limit = call_tool_result_text(&result_no_limit);
 
-    // Lean format header: "src/many_symbols.rs — 20 symbols"
     assert!(
         text_no_limit.contains("20 symbols"),
         "Should list all 20 symbols in the header, got: {}",
         text_no_limit
     );
-
-    // Count function lines - each symbol gets a lean line with "function" kind
     let symbol_lines = text_no_limit
         .lines()
         .filter(|line| line.contains("function"))
         .count();
     assert_eq!(symbol_lines, 20, "Should list all 20 function symbols");
 
-    // Test 2: With limit=5 - should return only 5 symbols
     let tool_with_limit = GetSymbolsTool {
         file_path: "src/many_symbols.rs".to_string(),
         max_depth: 1,
@@ -328,59 +185,31 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         mode: None,
         workspace: None,
     };
-
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
     let text_with_limit = call_tool_result_text(&result_with_limit);
 
-    // With limit=5, should only show 5 symbols
     let limited_symbol_lines = text_with_limit
         .lines()
         .filter(|line| line.contains("function"))
         .count();
     assert_eq!(limited_symbol_lines, 5, "Should return exactly 5 symbols");
-
-    // The remaining 15 symbols should not appear
     assert!(
         !text_with_limit.contains("function_6"),
         "function_6 should not appear with limit=5"
     );
-
     Ok(())
 }
 
 #[tokio::test]
 async fn test_get_symbols_file_not_found_error() -> Result<()> {
-    // Test that we get a clear "File not found" error vs "No symbols found"
-
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
-
     let src_dir = workspace_path.join("src");
     fs::create_dir_all(&src_dir)?;
+    fs::write(src_dir.join("exists.rs"), "pub fn test() -> i32 { 42 }")?;
+    fs::write(src_dir.join("empty.rs"), "")?;
+    let handler = snapshot_context(&workspace_path)?;
 
-    // Create ONE file that exists
-    let existing_file = src_dir.join("exists.rs");
-    fs::write(&existing_file, "pub fn test() -> i32 { 42 }")?;
-
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // Test 1: Query non-existent file - should get "File not found"
     let tool_not_found = GetSymbolsTool {
         file_path: "src/does_not_exist.rs".to_string(),
         max_depth: 1,
@@ -389,18 +218,13 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         mode: None,
         workspace: None,
     };
-
     let result_not_found = tool_not_found.call_tool(&handler).await;
 
-    // Missing files should fail as an error now, not silently return an
-    // empty symbol result.
     assert!(result_not_found.is_err(), "missing file should fail");
     let err_text = result_not_found
         .err()
         .expect("error should exist")
         .to_string();
-
-    // Should explicitly say "File not found"
     assert!(
         err_text.contains("File not found"),
         "Should say 'File not found' for non-existent files, got: {}",
@@ -411,7 +235,6 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         "Should include error emoji for visibility"
     );
 
-    // Test 2: Query file that exists WITH symbols - should work
     let tool_exists = GetSymbolsTool {
         file_path: "src/exists.rs".to_string(),
         max_depth: 1,
@@ -420,7 +243,6 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         mode: None,
         workspace: None,
     };
-
     let result_exists = tool_exists.call_tool(&handler).await?;
     let text_exists = call_tool_result_text(&result_exists);
 
@@ -437,14 +259,6 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         "Should find test function in symbols"
     );
 
-    // Test 3: Create empty file (exists but has no code) - should get "No symbols found"
-    let empty_file = src_dir.join("empty.rs");
-    fs::write(&empty_file, "")?;
-
-    // Re-index to pick up new empty file
-    index_tool.call_tool(&handler).await?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
     let tool_empty = GetSymbolsTool {
         file_path: "src/empty.rs".to_string(),
         max_depth: 1,
@@ -453,41 +267,29 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         mode: None,
         workspace: None,
     };
-
     let result_empty = tool_empty.call_tool(&handler).await?;
     let text_empty = call_tool_result_text(&result_empty);
 
-    // Empty file EXISTS, so should NOT say "File not found"
     assert!(
         !text_empty.contains("File not found"),
         "Empty file exists, should not say 'File not found'"
     );
-    // Empty file has no symbols, so SHOULD say "No symbols found"
     assert!(
         text_empty.contains("No symbols found"),
         "Empty file should say 'No symbols found', got: {}",
         text_empty
     );
-
     Ok(())
 }
 
-/// Test that mode="minimal" auto-selects code format with raw source code
-///
-/// When mode="minimal" is used, get_symbols returns the raw source code
-/// of matched symbols — optimal for AI agents that can read code directly.
 #[tokio::test]
 async fn test_get_symbols_minimal_mode_code_format() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
-
-    // Create a simple Rust file with symbols
     let src_dir = workspace_path.join("src");
     fs::create_dir_all(&src_dir)?;
-
-    let test_file = src_dir.join("example.rs");
     fs::write(
-        &test_file,
+        src_dir.join("example.rs"),
         r#"pub struct User {
     pub id: String,
     pub name: String,
@@ -501,41 +303,19 @@ pub fn get_user(id: &str) -> User {
 }
 "#,
     )?;
+    let handler = snapshot_context(&workspace_path)?;
 
-    // Initialize handler and index the workspace
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    // Index the workspace
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // Query with mode="minimal" — auto-selects code format when bodies available
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(),
         max_depth: 2,
         target: None,
         limit: None,
-        mode: Some("minimal".to_string()), // minimal mode provides code bodies → code format
+        mode: Some("minimal".to_string()),
         workspace: None,
     };
-
     let result = tool.call_tool(&handler).await?;
     let text_content = call_tool_result_text(&result);
 
-    println!("DEBUG: minimal mode code result:\n{}", text_content);
-
-    // Should contain actual code
     assert!(
         text_content.contains("pub struct User"),
         "Should contain the actual struct definition, got: {}",
@@ -546,8 +326,6 @@ pub fn get_user(id: &str) -> User {
         "Should contain the actual function definition, got: {}",
         text_content
     );
-
-    // Should NOT contain JSON structural markers
     assert!(
         !text_content.contains("\"id\":"),
         "Should not contain JSON field markers, got: {}",
@@ -568,26 +346,16 @@ pub fn get_user(id: &str) -> User {
         "Should not contain metadata wrapper fields, got: {}",
         text_content
     );
-
-    // Should be readable code, not wrapped metadata
-    // The output should look like clean source code with maybe file headers
     assert!(
         text_content.lines().count() < 50,
         "Raw code output should be concise, got {} lines",
         text_content.lines().count()
     );
-
     Ok(())
 }
 
-/// Test that the default mode is "structure", not "minimal".
-///
-/// Most get_symbols calls are for orientation ("what's in this file?"), not code
-/// extraction. The default should give a lean structural overview, not full code
-/// bodies that burn 50-80% of output tokens unnecessarily.
 #[test]
 fn test_get_symbols_default_mode_is_structure() {
-    // Deserialize without a mode field — should default to "structure"
     let json = r#"{"file_path": "src/foo.rs"}"#;
     let tool: GetSymbolsTool = serde_json::from_str(json).expect("should deserialize");
     assert_eq!(
@@ -598,9 +366,6 @@ fn test_get_symbols_default_mode_is_structure() {
     );
 }
 
-/// Lean format must skip the kind prefix when the signature already contains
-/// the kind keyword.  e.g. `struct pub struct Foo` should not appear in output;
-/// only `pub struct Foo` should.
 #[test]
 fn test_lean_format_skips_redundant_kind_prefix() {
     let struct_sym = Symbol {
@@ -630,7 +395,6 @@ fn test_lean_format_skips_redundant_kind_prefix() {
         },
         code_context: None,
     };
-
     let fn_sym = Symbol {
         extracted: julie_extractors::Symbol {
             id: "s2".to_string(),
@@ -661,10 +425,8 @@ fn test_lean_format_skips_redundant_kind_prefix() {
 
     let result = format_symbol_response("src/foo.rs", vec![struct_sym, fn_sym], None)
         .expect("format_symbol_response should not fail");
-
     let text = call_tool_result_text(&result);
 
-    // Must NOT contain redundant "struct pub struct" or "function pub fn"
     assert!(
         !text.contains("struct pub struct"),
         "output must not contain 'struct pub struct', got:\n{}",
@@ -675,8 +437,6 @@ fn test_lean_format_skips_redundant_kind_prefix() {
         "output must not contain 'function pub fn', got:\n{}",
         text
     );
-
-    // Signatures themselves must appear in the output
     assert!(
         text.contains("pub struct Foo"),
         "output must contain 'pub struct Foo', got:\n{}",

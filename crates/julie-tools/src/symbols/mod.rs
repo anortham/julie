@@ -13,6 +13,7 @@ mod body_extraction;
 pub mod filtering;
 pub mod formatting;
 mod primary;
+mod rows;
 mod target_workspace;
 
 use anyhow::{Result, bail};

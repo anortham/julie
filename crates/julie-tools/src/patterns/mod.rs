@@ -1,11 +1,19 @@
 mod formatting;
 
+use std::collections::BTreeMap;
+
 use anyhow::{Result, anyhow};
 use julie_context::{ToolContext, WorkspaceTarget};
-use julie_core::database::StructuralFactQuery;
+use julie_core::glob::matches_glob_pattern;
 use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use julie_extractors::StructuralFact;
+use julie_facts::FactsReader;
+use julie_facts::rows::{StructuralFactQuery, StructuralFactRow};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+const OBSERVED_ROW_CAP: usize = 10_000;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -91,18 +99,11 @@ impl PatternsTool {
         workspace_target: &WorkspaceTarget,
     ) -> Result<CallToolResult> {
         let metadata_filters = self.validate()?;
-        let database = match workspace_target {
-            WorkspaceTarget::Primary => handler.primary_pooled_database().await?,
-            WorkspaceTarget::Target(workspace_id) => {
-                handler
-                    .get_pooled_database_for_workspace(workspace_id)
-                    .await?
-            }
-        };
+        let snapshot = handler.snapshot(workspace_target).await?;
         let tool = self.clone();
         let rendered = tokio::task::spawn_blocking(move || -> Result<String> {
-            let database = database.into_read_snapshot()?;
-            tool.execute(&database, metadata_filters)
+            let facts = snapshot.facts()?;
+            tool.execute(&facts.reader(), metadata_filters)
         })
         .await
         .map_err(|error| anyhow!("patterns query task failed: {error}"))??;
@@ -159,11 +160,11 @@ impl PatternsTool {
 
     fn execute(
         &self,
-        database: &julie_core::database::SymbolDatabase,
+        reader: &FactsReader<'_>,
         metadata_filters: Vec<(String, String)>,
     ) -> Result<String> {
-        let mut observed = database
-            .observed_structural_patterns(self.language.as_deref(), self.path.as_deref())?;
+        let mut observed =
+            observed_structural_patterns(reader, self.language.as_deref(), self.path.as_deref())?;
         if let Some(pattern_id) = self.pattern_id.as_deref() {
             observed.retain(|(observed_id, _)| observed_id == pattern_id);
         }
@@ -176,13 +177,18 @@ impl PatternsTool {
         if self.operation == PatternsOperation::Search && matched_pattern_ids.is_empty() {
             return formatting::format_search(Vec::new(), &matched_pattern_ids, self.format);
         }
-        let facts = database.search_structural_facts(&StructuralFactQuery {
-            pattern_ids: matched_pattern_ids.clone(),
-            path_pattern: self.path.clone(),
-            language: self.language.clone(),
-            metadata_equals: metadata_filters,
-            limit: self.effective_limit(),
-        })?;
+        let facts = search_structural_facts(
+            reader,
+            &StructuralFactQuery {
+                pattern_ids: matched_pattern_ids.clone(),
+                path_pattern: None,
+                language: self.language.clone(),
+                limit: self.effective_limit().saturating_mul(10).clamp(100, 5000),
+            },
+            self.path.as_deref(),
+            &metadata_filters,
+            self.effective_limit(),
+        )?;
         match self.operation {
             PatternsOperation::List => unreachable!(),
             PatternsOperation::Search => {
@@ -210,6 +216,93 @@ impl PatternsTool {
             .iter()
             .map(|(pattern_id, _)| pattern_id.clone())
             .collect()
+    }
+}
+
+fn matches_path(row: &StructuralFactRow, path_pattern: Option<&str>) -> bool {
+    path_pattern.is_none_or(|pattern| matches_glob_pattern(&row.path, pattern))
+}
+
+fn matches_metadata(row: &StructuralFactRow, filters: &[(String, String)]) -> bool {
+    filters.iter().all(|(key, value)| {
+        row.metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(key))
+            .and_then(Value::as_str)
+            == Some(value.as_str())
+    })
+}
+
+fn observed_structural_patterns(
+    reader: &FactsReader<'_>,
+    language: Option<&str>,
+    path_pattern: Option<&str>,
+) -> Result<Vec<(String, u64)>> {
+    let rows = reader.structural_facts(&StructuralFactQuery {
+        language: language.map(str::to_string),
+        limit: OBSERVED_ROW_CAP,
+        ..StructuralFactQuery::default()
+    })?;
+    let mut counts = BTreeMap::<String, u64>::new();
+    for row in rows.iter().filter(|row| matches_path(row, path_pattern)) {
+        *counts.entry(row.pattern_id.clone()).or_default() += 1;
+    }
+    let mut observed = counts.into_iter().collect::<Vec<_>>();
+    observed.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    Ok(observed)
+}
+
+// ponytail: path glob and metadata filters run after the capped SQL fetch;
+// push them into the julie-facts query if a workspace overflows the cap.
+fn search_structural_facts(
+    reader: &FactsReader<'_>,
+    query: &StructuralFactQuery,
+    path_pattern: Option<&str>,
+    metadata_filters: &[(String, String)],
+    limit: usize,
+) -> Result<Vec<StructuralFact>> {
+    let mut rows = reader.structural_facts(query)?;
+    rows.sort_by(|left, right| {
+        (
+            &left.pattern_id,
+            &left.path,
+            left.span.start_byte,
+            left.ordinal,
+        )
+            .cmp(&(
+                &right.pattern_id,
+                &right.path,
+                right.span.start_byte,
+                right.ordinal,
+            ))
+    });
+    Ok(rows
+        .into_iter()
+        .filter(|row| matches_path(row, path_pattern) && matches_metadata(row, metadata_filters))
+        .take(limit)
+        .map(structural_fact)
+        .collect())
+}
+
+fn structural_fact(row: StructuralFactRow) -> StructuralFact {
+    StructuralFact {
+        id: format!("{}:{}", row.blob_hash, row.ordinal),
+        containing_symbol_id: row
+            .containing_ordinal
+            .map(|ordinal| format!("{}:{ordinal}", row.blob_hash)),
+        file_path: row.path,
+        language: row.language,
+        pattern_id: row.pattern_id,
+        capture_name: row.capture_name,
+        node_kind: row.node_kind,
+        start_line: row.span.start_line,
+        start_column: row.span.start_col,
+        end_line: row.span.end_line,
+        end_column: row.span.end_col,
+        start_byte: row.span.start_byte,
+        end_byte: row.span.end_byte,
+        confidence: row.confidence,
+        metadata: row.metadata,
     }
 }
 

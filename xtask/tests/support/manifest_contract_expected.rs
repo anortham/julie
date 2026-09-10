@@ -325,7 +325,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-get-symbols",
             ExpectedBucket {
-                expected_seconds: 40,
+                expected_seconds: 10,
                 timeout_seconds: 300,
                 commands: &[
                     "cargo nextest run --lib tests::tools::get_symbols:: -- --skip search_quality",
@@ -333,6 +333,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_target_workspace -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_token -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::patterns",
                 ],
             },
         ),
@@ -364,11 +365,12 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-call-path",
             ExpectedBucket {
-                expected_seconds: 80,
+                expected_seconds: 10,
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::call_path_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::call_path_disambiguation_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::web_navigation",
                 ],
             },
         ),

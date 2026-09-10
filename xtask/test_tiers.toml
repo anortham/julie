@@ -316,7 +316,8 @@ commands = [
 
 [buckets.tools-get-symbols]
 # Exact get_symbols filters avoid rerunning every get_symbols_* sibling, especially dogfood.
-expected_seconds = 40
+# Phase 3: get_symbols and patterns read a snapshot fixture (sub-second warm), recalibrated from 40.
+expected_seconds = 10
 timeout_seconds = 300
 scope_label = "tooling"
 notes = "get_symbols surface"
@@ -326,6 +327,7 @@ commands = [
   "cargo nextest run --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_symbols_target_workspace -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_symbols_token -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::patterns",
 ]
 
 [buckets.tools-editing]
@@ -360,13 +362,14 @@ commands = [
 ]
 
 [buckets.tools-call-path]
-expected_seconds = 80
+expected_seconds = 10
 timeout_seconds = 120
 scope_label = "tooling"
 notes = "call_path tool coverage"
 commands = [
   "cargo nextest run --lib tests::tools::call_path_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::call_path_disambiguation_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::web_navigation",
 ]
 
 [buckets.tools-fast-refs]

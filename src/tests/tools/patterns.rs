@@ -1,104 +1,50 @@
-use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 
 use anyhow::Result;
 use julie_context::WorkspaceTarget;
-use julie_core::database::SymbolDatabase;
-use julie_core::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
-use julie_extractors::StructuralFact;
 use julie_test_support::FakeToolContext;
-use julie_test_support::db::file_info_builder;
 use tempfile::TempDir;
 
 use crate::tests::helpers::mcp::call_tool_result_text;
+use crate::tests::helpers::snapshot::snapshot_context;
 use crate::tools::patterns::{PatternsFormat, PatternsGroupBy, PatternsOperation, PatternsTool};
 
-fn structural_fact(
-    id: &str,
-    pattern_id: &str,
-    capture_name: &str,
-    file_path: &str,
-    language: &str,
-    start_line: u32,
-    metadata: serde_json::Value,
-) -> StructuralFact {
-    StructuralFact {
-        id: id.into(),
-        file_path: file_path.into(),
-        language: language.into(),
-        pattern_id: pattern_id.into(),
-        capture_name: capture_name.into(),
-        node_kind: "call_expression".into(),
-        containing_symbol_id: None,
-        start_line,
-        start_column: 0,
-        end_line: start_line,
-        end_column: 12,
-        start_byte: start_line * 10,
-        end_byte: start_line * 10 + 12,
-        confidence: 0.95,
-        metadata: serde_json::from_value::<HashMap<String, serde_json::Value>>(metadata).ok(),
+const GET_CLIENT: &str = "export async function load() {\n  return fetch(\"/api/users\");\n}\n";
+const POST_CLIENT: &str =
+    "export async function save() {\n  return fetch(\"/api/users\", { method: \"POST\" });\n}\n";
+const SYMFONY_CONTROLLER: &str = r#"<?php
+namespace App\Controller;
+
+use Symfony\Component\Routing\Attribute\Route;
+
+class UserController
+{
+    #[Route('/users', methods: ['POST'])]
+    public function create(): void {}
+}
+"#;
+
+fn write_tree(root: &Path, files: &[(&str, &str)]) -> Result<()> {
+    for (path, source) in files {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().unwrap())?;
+        fs::write(path, source)?;
     }
+    Ok(())
 }
 
 fn seeded_context() -> Result<(TempDir, FakeToolContext)> {
     let temp = TempDir::new()?;
-    let db_path = temp.path().join("patterns.db");
-    let mut db = SymbolDatabase::new(&db_path)?;
-    let files = vec![
-        file_info_builder("src/client.rs").language("rust").build(),
-        file_info_builder("src/Controller.php")
-            .language("php")
-            .build(),
-        file_info_builder("tests/client.rs")
-            .language("rust")
-            .build(),
-    ];
-    let facts = vec![
-        structural_fact(
-            "fact-1",
-            "http.client_request.v1",
-            "request",
-            "src/client.rs",
-            "rust",
-            3,
-            serde_json::json!({"client": "reqwest", "method": "GET"}),
-        ),
-        structural_fact(
-            "fact-2",
-            "symfony.route.v1",
-            "route",
-            "src/Controller.php",
-            "php",
-            8,
-            serde_json::json!({"method": "POST"}),
-        ),
-        structural_fact(
-            "fact-3",
-            "http.client_request.v1",
-            "request",
-            "tests/client.rs",
-            "rust",
-            5,
-            serde_json::json!({"client": "reqwest", "method": "POST"}),
-        ),
-    ];
-    let write_set = CanonicalWriteSet {
-        files: &files,
-        structural_facts: &facts,
-        ..Default::default()
-    };
-    db.incremental_update_atomic_with_metadata(
-        &[],
-        &write_set,
-        "patterns-test",
-        AtomicPersistenceMetadata::default(),
+    write_tree(
+        temp.path(),
+        &[
+            ("src/client.ts", GET_CLIENT),
+            ("src/Controller.php", SYMFONY_CONTROLLER),
+            ("tests/client.ts", POST_CLIENT),
+        ],
     )?;
-    drop(db);
-
-    let context = FakeToolContext::new()
-        .with_workspace_id("patterns-test")
-        .with_primary_root(temp.path())
-        .with_primary_db_path(&db_path);
+    let context = snapshot_context(temp.path())?;
     Ok((temp, context))
 }
 
@@ -121,8 +67,8 @@ async fn patterns_lists_searches_summarizes_and_filters_metadata() -> Result<()>
         operation: PatternsOperation::Search,
         query: Some("client_request".into()),
         path: Some("src/**".into()),
-        language: Some("rust".into()),
-        where_filter: Some("client=reqwest;method=GET".into()),
+        language: Some("typescript".into()),
+        where_filter: Some("client=fetch;verb=GET".into()),
         limit: 1,
         format: PatternsFormat::Json,
         ..Default::default()
@@ -130,9 +76,9 @@ async fn patterns_lists_searches_summarizes_and_filters_metadata() -> Result<()>
     .call_tool(&context)
     .await?;
     let searched_text = call_tool_result_text(&searched);
-    assert!(searched_text.contains("\"fact-1\""));
-    assert!(!searched_text.contains("\"fact-2\""));
-    assert!(!searched_text.contains("\"fact-3\""));
+    assert!(searched_text.contains("\"src/client.ts\""));
+    assert!(!searched_text.contains("\"src/Controller.php\""));
+    assert!(!searched_text.contains("\"tests/client.ts\""));
 
     let no_match = PatternsTool {
         operation: PatternsOperation::Search,
@@ -143,34 +89,33 @@ async fn patterns_lists_searches_summarizes_and_filters_metadata() -> Result<()>
     .call_tool(&context)
     .await?;
     let no_match_text = call_tool_result_text(&no_match);
-    assert!(!no_match_text.contains("\"fact-1\""));
-    assert!(!no_match_text.contains("\"fact-2\""));
-    assert!(!no_match_text.contains("\"fact-3\""));
+    assert!(!no_match_text.contains("\"src/client.ts\""));
+    assert!(!no_match_text.contains("\"src/Controller.php\""));
+    assert!(!no_match_text.contains("\"tests/client.ts\""));
 
     let exact_compact = PatternsTool {
         operation: PatternsOperation::Search,
         pattern_id: Some("http.client_request.v1".into()),
-        where_filter: Some("method=GET".into()),
+        where_filter: Some("verb=GET".into()),
         workspace: Some("target-workspace".into()),
         format: PatternsFormat::Compact,
         ..Default::default()
     }
     .call_tool(
-        &FakeToolContext::new()
-            .with_primary_db_path(_temp.path().join("patterns.db"))
+        &snapshot_context(_temp.path())?
             .with_resolved_target(WorkspaceTarget::Target("target-workspace".into())),
     )
     .await?;
     let compact_text = call_tool_result_text(&exact_compact);
-    assert!(compact_text.contains("src/client.rs:3"));
+    assert!(compact_text.contains("src/client.ts:2"));
     assert!(compact_text.contains("http.client_request.v1"));
     assert!(compact_text.contains("request"));
-    assert!(compact_text.contains("method=GET"));
+    assert!(compact_text.contains("verb=GET"));
 
     let summary = PatternsTool {
         operation: PatternsOperation::Summary,
         group_by: PatternsGroupBy::Directory,
-        facet: Some("method".into()),
+        facet: Some("verb".into()),
         format: PatternsFormat::Json,
         ..Default::default()
     }
@@ -187,60 +132,14 @@ async fn patterns_lists_searches_summarizes_and_filters_metadata() -> Result<()>
 #[tokio::test]
 async fn patterns_respects_target_workspace() -> Result<()> {
     let temp = TempDir::new()?;
-    let primary_path = temp.path().join("primary.db");
-    let target_path = temp.path().join("target.db");
-
-    for (db_path, workspace_id, fact_id, pattern_id) in [
-        (
-            &primary_path,
-            "primary-workspace",
-            "primary-fact",
-            "primary.pattern.v1",
-        ),
-        (
-            &target_path,
-            "target-workspace",
-            "target-fact",
-            "target.pattern.v1",
-        ),
-    ] {
-        let mut db = SymbolDatabase::new(db_path)?;
-        let files = vec![
-            file_info_builder(format!("{workspace_id}.rs"))
-                .language("rust")
-                .build(),
-        ];
-        let facts = vec![structural_fact(
-            fact_id,
-            pattern_id,
-            "capture",
-            &format!("{workspace_id}.rs"),
-            "rust",
-            1,
-            serde_json::json!({"workspace": workspace_id}),
-        )];
-        db.incremental_update_atomic_with_metadata(
-            &[],
-            &CanonicalWriteSet {
-                files: &files,
-                structural_facts: &facts,
-                ..Default::default()
-            },
-            workspace_id,
-            AtomicPersistenceMetadata::default(),
-        )?;
-    }
-
-    let context = FakeToolContext::new()
+    write_tree(temp.path(), &[("target-workspace.ts", POST_CLIENT)])?;
+    let context = snapshot_context(temp.path())?
         .with_workspace_id("primary-workspace")
-        .with_primary_root(temp.path())
-        .with_primary_db_path(&primary_path)
-        .with_workspace_db_path("target-workspace", &target_path)
         .with_resolved_target(WorkspaceTarget::Target("target-workspace".into()));
 
     let response = PatternsTool {
         operation: PatternsOperation::Search,
-        query: Some("pattern".into()),
+        query: Some("client_request".into()),
         workspace: Some("target-workspace".into()),
         format: PatternsFormat::Json,
         ..Default::default()
@@ -249,8 +148,8 @@ async fn patterns_respects_target_workspace() -> Result<()> {
     .await?;
     let response_text = call_tool_result_text(&response);
 
-    assert!(response_text.contains("\"target-fact\""));
-    assert!(!response_text.contains("\"primary-fact\""));
+    assert!(response_text.contains("\"target-workspace.ts\""));
+    assert!(!response_text.contains("\"primary-workspace.ts\""));
     Ok(())
 }
 

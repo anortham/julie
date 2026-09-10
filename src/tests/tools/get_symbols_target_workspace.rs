@@ -1,172 +1,38 @@
 //! Tests for the GetSymbolsTool target-workspace path.
-//!
-//! BUG: GetSymbolsTool is missing workspace parameter, always queries primary workspace
-//! SYMPTOM: Returns "No symbols found" for target-workspace files even though symbols exist
-//! ROOT CAUSE: GetSymbolsTool struct doesn't have workspace: Option<String> field
 
 use anyhow::Result;
+use julie_context::WorkspaceTarget;
+use julie_test_support::{FakeToolContext, SnapshotFixture};
 use std::fs;
+use std::path::Path;
 use tempfile::TempDir;
 
-use crate::Symbol;
-use crate::SymbolKind;
-use crate::database::SymbolDatabase;
-use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
-use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
-use crate::workspace::registry::{
-    RegistryConfig, WorkspaceEntry, WorkspaceRegistry, WorkspaceType,
-};
+use crate::tests::helpers::mcp::call_tool_result_text;
+use crate::tools::GetSymbolsTool;
+use crate::workspace::registry::generate_workspace_id;
 
-fn test_sym(
-    id: &str,
-    name: &str,
-    kind: SymbolKind,
-    file_path: &str,
-    signature: Option<&str>,
-    start_line: u32,
-    end_line: u32,
-    start_byte: u32,
-    end_byte: u32,
-    parent_id: Option<&str>,
-) -> Symbol {
-    Symbol {
-        extracted: julie_extractors::Symbol {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind,
-            language: "rust".to_string(),
-            file_path: file_path.to_string(),
-            start_line,
-            start_column: 0,
-            end_line,
-            end_column: end_byte.saturating_sub(start_byte),
-            start_byte,
-            end_byte,
-            signature: signature.map(|s| s.to_string()),
-            doc_comment: None,
-            visibility: None,
-            parent_id: parent_id.map(|s| s.to_string()),
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
-            content_type: None,
-            body_span: None,
-            body_hash: None,
-            annotations: Vec::new(),
-        },
-        code_context: None,
-    }
-}
-
-fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+fn target_context(reference_root: &Path) -> Result<(FakeToolContext, String)> {
+    let workspace_id = generate_workspace_id(&reference_root.to_string_lossy())?;
+    let fixture = SnapshotFixture::from_tree(reference_root)?;
+    let context = FakeToolContext::new()
+        .with_workspace_id("primary-workspace")
+        .with_primary_root(fixture.root().to_path_buf())
+        .with_resolved_target(WorkspaceTarget::Target(workspace_id.clone()))
+        .with_snapshot_fixture(fixture);
+    Ok((context, workspace_id))
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_get_symbols_target_workspace() -> Result<()> {
-    // BUG REPRODUCTION:
-    // - Primary workspace indexed with symbols
-    // - Target workspace added and indexed with different symbols
-    // - get_symbols(file_from_target_workspace) returns "No symbols found"
-    // - fast_search finds those same symbols just fine
-    //
-    // ROOT CAUSE: GetSymbolsTool missing workspace parameter, always queries primary DB
-
-    // Create primary workspace
-    let primary_dir = TempDir::new()?;
-    let primary_path = primary_dir.path().to_path_buf();
-    let primary_src = primary_path.join("src");
-    fs::create_dir_all(&primary_src)?;
-
-    fs::write(
-        primary_src.join("primary.rs"),
-        "pub struct PrimaryStruct { pub field: String }\n",
-    )?;
-
-    // Create target workspace
     let reference_dir = TempDir::new()?;
-    let reference_path = reference_dir.path().to_path_buf();
-    let reference_src = reference_path.join("src");
+    let reference_src = reference_dir.path().join("src");
     fs::create_dir_all(&reference_src)?;
-
     let reference_file_path = reference_src.join("reference.rs");
     fs::write(
         &reference_file_path,
         "pub struct ReferenceStruct { pub data: i32 }\npub fn reference_function() {}\n",
     )?;
-
-    // Initialize handler with primary workspace and index it
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(primary_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    // In stdio mode, ManageWorkspaceTool::add requires daemon mode, so we manually
-    // create the target-workspace database at the expected path.
-    // (This mirrors what add+index does in daemon mode.)
-    let workspace = handler.get_workspace().await?.unwrap();
-    let workspace_id =
-        crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
-
-    let ref_db_path = workspace.workspace_db_path(&workspace_id);
-    fs::create_dir_all(ref_db_path.parent().unwrap())?;
-
-    {
-        let mut ref_db = SymbolDatabase::new(&ref_db_path)?;
-        let ref_file = reference_file_path.to_string_lossy().to_string();
-        ref_db.bulk_store_symbols(
-            &[
-                test_sym(
-                    "ref_struct_1",
-                    "ReferenceStruct",
-                    SymbolKind::Struct,
-                    &ref_file,
-                    Some("pub struct ReferenceStruct"),
-                    1,
-                    1,
-                    0,
-                    44,
-                    None,
-                ),
-                test_sym(
-                    "ref_fn_1",
-                    "reference_function",
-                    SymbolKind::Function,
-                    &ref_file,
-                    Some("pub fn reference_function()"),
-                    2,
-                    2,
-                    45,
-                    75,
-                    None,
-                ),
-            ],
-            &workspace_id,
-        )?;
-    }
-
+    let (handler, workspace_id) = target_context(reference_dir.path())?;
     let reference_file_str = reference_file_path.to_string_lossy().to_string();
 
     let get_symbols_tool = GetSymbolsTool {
@@ -177,9 +43,8 @@ async fn test_get_symbols_target_workspace() -> Result<()> {
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
-
     let result = get_symbols_tool.call_tool(&handler).await?;
-    let result_text = extract_text_from_result(&result);
+    let result_text = call_tool_result_text(&result);
 
     assert!(
         !result_text.contains("No symbols found"),
@@ -191,44 +56,19 @@ async fn test_get_symbols_target_workspace() -> Result<()> {
         workspace_id,
         result_text
     );
-
     assert!(
         result_text.contains("ReferenceStruct") || result_text.contains("reference_function"),
         "Should find ReferenceStruct or reference_function, got: {}",
         result_text
     );
-
     Ok(())
 }
 
-/// Test that filtering parameters (max_depth, target, limit) work in a target workspace
-///
-/// BUG: The target-workspace get_symbols path ignores ALL filtering logic
-/// that exists in the primary workspace code path
-///
-/// This test creates a target workspace with nested symbols and verifies that:
-/// - max_depth parameter limits the symbol depth
-/// - target parameter filters to matching symbols + their descendants
-/// - limit parameter restricts top-level symbols while including all children
 #[tokio::test(flavor = "multi_thread")]
 async fn test_get_symbols_target_workspace_filtering() -> Result<()> {
-    // Create primary workspace
-    let primary_dir = TempDir::new()?;
-    let primary_path = primary_dir.path().to_path_buf();
-    let primary_src = primary_path.join("src");
-    fs::create_dir_all(&primary_src)?;
-
-    fs::write(
-        primary_src.join("primary.rs"),
-        "pub struct PrimaryStruct { pub field: String }\n",
-    )?;
-
-    // Create target workspace with nested symbols
     let reference_dir = TempDir::new()?;
-    let reference_path = reference_dir.path().to_path_buf();
-    let reference_src = reference_path.join("src");
+    let reference_src = reference_dir.path().join("src");
     fs::create_dir_all(&reference_src)?;
-
     let nested_file_path = reference_src.join("nested.rs");
     fs::write(
         &nested_file_path,
@@ -241,106 +81,9 @@ pub fn outer_function() {}
 pub struct Another { pub field: String }
 "#,
     )?;
-
-    // Initialize handler with primary workspace and index it
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
-        .await?;
-
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(primary_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    index_tool.call_tool(&handler).await?;
-
-    // Manually create the target-workspace database (daemon required for add in stdio mode)
-    let workspace = handler.get_workspace().await?.unwrap();
-    let workspace_id =
-        crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
-
-    let ref_db_path = workspace.workspace_db_path(&workspace_id);
-    fs::create_dir_all(ref_db_path.parent().unwrap())?;
-
-    let nested_file = nested_file_path.to_string_lossy().to_string();
-    let outer_id = "ref_outer_struct";
-
-    {
-        let mut ref_db = SymbolDatabase::new(&ref_db_path)?;
-        ref_db.bulk_store_symbols(
-            &[
-                test_sym(
-                    outer_id,
-                    "Outer",
-                    SymbolKind::Struct,
-                    &nested_file,
-                    Some("pub struct Outer"),
-                    1,
-                    1,
-                    0,
-                    33,
-                    None,
-                ),
-                test_sym(
-                    "ref_method_one",
-                    "method_one",
-                    SymbolKind::Method,
-                    &nested_file,
-                    Some("pub fn method_one(&self)"),
-                    3,
-                    3,
-                    50,
-                    80,
-                    Some(outer_id),
-                ),
-                test_sym(
-                    "ref_method_two",
-                    "method_two",
-                    SymbolKind::Method,
-                    &nested_file,
-                    Some("pub fn method_two(&self)"),
-                    4,
-                    4,
-                    81,
-                    111,
-                    Some(outer_id),
-                ),
-                test_sym(
-                    "ref_outer_fn",
-                    "outer_function",
-                    SymbolKind::Function,
-                    &nested_file,
-                    Some("pub fn outer_function()"),
-                    6,
-                    6,
-                    120,
-                    147,
-                    None,
-                ),
-                test_sym(
-                    "ref_another_struct",
-                    "Another",
-                    SymbolKind::Struct,
-                    &nested_file,
-                    Some("pub struct Another"),
-                    7,
-                    7,
-                    148,
-                    186,
-                    None,
-                ),
-            ],
-            &workspace_id,
-        )?;
-    }
-
+    let (handler, workspace_id) = target_context(reference_dir.path())?;
     let nested_file_str = nested_file_path.to_string_lossy().to_string();
 
-    // TEST 1: Get all symbols without filtering
     let get_all = GetSymbolsTool {
         file_path: nested_file_str.clone(),
         max_depth: 999,
@@ -349,9 +92,7 @@ pub struct Another { pub field: String }
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
-
-    let result_all = get_all.call_tool(&handler).await?;
-    let text_all = extract_text_from_result(&result_all);
+    let text_all = call_tool_result_text(&get_all.call_tool(&handler).await?);
 
     assert!(
         text_all.contains("Outer"),
@@ -369,7 +110,6 @@ pub struct Another { pub field: String }
         text_all
     );
 
-    // TEST 2: max_depth=0 should only return top-level symbols (no methods)
     let get_depth_0 = GetSymbolsTool {
         file_path: nested_file_str.clone(),
         max_depth: 0,
@@ -378,16 +118,13 @@ pub struct Another { pub field: String }
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
-
-    let result_depth_0 = get_depth_0.call_tool(&handler).await?;
-    let text_depth_0 = extract_text_from_result(&result_depth_0);
+    let text_depth_0 = call_tool_result_text(&get_depth_0.call_tool(&handler).await?);
 
     assert!(
         !text_depth_0.is_empty(),
         "max_depth=0 should return some symbols"
     );
 
-    // TEST 3: target="Outer" should return Outer and its children (methods)
     let get_target = GetSymbolsTool {
         file_path: nested_file_str.clone(),
         max_depth: 999,
@@ -396,23 +133,19 @@ pub struct Another { pub field: String }
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
-
-    let result_target = get_target.call_tool(&handler).await?;
-    let text_target = extract_text_from_result(&result_target);
+    let text_target = call_tool_result_text(&get_target.call_tool(&handler).await?);
 
     assert!(
         text_target.contains("Outer"),
         "target filtering should find 'Outer' symbol: {}",
         text_target
     );
-
     assert!(
         !text_target.contains("Another"),
         "target filtering should exclude 'Another' that doesn't match target: {}",
         text_target
     );
 
-    // TEST 4: limit=2 should only return 2 top-level symbols
     let get_limit = GetSymbolsTool {
         file_path: nested_file_str.clone(),
         max_depth: 999,
@@ -421,143 +154,27 @@ pub struct Another { pub field: String }
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
-
-    let result_limit = get_limit.call_tool(&handler).await?;
-    let text_limit = extract_text_from_result(&result_limit);
+    let text_limit = call_tool_result_text(&get_limit.call_tool(&handler).await?);
 
     assert!(!text_limit.is_empty(), "limit=2 should return some symbols");
-
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_get_symbols_target_workspace_relative_paths_after_primary_rebind() -> Result<()> {
-    let first_primary_dir = TempDir::new()?;
-    let rebound_primary_dir = TempDir::new()?;
     let reference_dir = TempDir::new()?;
-
-    let first_primary_path = first_primary_dir.path().to_path_buf();
-    let rebound_primary_path = rebound_primary_dir.path().to_path_buf();
-    let reference_path = reference_dir.path().to_path_buf();
-
-    fs::create_dir_all(first_primary_path.join("src"))?;
-    fs::create_dir_all(rebound_primary_path.join("src"))?;
-    fs::create_dir_all(reference_path.join("src"))?;
-
+    fs::create_dir_all(reference_dir.path().join("src"))?;
     fs::write(
-        first_primary_path.join("src").join("old.rs"),
-        "fn old_primary() {}\n",
-    )?;
-    fs::write(
-        rebound_primary_path.join("src").join("new.rs"),
-        "fn rebound_primary() {}\n",
-    )?;
-    let reference_file_path = reference_path.join("src").join("reference.rs");
-    fs::write(
-        &reference_file_path,
+        reference_dir.path().join("src").join("reference.rs"),
         "pub fn rebound_reference_symbol() {\n    println!(\"reference body\");\n}\n",
     )?;
+    let (handler, target_workspace_id) = target_context(reference_dir.path())?;
 
-    let handler = JulieServerHandler::new_for_test().await?;
-    handler
-        .initialize_workspace_with_force(
-            Some(first_primary_path.to_string_lossy().to_string()),
-            true,
-        )
-        .await?;
-    handler
-        .initialize_workspace_with_force(
-            Some(rebound_primary_path.to_string_lossy().to_string()),
-            true,
-        )
-        .await?;
-
-    let target_workspace_id =
-        crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
-    let ref_db_path = rebound_primary_path
-        .join(".julie")
-        .join("indexes")
-        .join(&target_workspace_id)
-        .join("db")
-        .join("symbols.db");
-    fs::create_dir_all(ref_db_path.parent().unwrap())?;
-
-    {
-        let mut ref_db = SymbolDatabase::new(&ref_db_path)?;
-        ref_db.bulk_store_fresh_atomic(
-            &[crate::database::types::FileInfo {
-                path: "src/reference.rs".to_string(),
-                language: "rust".to_string(),
-                hash: "ref-hash".to_string(),
-                size: 1,
-                last_modified: 1,
-                last_indexed: 1,
-                symbol_count: 1,
-                line_count: 3,
-                content: Some(
-                    "pub fn rebound_reference_symbol() {\n    println!(\"reference body\");\n}\n"
-                        .to_string(),
-                ),
-            }],
-            &[test_sym(
-                "ref_fn_1",
-                "rebound_reference_symbol",
-                SymbolKind::Function,
-                "src/reference.rs",
-                Some("pub fn rebound_reference_symbol()"),
-                1,
-                3,
-                0,
-                68,
-                None,
-            )],
-            &[],
-            &[],
-            &[],
-            &target_workspace_id,
-        )?;
-    }
-
-    let config = RegistryConfig::default();
-    let reference_entry = WorkspaceEntry::new(
-        reference_path.to_string_lossy().to_string(),
-        WorkspaceType::Known,
-        &config,
-    )?;
-    let mut registry = WorkspaceRegistry::default();
-    registry
-        .known_workspaces
-        .insert(target_workspace_id.clone(), reference_entry);
-    let registry_path = rebound_primary_path
-        .join(".julie")
-        .join("workspace_registry.json");
-    fs::create_dir_all(registry_path.parent().unwrap())?;
-    fs::write(&registry_path, serde_json::to_string_pretty(&registry)?)?;
-
-    let get_symbols_tool = GetSymbolsTool {
-        file_path: "src/reference.rs".to_string(),
-        max_depth: 1,
-        target: None,
-        limit: None,
-        mode: Some("full".to_string()),
-        workspace: Some(target_workspace_id.clone()),
-    };
-
-    let result = get_symbols_tool.call_tool(&handler).await?;
-    let result_text = extract_text_from_result(&result);
-
-    assert!(
-        result_text.contains("rebound_reference_symbol"),
-        "reference get_symbols should resolve relative paths under the reference root after primary rebind: {}",
-        result_text
-    );
-    assert!(
-        result_text.contains("reference body"),
-        "body extraction should read from the reference root, not the stale loaded root: {}",
-        result_text
-    );
-
-    for file_path in ["./src/reference.rs", "src/../src/reference.rs"] {
+    for file_path in [
+        "src/reference.rs",
+        "./src/reference.rs",
+        "src/../src/reference.rs",
+    ] {
         let get_symbols_tool = GetSymbolsTool {
             file_path: file_path.to_string(),
             max_depth: 1,
@@ -566,9 +183,9 @@ async fn test_get_symbols_target_workspace_relative_paths_after_primary_rebind()
             mode: Some("full".to_string()),
             workspace: Some(target_workspace_id.clone()),
         };
-
         let result = get_symbols_tool.call_tool(&handler).await?;
-        let result_text = extract_text_from_result(&result);
+        let result_text = call_tool_result_text(&result);
+
         assert!(
             result_text.contains("rebound_reference_symbol"),
             "reference get_symbols should normalize relative path variant '{}' against the reference root: {}",
@@ -582,6 +199,5 @@ async fn test_get_symbols_target_workspace_relative_paths_after_primary_rebind()
             result_text
         );
     }
-
     Ok(())
 }
