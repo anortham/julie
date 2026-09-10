@@ -668,7 +668,7 @@ async fn content_full_format_includes_matching_line_text() -> Result<()> {
     fs::create_dir_all(&src_dir)?;
     fs::write(
         src_dir.join("app.rs"),
-        "fn main() {\n    let full_format_context_marker = 1;\n}\n",
+        "fn main() {\n    println!(\"full_format_context_marker\");\n}\n",
     )?;
 
     let handler = index_workspace(workspace_path).await?;
@@ -684,7 +684,7 @@ async fn content_full_format_includes_matching_line_text() -> Result<()> {
 
     let text = extract_text(&result);
     assert!(
-        text.contains("let full_format_context_marker = 1;"),
+        text.contains("println!(\"full_format_context_marker\");"),
         "full output should include the actual matching line, got:\n{text}"
     );
 
@@ -703,7 +703,7 @@ async fn content_full_output_trace_records_line_enrichment_success() -> Result<(
     fs::create_dir_all(&src_dir)?;
     fs::write(
         src_dir.join("app.rs"),
-        "fn main() {\n    let trace_enrichment_marker = 1;\n}\n",
+        "fn main() {\n    println!(\"trace_enrichment_marker\");\n}\n",
     )?;
 
     let handler = index_workspace(workspace_path).await?;
