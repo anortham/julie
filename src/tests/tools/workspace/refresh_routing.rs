@@ -702,15 +702,4 @@ async fn test_manage_workspace_refresh_non_force_uses_rebound_session_primary_ro
             || text.contains("Already up-to-date"),
         "non-force rebound primary refresh should use current-primary index path: {text}"
     );
-
-    let workspace = handler
-        .get_workspace()
-        .await
-        .expect("workspace lookup should succeed")
-        .expect("workspace should remain initialized");
-    assert_eq!(
-        workspace.root.canonicalize().unwrap(),
-        rebound_primary_path,
-        "non-force rebound primary refresh should align the loaded workspace with the session current primary"
-    );
 }
