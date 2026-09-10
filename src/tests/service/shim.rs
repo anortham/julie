@@ -142,3 +142,47 @@ fn shim_binds_tool_calls_to_its_working_directory_unless_a_workspace_is_named() 
     bind_default_workspace(&mut list, root);
     assert_eq!(list, before);
 }
+
+#[tokio::test]
+async fn shim_answers_with_an_error_and_keeps_serving_when_the_service_cannot_restart() {
+    let running = Running::start(None).await;
+    let paths = running.paths.clone();
+    let first = connect_or_start(&paths, || Ok(())).await.unwrap();
+    first.post_shutdown().await.unwrap();
+    running.finished().await.unwrap();
+
+    let spawn = || Err(std::io::Error::other("no service tonight"));
+    let calls = format!(
+        "{}\n{}\n",
+        json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta": meta()}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{"_meta": meta()}}),
+    );
+    let mut output = Vec::new();
+    forward(
+        &paths,
+        &spawn,
+        &paths.julie_home(),
+        first,
+        tokio::io::BufReader::new(calls.as_bytes()),
+        &mut output,
+    )
+    .await
+    .unwrap();
+    let lines: Vec<Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2, "one error reply per request, shim still alive");
+    assert_eq!(lines[0]["id"], 1);
+    assert!(
+        lines[0]["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no service tonight"),
+        "got {}",
+        lines[0]
+    );
+    assert_eq!(lines[1]["id"], 2);
+    assert!(lines[1]["error"].is_object());
+}

@@ -64,11 +64,24 @@ where
         let response = match client.post_mcp(&body, &method).await {
             Ok(r) => r,
             Err(_) => {
-                client = connect_or_start(paths, spawn).await?;
-                client
-                    .post_mcp(&body, &method)
-                    .await
-                    .context("POST /mcp after reconnect")?
+                let retried = match connect_or_start(paths, spawn).await {
+                    Ok(fresh) => {
+                        client = fresh;
+                        client.post_mcp(&body, &method).await.map_err(|e| e.to_string())
+                    }
+                    Err(e) => Err(e.to_string()),
+                };
+                match retried {
+                    Ok(r) => r,
+                    Err(reason) => {
+                        if is_request {
+                            let err = serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "error": { "code": -32000, "message": format!("julie service unavailable: {reason}") } });
+                            output.write_all(format!("{err}\n").as_bytes()).await?;
+                            output.flush().await?;
+                        }
+                        continue;
+                    }
+                }
             }
         };
         if !is_request {
