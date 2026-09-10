@@ -449,9 +449,9 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Work from the compiler: delete `crates/julie-core/src/database/mod.rs` first and follow the errors. Any reader that still needs a deleted method is a Task 12 miss; fix it through the snapshot, never by keeping the method. Run `sh scripts/complexity-words.sh main` at the end; the only accepted hits are names that survive in `mutation_gate.rs` and ADR-0004's edit map.
 
 **Acceptance criteria:**
-- [ ] `crates/julie-core/src/database/` does not exist; `rg -n 'SymbolDatabase|canonical_revision|projection_state|indexing_repair|index_engine_state' src crates xtask --glob '!docs/**'` returns nothing.
-- [ ] `src/tests/service/durable_roots.rs` passes with only `facts.sqlite*` and `tantivy/` under `indexes/<id>/`.
-- [ ] `cargo nextest run -p julie-core -p julie-facts -p julie-index -p julie-pipeline -p julie-runtime -p julie-tools` passes; `cargo nextest run -p xtask` passes with the bucket changes.
+- [x] `crates/julie-core/src/database/` does not exist; `rg -n 'SymbolDatabase|canonical_revision|projection_state|indexing_repair|index_engine_state' src crates xtask --glob '!docs/**'` returns nothing.
+- [x] `src/tests/service/durable_roots.rs` passes with only `facts.sqlite*` and `tantivy/` under `indexes/<id>/`.
+- [x] `cargo nextest run -p julie-core -p julie-facts -p julie-index -p julie-pipeline -p julie-runtime -p julie-tools` passes; `cargo nextest run -p xtask` passes with the bucket changes.
 - [x] `cargo build` green; worker scope green; committed per commit mode.
 
 ---
