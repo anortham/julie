@@ -21,6 +21,7 @@ async fn shim_forwards_requests_and_drops_notifications() {
     forward(
         &running.paths,
         &|| Ok(()),
+        &running.paths.julie_home(),
         client,
         tokio::io::BufReader::new(input.as_bytes()),
         &mut output,
@@ -59,6 +60,7 @@ async fn shim_result_equals_direct_http_result_for_the_same_call() {
     forward(
         &running.paths,
         &|| Ok(()),
+        &running.paths.julie_home(),
         client,
         tokio::io::BufReader::new(format!("{call}\n").as_bytes()),
         &mut output,
@@ -102,6 +104,7 @@ async fn shim_reconnects_when_the_service_goes_away_mid_session() {
     forward(
         &paths,
         &spawn,
+        &paths.julie_home(),
         first,
         tokio::io::BufReader::new(format!("{call}\n").as_bytes()),
         &mut output,
@@ -112,4 +115,30 @@ async fn shim_reconnects_when_the_service_goes_away_mid_session() {
         serde_json::from_str(String::from_utf8(output).unwrap().lines().next().unwrap()).unwrap();
     assert_eq!(reply["id"], 9);
     assert!(reply["result"]["tools"].is_array(), "got {reply}");
+}
+
+#[test]
+fn shim_binds_tool_calls_to_its_working_directory_unless_a_workspace_is_named() {
+    use crate::service::shim::bind_default_workspace;
+    let root = std::path::Path::new("/repo/checkout");
+    let call = |arguments: Value| {
+        json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fast_search","arguments":arguments}})
+    };
+
+    let mut omitted = call(json!({"query":"x"}));
+    bind_default_workspace(&mut omitted, root);
+    assert_eq!(omitted["params"]["arguments"]["workspace"], "/repo/checkout");
+
+    let mut primary = call(json!({"query":"x","workspace":"primary"}));
+    bind_default_workspace(&mut primary, root);
+    assert_eq!(primary["params"]["arguments"]["workspace"], "/repo/checkout");
+
+    let mut named = call(json!({"query":"x","workspace":"julie_5cb3ea69"}));
+    bind_default_workspace(&mut named, root);
+    assert_eq!(named["params"]["arguments"]["workspace"], "julie_5cb3ea69");
+
+    let mut list = json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}});
+    let before = list.clone();
+    bind_default_workspace(&mut list, root);
+    assert_eq!(list, before);
 }

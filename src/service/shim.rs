@@ -1,11 +1,36 @@
 use crate::service::client::{ServiceClient, connect_or_start, spawn_detached_service};
 use anyhow::Context;
 use julie_core::paths::RegistryPaths;
+use std::path::Path;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
+
+/// Fill in the `workspace` argument of a `tools/call` with the shim's working
+/// directory when the caller omitted it or asked for the primary workspace.
+/// The service is stateless, so the shim is the only place that knows which
+/// checkout the agent session runs in.
+pub fn bind_default_workspace(message: &mut serde_json::Value, root: &Path) {
+    if message["method"].as_str() != Some("tools/call") {
+        return;
+    }
+    let Some(arguments) = message["params"]["arguments"].as_object_mut() else {
+        return;
+    };
+    let unbound = matches!(
+        arguments.get("workspace").and_then(|w| w.as_str()),
+        None | Some("primary") | Some("default")
+    );
+    if unbound {
+        arguments.insert(
+            "workspace".into(),
+            serde_json::Value::String(root.to_string_lossy().into_owned()),
+        );
+    }
+}
 
 pub async fn forward<R, W>(
     paths: &RegistryPaths,
     spawn: &(impl Fn() -> std::io::Result<()>),
+    workspace_root: &Path,
     mut client: ServiceClient,
     mut input: R,
     mut output: W,
@@ -24,7 +49,7 @@ where
         if trimmed.is_empty() {
             continue;
         }
-        let message: serde_json::Value = match serde_json::from_str(trimmed) {
+        let mut message: serde_json::Value = match serde_json::from_str(trimmed) {
             Ok(v) => v,
             Err(e) => {
                 let err = serde_json::json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("parse error: {e}") } });
@@ -32,14 +57,16 @@ where
                 continue;
             }
         };
+        bind_default_workspace(&mut message, workspace_root);
         let method = message["method"].as_str().unwrap_or("").to_string();
         let is_request = !message["id"].is_null();
-        let response = match client.post_mcp(trimmed.as_bytes(), &method).await {
+        let body = serde_json::to_vec(&message)?;
+        let response = match client.post_mcp(&body, &method).await {
             Ok(r) => r,
             Err(_) => {
                 client = connect_or_start(paths, spawn).await?;
                 client
-                    .post_mcp(trimmed.as_bytes(), &method)
+                    .post_mcp(&body, &method)
                     .await
                     .context("POST /mcp after reconnect")?
             }
@@ -83,5 +110,6 @@ pub async fn run_stdio_shim() -> anyhow::Result<()> {
     let client = connect_or_start(&paths, spawn_detached_service).await?;
     let stdin = tokio::io::BufReader::new(tokio::io::stdin());
     let stdout = tokio::io::stdout();
-    forward(&paths, &spawn_detached_service, client, stdin, stdout).await
+    let workspace_root = std::env::current_dir().context("resolve working directory")?;
+    forward(&paths, &spawn_detached_service, &workspace_root, client, stdin, stdout).await
 }
