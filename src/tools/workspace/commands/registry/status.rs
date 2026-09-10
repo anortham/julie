@@ -112,7 +112,11 @@ async fn checkout_status(
             Ok(store) => {
                 let snapshot = store.current();
                 let file_count = snapshot.graph().paths().len() as i64;
-                let vector_scan_millis = snapshot.vectors().last_scan_micros().map(|m| m / 1000);
+                let vector_scan_millis = snapshot
+                    .vectors()
+                    .as_ref()
+                    .last_scan_micros()
+                    .map(|m| m / 1000);
                 (Some(store.status()), file_count, vector_scan_millis)
             }
             Err(_) => (None, 0, None),

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-10
 **Branch:** `semantics` at `/home/murphy/source/julie/.worktrees/semantics`
-**Commit:** `HEAD`
+**Commit:** `36a558c0`
 **Verdict:** Keep `bge-small-en-v1.5-f32` as the default embedding model (`DEFAULT_NATIVE_MODEL = "bge-small-en-v1.5-f32"`). Under the decision rule ("keep bge-small unless qwen3 wins by more than one top-5 case"), `bge-small-en-v1.5-f32` decisively outperforms `qwen3-0.6b-f16` across all accuracy, latency, memory, and resource dimensions.
 
 ---

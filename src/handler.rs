@@ -751,9 +751,10 @@ impl JulieServerHandler {
             crate::workspace::registry::generate_workspace_id(&root.to_string_lossy())
                 .unwrap_or_default()
         });
-        let index_root = self.in_process_index_root.clone().unwrap_or_else(|| {
-            crate::paths::RegistryPaths::default().workspace_index_dir(&id)
-        });
+        let index_root = self
+            .in_process_index_root
+            .clone()
+            .unwrap_or_else(|| crate::paths::RegistryPaths::default().workspace_index_dir(&id));
         let binding = crate::request_engine::types::WorkspaceBinding {
             workspace_id: id,
             root,
@@ -761,7 +762,7 @@ impl JulieServerHandler {
         };
         let deadline = tokio::time::Instant::now() + timeout;
         let cancel = tokio_util::sync::CancellationToken::new();
-        let _ = self
+        let readiness = self
             .semantic_runtime()
             .ensure_ready(
                 &binding,
@@ -772,9 +773,45 @@ impl JulieServerHandler {
             )
             .await;
         let provider = self.semantic_runtime().provider();
-        if let Some(ref p) = provider {
-            let ws_guard = self.workspace.read().await;
-            if let Some(ref ws) = *ws_guard {
+        let runtime_status = match &provider {
+            Some(p) => {
+                let dev_info = p.device_info();
+                let accelerated = p.accelerated().unwrap_or_else(|| dev_info.is_accelerated());
+                crate::embeddings::EmbeddingRuntimeStatus {
+                    requested_backend: crate::embeddings::EmbeddingBackend::Native,
+                    resolved_backend: crate::embeddings::EmbeddingBackend::Native,
+                    accelerated,
+                    degraded_reason: p.degraded_reason(),
+                }
+            }
+            None => {
+                let reason = match &readiness {
+                    Ok(crate::request_engine::semantic::SemanticReadiness::Degraded {
+                        reason,
+                        ..
+                    }) => Some(reason.clone()),
+                    Ok(crate::request_engine::semantic::SemanticReadiness::Disabled) => {
+                        Some("disabled by environment".to_string())
+                    }
+                    Ok(crate::request_engine::semantic::SemanticReadiness::Starting) => {
+                        Some("starting".to_string())
+                    }
+                    Err(failure) => Some(failure.message.clone()),
+                    _ => Some("embedding provider unavailable".to_string()),
+                };
+                crate::embeddings::EmbeddingRuntimeStatus {
+                    requested_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+                    resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+                    accelerated: false,
+                    degraded_reason: reason,
+                }
+            }
+        };
+        let mut ws_guard = self.workspace.write().await;
+        if let Some(ref mut ws) = *ws_guard {
+            ws.embedding_provider = provider.clone();
+            ws.embedding_runtime_status = Some(runtime_status);
+            if let Some(ref p) = provider {
                 if let Some(ref watcher) = ws.watcher {
                     watcher.update_embedding_provider(Some(Arc::clone(p)));
                 }

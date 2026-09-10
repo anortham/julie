@@ -58,6 +58,29 @@ pub(crate) async fn wait_for_embedding_provider_settled(
         return Some(provider);
     }
 
+    let _single_flight_guard = NL_DEFINITION_EMBEDDING_INIT_SINGLE_FLIGHT.lock().await;
+
+    if let Some(provider) = handler.embedding_provider().await {
+        return Some(provider);
+    }
+
+    let should_attempt_init = {
+        let workspace_guard = handler.workspace.read().await;
+        match workspace_guard.as_ref() {
+            Some(workspace) => match &workspace.embedding_runtime_status {
+                None => true,
+                Some(status) => status.degraded_reason.as_deref().map_or(false, |r| {
+                    r.contains("timeout") || r.contains("unavailable") || r.contains("starting")
+                }),
+            },
+            None => false,
+        }
+    };
+
+    if !should_attempt_init {
+        return None;
+    }
+
     #[cfg(test)]
     record_nl_definition_embedding_init_attempt(&handler.current_workspace_root());
 

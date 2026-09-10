@@ -30,7 +30,11 @@ async fn two_checkouts_share_one_embedding_child() {
     assert_eq!(child["state"], "ready", "got {status}");
     let pid = child["pid"].as_u64().unwrap();
     let after = running.status().await;
-    assert_eq!(after["embedding_child"]["pid"].as_u64().unwrap(), pid, "one child, one pid");
+    assert_eq!(
+        after["embedding_child"]["pid"].as_u64().unwrap(),
+        pid,
+        "one child, one pid"
+    );
 }
 
 #[tokio::test]
@@ -57,4 +61,50 @@ async fn lexical_only_mode_never_spawns_the_child() {
         .await;
     assert_eq!(search.status(), 200);
     assert_eq!(running.status().await["embedding_child"]["state"], "absent");
+}
+
+#[cfg(unix)]
+#[test]
+fn child_pid_returns_without_blocking_while_batch_is_in_flight() {
+    use julie_core::embeddings_contract::{EmbeddingProvider, EmbeddingRequestBudget};
+    use julie_pipeline::embeddings::EmbeddingConfig;
+    use julie_pipeline::embeddings::native::NativeEmbeddingProvider;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let fake_dir = tempfile::tempdir().unwrap();
+    let fake_exe = crate::tests::helpers::fake_sidecar::write_with_batch_delay(fake_dir.path(), 2);
+    let provider = Arc::new(
+        NativeEmbeddingProvider::try_new(&EmbeddingConfig {
+            provider: "native".into(),
+            cache_dir: Some(fake_dir.path().to_path_buf()),
+            native_program: Some(fake_exe),
+            native_model: Some("fake".into()),
+        })
+        .unwrap(),
+    );
+
+    let p_clone = Arc::clone(&provider);
+    let thread = std::thread::spawn(move || {
+        let budget = EmbeddingRequestBudget::with_timeout(Duration::from_secs(5));
+        p_clone.embed_batch(&["hello".to_string()], &budget)
+    });
+
+    std::thread::sleep(Duration::from_millis(150));
+
+    let start = std::time::Instant::now();
+    let pid = provider.child_pid();
+    let elapsed = start.elapsed();
+
+    assert!(
+        pid.is_some(),
+        "child_pid should return Some(pid) while batch is in flight"
+    );
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "child_pid blocked for {elapsed:?} waiting on in-flight batch"
+    );
+
+    let batch_result = thread.join().unwrap();
+    assert!(batch_result.is_ok());
 }

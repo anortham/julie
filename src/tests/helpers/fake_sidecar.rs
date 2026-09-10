@@ -27,3 +27,34 @@ pub fn write(dir: &Path) -> PathBuf {
     }
     path
 }
+
+/// Writes a fake sidecar script that sleeps on `embed_batch` into `dir` and makes it executable.
+pub fn write_with_batch_delay(dir: &Path, sleep_secs: u64) -> PathBuf {
+    let script = format!(
+        r#"#!/bin/sh
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
+  case "$line" in
+    *'"method":"health"'*)
+      printf '{{"schema":"julie.embedding.sidecar","version":1,"request_id":"%s","result":{{"ready":true,"model_id":"fake","model_sha256":"%s","dims":3,"pooling":"cls","normalization":"l2","instruction_policy_version":1,"llama_cpp_build":"fake-build","device":"cpu","runtime":"fake","accelerated":false}}}}\n' "$id" "$(printf 'a%.0s' $(seq 64))" ;;
+    *'"method":"embed_query"'*)
+      printf '{{"schema":"julie.embedding.sidecar","version":1,"request_id":"%s","result":{{"vector":[1.0,0.0,0.0],"dims":3}}}}\n' "$id" ;;
+    *'"method":"embed_batch"'*)
+      sleep {sleep_secs}
+      printf '{{"schema":"julie.embedding.sidecar","version":1,"request_id":"%s","result":{{"vectors":[[1.0,0.0,0.0]],"dims":3}}}}\n' "$id" ;;
+    *'"method":"shutdown"'*) exit 0 ;;
+    *'"method":"die"'*) exit 7 ;;
+  esac
+done
+"#,
+        sleep_secs = sleep_secs
+    );
+    let path = dir.join("fake-sidecar-delay.sh");
+    std::fs::write(&path, script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    path
+}
