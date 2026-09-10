@@ -59,9 +59,6 @@ pub(crate) async fn spawn_workspace_embedding(
     handler: &JulieServerHandler,
     workspace_id: String,
 ) -> EmbeddingOutcome {
-    if julie_pipeline::embeddings::init::embeddings_disabled_by_env() {
-        return EmbeddingOutcome::skipped();
-    }
     let Some(provider) = handler
         .acquire_embedding_provider(Duration::from_secs(30))
         .await
