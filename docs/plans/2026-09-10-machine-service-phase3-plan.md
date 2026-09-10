@@ -479,8 +479,8 @@ Commit mode: `serial-worker-commit` for Tasks 1, 2, 3, 10, 11, 12, 13. `parallel
 **Approach:** Run `cargo xtask test dev`, `system`, `bucket service-process`, `dogfood`, `full`, recording each in the ledger with the HEAD SHA. Time `fast` and `full` three times and report the median. Measure Miller by opening `/home/murphy/source/miller` in a temporary `JULIE_HOME` and reading `/status`. Then the docs pass and the finding.
 
 **Acceptance criteria:**
-- [ ] The finding states the verdict and every section 12 measurement with its command.
-- [ ] `CLAUDE.md`, `AGENTS.md`, `docs/WORKSPACE_ARCHITECTURE.md`, `docs/SEARCH_FLOW.md` no longer describe `symbols.db`, `projection_states`, `canonical_revisions`, repairs, or embedding generations as product behavior (`rg -n` in the finding).
+- [x] The finding states the verdict and every section 12 measurement with its command.
+- [x] `CLAUDE.md`, `AGENTS.md`, `docs/WORKSPACE_ARCHITECTURE.md`, `docs/SEARCH_FLOW.md` no longer describe `symbols.db`, `projection_states`, `canonical_revisions`, repairs, or embedding generations as product behavior (`rg -n` in the finding).
 - [ ] The ledger has rows for `dev`, `system`, `service-process`, `dogfood`, and `full` at the final HEAD, all `pass`.
 - [ ] `cargo xtask test dev` green at the final commit.
 
