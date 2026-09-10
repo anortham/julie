@@ -45,7 +45,7 @@ const FORBIDDEN_SOURCE: &[&str] = &[
 /// else in the `julie-*` family is a sibling or higher crate; depending on it
 /// would invert the layering. `julie-test-support` is a leaf test helper that
 /// depends only on julie-core (legal dev-dep, no cycle).
-const ALLOWED_WORKSPACE_DEPS: &[&str] = &["julie-core", "julie-index", "julie-test-support"];
+const ALLOWED_WORKSPACE_DEPS: &[&str] = &["julie-core", "julie-facts", "julie-index", "julie-test-support"];
 
 /// Strip a single-line `//` comment (and trailing comments) from a source line so
 /// that architecture-describing doc comments (which legitimately *mention*

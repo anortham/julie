@@ -49,6 +49,7 @@ const FORBIDDEN_SOURCE: &[&str] = &[
 /// depends only on julie-core (legal dev-dep, no cycle).
 const ALLOWED_WORKSPACE_DEPS: &[&str] = &[
     "julie-core",
+    "julie-facts",
     "julie-index",
     "julie-extractors",
     "julie-test-support",
