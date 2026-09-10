@@ -121,13 +121,13 @@ pub fn definition_priority(kind: &SymbolKind) -> u8 {
     }
 }
 
-fn is_definition(kind: &SymbolKind) -> bool {
+pub(super) fn is_definition(kind: &SymbolKind) -> bool {
     !matches!(kind, SymbolKind::Import | SymbolKind::Export)
 }
 
 /// `a::b::leaf` or `a.b.leaf` -> `("leaf", ["a", "b"])`. Leading `crate`,
 /// `self`, `Self`, and `super` say nothing about the target and are dropped.
-fn split_qualified(name: &str) -> (&str, Vec<&str>) {
+pub(super) fn split_qualified(name: &str) -> (&str, Vec<&str>) {
     let mut segments: Vec<&str> = name
         .split("::")
         .flat_map(|s| s.split('.'))
@@ -183,10 +183,13 @@ pub fn resolve_target(symbols: &SymbolTable, name: &str, from_file: u32) -> Opti
     {
         candidates.retain(|id| symbols.file_of(*id) == from_file);
     }
-    let best = candidates
+    let Some(best) = candidates
         .iter()
         .map(|id| definition_priority(&symbols.symbol(*id).kind))
-        .min()?;
+        .min()
+    else {
+        return super::reexports::resolve_reexport(symbols, name, from_file);
+    };
     let mut top = candidates
         .iter()
         .filter(|id| definition_priority(&symbols.symbol(**id).kind) == best);

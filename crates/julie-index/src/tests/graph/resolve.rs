@@ -1,7 +1,9 @@
+use julie_core::workspace::mutation_gate::Registry;
 use julie_extractors::{IdentifierKind, RelationshipKind, SymbolKind};
 
 use super::fixture::{edge_labels, edges_of_kind, file, graph_of, store_with};
-use crate::graph::EdgeKind;
+use crate::checkout_store::{CheckoutStore, PathChange};
+use crate::graph::{EdgeKind, Graph};
 
 fn pair(from: &str, to: &str) -> (String, String) {
     (from.to_string(), to.to_string())
@@ -283,4 +285,99 @@ fn external_qualifier_matching_no_candidate_drops_the_edge() {
     let graph = graph_of(&store);
 
     assert!(edges_of_kind(&graph, EdgeKind::Calls).is_empty());
+}
+
+fn extracted_store(
+    files: &[(&str, &str)],
+) -> (tempfile::TempDir, tempfile::TempDir, CheckoutStore) {
+    let tree = tempfile::TempDir::new().unwrap();
+    let mut changes = Vec::new();
+    for (path, content) in files {
+        let full = tree.path().join(path);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&full, content).unwrap();
+        changes.push(PathChange::Upsert {
+            path: (*path).to_string(),
+            bytes: content.as_bytes().to_vec(),
+            language: "rust".to_string(),
+        });
+    }
+    let facts_dir = tempfile::TempDir::new().unwrap();
+    let store =
+        CheckoutStore::open_with_ram_index(&facts_dir.path().join("facts.sqlite"), tree.path())
+            .unwrap();
+    let guard = Registry::new()
+        .try_acquire("reexport-resolve")
+        .expect("fresh registry is uncontended");
+    store.apply(&changes, &guard).unwrap();
+    (tree, facts_dir, store)
+}
+
+fn call_edges(graph: &Graph) -> Vec<(String, String)> {
+    edges_of_kind(graph, EdgeKind::Calls)
+}
+
+#[test]
+fn reexported_crate_call_resolves_to_the_definition() {
+    let (_tree, _facts, store) = extracted_store(&[
+        (
+            "src/lib.rs",
+            "pub mod extractors;\npub mod indexing;\npub mod pipeline;\n",
+        ),
+        (
+            "src/extractors.rs",
+            "pub use crate::pipeline::extract_canonical;\n",
+        ),
+        (
+            "src/indexing.rs",
+            "pub fn extract_symbols_static() {\n    crate::extractors::extract_canonical();\n}\n",
+        ),
+        ("src/pipeline.rs", "pub fn extract_canonical() {}\n"),
+    ]);
+    let snapshot = store.current();
+    let graph = snapshot.graph().as_ref();
+
+    assert_eq!(
+        call_edges(graph),
+        vec![pair(
+            "src/indexing.rs:extract_symbols_static",
+            "src/pipeline.rs:extract_canonical"
+        )],
+        "edges={:?}",
+        edge_labels(graph)
+    );
+}
+
+#[test]
+fn workspace_crate_glob_reexport_resolves_to_the_definition() {
+    let (_tree, _facts, store) = extracted_store(&[
+        ("src/lib.rs", "pub mod extractors;\npub mod indexing;\n"),
+        ("src/extractors/mod.rs", "pub use sample_lib::*;\n"),
+        (
+            "src/indexing.rs",
+            "pub fn extract_symbols_static() {\n    crate::extractors::extract_canonical();\n}\n",
+        ),
+        (
+            "crates/sample-lib/src/lib.rs",
+            "pub use pipeline::extract_canonical;\npub mod pipeline;\n",
+        ),
+        (
+            "crates/sample-lib/src/pipeline.rs",
+            "pub fn extract_canonical() {}\n",
+        ),
+    ]);
+    let snapshot = store.current();
+    let graph = snapshot.graph().as_ref();
+
+    assert_eq!(
+        call_edges(graph),
+        vec![pair(
+            "src/indexing.rs:extract_symbols_static",
+            "crates/sample-lib/src/pipeline.rs:extract_canonical"
+        )],
+        "edges={:?}",
+        edge_labels(graph)
+    );
 }

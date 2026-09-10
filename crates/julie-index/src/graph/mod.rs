@@ -6,6 +6,7 @@
 
 mod edges;
 mod load;
+mod reexports;
 mod resolve;
 mod scores;
 mod web_edges;
