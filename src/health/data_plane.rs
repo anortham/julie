@@ -65,64 +65,12 @@ pub(crate) async fn build_data_plane(
                 .get_pooled_database_for_workspace(workspace_id)
                 .await
                 .ok();
-            let vector_count = handler
+            let store = handler
                 .checkout_store_for_workspace(workspace_id, &state.binding.workspace_root)
                 .await
-                .map(|store| store.status().vector_count as i64)
-                .unwrap_or(0);
-
-            let canonical_store = match pooled_db.as_ref() {
-                Some(db) => match db.get_stats() {
-                    Ok(stats) => {
-                        // Detect the phantom-fd state: SQLite reports symbols but the
-                        // on-disk file is gone (size 0). This happens when the index
-                        // directory is removed while the daemon holds the SQLite fd
-                        // open — reads keep working but the data is unrecoverable.
-                        let phantom_fd = stats.total_symbols > 0 && stats.db_size_mb == 0.0;
-                        let level = if phantom_fd {
-                            HealthLevel::Unavailable
-                        } else if stats.total_symbols > 0 {
-                            HealthLevel::Ready
-                        } else {
-                            HealthLevel::Unavailable
-                        };
-                        let detail = if phantom_fd {
-                            format!(
-                                "ON-DISK STATE MISSING: SQLite reports {} symbols but db file size is 0 MB. \
-                                 Index directory was removed while daemon was running. \
-                                 Restart daemon and force-reindex to recover.",
-                                stats.total_symbols
-                            )
-                        } else if stats.total_symbols > 0 {
-                            format!(
-                                "{} symbols across {} files",
-                                stats.total_symbols, stats.total_files
-                            )
-                        } else {
-                            "SQLite opened but has no indexed symbols".to_string()
-                        };
-                        CanonicalStoreHealth {
-                            level,
-                            symbol_count: stats.total_symbols,
-                            file_count: stats.total_files,
-                            relationship_count: stats.total_relationships,
-                            embedding_count: vector_count,
-                            db_size_mb: stats.db_size_mb,
-                            languages: stats.languages,
-                            detail,
-                        }
-                    }
-                    Err(err) => CanonicalStoreHealth {
-                        level: HealthLevel::Unavailable,
-                        symbol_count: 0,
-                        file_count: 0,
-                        relationship_count: 0,
-                        embedding_count: 0,
-                        db_size_mb: 0.0,
-                        languages: Vec::new(),
-                        detail: format!("Failed to read SQLite stats: {}", err),
-                    },
-                },
+                .ok();
+            let canonical_store = match store.as_ref() {
+                Some(store) => canonical_store_from_checkout(store),
                 None => CanonicalStoreHealth {
                     level: HealthLevel::Unavailable,
                     symbol_count: 0,
@@ -131,7 +79,7 @@ pub(crate) async fn build_data_plane(
                     embedding_count: 0,
                     db_size_mb: 0.0,
                     languages: Vec::new(),
-                    detail: "No SQLite database is connected for the primary workspace".to_string(),
+                    detail: "Checkout store failed to open for the primary workspace".to_string(),
                 },
             };
 
@@ -175,6 +123,11 @@ pub(crate) async fn build_data_plane(
                     .collect(),
             };
 
+            let mut projections = projections;
+            if let Some(store) = store.as_ref() {
+                overlay_tantivy_from_store(&mut projections, workspace_id, &store.status());
+            }
+
             let indexing = indexing_health(state.indexing_runtime.as_ref());
             let mut levels = vec![canonical_store.level, indexing.level];
             levels.extend(projections.iter().map(|projection| projection.level));
@@ -186,6 +139,56 @@ pub(crate) async fn build_data_plane(
                 indexing,
             })
         }
+    }
+}
+
+fn canonical_store_from_checkout(
+    store: &julie_index::checkout_store::CheckoutStore,
+) -> CanonicalStoreHealth {
+    let status = store.status();
+    let symbol_count = status.graph.symbols as i64;
+    let file_count = store.current().graph().paths().len() as i64;
+    let ready = symbol_count > 0;
+    CanonicalStoreHealth {
+        level: if ready {
+            HealthLevel::Ready
+        } else {
+            HealthLevel::Unavailable
+        },
+        symbol_count,
+        file_count,
+        relationship_count: status.graph.edges as i64,
+        embedding_count: status.vector_count as i64,
+        db_size_mb: status.facts_bytes as f64 / (1024.0 * 1024.0),
+        languages: Vec::new(),
+        detail: if ready {
+            format!("{symbol_count} symbols across {file_count} files")
+        } else {
+            "Checkout store opened but has no indexed symbols".to_string()
+        },
+    }
+}
+
+fn overlay_tantivy_from_store(
+    projections: &mut [ProjectionHealth],
+    workspace_id: &str,
+    status: &julie_index::checkout_store::StoreStatus,
+) {
+    if status.tantivy != julie_index::checkout_store::TantivyState::Present
+        || status.graph.symbols == 0
+    {
+        return;
+    }
+    if let Some(projection) = projections
+        .iter_mut()
+        .find(|projection| projection.name == TANTIVY_PROJECTION_NAME)
+    {
+        projection.level = HealthLevel::Ready;
+        projection.state = ProjectionState::Ready;
+        projection.freshness = ProjectionFreshness::Current;
+        projection.repair_needed = false;
+        projection.workspace_id = Some(workspace_id.to_string());
+        projection.detail = "Tantivy projection present beside facts.sqlite".to_string();
     }
 }
 

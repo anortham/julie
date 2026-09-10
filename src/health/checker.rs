@@ -183,30 +183,21 @@ impl HealthChecker {
         handler: &JulieServerHandler,
         workspace_id: &str,
     ) -> Result<SystemStatus> {
-        // Pooled DB: read-only, no mutation gate required. The pool waits async
-        // when no connection is immediately available, so no busy-fallback is
-        // needed (the old Arc<Mutex<>> path treated contention as "data present"
-        // — that heuristic doesn't translate to pool semantics).
-        let pooled_db = match handler
-            .get_pooled_database_for_workspace(workspace_id)
-            .await
-        {
-            Ok(db) => db,
-            Err(_) => return Ok(SystemStatus::NotReady),
+        let Ok(root) = handler.get_workspace_root_for_target(workspace_id).await else {
+            return Ok(SystemStatus::NotReady);
         };
-
-        let symbol_count = pooled_db.get_symbol_count_for_workspace().unwrap_or(0);
-
+        let Ok(store) = handler
+            .checkout_store_for_workspace(workspace_id, &root)
+            .await
+        else {
+            return Ok(SystemStatus::NotReady);
+        };
+        let status = store.status();
+        let symbol_count = status.graph.symbols as i64;
         if symbol_count == 0 {
             return Ok(SystemStatus::NotReady);
         }
-
-        let has_search_index = handler
-            .get_search_index_for_workspace(workspace_id)
-            .await?
-            .is_some();
-
-        if has_search_index {
+        if status.tantivy == julie_index::checkout_store::TantivyState::Present {
             Ok(SystemStatus::FullyReady { symbol_count })
         } else {
             Ok(SystemStatus::SqliteOnly { symbol_count })

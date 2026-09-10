@@ -1,6 +1,5 @@
 use super::*;
 
-#[cfg(any())]
 #[tokio::test]
 async fn test_known_ready_workspace_auto_activates_for_fast_search() {
     let (_temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;

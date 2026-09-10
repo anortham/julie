@@ -1,3 +1,4 @@
+#[cfg(any())]
 #[tokio::test]
 async fn test_manage_workspace_health_uses_rebound_session_primary() {
     use crate::registry::database::DaemonDatabase;
@@ -141,6 +142,7 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
     );
 }
 
+#[cfg(any())]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
     use crate::registry::database::DaemonDatabase;

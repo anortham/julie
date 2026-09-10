@@ -25,9 +25,7 @@ pub(crate) fn overall_from_levels(levels: &[HealthLevel]) -> HealthLevel {
 }
 
 pub(super) fn readiness_from_data_plane(data_plane: &DataPlaneHealth) -> SystemStatus {
-    if data_plane.canonical_store.symbol_count <= 0
-        && data_plane.canonical_store.level == HealthLevel::Unavailable
-    {
+    if data_plane.canonical_store.symbol_count <= 0 {
         SystemStatus::NotReady
     } else if data_plane
         .projection(TANTIVY_PROJECTION_NAME)
