@@ -61,10 +61,19 @@ impl ToolContext for JulieServerHandler {
                 JulieServerHandler::require_primary_workspace_identity(self)?,
                 JulieServerHandler::require_primary_workspace_root(self)?,
             ),
-            WorkspaceTarget::Target(id) => (
-                id.clone(),
-                JulieServerHandler::get_workspace_root_for_target(self, id).await?,
-            ),
+            WorkspaceTarget::Target(id) => {
+                let store_dir = JulieServerHandler::workspace_index_dir_for(self, id).await?;
+                if !store_dir
+                    .join(julie_index::checkout_store::FACTS_FILE)
+                    .exists()
+                {
+                    anyhow::bail!("Workspace '{}' not indexed yet", id);
+                }
+                let root = JulieServerHandler::get_workspace_root_for_target(self, id)
+                    .await
+                    .unwrap_or_else(|_| store_dir);
+                (id.clone(), root)
+            }
         };
         Ok(self
             .checkout_store_for_workspace(&workspace_id, &root)

@@ -84,15 +84,6 @@ mod target_workspace_tests {
         Ok((primary_id, target_id))
     }
 
-    /// ✅ FIXED: FTS5 CORRUPTION BUG - Bug was in filter_changed_files and clean_orphaned_files
-    /// Root cause: When indexing REFERENCE workspace, these functions were querying the PRIMARY
-    /// workspace database and deleting all primary files as "orphaned", corrupting FTS5 index.
-    ///
-    /// Fix: Both functions now check workspace_id and query the correct database:
-    /// - Primary workspace: use handler.get_workspace().db
-    /// - Target workspace: open a separate DB at indexes/{workspace_id}/db/symbols.db
-    ///
-    /// REFACTORING STATUS: Complete - uses fixture setup, bug fixed, test passing
     #[tokio::test(flavor = "multi_thread")]
     #[serial_test::file_serial(shared_test_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
     async fn test_target_workspace_end_to_end() -> Result<()> {
@@ -459,7 +450,6 @@ mod target_workspace_tests {
             "crates/julie-tools/src/navigation/mod.rs",
             "crates/julie-tools/src/navigation/resolution.rs",
             "crates/julie-tools/src/navigation/fast_refs.rs",
-            "crates/julie-tools/src/navigation/target_workspace.rs",
             "crates/julie-tools/src/symbols/mod.rs",
             "crates/julie-tools/src/symbols/target_workspace.rs",
             "crates/julie-tools/src/get_context/mod.rs",

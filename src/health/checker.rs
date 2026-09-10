@@ -170,9 +170,19 @@ impl HealthChecker {
         handler: &JulieServerHandler,
         workspace_id: &str,
     ) -> Result<SystemStatus> {
-        let Ok(root) = handler.get_workspace_root_for_target(workspace_id).await else {
+        let Ok(store_dir) = handler.workspace_index_dir_for(workspace_id).await else {
             return Ok(SystemStatus::NotReady);
         };
+        if !store_dir
+            .join(julie_index::checkout_store::FACTS_FILE)
+            .exists()
+        {
+            return Ok(SystemStatus::NotReady);
+        }
+        let root = handler
+            .get_workspace_root_for_target(workspace_id)
+            .await
+            .unwrap_or_else(|_| store_dir);
         let Ok(store) = handler
             .checkout_store_for_workspace(workspace_id, &root)
             .await

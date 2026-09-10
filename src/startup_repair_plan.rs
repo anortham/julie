@@ -6,7 +6,7 @@
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use crate::tools::workspace::indexing::store_open::{
-    delete_store_dir, store_dir, store_for_workspace,
+    delete_store_dir, store_dir, store_engine_mismatch, store_for_workspace,
 };
 use anyhow::Result;
 use std::collections::HashSet;
@@ -38,12 +38,17 @@ pub(crate) async fn plan_primary_workspace_repair(
 
     let index_dir = handler.workspace_index_dir_for(&route.workspace_id).await?;
     let store_path = store_dir(&index_dir);
+    if store_engine_mismatch(&store_path) {
+        return Ok(Some(PrimaryWorkspaceRepairPlan {
+            reasons: vec![IndexingRepairReason::SemanticVersionChanged],
+        }));
+    }
 
     let store = match store_for_workspace(handler, &route.workspace_id, &route.workspace_root).await
     {
         Ok(store) => store,
         Err(err) => {
-            warn!(error = %err, "checkout store failed to open; deleting store/ for reindex");
+            warn!(error = %err, "checkout store failed to open; deleting indexes/<id>/ for reindex");
             delete_store_dir(&store_path)?;
             return Ok(Some(PrimaryWorkspaceRepairPlan {
                 reasons: vec![IndexingRepairReason::SemanticVersionChanged],
@@ -54,7 +59,7 @@ pub(crate) async fn plan_primary_workspace_repair(
     let facts = match store.current().facts() {
         Ok(facts) => facts,
         Err(err) => {
-            warn!(error = %err, "facts reader failed; deleting store/ for reindex");
+            warn!(error = %err, "facts reader failed; deleting indexes/<id>/ for reindex");
             delete_store_dir(&store_path)?;
             return Ok(Some(PrimaryWorkspaceRepairPlan {
                 reasons: vec![IndexingRepairReason::SemanticVersionChanged],

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
+use julie_facts::{FactsStore, Opened};
 use julie_index::checkout_store::{CheckoutStore, FACTS_FILE};
 use tracing::warn;
 
@@ -37,6 +38,19 @@ pub(crate) fn delete_store_dir(store_dir: &Path) -> Result<()> {
         std::fs::remove_dir_all(store_dir)?;
     }
     Ok(())
+}
+
+/// True when `facts.sqlite` exists and its `meta.engine_version` / schema
+/// do not match the running binary. Does not delete or recreate the store.
+pub(crate) fn store_engine_mismatch(store_dir: &Path) -> bool {
+    let facts_path = store_dir.join(FACTS_FILE);
+    if !facts_path.exists() {
+        return false;
+    }
+    matches!(
+        FactsStore::open(&facts_path),
+        Ok(Opened::VersionMismatch { .. })
+    )
 }
 
 /// The writer for this checkout: the loaded primary's store, or one opened
