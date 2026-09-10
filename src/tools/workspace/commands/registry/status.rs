@@ -2,15 +2,17 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use anyhow::{Result, anyhow};
+use julie_index::checkout_store::{FACTS_FILE, STORE_DIR, StoreStatus, TantivyState};
 use serde::{Deserialize, Serialize};
 
 use super::{ManageWorkspaceTool, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use crate::tools::workspace::indexing::store_open::store_for_workspace;
 use crate::workspace::registry::generate_workspace_id;
 
 /// Facts about one checkout, computed on request from the registry row, the
-/// index directory on disk, and the loaded workspace's watcher.
+/// store on disk, and the loaded workspace's watcher.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckoutStatus {
     pub workspace_id: String,
@@ -20,9 +22,13 @@ pub struct CheckoutStatus {
     pub last_file_event_at: Option<String>,
     pub file_count: i64,
     pub symbol_count: i64,
-    pub db_bytes: u64,
+    pub blob_count: u64,
+    pub facts_bytes: u64,
     pub tantivy: String,
     pub tantivy_age_seconds: Option<u64>,
+    pub graph_symbols: u64,
+    pub graph_load_millis: u64,
+    pub graph_resident_bytes: u64,
     pub vector_count: i64,
     pub last_write_at: Option<String>,
 }
@@ -98,52 +104,92 @@ async fn checkout_status(
     root: PathBuf,
 ) -> Result<CheckoutStatus> {
     let index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
-    let db_path = index_dir.join("db").join("symbols.db");
-    let db_bytes = file_len(&db_path) + file_len(&index_dir.join("db").join("symbols.db-wal"));
-    let (file_count, symbol_count) = if db_path.exists() {
-        let db_path = db_path.clone();
-        tokio::task::spawn_blocking(move || -> Result<(i64, i64)> {
-            let db = crate::database::SymbolDatabase::new(&db_path)?;
-            Ok((
-                db.get_file_count_for_workspace()?,
-                db.get_symbol_count_for_workspace()?,
-            ))
-        })
-        .await??
+    let facts_path = index_dir.join(STORE_DIR).join(FACTS_FILE);
+    let facts_mtime = mtime(&facts_path);
+    let (store_status, file_count) = if facts_path.exists() {
+        match store_for_workspace(handler, &workspace_id, &root).await {
+            Ok(store) => {
+                let file_count = store.current().graph().paths().len() as i64;
+                (Some(store.status()), file_count)
+            }
+            Err(_) => (None, 0),
+        }
     } else {
-        (0, 0)
-    };
-    let vector_count = handler
-        .checkout_store_for_workspace(&workspace_id, &root)
-        .await
-        .map(|store| store.status().vector_count as i64)
-        .unwrap_or(0);
-    let tantivy_dir = index_dir.join("tantivy");
-    let tantivy_meta_mtime = mtime(&tantivy_dir.join("meta.json"));
-    let tantivy = if !tantivy_dir.exists() {
-        "absent"
-    } else if tantivy_meta_mtime.is_some() {
-        "present"
-    } else {
-        "building"
+        (None, 0)
     };
     let (watcher, last_file_event_at) = watcher_state(handler, &root).await;
-    Ok(CheckoutStatus {
+    Ok(status_from_store(
         workspace_id,
-        root_exists: root.exists(),
+        root,
+        watcher,
+        last_file_event_at,
+        store_status,
+        file_count,
+        facts_mtime,
+    ))
+}
+
+fn status_from_store(
+    workspace_id: String,
+    root: PathBuf,
+    watcher: String,
+    last_file_event_at: Option<String>,
+    store_status: Option<StoreStatus>,
+    file_count: i64,
+    facts_mtime: Option<SystemTime>,
+) -> CheckoutStatus {
+    let root_exists = root.exists();
+    let Some(status) = store_status else {
+        return CheckoutStatus {
+            workspace_id,
+            root_exists,
+            root: root.to_string_lossy().to_string(),
+            watcher,
+            last_file_event_at,
+            file_count: 0,
+            symbol_count: 0,
+            blob_count: 0,
+            facts_bytes: 0,
+            tantivy: "absent".to_string(),
+            tantivy_age_seconds: None,
+            graph_symbols: 0,
+            graph_load_millis: 0,
+            graph_resident_bytes: 0,
+            vector_count: 0,
+            last_write_at: None,
+        };
+    };
+    CheckoutStatus {
+        workspace_id,
+        root_exists,
         root: root.to_string_lossy().to_string(),
         watcher,
         last_file_event_at,
         file_count,
-        symbol_count,
-        db_bytes,
-        tantivy: tantivy.to_string(),
-        tantivy_age_seconds: tantivy_meta_mtime
-            .and_then(|at| at.elapsed().ok())
-            .map(|age| age.as_secs()),
-        vector_count,
-        last_write_at: mtime(&db_path).map(rfc3339),
-    })
+        symbol_count: status.graph.symbols as i64,
+        blob_count: status.blob_count,
+        facts_bytes: status.facts_bytes,
+        tantivy: tantivy_label(status.tantivy).to_string(),
+        tantivy_age_seconds: status.tantivy_age_secs,
+        graph_symbols: status.graph.symbols as u64,
+        graph_load_millis: status.graph.load_millis,
+        graph_resident_bytes: status.graph.resident_bytes as u64,
+        vector_count: status.vector_count as i64,
+        last_write_at: status.last_write_at.or(facts_mtime).map(rfc3339),
+    }
+}
+
+fn mtime(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+fn tantivy_label(state: TantivyState) -> &'static str {
+    match state {
+        TantivyState::Present => "present",
+        TantivyState::Building => "building",
+        TantivyState::Stale => "stale",
+        TantivyState::Absent => "absent",
+    }
 }
 
 async fn watcher_state(handler: &JulieServerHandler, root: &Path) -> (String, Option<String>) {
@@ -161,14 +207,6 @@ async fn watcher_state(handler: &JulieServerHandler, root: &Path) -> (String, Op
     }
 }
 
-fn file_len(path: &Path) -> u64 {
-    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
-}
-
-fn mtime(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
-}
-
 fn rfc3339(at: SystemTime) -> String {
     chrono::DateTime::<chrono::Utc>::from(at).to_rfc3339()
 }
@@ -182,17 +220,21 @@ fn render(checkouts: &[CheckoutStatus]) -> String {
             .map(|s| format!(" ({s}s old)"))
             .unwrap_or_default();
         out.push_str(&format!(
-            "\n{} {}{}\n  watcher: {} | files: {} | symbols: {} | vectors: {} | db: {} bytes | tantivy: {}{}\n  last write: {} | last file event: {}\n",
+            "\n{} {}{}\n  watcher: {} | files: {} | symbols: {} | blobs: {} | vectors: {} | facts: {} bytes | tantivy: {}{}\n  graph: {} symbols, {} ms, {} bytes | last write: {} | last file event: {}\n",
             c.workspace_id,
             c.root,
             missing,
             c.watcher,
             c.file_count,
             c.symbol_count,
+            c.blob_count,
             c.vector_count,
-            c.db_bytes,
+            c.facts_bytes,
             c.tantivy,
             age,
+            c.graph_symbols,
+            c.graph_load_millis,
+            c.graph_resident_bytes,
             c.last_write_at.as_deref().unwrap_or("never"),
             c.last_file_event_at.as_deref().unwrap_or("none"),
         ));

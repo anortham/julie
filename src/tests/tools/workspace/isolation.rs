@@ -268,7 +268,7 @@ mod workspace_isolation {
         entries.sort();
         assert_eq!(
             entries,
-            vec!["db".to_string(), "tantivy".to_string()],
+            vec!["db".to_string(), "store".to_string(), "tantivy".to_string(),],
             "unexpected entries under {}",
             index_root.display()
         );

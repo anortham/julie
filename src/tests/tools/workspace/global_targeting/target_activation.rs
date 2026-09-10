@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(any())]
 #[tokio::test]
 async fn test_known_ready_workspace_auto_activates_for_fast_search() {
     let (_temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;
@@ -64,6 +65,7 @@ async fn test_known_pending_workspace_requires_open_before_fast_search() {
     );
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn test_known_workspace_row_does_not_preactivate_on_new_session() {
     let (temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;

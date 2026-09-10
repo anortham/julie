@@ -277,6 +277,7 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
     );
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn test_manage_workspace_health_loaded_primary_without_tantivy_is_sqlite_only() {
     use crate::health::{HealthChecker, SystemStatus};

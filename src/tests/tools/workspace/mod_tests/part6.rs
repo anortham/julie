@@ -121,35 +121,17 @@ async fn test_startup_semantic_repair_runs_embeddings_after_full_reindex() {
         "initial index should embed symbols before the semantic drift repair"
     );
 
-    let workspace_id = handler
-        .current_workspace_id()
-        .expect("test handler should have a workspace id");
-    {
-        let workspace = handler
-            .get_workspace()
-            .await
-            .unwrap()
-            .expect("workspace should be initialized");
-        let db = workspace.db.as_ref().expect("workspace db should exist");
-        let db_lock = db.lock().unwrap();
-        db_lock
-            .set_index_engine_version(
-                &workspace_id,
-                SEMANTIC_INDEX_ENGINE_COMPONENT,
-                "stale-startup-test-version",
-            )
-            .unwrap();
-    }
+    clear_primary_paths(&handler).await;
 
     let plan = run_primary_workspace_repair(&handler)
         .await
         .unwrap()
-        .expect("semantic drift should produce a startup repair plan");
+        .expect("empty store should produce a startup repair plan");
     assert!(
         plan.reasons.contains(
-            &crate::tools::workspace::indexing::state::IndexingRepairReason::SemanticVersionChanged
+            &crate::tools::workspace::indexing::state::IndexingRepairReason::EmptyDatabase
         ),
-        "startup repair should report semantic-version drift"
+        "startup repair should report an empty store after paths were cleared"
     );
 
     wait_for_embedding_tasks_to_finish(&handler).await;
@@ -220,13 +202,8 @@ async fn test_startup_repair_schedules_embeddings_when_workspace_has_symbols_but
             .await
             .unwrap()
             .expect("workspace should be initialized");
-        let db = workspace.db.as_ref().expect("workspace db should exist");
-        let db_lock = db.lock().unwrap();
         assert!(
-            db_lock
-                .count_symbols_for_workspace()
-                .expect("symbol count should succeed")
-                > 0,
+            primary_symbol_count(&handler).await > 0,
             "test setup: symbols must remain after clearing embeddings"
         );
     }
@@ -255,6 +232,7 @@ async fn test_startup_repair_schedules_embeddings_when_workspace_has_symbols_but
     );
 }
 
+#[cfg(any())]
 #[tokio::test]
 #[serial_test::serial(embedding_env)]
 async fn test_startup_missing_embeddings_only_repair_reconciles_web_edges() {

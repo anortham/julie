@@ -80,8 +80,7 @@ pub mod tools {
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
         pub mod file_policy; // Shared watcher/indexer extraction and path policy parity tests
         pub mod global_targeting; // Explicit workspace open/activation tests
-        #[cfg(any())]
-        pub mod index_embedding_tests;
+        // index_embedding_tests parked against SymbolDatabase; embeddings now run on CheckoutStore.
         pub mod isolation; // Workspace isolation tests
         pub mod manage_workspace_request; // Typed internal manage_workspace request parsing tests
         pub mod management_token; // ManageWorkspaceTool token optimization tests
@@ -92,6 +91,7 @@ pub mod tools {
         pub mod resolver; // Cross-file relationship resolution tests
         pub mod seed; // Sibling checkout seed copy tests
         pub mod status_rebuild; // manage_workspace status and rebuild operations
+        pub mod store_open; // Failed facts open deletes store/ and reopens
         // root_safety.rs relocated to crates/julie-runtime/src/tests/ (T2c.3 — tests julie-runtime's workspace::root_safety)
         pub mod utils; // Workspace utilities tests // Registry service tests
     }

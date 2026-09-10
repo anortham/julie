@@ -257,6 +257,7 @@ impl ManageWorkspaceTool {
                 index_dir.display()
             );
         }
+        handler.invalidate_checkout_store(&workspace_id).await;
         let indexed = self
             .handle_index_command_with_guard(
                 handler,

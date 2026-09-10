@@ -213,87 +213,16 @@ async fn cancel_primary_embedding_task(handler: &JulieServerHandler) {
     }
 }
 
-/// Reconcile derived projection lag at startup / handoff.
-///
-/// A crash between the SQLite commit (which advances `canonical_revision`) and
-/// the Tantivy apply leaves `canonical_revision > projected_revision`. The
-/// file-staleness scan in `plan_primary_workspace_repair` cannot see this gap
-/// because the source files are unchanged. This function detects the lag via
-/// the `projection_states` table and calls `ensure_current_from_database` to
-/// rebuild Tantivy from the already-correct canonical SQLite state, then stamps
-/// `projected_revision = canonical_revision`.
-///
-/// Called after every successful startup repair outcome. Idempotent: if each
-/// projection is current, the checks return without touching derived state.
+/// Rebuild Tantivy from facts when the projection is absent or stale.
 async fn reconcile_projection_lag_if_needed(
-    _guard: &MutationGuard<'_>,
+    guard: &MutationGuard<'_>,
     handler: &JulieServerHandler,
 ) -> Result<()> {
-    let snapshot = match handler.primary_workspace_snapshot().await {
-        Ok(s) => s,
-        Err(_) => return Ok(()), // No workspace bound yet — nothing to reconcile
-    };
-
-    let search_index = snapshot.search_index;
-    let workspace_id = snapshot.binding.workspace_id.clone();
-    let db_arc = snapshot.database;
-
-    let web_edges_rebuilt = {
-        let mut db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-        julie_pipeline::indexing_core::web_edges::ensure_web_edges_current(&mut db, &workspace_id)?
-    };
-    if web_edges_rebuilt {
-        info!(%workspace_id, "Web-edge projection reconciled from canonical SQLite state");
-    }
-
-    let Some(search_index) = search_index else {
+    let Some(store) = handler.get_workspace().await?.and_then(|ws| ws.store) else {
         return Ok(());
     };
-
-    // Read projection and canonical revision under a short-lived lock so we
-    // don't hold it across the potentially-expensive rebuild.
-    let has_lag = {
-        let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-        let canonical = db.get_latest_canonical_revision(&workspace_id)?;
-        let Some(canonical) = canonical else {
-            return Ok(()); // No canonical revision yet — nothing to reconcile
-        };
-        match db.get_projection_state(
-            crate::search::projection::TANTIVY_PROJECTION_NAME,
-            &workspace_id,
-        )? {
-            Some(state) => match state.projected_revision {
-                Some(projected) => canonical.revision > projected,
-                None => true, // canonical exists but projected is unset → lag
-            },
-            None => true, // no projection state at all → lag
-        }
-    };
-
-    if !has_lag {
-        return Ok(());
+    if store.rebuild_tantivy_if_needed(guard)? {
+        info!("Tantivy rebuilt from facts after startup catch-up");
     }
-
-    info!(
-        %workspace_id,
-        "📊 Projection lag detected (canonical_revision > projected_revision); \
-         reconciling Tantivy from canonical SQLite state"
-    );
-
-    let projection = crate::search::SearchProjection::tantivy(workspace_id.clone());
-
-    tokio::task::spawn_blocking(move || {
-        let mut db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-        let index = search_index;
-        projection.ensure_current_from_database(&mut db, &index)?;
-        info!(
-            %workspace_id,
-            "✅ Projection lag reconciled — Tantivy is now current with canonical SQLite state"
-        );
-        Ok::<_, anyhow::Error>(())
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("Projection lag reconciliation task panicked: {}", e))??;
-
     Ok(())
 }

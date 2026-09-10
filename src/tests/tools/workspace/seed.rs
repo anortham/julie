@@ -6,7 +6,6 @@ use crate::handler::JulieServerHandler;
 use crate::registry::database::DaemonDatabase;
 use crate::tests::helpers::mcp::call_tool_result_text;
 use crate::tests::helpers::workspace::{make_isolated_workspace_root, mark_workspace_root};
-use crate::tools::FastSearchTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::seed::copy_dir;
 use crate::workspace::registry::generate_workspace_id;
@@ -76,9 +75,17 @@ async fn seeding_from_a_sibling_copies_shared_files_and_reextracts_changed_ones(
     drop(guard);
 
     assert_eq!(report.sibling_root, a_root);
-    assert_eq!(report.copied_files, 6);
-    assert_eq!(report.reextracted_files, 2);
-    assert_eq!(report.removed_files, 0);
+    assert_eq!(report.copied, 6);
+    assert_eq!(report.extracted, 2);
+    assert_eq!(report.removed, 0);
+    assert_eq!(
+        report.to_string(),
+        format!(
+            "Seeded from {}: 6 blobs copied, 2 extracted, 0 removed in {} ms",
+            a_root.display(),
+            report.elapsed_ms
+        )
+    );
 
     let opened = ManageWorkspaceTool {
         operation: "open".to_string(),
@@ -97,34 +104,21 @@ async fn seeding_from_a_sibling_copies_shared_files_and_reextracts_changed_ones(
         call_tool_result_text(&opened)
     );
 
-    let search = FastSearchTool {
-        query: "shared_only_marker_symbol".to_string(),
-        limit: 10,
-        workspace: Some(b_id.clone()),
-        ..Default::default()
-    }
-    .call_tool(&handler)
-    .await
-    .unwrap();
-    let text = call_tool_result_text(&search);
+    let store = handler
+        .checkout_store_for_workspace(&b_id, &b_root)
+        .await
+        .unwrap();
+    let snapshot = store.current();
+    let graph = snapshot.graph();
+    let shared = graph.find_by_name("shared_only_marker_symbol");
     assert!(
-        text.contains("shared_only_marker_symbol") && text.contains("lib.rs"),
-        "search on the seeded checkout must find a shared-file symbol: {text}"
+        !shared.is_empty(),
+        "copied blob must keep the shared-file symbol"
     );
-
-    let beta = FastSearchTool {
-        query: "beta_only_entry".to_string(),
-        limit: 10,
-        workspace: Some(b_id),
-        ..Default::default()
-    }
-    .call_tool(&handler)
-    .await
-    .unwrap();
+    assert_eq!(graph.symbol(shared[0]).path, "lib.rs");
     assert!(
-        call_tool_result_text(&beta).contains("beta_only_entry"),
-        "re-extracted file must be searchable: {}",
-        call_tool_result_text(&beta)
+        !graph.find_by_name("beta_only_entry").is_empty(),
+        "extracted blob must contain the new-checkout symbol"
     );
 }
 

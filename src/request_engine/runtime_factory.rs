@@ -11,6 +11,7 @@ use crate::registry::database::DaemonDatabase;
 use crate::request_engine::types::{
     RequestContext, RequestFailure, RequestReadiness, SemanticMode, WorkspaceBinding,
 };
+use crate::tools::workspace::indexing::store_open::{delete_store_dir, store_dir};
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -129,13 +130,7 @@ impl RuntimeFactory {
                 };
 
                 if runtime.handler().workspace.read().await.is_none() {
-                    runtime
-                        .handler()
-                        .initialize_workspace_with_force(None, false)
-                        .await
-                        .map_err(|e| {
-                            RequestFailure::internal(format!("Failed to initialize workspace: {e}"))
-                        })?;
+                    initialize_recovering_store(runtime.handler(), &b.index_root).await?;
                 }
                 if !*runtime.handler().is_indexed.read().await {
                     crate::startup::run_primary_workspace_repair(runtime.handler())
@@ -208,12 +203,7 @@ impl RuntimeFactory {
             handler.session_metrics = Arc::clone(&th.session_metrics);
         }
 
-        handler
-            .initialize_workspace_with_force(None, false)
-            .await
-            .map_err(|e| {
-                RequestFailure::internal(format!("Failed to initialize workspace: {e}"))
-            })?;
+        initialize_recovering_store(&handler, &binding.index_root).await?;
 
         crate::startup::run_primary_workspace_repair(&handler)
             .await
@@ -252,5 +242,41 @@ impl RuntimeFactory {
         .map_err(|e| RequestFailure::internal(format!("Failed to build unbound handler: {e}")))?;
 
         Ok(Arc::new(RequestRuntime::new(Arc::new(handler), None)))
+    }
+}
+
+async fn initialize_recovering_store(
+    handler: &JulieServerHandler,
+    index_root: &std::path::Path,
+) -> Result<(), RequestFailure> {
+    match handler.initialize_workspace_with_force(None, false).await {
+        Ok(()) => {
+            let store_missing = handler
+                .get_workspace()
+                .await
+                .ok()
+                .flatten()
+                .and_then(|ws| ws.store)
+                .is_none();
+            if !store_missing {
+                return Ok(());
+            }
+            let _ = delete_store_dir(&store_dir(index_root));
+            handler
+                .initialize_workspace_with_force(None, false)
+                .await
+                .map_err(|e| {
+                    RequestFailure::internal(format!("Failed to initialize workspace: {e}"))
+                })
+        }
+        Err(e) => {
+            let _ = delete_store_dir(&store_dir(index_root));
+            handler
+                .initialize_workspace_with_force(None, false)
+                .await
+                .map_err(|_| {
+                    RequestFailure::internal(format!("Failed to initialize workspace: {e}"))
+                })
+        }
     }
 }

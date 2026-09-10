@@ -1,295 +1,152 @@
-//! Incremental indexing and orphan file cleanup
-//! Handles efficient re-indexing by detecting changed files
-//! Removes database entries for deleted files
+//! Scan the checkout and build the `PathChange` list for one apply.
 
-use super::route::IndexRoute;
-use crate::database::ProjectionStatus;
-use crate::handler::JulieServerHandler;
-use crate::search::projection::TANTIVY_PROJECTION_NAME;
-use crate::tools::workspace::commands::ManageWorkspaceTool;
-use anyhow::Result;
-use julie_pipeline::indexing_core::web_edges::rebuild_web_edges_for_workspace;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
-use tracing::{debug, info, trace, warn};
+use std::path::{Path, PathBuf};
+
+use anyhow::Result;
+use julie_index::checkout_store::{CheckoutStore, PathChange};
+use tracing::{debug, info, warn};
+
+use super::file_policy::detect_language_for_indexing;
+use super::route::IndexRoute;
+use super::state::IndexingOperation;
+use super::store_open::store_for_workspace;
+use crate::handler::JulieServerHandler;
+use crate::tools::workspace::commands::ManageWorkspaceTool;
+use crate::utils::paths::to_relative_unix_style;
+
+pub(crate) struct ScannedFile {
+    pub path: String,
+    pub bytes: Vec<u8>,
+    pub hash: String,
+    pub language: String,
+}
+
+pub(crate) fn scan_indexable_files(root: &Path, files: &[PathBuf]) -> Result<Vec<ScannedFile>> {
+    let mut scanned = Vec::with_capacity(files.len());
+    for file_path in files {
+        let bytes = match std::fs::read(file_path) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                warn!(path = %file_path.display(), error = %err, "skipping unreadable file");
+                continue;
+            }
+        };
+        let path = relative_path(file_path, root);
+        let hash = blake3::hash(&bytes).to_hex().to_string();
+        let language = detect_language_for_indexing(file_path);
+        scanned.push(ScannedFile {
+            path,
+            bytes,
+            hash,
+            language,
+        });
+    }
+    Ok(scanned)
+}
+
+pub(crate) fn existing_path_hashes(store: &CheckoutStore) -> Result<HashMap<String, String>> {
+    let facts = store.current().facts()?;
+    let mut map = HashMap::new();
+    for row in facts.reader().paths()? {
+        map.insert(row.path, row.blob_hash);
+    }
+    Ok(map)
+}
+
+/// Upserts for new or changed hashes; removes for paths missing from `scanned`.
+/// Incremental skips upserts whose hash already matches.
+pub(crate) fn path_changes(
+    scanned: &[ScannedFile],
+    existing: &HashMap<String, String>,
+    operation: IndexingOperation,
+) -> Vec<PathChange> {
+    let scanned_paths: HashSet<&str> = scanned.iter().map(|file| file.path.as_str()).collect();
+    let mut changes = Vec::new();
+    let remove_missing = matches!(
+        operation,
+        IndexingOperation::Full | IndexingOperation::Incremental | IndexingOperation::CatchUp
+    );
+    if remove_missing {
+        for path in existing.keys() {
+            if !scanned_paths.contains(path.as_str()) {
+                changes.push(PathChange::Remove { path: path.clone() });
+            }
+        }
+    }
+    let skip_unchanged = matches!(
+        operation,
+        IndexingOperation::Incremental | IndexingOperation::CatchUp
+    );
+    for file in scanned {
+        if skip_unchanged {
+            if let Some(hash) = existing.get(&file.path) {
+                if hash == &file.hash {
+                    continue;
+                }
+            }
+        }
+        changes.push(PathChange::Upsert {
+            path: file.path.clone(),
+            bytes: file.bytes.clone(),
+            language: file.language.clone(),
+        });
+    }
+    changes
+}
+
+pub(crate) fn relative_path(file_path: &Path, root: &Path) -> String {
+    if file_path.is_absolute() {
+        to_relative_unix_style(file_path, root).unwrap_or_else(|_| {
+            file_path
+                .to_string_lossy()
+                .replace('\\', "/")
+                .trim_start_matches('/')
+                .to_string()
+        })
+    } else {
+        file_path.to_string_lossy().replace('\\', "/")
+    }
+}
 
 impl ManageWorkspaceTool {
-    /// Filter files that actually need re-indexing based on hash changes
-    ///
-    /// Returns (files_to_process, orphans_cleaned) where orphans_cleaned is the
-    /// count of database entries removed for files that no longer exist on disk.
+    /// Files whose hash differs from the store, plus the count of store paths
+    /// missing from disk. Does not write.
     pub(crate) async fn filter_changed_files(
         &self,
         handler: &JulieServerHandler,
         all_files: Vec<PathBuf>,
         route: &IndexRoute,
     ) -> Result<(Vec<PathBuf>, usize)> {
-        let workspace_id = route.workspace_id.clone();
-
-        let Some(db) = route.database_for_read(handler).await? else {
-            return Ok((all_files, 0));
-        };
-        debug!(
-            "🐛 filter_changed_files: is_primary={}, workspace_id={}, db_path={}",
-            route.is_primary,
-            workspace_id,
-            route.db_path.display()
-        );
-
-        let existing_file_hashes = {
-            let db_lock = match db.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!(
-                        "Database mutex poisoned during file hash query, recovering: {}",
-                        poisoned
-                    );
-                    poisoned.into_inner()
-                }
-            };
-
-            let symbol_count = db_lock.count_symbols_for_workspace().unwrap_or(0);
-            if symbol_count == 0 {
-                info!(
-                    "🔄 Workspace database has 0 symbols - bypassing incremental logic and re-indexing all {} files",
-                    all_files.len()
-                );
-                drop(db_lock);
-                return Ok((all_files, 0));
-            }
-
-            match db_lock.get_file_hashes_for_workspace() {
-                Ok(hashes) => hashes,
-                Err(e) => {
-                    warn!(
-                        "Failed to get existing file hashes: {} - treating all files as new",
-                        e
-                    );
-                    return Ok((all_files, 0));
-                }
-            }
-        };
-
-        debug!(
-            "Checking {} files against {} existing file hashes",
-            all_files.len(),
-            existing_file_hashes.len()
-        );
-
-        let mut files_to_process = Vec::new();
-        let mut unchanged_count = 0;
-        let mut new_count = 0;
-        let mut modified_count = 0;
-
-        for file_path in &all_files {
-            // Convert to relative Unix-style path for database lookup
-            // Database stores paths as relative Unix-style per CLAUDE.md Path Handling Contract
-            let file_path_relative =
-                match crate::utils::paths::to_relative_unix_style(file_path, &route.workspace_root)
-                {
-                    Ok(rel) => rel,
-                    Err(e) => {
-                        warn!(
-                            "Failed to convert {} to relative path: {} - treating as new file",
-                            file_path.display(),
-                            e
-                        );
-                        files_to_process.push(file_path.clone());
-                        continue;
-                    }
-                };
-
-            // Calculate current file hash
-            let current_hash = match crate::database::calculate_file_hash(file_path) {
-                Ok(hash) => hash,
-                Err(e) => {
-                    warn!(
-                        "Failed to calculate hash for {}: {} - including for re-indexing",
-                        file_path_relative, e
-                    );
-                    files_to_process.push(file_path.clone());
-                    continue;
-                }
-            };
-
-            // Check if file exists in database and if hash matches
-            if let Some(stored_hash) = existing_file_hashes.get(&file_path_relative) {
-                if stored_hash == &current_hash {
-                    // File truly unchanged - skip
-                    unchanged_count += 1;
-                } else {
-                    // File modified - needs re-indexing
-                    modified_count += 1;
-                    files_to_process.push(file_path.clone());
-                }
-            } else {
-                // New file - needs indexing
-                new_count += 1;
-                files_to_process.push(file_path.clone());
-            }
-        }
-
-        info!(
-            "📊 Incremental analysis: {} unchanged (skipped), {} modified, {} new - processing {} total",
-            unchanged_count,
-            modified_count,
-            new_count,
-            files_to_process.len()
-        );
-
-        // 🧹 ORPHAN CLEANUP: Remove database entries for files that no longer exist
-        let orphaned_count = self
-            .clean_orphaned_files(handler, &existing_file_hashes, &all_files, route)
-            .await?;
-
-        if orphaned_count > 0 {
+        let store =
+            store_for_workspace(handler, &route.workspace_id, &route.workspace_root).await?;
+        let existing = existing_path_hashes(&store)?;
+        if existing.is_empty() {
             info!(
-                "🧹 Cleaned up {} orphaned file entries from database",
-                orphaned_count
+                "🔄 Store has 0 paths - indexing all {} files",
+                all_files.len()
             );
+            return Ok((all_files, 0));
         }
-
-        Ok((files_to_process, orphaned_count))
-    }
-
-    /// Clean up orphaned database entries for files that no longer exist on disk
-    ///
-    /// This prevents database bloat from accumulating deleted files.
-    pub(crate) async fn clean_orphaned_files(
-        &self,
-        handler: &JulieServerHandler,
-        existing_file_hashes: &HashMap<String, String>,
-        current_disk_files: &[PathBuf],
-        route: &IndexRoute,
-    ) -> Result<usize> {
-        // Build set of current disk file paths for fast lookup
-        // 🔥 CRITICAL FIX: Convert to relative Unix-style paths to match database format
-        // Database stores relative paths like "src/helper.rs" after relative path storage contract
-        let current_files: HashSet<String> = current_disk_files
-            .iter()
-            .filter_map(|p| {
-                if p.is_absolute() {
-                    crate::utils::paths::to_relative_unix_style(p, &route.workspace_root).ok()
-                } else {
-                    Some(p.to_string_lossy().replace('\\', "/"))
+        let scanned = scan_indexable_files(&route.workspace_root, &all_files)?;
+        let changes = path_changes(&scanned, &existing, IndexingOperation::Incremental);
+        let mut files_to_process = Vec::new();
+        let mut orphans = 0;
+        for change in &changes {
+            match change {
+                PathChange::Upsert { path, .. } => {
+                    files_to_process.push(route.workspace_root.join(path));
                 }
-            })
-            .collect();
-
-        // Find files that are in database but not on disk (orphans)
-        let orphaned_files: Vec<String> = existing_file_hashes
-            .keys()
-            .filter(|db_path| !current_files.contains(*db_path))
-            .cloned()
-            .collect();
-
-        if orphaned_files.is_empty() {
-            return Ok(0);
-        }
-
-        debug!("Found {} orphaned files to clean up", orphaned_files.len());
-
-        let search_index = route.search_index_for_write().await?;
-
-        let Some(db) = route.database_for_write(handler).await? else {
-            return Ok(0);
-        };
-
-        let (cleaned_count, canonical_revision) = {
-            let mut db_lock = match db.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!(
-                        "Database mutex poisoned during orphan cleanup, recovering: {}",
-                        poisoned
-                    );
-                    poisoned.into_inner()
-                }
-            };
-
-            let projected_revision = db_lock
-                .get_projection_state(TANTIVY_PROJECTION_NAME, &route.workspace_id)?
-                .and_then(|state| {
-                    state.projected_revision.or_else(|| {
-                        if state.status == ProjectionStatus::Ready {
-                            state.canonical_revision
-                        } else {
-                            None
-                        }
-                    })
-                });
-
-            let canonical_revision =
-                db_lock.delete_orphaned_files_atomic(&route.workspace_id, &orphaned_files)?;
-            rebuild_web_edges_for_workspace(&mut db_lock, &route.workspace_id)?;
-            let cleaned_count = orphaned_files.len();
-
-            if let Some(revision) = canonical_revision {
-                db_lock.upsert_projection_state(
-                    TANTIVY_PROJECTION_NAME,
-                    &route.workspace_id,
-                    ProjectionStatus::Stale,
-                    Some(revision),
-                    projected_revision,
-                    Some("orphan cleanup committed to SQLite; Tantivy cleanup pending"),
-                )?;
-            }
-
-            for file_path in &orphaned_files {
-                trace!("Cleaned up orphaned file: {}", file_path);
-            }
-            (cleaned_count, canonical_revision)
-        };
-
-        let mut tantivy_synced = false;
-        if let Some(ref search_idx) = search_index {
-            let mut remove_failed = false;
-            for file_path in &orphaned_files {
-                if let Err(e) = search_idx.remove_by_file_path(file_path) {
-                    warn!(
-                        "Failed to remove Tantivy docs for orphaned file {}: {}",
-                        file_path, e
-                    );
-                    remove_failed = true;
-                }
-            }
-            if let Err(e) = search_idx.commit() {
-                warn!("Failed to commit Tantivy after orphan cleanup: {}", e);
-            } else {
-                tantivy_synced = !remove_failed;
+                PathChange::Remove { .. } => orphans += 1,
             }
         }
-
-        if tantivy_synced {
-            if let Some(revision) = canonical_revision {
-                let db_lock = match db.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!(
-                            "Database mutex poisoned while finalizing orphan cleanup state: {}",
-                            poisoned
-                        );
-                        poisoned.into_inner()
-                    }
-                };
-                db_lock.upsert_projection_state(
-                    TANTIVY_PROJECTION_NAME,
-                    &route.workspace_id,
-                    ProjectionStatus::Ready,
-                    Some(revision),
-                    Some(revision),
-                    None,
-                )?;
-            }
-        }
-
-        if cleaned_count > 0 && !route.is_primary {
-            debug!(
-                "✅ Target workspace orphan cleanup: {} files removed from workspace {}",
-                cleaned_count, route.workspace_id
-            );
-        }
-
-        Ok(cleaned_count)
+        debug!(
+            "Checking {} files against {} store paths; {} changed, {} missing",
+            all_files.len(),
+            existing.len(),
+            files_to_process.len(),
+            orphans
+        );
+        Ok((files_to_process, orphans))
     }
 }

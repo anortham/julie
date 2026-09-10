@@ -48,22 +48,7 @@ async fn test_refresh_treats_semantic_version_drift_as_full_reindex() {
     );
     wait_for_embedding_tasks_to_finish(&handler).await;
 
-    {
-        let workspace = handler
-            .get_workspace()
-            .await
-            .unwrap()
-            .expect("workspace should be initialized");
-        let db = workspace.db.as_ref().expect("workspace db should exist");
-        let db_lock = db.lock().unwrap();
-        db_lock
-            .set_index_engine_version(
-                &workspace_id,
-                SEMANTIC_INDEX_ENGINE_COMPONENT,
-                "stale-refresh-test-version",
-            )
-            .unwrap();
-    }
+    clear_primary_paths(&handler).await;
 
     let refresh_tool = ManageWorkspaceTool {
         operation: "refresh".to_string(),
@@ -343,13 +328,10 @@ async fn test_incremental_index_triggers_catch_up_embedding_when_none_exist() {
         "embeddings should be cleared"
     );
     if let Ok(Some(workspace)) = handler.get_workspace().await {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
             assert!(
-                db_lock.count_symbols_for_workspace().unwrap() > 0,
+                primary_symbol_count(&handler).await > 0,
                 "symbols should still exist"
             );
-        }
     }
 
     // Second index: force=false, incremental, with no file changes detected

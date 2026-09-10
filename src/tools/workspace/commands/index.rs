@@ -137,22 +137,11 @@ impl ManageWorkspaceTool {
             if is_indexed {
                 // Get symbol count from database using efficient COUNT(*) query
                 let symbol_count = if let Ok(Some(workspace)) = handler.get_workspace().await {
-                    if let Some(db) = workspace.db.as_ref() {
-                        let db_lock = match db.lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => {
-                                warn!(
-                                    "Database mutex poisoned during symbol count, recovering: {}",
-                                    poisoned
-                                );
-                                poisoned.into_inner()
-                            }
-                        };
-                        // OPTIMIZED: Use SQL COUNT(*) instead of loading all symbols
-                        db_lock.count_symbols_for_workspace().unwrap_or(0)
-                    } else {
-                        0
-                    }
+                    workspace
+                        .store
+                        .as_ref()
+                        .map(|store| store.status().graph.symbols)
+                        .unwrap_or(0)
                 } else {
                     0
                 };

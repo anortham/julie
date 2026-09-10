@@ -146,25 +146,12 @@ fn test_function() {
         "is_indexed should be true after indexing"
     );
 
-    // SIMULATE THE BUG: Manually clear the database while keeping is_indexed=true
-    // This simulates scenarios like database corruption, manual deletion, or partial cleanup
-    if let Ok(Some(workspace)) = handler.get_workspace().await {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
-            // Clear all symbols to simulate empty database
-            // Clear all symbols to simulate empty database
-            db_lock.conn.execute("DELETE FROM symbols", []).unwrap();
-        }
-    }
-
-    // Verify database is now empty
-    if let Ok(Some(workspace)) = handler.get_workspace().await {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
-            let count = db_lock.count_symbols_for_workspace().unwrap();
-            assert_eq!(count, 0, "Database should be empty after manual deletion");
-        }
-    }
+    clear_primary_paths(&handler).await;
+    assert_eq!(
+        primary_symbol_count(&handler).await,
+        0,
+        "Database should be empty after manual deletion"
+    );
 
     // Verify is_indexed flag is still true (simulating the bug condition)
     assert!(
@@ -243,14 +230,10 @@ fn test_function() {
     // Verify is_indexed is true
     assert!(*handler.is_indexed.read().await);
 
-    // Verify database has symbols
-    if let Ok(Some(workspace)) = handler.get_workspace().await {
-        if let Some(db) = workspace.db.as_ref() {
-            let db_lock = db.lock().unwrap();
-            let count = db_lock.count_symbols_for_workspace().unwrap();
-            assert!(count > 0, "Database should have symbols");
-        }
-    }
+    assert!(
+        primary_symbol_count(&handler).await > 0,
+        "Database should have symbols"
+    );
 
     // Try to index again with force=false - should run incremental update
     // (catch-up indexing compares blake3 hashes; unchanged files are skipped)

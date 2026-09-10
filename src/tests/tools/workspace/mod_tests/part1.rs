@@ -139,6 +139,28 @@ async fn embedding_count_for_primary(handler: &JulieServerHandler) -> i64 {
     primary_store(handler).await.status().vector_count as i64
 }
 
+async fn primary_symbol_count(handler: &JulieServerHandler) -> usize {
+    primary_store(handler).await.status().graph.symbols
+}
+
+async fn clear_primary_paths(handler: &JulieServerHandler) {
+    let store = primary_store(handler).await;
+    let changes: Vec<julie_index::checkout_store::PathChange> = store
+        .current()
+        .graph()
+        .paths()
+        .iter()
+        .map(|path| julie_index::checkout_store::PathChange::Remove { path: path.clone() })
+        .collect();
+    let workspace_id = handler
+        .current_workspace_id()
+        .expect("test handler should have a workspace id");
+    let guard = handler.acquire_mutation_guard(&workspace_id).await;
+    store
+        .apply(&changes, &guard)
+        .expect("clearing store paths should succeed");
+}
+
 async fn clear_primary_vectors(handler: &JulieServerHandler) {
     primary_store(handler)
         .await

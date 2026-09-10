@@ -82,9 +82,6 @@ async fn status_reports_every_field_for_an_indexed_checkout() {
         .unwrap();
 
     let target_id = generate_workspace_id(&target.to_string_lossy()).unwrap();
-    let index_dir = handler.workspace_index_dir_for(&target_id).await.unwrap();
-    let db_len = fs::metadata(index_dir.join("db/symbols.db")).unwrap().len();
-
     let list = checkouts(&handler, Some(&target)).await;
     assert_eq!(list.len(), 1);
     let status = &list[0];
@@ -98,7 +95,9 @@ async fn status_reports_every_field_for_an_indexed_checkout() {
     assert_eq!(status.last_file_event_at, None);
     assert_eq!(status.file_count, 1);
     assert_eq!(status.symbol_count, 2);
-    assert!(status.db_bytes >= db_len, "{} < {db_len}", status.db_bytes);
+    assert_eq!(status.blob_count, 1);
+    assert!(status.facts_bytes > 0);
+    assert_eq!(status.graph_symbols, 2);
     assert_eq!(status.tantivy, "present");
     assert!(status.tantivy_age_seconds.unwrap() < 60);
     assert_eq!(status.vector_count, 0);
@@ -146,7 +145,8 @@ async fn status_without_a_target_lists_every_known_checkout() {
     assert!(!gone.root_exists);
     assert_eq!(gone.tantivy, "absent");
     assert_eq!(gone.tantivy_age_seconds, None);
-    assert_eq!(gone.db_bytes, 0);
+    assert_eq!(gone.facts_bytes, 0);
+    assert_eq!(gone.blob_count, 0);
     assert_eq!(gone.file_count, 0);
     assert_eq!(gone.symbol_count, 0);
     assert_eq!(gone.vector_count, 0);
@@ -183,7 +183,7 @@ async fn rebuild_recreates_the_index_dir_with_the_same_symbol_count() {
         !stale_marker.exists(),
         "rebuild must delete the old index dir"
     );
-    assert!(index_dir.join("db/symbols.db").exists());
+    assert!(index_dir.join("store/facts.sqlite").exists());
 
     let after = checkouts(&handler, Some(&target)).await;
     assert_eq!(after[0].symbol_count, before);

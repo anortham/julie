@@ -26,3 +26,4 @@ pub(crate) mod route;
 pub(crate) mod seed;
 pub(crate) mod source_check;
 pub(crate) mod state;
+pub(crate) mod store_open;

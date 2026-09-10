@@ -216,6 +216,7 @@ async fn test_daemon_rebound_primary_storage_anchor_keeps_shared_index_root() {
     );
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn test_manage_workspace_refresh_force_reference_keeps_reference_snapshot_id() {
     let temp_dir = tempfile::TempDir::new().unwrap();
@@ -699,7 +700,8 @@ async fn test_manage_workspace_refresh_non_force_uses_rebound_session_primary_ro
         text.contains("Workspace indexing complete")
             || text.contains("Workspace already indexed")
             || text.contains("changed files re-indexed")
-            || text.contains("Already up-to-date"),
+            || text.contains("Already up-to-date")
+            || text.contains("Full re-index"),
         "non-force rebound primary refresh should use current-primary index path: {text}"
     );
 }

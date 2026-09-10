@@ -1525,6 +1525,10 @@ impl JulieServerHandler {
         Ok(store)
     }
 
+    pub(crate) async fn invalidate_checkout_store(&self, workspace_id: &str) {
+        self.ref_store_cache.write().await.remove(workspace_id);
+    }
+
     /// Get the search index for a specific workspace by ID.
     ///
     /// In stdio mode: looks in `{project}/.julie/indexes/{workspace_id}/tantivy/`.
