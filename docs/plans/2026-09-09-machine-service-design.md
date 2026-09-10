@@ -396,10 +396,16 @@ Each phase becomes one implementation plan after this design is approved.
 2. **Facts and paths.** `facts.sqlite` schema, single writer, in-process extractor, watcher, sibling
    seed copy. `workspace open`, `list`, `remove`, `rebuild`, `status`.
    **Gate:** the deletion list in section 5.4 is empty, and the phase is net negative in lines.
+   *Split made by the phase 2 plan:* phase 2 delivered the single writer, disposable indexes,
+   sibling seed, and `rebuild`/`status` on the existing `symbols.db`; the `facts.sqlite` schema
+   moved to phase 3.
 3. **Derived indexes and read tools.** Tantivy projection, in-memory graph, snapshots. `search`,
    `inspect`, `trace`, `impact`, `context`, `patterns` on the new engine.
    **Gate:** every budget in section 12 holds on the Julie and Miller repos, and the phase is net
    negative in lines. If not, stop and redesign before phase 4.
+   *Split made by the phase 2 plan:* phase 3 delivers the `facts.sqlite` schema plus the derived
+   indexes plus the read tools in one phase. The native broker client and embedding generations
+   that phase 2 left in place move to phase 4.
 4. **Semantics.** Sidecar child, `vectors` table, brute-force scan, encoder identity, model scorecard
    finding.
 5. **Edit and content.** `edit` and `content` on the new engine, per-path in-process mutex.

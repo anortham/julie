@@ -1,6 +1,6 @@
 # Development Commands
 
-**Last Updated:** 2026-07-22
+**Last Updated:** 2026-09-10
 
 Daily commands and workflows for Julie development.
 
@@ -128,11 +128,10 @@ perf report
 
 Julie supports two distinct storage topologies for development, testing, and production workflows:
 
-### Shared Storage (Default for in-process MCP and standard CLI)
+### Shared Storage (Default for the machine service and standard CLI)
 - **Index location**: `$JULIE_HOME/indexes/<workspace_id>/` (default: `~/.julie/indexes/<workspace_id>/`).
 - **Registry**: Workspaces, codehealth snapshots, and metrics are recorded in `$JULIE_HOME/registry.db`.
-- **Coordination**: Multiple in-process MCP sessions and CLI commands coordinate across the same shared indices via OS locks (`leader.lock`, `publication.lock`).
-- **Host Scheduling**: Concurrent indexing runs under host admission slots at `$JULIE_HOME/scheduler/index-{0..7}.lock`.
+- **Coordination**: one machine service process owns every index. Its handler for a checkout is the only writer; writes serialize through the in-process mutation gate (`crates/julie-core/src/workspace/mutation_gate.rs`). There are no cross-process index locks.
 
 ### Standalone Storage (`--standalone` CLI flag)
 - **Index location**: `<project>/.julie/indexes/<workspace_id>/` located directly within the project source root.
@@ -148,16 +147,13 @@ target/debug/julie-server fast-search "my_symbol" --standalone --json
 target/debug/julie-server edit-file --params '{"file_path":"src/lib.rs","old_text":"foo","new_text":"bar"}' --standalone --json
 ```
 
-## Truthful Freshness and Follower Semantics
+## One Writer Per Checkout and Source Edits
 
-Follower sessions serve read queries without acquiring index ownership or running background indexers:
+The service's handler for a checkout is the only process that writes `symbols.db` or Tantivy for that checkout. Read queries run in the same process against the same handler, so there is no read-only session and no freshness gap to report between processes.
 
-- **No Canonical Mutations by Followers**: Followers NEVER write directly to `symbols.db` or Tantivy. They serve queries against SQLite WAL and Tantivy mmap read snapshots under shared `publication.lock`.
-- **Honest Freshness Reporting**: When a follower applies a source edit or queries a workspace with pending edits:
-  - Output explicitly reports `index_refresh_pending: true` in response envelopes or tool metadata.
-  - If a reader encounters an uncommitted projection gap (e.g. after an owner crash or mid-publication), it returns `PROJECTION_LAG` instead of returning stale results silently or fabricating false exact matches.
-- **Source Edits Without Index Ownership**: Followers can preview (`dry_run: true`, 0 writes, 0 locks) and apply source edits. When applying, the follower acquires `<source_root>/.julie/locks/source-edit.lock`, validates file hashes, performs atomic journaled writes, runs post-edit AST syntax validation, and signals pending index refresh.
-- **Idempotent Recovery**: If an edit is interrupted, `recover-edit` can be invoked from any session (owner or follower) to `resume` or `rollback` the change deterministically:
+- **Disposable indexes**: `symbols.db` is never migrated. A schema version other than `LATEST_SCHEMA_VERSION` (32) or a `SEMANTIC_INDEX_ENGINE_VERSION` mismatch deletes `indexes/<id>/` and reindexes. `manage_workspace(operation="rebuild")` does the same on demand.
+- **Source edits**: previews (`dry_run: true`) do zero writes and take zero locks. Apply acquires `<source_root>/.julie/locks/source-edit.lock`, validates file hashes, performs atomic journaled writes, and runs post-edit AST syntax validation.
+- **Idempotent Recovery**: If an edit is interrupted, `recover-edit` can be invoked from any process to `resume` or `rollback` the change deterministically:
   ```bash
   target/debug/julie-server recover-edit <edit_id> --action resume --workspace <path> --json
   target/debug/julie-server recover-edit <edit_id> --action rollback --workspace <path> --json

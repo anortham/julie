@@ -55,7 +55,7 @@ Use named CLI wrappers for quick tool behavior checks before live MCP tests:
 - Comments and docs only: `julie-server search "TODO" --regions comment,doc_comment --workspace . --standalone --json`
 - Generic fallback remains available for raw MCP parameters: `julie-server tool call_path --params '{"from":"handle_request","to":"write_response"}' --standalone`
 
-Standalone CLI mode does not prove in-process MCP serving, leader/follower routing, or session behavior. Use MCP integration tests for those.
+Standalone CLI mode does not prove machine-service MCP serving or handler binding. Use MCP integration tests for those.
 When you need execution-path evidence, capture stderr mode output (`julie: mode=...`) in your verification notes.
 
 Do not use grep/find when Julie tools are available. Do not read files without get_symbols first. Do not chain multiple tools when deep_dive does it in one call.

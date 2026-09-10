@@ -23,22 +23,11 @@ token, bypassing process spawning completely.
 $JULIE_HOME/                     # Default: ~/.julie
 +-- service.json                 # Discovery file: port, pid, token, version
 +-- registry.db                  # Workspaces, cleanup events, snapshots, tool calls
-+-- scheduler/                   # Host admission slots limiting concurrent indexing (1..=8 slots)
-|   +-- config.json
-|   +-- config.lock
-|   +-- index-0.lock
-|   +-- index-1.lock
 +-- indexes/
     +-- julie_316c0b08/
-    |   +-- leader.lock          # Advisory owner lock
-    |   +-- publication.lock     # Cross-process reader/writer synchronization
-    |   +-- continuations.db     # Private SQLite store for durable continuation snapshots (15m TTL, 64 MiB limit)
-    |   +-- db/symbols.db        # Canonical SQLite symbol database
+    |   +-- db/symbols.db        # Canonical SQLite symbol database (plus -wal/-shm)
     |   +-- tantivy/             # Projected full-text search index
     +-- coa-mcp-framework_c77f81e4/
-        +-- leader.lock
-        +-- publication.lock
-        +-- continuations.db
         +-- db/symbols.db
         +-- tantivy/
 
@@ -51,7 +40,8 @@ $JULIE_HOME/                     # Default: ~/.julie
 
 There is a single long-running service per machine (or user account), with a
 lightweight stdio shim for clients that speak stdio MCP. All MCP sessions share
-the service's memory, caches, and runtime pipelines.
+the service's memory, caches, and runtime pipelines. `service.json`, `registry.db`,
+and `indexes/<id>/{db,tantivy}` are the only durable files under `$JULIE_HOME`.
 
 `JULIE_HOME` overrides the shared home directory directly. The path is used
 as-is; `.julie` is not appended. All Julie processes must see the same value,
@@ -76,49 +66,32 @@ and the old daemon database name. It tracks:
 
 ## Global Workspace Targeting
 
-Julie uses four workspace concepts:
+Julie uses three workspace concepts:
 
-- **Current workspace**: the session's primary workspace.
+- **Current workspace**: the checkout the handler is bound to.
 - **Known workspace**: a workspace recorded in `registry.db`.
-- **Active workspace**: a known workspace opened for the current MCP session.
-- **Target workspace**: the active workspace selected by a tool call.
+- **Target workspace**: the known workspace selected by a tool call's `workspace` parameter.
 
 Cross-workspace work goes through one front door:
 
 1. Call `manage_workspace(operation="open", path=<path>)` or
    `manage_workspace(operation="open", workspace_id=<id>)`.
-2. Julie resolves the workspace, indexes or refreshes it as needed, and
-   activates it for the session.
+2. Julie binds the existing index, or indexes the path if it has no index.
 3. Search, navigation, and editing tools route by the resulting `workspace_id`.
 
-`manage_workspace(operation="register", ...)` indexes or refreshes a known
-workspace without activating it for the current session.
+`open` covers the retired `register` operation. `list` prunes stale rows;
+`status` covers the retired `stats`.
 
-Omitted `workspace` parameters still mean the current primary workspace only.
-Secondary roots or opened workspaces do not expand the default search scope.
+Omitted `workspace` parameters mean the current workspace only. Opened
+workspaces do not expand the default search scope.
 
-## Startup Hint And Roots Model
+## Workspace Binding
 
-Julie treats startup path resolution and MCP client roots as separate inputs:
-
-- **Startup hint**: path from CLI, `JULIE_WORKSPACE`, or process `cwd`.
-- **Primary workspace binding**: the session's current `primary` target.
-- **Client roots**: request-time hints from MCP hosts that support `roots/list`.
-
-When Julie starts from a weak hint such as `cwd`, the session can remain
-unbound until the first primary-scoped request. At that boundary, Julie asks the
-client for roots, binds the first root as the session primary, and keeps any
-additional roots active as secondary workspaces for explicit targeting.
-
-`notifications/roots/list_changed` is request-bound, not immediate. Julie marks
-the session roots state dirty when the notification arrives, then refreshes
-`roots/list` on the next primary-scoped request. Julie does not switch
+A handler is bound once by `RuntimeFactory` per `(root, index_root)`. The root
+comes from the startup hint: an explicit CLI path, `JULIE_WORKSPACE`, or the
+process `cwd`. There is no primary-workspace swap, no session attachment, no
+deferred auto-index, and no MCP `roots/list` negotiation. Julie does not switch
 workspaces in the middle of an in-flight tool call.
-
-For explicit CLI or env startup sessions, a dirty roots notification settles
-back to the startup hint on the next primary-scoped request. Julie clears the
-dirty state there, but does not re-query roots or rebind away from the explicit
-startup root.
 
 ## Workspace Isolation
 
@@ -133,107 +106,59 @@ selection happens before opening the database connection:
 Tool-level `workspace` parameters are essential. They choose which workspace
 database and Tantivy index are opened for that request.
 
-## Leader And Follower Sessions
+## One Writer Per Checkout
 
-Each shared workspace index directory contains `leader.lock`. On startup or
-workspace open, a Julie process attempts to acquire that advisory OS lock:
+One machine service process (`julie-server service`) owns every workspace index.
+The service's handler for a checkout is the only writer for that checkout. There
+is no leader election, no per-workspace lock file, no read-only session, no owner
+epoch, no `WriterPermit`, no publication lock, and no host admission slot.
 
-- **Leader (Owner)**: owns writes for that workspace, including the watcher,
-  catch-up indexer, repairs, force reindex, refresh stats, and Tantivy writes.
-  All index mutations require an authentic `WriterPermit` minted from the active
-  `OwnerEpoch`.
-- **Follower**: serves read requests over SQLite WAL and Tantivy mmap. Followers
-  can also preview and safely apply source-code edits without index ownership.
-- **Dynamic Leader Election**: Followers run a background probe loop (every 500ms
-  + 0–100ms jitter). When the owner exits or drops `leader.lock`, a follower detects
-  the release, enters `Recovering` phase to reconcile any projection gap, and
-  promotes dynamically to `Owner` without restarting the MCP session.
-- **Protocol Independence**: Under MCP protocol `2026-07-28` (and direct first-message
-  tool calls), there is no mandatory `initialize` handshake. The lack of an initialize
-  requirement does *not* eliminate runtime state: processes bind workspaces on the
-  fly, probe the owner lock, and participate in dynamic leader election seamlessly.
+- **Mutation gate**: per-checkout writes serialize through the in-process async
+  mutex in `crates/julie-core/src/workspace/mutation_gate.rs`. Gated writers call
+  `acquire_gate(workspace_id)` and pass the `MutationGuard<'_>` proof token. The
+  gated writers are: watcher event-processor, watcher repair scan, watcher
+  repair-replay, watcher Tantivy retry, startup catch-up, force-reindex,
+  `refresh`, and `rebuild`.
+- **Durable roots**: `$JULIE_HOME/indexes/<id>/db/symbols.db` (plus `-wal`/`-shm`)
+  and `$JULIE_HOME/indexes/<id>/tantivy/` per checkout; `$JULIE_HOME/registry.db`
+  and `service.json` per machine. Project logs stay under `<project>/.julie/logs/`.
+- **Schema drift rebuilds**: `symbols.db` is never migrated. A schema version other
+  than `LATEST_SCHEMA_VERSION` (32, `crates/julie-core/src/database/schema.rs`) or a
+  `SEMANTIC_INDEX_ENGINE_VERSION` mismatch (the engine string ends with
+  `+schema=32`) deletes `indexes/<id>/` and reindexes. `registry.db` keeps its own
+  small migrations. `manage_workspace(operation="rebuild")` forces the same delete
+  and reindex.
+- **Sibling seeding**: `manage_workspace(operation="open", path=<new checkout>)`
+  on a path whose `git rev-parse --git-common-dir` matches a registered workspace
+  copies the sibling's `symbols.db` and `tantivy/`, rewrites the workspace id, runs
+  the incremental scan, and reports
+  `Seeded from <sibling>: <copied> files copied, <reextracted> re-extracted, <removed> removed in <ms> ms`.
+  Measured on the Julie tree: 14.0 s seeded vs 35.9 s from scratch.
+- **Status**: `manage_workspace(operation="status")` returns a per-checkout
+  `CheckoutStatus` (workspace_id, root, root_exists, watcher, last_file_event_at,
+  file_count, symbol_count, db_bytes, tantivy, tantivy_age_seconds, vector_count,
+  last_write_at). `GET /status` carries the same list under `checkouts`.
 
-The leader lock is a durable file. Seeing `leader.lock` on disk is normal even
-when no process currently holds it.
+Source edits are independent of index writes:
 
-## Runtime Lifetimes: Request, Owner, Source-Edit, and Index-Commit
-
-Julie strictly decouples runtime lifetimes to ensure that transient connection drops
-or concurrent clients cannot corrupt shared workspace state:
-
-1. **Request Lifetime**:
-   - Each client request or tool call has its own bounded execution lifetime and
-     deadline.
-   - Client disconnects, cancellations, or read timeouts terminate only the
-     requesting connection.
-   - Request drops **never** abort an in-flight owner commit, rollback shared
-     transactions, or release the workspace `leader.lock`.
-2. **Owner Lifetime**:
-   - Tied to holding the advisory OS lock at `$JULIE_HOME/indexes/<ws_id>/leader.lock`.
-   - Managed by `WorkspaceRuntimeManager` with explicit `RuntimePhase` (`Starting`,
-     `Follower`, `Recovering`, `Owner`, `Draining`, `Terminated`) and `OwnerEpoch`.
-   - The owner is responsible for background filesystem watchers, catch-up indexing,
-     Tantivy projection commits, and maintenance.
-   - When the owner terminates, the OS automatically releases `leader.lock`, allowing
-     a follower to promote dynamically.
-3. **Source-Edit Lifetime**:
-   - Completely independent of index ownership: followers can preview and apply
-     source edits safely.
-   - Dry-run previews perform zero disk writes, acquire zero locks, and create zero
-     journals.
-   - All source-edit apply operations (from MCP, shared CLI, or standalone CLI)
-     coordinate under `<source_root>/.julie/locks/source-edit.lock`.
-   - Edits use durable multi-file journals at `<source_root>/.julie/edit-journals/<edit_id>.json`.
-   - Prior to modification, file hashes are re-validated against expected source states;
-     stale edits are rejected with `EDIT_CONFLICT`.
-   - AST-aware operations (`rename_symbol`, `rewrite_symbol`) validate syntax tree
-     correctness post-edit before committing file writes.
-   - Partial writes are recoverable via the `recover-edit` command (named CLI or
-     `manage_workspace(operation="recover_edit", ...)`), supporting idempotent `resume`
-     and safe `rollback` under source hash guards.
-4. **Index-Commit Lifetime**:
-   - All 8 index writer entry points enforce authentic OS owner proofs (`WriterPermit`).
-   - Writes commit to canonical SQLite first, then publish to Tantivy under
-     `publication.lock`.
-   - If an owner crashes mid-commit, the newly promoted owner reconciles Tantivy from
-     canonical SQLite without requiring a source file change.
-
-## Index Writer Fencing and Coherent Publication
-
-To prevent torn reads, mixed-generation search results, or dual-writer corruption across
-processes:
-
-- **Publication Lock (`publication.lock`)**: Located at `$JULIE_HOME/indexes/<ws_id>/publication.lock`.
-  - Readers acquire a shared OS lock during revision queries and snapshot acquisition.
-  - Writers acquire an exclusive OS lock during revision publication, schema migrations,
-    or index resets.
-  - `publication.lock` is never unlinked while processes may hold it.
-- **Separate Revision Tracking**: SQLite canonical revisions and Tantivy projected revisions
-  are tracked independently (`PublicationStamp { epoch, canonical_revision, projected_revision, generation }`).
-- **Truthful Freshness**: Readers verify generation stamps. If an index commit is pending or
-  interrupted, followers report `PROJECTION_LAG` or set `index_refresh_pending: true` honestly
-  rather than returning inconsistent hybrid results.
-
-## Host Admission Scheduling
-
-Concurrent indexing across multiple repositories or worktrees is governed by a global
-advisory host admission pool:
-
-- **Storage Path**: `$JULIE_HOME/scheduler/index-{0,1}.lock` (configurable 1..=8 slots,
-  default `min(2, available_parallelism)`).
-- **Concurrency Cap**: Prevents CPU and I/O starvation by bounding concurrent indexing jobs
-  across all running Julie processes.
-- **Quantum & Backpressure**: Enforces a 10-second scheduling quantum between completed file
-  commits and bounds dirty path coalescing to 4,096 entries before triggering full rescan.
-  Slots are never held while waiting for semantic inference or while idle.
+- Dry-run previews perform zero disk writes, acquire zero locks, and create zero
+  journals.
+- Apply operations (MCP, shared CLI, or standalone CLI) coordinate under
+  `<source_root>/.julie/locks/source-edit.lock` and use durable multi-file
+  journals at `<source_root>/.julie/edit-journals/<edit_id>.json`.
+- File hashes are re-validated before modification; stale edits are rejected
+  with `EDIT_CONFLICT`. AST-aware operations (`rename_symbol`, `rewrite_symbol`)
+  validate syntax after the edit before committing file writes.
+- Partial writes are recoverable via `recover-edit` (named CLI or
+  `manage_workspace(operation="recover_edit", ...)`) with idempotent `resume` and
+  safe `rollback` under source hash guards.
 
 ## Watchers And Cleanup
 
 Watcher coverage follows active workspaces, not every known workspace in
 `registry.db`.
 
-- A watcher is attached when a workspace becomes active in a leader session.
-- Followers do not run watchers or write to Tantivy.
+- A watcher is attached when the service binds a handler for the workspace.
 - Known but inactive workspaces do not keep background watcher coverage.
 
 Cleanup follows the same liveness model:
@@ -241,7 +166,7 @@ Cleanup follows the same liveness model:
 - **Present** workspace: path exists and the workspace is usable.
 - **Stale** workspace: path is gone and no live session or indexing work blocks
   cleanup.
-- **Blocked** workspace: path is gone, but a live session still holds the
+- **Blocked** workspace: path is gone, but a bound handler still holds the
   workspace open.
 
 Opening a stale inactive workspace prunes it and records a cleanup event.
@@ -252,9 +177,8 @@ delete uses the same liveness checks and refuses to remove an active workspace.
 
 | Runtime path | Workspace data | Registry | Source coordination |
 | --- | --- | --- | --- |
-| Machine service (HTTP / stdio shim) | `$JULIE_HOME/indexes/<workspace_id>/` (`leader.lock`, `publication.lock`, `continuations.db`, `db/`, `tantivy/`) | `$JULIE_HOME/registry.db` | `<source_root>/.julie/locks/source-edit.lock`<br>`<source_root>/.julie/edit-journals/` |
+| Machine service (HTTP / stdio shim) | `$JULIE_HOME/indexes/<workspace_id>/` (`db/`, `tantivy/`) | `$JULIE_HOME/registry.db` | `<source_root>/.julie/locks/source-edit.lock`<br>`<source_root>/.julie/edit-journals/` |
 | Standalone CLI | `<project>/.julie/indexes/<workspace_id>/` | None | `<source_root>/.julie/locks/source-edit.lock`<br>`<source_root>/.julie/edit-journals/` |
-| Host Scheduler | `$JULIE_HOME/scheduler/index-{0..7}.lock` | None | N/A |
 
 Default `$JULIE_HOME` is `~/.julie`. Set `JULIE_HOME` to relocate shared state
 and indexes; see `docs/OPERATIONS.md` for the migration workflow.
@@ -271,8 +195,7 @@ Per-workspace logs are project-local and are not affected by `JULIE_HOME`:
 ~/.julie/logs/
 ```
 
-The resident embedding host writes its own host log under `$JULIE_HOME`; normal
-workspace indexing and tool diagnostics belong in project logs.
+Workspace indexing and tool diagnostics belong in project logs.
 
 ## Key Benefits
 
@@ -280,12 +203,9 @@ workspace indexing and tool diagnostics belong in project logs.
 - Explicit activation flow for cross-workspace work via
   `manage_workspace(operation="open", ...)`.
 - Shared MCP-session storage under `$JULIE_HOME/indexes/`.
-- Single-writer safety through per-workspace `leader.lock` with dynamic follower failover.
-- Read-only followers can safely preview and apply source edits without index ownership.
+- One writer per checkout inside the machine service; no cross-process locks.
+- Disposable indexes: schema or engine drift deletes and reindexes instead of migrating.
+- Sibling seeding for new worktrees of a registered repository.
 - Atomic multi-file source edits under `<source_root>/.julie/locks/source-edit.lock` with
   hash guards and journal-based recovery (`recover-edit`).
-- Cross-process publication coherency via `publication.lock` without torn reads or
-  mixed generations.
-- Durable cross-process query continuations via private SQLite store (`continuations.db`).
-- Bounded indexing concurrency across processes via host admission slots.
 - Standalone CLI remains available without shared registry state.

@@ -111,7 +111,6 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 | **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
 | **Dogfood** | `cargo xtask test dogfood` | `search_quality` bucket | Use after search/scoring/tokenization changes |
 | **Full** | `cargo xtask test full` | Dev + broad tool/system/dogfood/release buckets | Use for broad pre-merge confidence |
-| **Reliability** | `cargo xtask test reliability` | Registry/runtime lifecycle + workspace init + integration buckets | Use when hardening lifecycle, watcher, or registry/runtime flows |
 | **Benchmark** | `cargo xtask test benchmark` | Focused `system_health` integration bucket | Use when iterating on health-report latency or a narrow benchmark harness |
 
 ### Warm vs cold accounting
@@ -324,7 +323,7 @@ builds after `cargo clean`.
    - Serial batch replay: `./target/debug/julie-server tools replay --input trace.jsonl --json`
    - Fast lexical mode: add `--semantics off` to skip all embedding checks and run purely in Tantivy/SQLite lexical mode
    - Strict semantic verification: add `--semantics required` to verify vector health (fails with exit code 4 if vectors are missing, stale, or incompatible)
-   - Predictable exit codes: 0 = ok, 2 = arg error, 3 = tool error, 4 = semantics not ready / follower read-only, 124 = timeout, 130 = cancel
+   - Predictable exit codes: 0 = ok, 2 = arg error, 3 = tool error, 4 = semantics not ready, 124 = timeout, 130 = cancel
    - Clean stdout discipline: stdout is strictly JSON envelopes when `--json` is passed; all diagnostics and tracing go to stderr
 3. **Live MCP Testing**: When ready to test the full MCP integration:
    - Agent asks user to exit Claude Code
@@ -349,7 +348,7 @@ builds after `cargo clean`.
 
 ### 🚨 LOG LOCATIONS
 
-Julie writes per-project logs for in-process MCP sessions and standalone CLI runs:
+Julie writes per-project logs for the machine service and standalone CLI runs:
 ```bash
 # Project logs
 tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
@@ -383,7 +382,7 @@ See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 
 ### Filewatcher Mutation Gate
 
-All workspace mutations serialize through a per-workspace async mutex defined in `src/workspace/mutation_gate.rs`. Eight canonical writers — watcher event-processor, watcher repair scan, watcher repair-replay, watcher Tantivy retry, catch-up indexer, force-reindex, refresh-stats, and `register` — all acquire `mutation_gate::acquire_gate(workspace_id)` before mutating, and threading is enforced at compile time via the `MutationGuard<'_>` proof token (gated functions take `_guard: &MutationGuard<'_>`).
+All workspace mutations serialize through a per-workspace async mutex defined in `crates/julie-core/src/workspace/mutation_gate.rs`. Eight canonical writers — watcher event-processor, watcher repair scan, watcher repair-replay, watcher Tantivy retry, startup catch-up, force-reindex, `refresh`, and `rebuild` — all acquire `mutation_gate::acquire_gate(workspace_id)` before mutating, and threading is enforced at compile time via the `MutationGuard<'_>` proof token (gated functions take `_guard: &MutationGuard<'_>`).
 
 **Operator signals to watch in project logs:**
 - `Waited Nms for mutation gate on workspace <id>` — fires only when gate-wait exceeds 100ms. Steady-state should rarely log; long catch-ups on fresh clones may log briefly. Sustained waits >1s for steady-state operation indicate a writer holding the gate too long; investigate whether a repair scan, catch-up, or force-reindex is leaking the guard.
@@ -402,8 +401,11 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
 3. **Per-Workspace Isolation**: Each workspace gets its own db/tantivy in `indexes/{workspace_id}/`. MCP sessions share `$JULIE_HOME/indexes/` and `$JULIE_HOME/registry.db`; standalone CLI runs use project-local `.julie/indexes/`.
    - The machine service serves Streamable HTTP at `/mcp`, JSON API at `/api/<tool>`, and dashboard at `/`.
    - The no-args `julie-server` runs the stdio shim, forwarding JSON-RPC to the service over localhost.
-   - Per-workspace `leader.lock` elects the single writer. The leader owns the watcher, catch-up work, and Tantivy writes; followers are read-only over SQLite WAL and Tantivy mmap.
-   - `registry.db` tracks known workspaces, cleanup events, codehealth snapshots, tool calls, and lightweight process/session state.
+   - One machine service process (`julie-server service`) owns every workspace index. Its handler for a checkout is the only writer for that checkout: it runs the watcher, startup catch-up, and Tantivy writes. There is no leader election, no per-workspace lock file, and no read-only session. `RuntimeFactory` binds one handler per `(root, index_root)`.
+   - Durable files per checkout: `$JULIE_HOME/indexes/<id>/db/symbols.db` (plus `-wal`/`-shm`) and `$JULIE_HOME/indexes/<id>/tantivy/`. Per machine: `$JULIE_HOME/registry.db` and the runtime file `service.json`. Nothing else.
+   - `symbols.db` is never migrated. A schema version other than `LATEST_SCHEMA_VERSION` (32, `crates/julie-core/src/database/schema.rs`) or a `SEMANTIC_INDEX_ENGINE_VERSION` mismatch deletes `indexes/<id>/` and reindexes. `registry.db` keeps its own small migrations.
+   - `manage_workspace open` on a checkout whose `git rev-parse --git-common-dir` matches a registered workspace seeds from that sibling: it copies `symbols.db` and `tantivy/`, rewrites the workspace id, and runs the incremental scan.
+   - `registry.db` tracks known workspaces, cleanup events, codehealth snapshots, and tool calls.
 4. **Native Rust Core**: No FFI, no CGO — core indexing/search has zero external dependencies
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
 6. **SQLite Storage**: Symbols, identifiers, relationships, types, files
@@ -538,4 +540,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-08-20 | **Status:** Production Ready (v7.18.1, extractor quality + workspace lifecycle + 36 languages)
+**Last Updated:** 2026-09-10 | **Status:** Phase 2 machine service (one writer per checkout)

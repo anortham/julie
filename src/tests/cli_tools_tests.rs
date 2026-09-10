@@ -669,7 +669,7 @@ fn test_agent_instructions_recommend_standalone_for_quick_dogfood_checks() {
         "agent instructions must recommend standalone for quick checks before live MCP tests"
     );
     assert!(
-        instructions.contains("does not prove in-process MCP serving"),
-        "agent instructions must state standalone does not prove in-process MCP serving"
+        instructions.contains("does not prove machine-service MCP serving"),
+        "agent instructions must state standalone does not prove machine-service MCP serving"
     );
 }

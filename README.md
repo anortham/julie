@@ -45,9 +45,9 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
 - **Machine service + stdio shim** — single background service per machine serving Streamable HTTP at `/mcp`, JSON API at `/api/<tool>`, and dashboard at `/`, with a zero-config stdio shim
-- **Multi-session coordination** — per-workspace leader locks allow one writer and read-only followers over shared indexes
+- **One writer per checkout** — the service's handler for a checkout is its only index writer; sessions share the service's memory and caches
 - **Shared registry and indexes** — `$JULIE_HOME/registry.db` plus `$JULIE_HOME/indexes/` keep related workspaces available across sessions
-- **Unified RequestEngine & Complete CLI** — All 13 tools operate as first-class CLI subcommands and via generic `tool <name>` with identical access classification, workspace binding, and safety checks as MCP. Includes zero-warmup discovery (`tools list`, `tools schema`) and serial batch replay (`tools replay`).
+- **Unified RequestEngine & Complete CLI** — All 12 tools operate as first-class CLI subcommands and via generic `tool <name>` with identical access classification, workspace binding, and safety checks as MCP. Includes zero-warmup discovery (`tools list`, `tools schema`) and serial batch replay (`tools replay`).
 - **Date-Versioned MCP Protocol `2026-07-28`** — Supports modern Model Context Protocol date-versioned revision `2026-07-28` as primary with direct first-message `tools/call` without handshake, alongside full backward compatibility for `2025-11-25`.
 
 ### Performance Characteristics
@@ -381,8 +381,9 @@ relationships. Those typed tables power region search, `patterns`, and
 
 ### Workspace Management
 
-- `manage_workspace` - Index, register, open, remove, refresh, list, stat, clean, health-check workspaces, and launch the dashboard
-  - Operations: `index`, `register`, `open`, `remove`, `list`, `refresh`, `stats`, `clean`, `health`, `dashboard`
+- `manage_workspace` - Index, open, remove, refresh, list, rebuild, report status, health-check workspaces, recover interrupted edits, and launch the dashboard
+  - Operations: `index`, `list`, `open`, `remove`, `refresh`, `health`, `rebuild`, `status`, `recover_edit`, `dashboard`
+  - `rebuild` deletes a checkout's index and indexes it again; `status` reports every checkout (root, watcher, counts, database size, Tantivy age, last write)
   - Cross-workspace work: call `open` first, then pass the returned `workspace_id` to other tools
 
 > Operational and session metrics are surfaced through the dashboard. Start it from a shell with `julie-server dashboard`, or from an MCP session with `manage_workspace(operation="dashboard")`.
@@ -510,8 +511,8 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 - **Graph centrality ranking** using pre-computed reference scores from the relationship graph
 - **SQLite storage** for symbols, identifiers, relationships, types, and file metadata
 - **Per-workspace isolation** with separate databases and indexes
-- **In-process MCP protocol** over stdio (JSON-RPC), with no background daemon or HTTP bridge
-- **Per-workspace leader locks** so one session owns writes while other sessions serve read-only requests from SQLite WAL and Tantivy mmap
+- **Machine service** serving Streamable HTTP MCP at `/mcp` with a stdio shim for stdio-only clients
+- **One writer per checkout** inside the service; index writes serialize through an in-process mutation gate, and a schema or engine mismatch deletes and reindexes instead of migrating
 - **Embedding pipeline** through the native `julie-semantic-sidecar`; there is no Python runtime
 
 ## Development
@@ -530,9 +531,9 @@ cargo build
 
 ### Running Locally
 
-Julie runs as an in-process stdio MCP server. When an MCP client starts
-`julie-server`, that process serves MCP directly and coordinates shared indexes
-through per-workspace leader locks:
+The no-args `julie-server` is a stdio shim. It starts the machine service
+(`julie-server service`) if none is running and forwards MCP requests to it. The
+service owns every workspace index:
 
 ```bash
 cargo run -- --workspace /path/to/your/project
@@ -544,14 +545,14 @@ To test with an MCP client, point it at your debug build:
 claude mcp add julie-dev -- /path/to/julie/target/debug/julie-server
 ```
 
-After rebuilding (`cargo build`), restart your MCP client or start a new
-session so the client launches the new binary.
+After rebuilding (`cargo build`), run `julie-server service restart` so the
+service loads the new binary.
 
 ## Command-Line Interface (CLI)
 
-Julie exposes all 13 tools directly to the terminal through named subcommands, a generic tool runner, instant schema discovery, and serial request replay. Every CLI invocation routes through `RequestEngine::execute`, guaranteeing identical parameter validation, follower safety, and execution semantics as MCP sessions.
+Julie exposes all 12 tools directly to the terminal through named subcommands, a generic tool runner, instant schema discovery, and serial request replay. Every CLI invocation routes through `RequestEngine::execute`, guaranteeing identical parameter validation and execution semantics as MCP sessions.
 
-### 13 Named Tool Subcommands
+### 12 Named Tool Subcommands
 
 Every tool is directly accessible as a named subcommand (with ergonomic aliases):
 
@@ -596,7 +597,7 @@ cat edit_req.json | julie-server tool edit_file --params-stdin --json
 Instant catalog inspection answering in <15ms without starting file watchers, compiling indexes, or warming embedding models:
 
 ```bash
-# List all 13 registered tools with descriptions and schema availability
+# List all 12 registered tools with descriptions and schema availability
 julie-server tools list --json
 
 # Print the complete JSON Schema for a specific tool
@@ -645,7 +646,7 @@ All logging, progress bars, and diagnostics are emitted strictly to `stderr`. Ex
 - `0`: Success (`ok: true`)
 - `2`: Invalid CLI arguments, syntax errors, unknown tools, or conflicting parameter sources
 - `3`: Tool execution domain error (`isError: true` in envelope)
-- `4`: Readiness failure (`SEMANTICS_NOT_READY` in required mode) or Follower refusal (`FOLLOWER_READ_ONLY`)
+- `4`: Readiness failure (`SEMANTICS_NOT_READY` in required mode)
 - `5`: Stale index or unindexed workspace
 - `124`: Request deadline / timeout exceeded
 - `130`: Process cancellation / SIGINT
@@ -696,12 +697,12 @@ All tiers are currently green. If a test fails, it is a real regression — inve
 
 ```
 src/
-├── main.rs          # Entry point: in-process MCP serve or subcommand dispatch
+├── main.rs          # Entry point: stdio shim, service, or subcommand dispatch
 ├── handler.rs       # MCP tool handler (rmcp ServerHandler)
 ├── cli.rs           # CLI argument parsing and workspace resolution
 ├── startup.rs       # Workspace initialization and staleness detection
 ├── cli_tools/       # Standalone CLI command bootstrap
-├── daemon/          # Registry DB, leader-lock compatibility, project logging
+├── registry/        # Registry DB and project logging
 ├── dashboard/       # Standalone read-only dashboard (htmx + Tera templates)
 ├── extractors/      # Thin re-export of the external 36-language extractor crate
 ├── external_extract/ # Process-facing extractor commands

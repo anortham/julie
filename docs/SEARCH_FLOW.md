@@ -1,7 +1,7 @@
 # Julie Search Architecture
 
 **Purpose**: Technical reference for Julie's Tantivy-based search engine
-**Last Updated**: 2026-07-18
+**Last Updated**: 2026-09-10
 **Status**: Production (Tantivy full-text search + graph centrality + stemming)
 
 ---
@@ -363,12 +363,12 @@ both produce stem "estim".
 - **Blocking context**: Tantivy uses `std::sync::Mutex` for the writer, so
   search operations run inside `tokio::task::spawn_blocking`
 
-### NL Definition Query Latency - In-Process MCP vs Standalone
+### NL Definition Query Latency - Machine Service vs Standalone
 
-**In-process MCP path** (normal MCP client path): NL `definitions` queries
+**Machine service path** (normal MCP client path): NL `definitions` queries
 (`is_nl_like_query` -> true) take **~100ms** against a 100k-symbol workspace
 when the Tantivy index is already on disk and warm. The MCP session serves stdio
-directly and can reuse the resident embedding host for embedding-backed work.
+directly and can reuse the native sidecar broker for embedding-backed work.
 
 **Standalone mode** (`julie-server search ... --standalone`): Latency depends on
 whether the Tantivy index is already on disk and whether the OS page cache is
@@ -379,11 +379,10 @@ warm:
 
 **Key implementation note — embedding sidecar probe:**  
 NL `definitions` queries trigger `maybe_initialize_embeddings_for_nl_definitions` in
-`src/tools/search/nl_embeddings.rs`. In the MCP path, embedding-backed work goes
-through the resident embedding host when available. In standalone mode without
-the fix below it would call `create_embedding_provider()`, which probes and
-launches the Python sidecar, costing **8-10 seconds** even when keywords are
-sufficient.
+`crates/julie-tools/src/search/nl_embeddings.rs`. In the service path, embedding-backed
+work goes through the native `julie-semantic-sidecar` when available. In standalone
+mode without the fix below it would call `create_embedding_provider()`, which probes
+and launches the sidecar even when keywords are sufficient.
 
 The fix (`bootstrap_standalone_handler` in `src/cli_tools/mod.rs`) calls
 `handler.mark_standalone_embedding_skipped()` immediately after indexing. This sets
@@ -398,7 +397,7 @@ is correct — the sidecar would be torn down immediately after the one-shot que
 
 | Path | Latency |
 |------|---------|
-| In-process MCP, query "function display template" | ~100ms avg |
+| Machine service, query "function display template" | ~100ms avg |
 | `search_symbols` internals (expand + AND search + OR fallback) | ~1ms |
 | `expand_query_terms("function display template")` | ~340µs |
 | AND pass (Tantivy search, 160 candidate limit) | ~800µs |
@@ -414,10 +413,9 @@ The AND/OR fallback adds at most one extra Tantivy search call.
 
 ## Storage
 
-**In-process MCP path** (shared by sessions under `$JULIE_HOME`):
+**Machine service path** (shared under `$JULIE_HOME`):
 ```
 $JULIE_HOME/indexes/{workspace_id}/
-  ├── leader.lock              # Per-workspace writer election
   ├── db/
   │   └── symbols.db           # SQLite (symbols, files, relationships, types)
   └── tantivy/

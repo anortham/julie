@@ -1,13 +1,13 @@
 # File Watcher Architecture
 
-**Last Updated:** 2026-06-06
-**Status:** Production (v7, in-process server)
+**Last Updated:** 2026-09-10
+**Status:** Production (machine service, one writer per checkout)
 
 ## Overview
 
 Julie uses OS-native file watchers (via the [`notify`](https://docs.rs/notify) crate) to detect file changes and trigger incremental re-indexing. This keeps the symbol database and Tantivy search index up to date without requiring full re-indexes.
 
-The no-args `julie-server` serves MCP in-process over stdio. For each workspace, the session that holds the per-workspace leader lock owns a single `IncrementalIndexer` (`src/watcher/mod.rs`) and runs the watcher for the duration of that session. Concurrent sessions on the same workspace are read-only followers and do not run their own watcher. There is no shared cross-session watcher pool.
+One machine service process (`julie-server service`) owns every workspace index. For each checkout, the service's handler for that checkout owns a single `IncrementalIndexer` (`src/watcher/mod.rs`) and runs the watcher for as long as the handler is bound. Every watcher write takes the per-checkout mutation gate (`crates/julie-core/src/workspace/mutation_gate.rs`). There is no second writer for a checkout and no cross-process watcher pool.
 
 ### Catch-up Indexing on Session Connect
 

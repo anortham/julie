@@ -29,16 +29,14 @@ Rules:
 
 ## Shared State Layout
 
-Current in-process MCP sessions use this layout:
+The machine service uses this layout:
 
 ```text
 $JULIE_HOME/
 +-- registry.db
-+-- embedding-host.lock
-+-- embedding-host.sock            # Unix only
++-- service.json                   # Runtime record: port, pid, token, version
 +-- indexes/
     +-- <workspace_id>/
-        +-- leader.lock
         +-- db/
         |   +-- symbols.db
         +-- tantivy/
@@ -57,31 +55,34 @@ single SQLite connection.
 Standalone CLI commands that pass `--standalone` use project-local storage under
 `<project>/.julie/indexes/` instead of `$JULIE_HOME`.
 
-## Leader Locks
+## One Writer Per Checkout
 
-Each workspace has a durable `leader.lock` file beside its `db/` and `tantivy/`
-directories. The first live `julie-server` process that acquires the lock is
-the workspace leader:
+One machine service process (`julie-server service`) owns every workspace index.
+Its handler for a checkout is the only writer for that checkout:
 
-- The leader runs the file watcher, catch-up indexing, repair work, and Tantivy
-  writes.
-- Followers are read-only over SQLite WAL and Tantivy mmap.
-- If the leader exits, the OS releases the lock. A later session can acquire it
-  and reconcile changed files.
+- The handler runs the file watcher, startup catch-up, repair work, and Tantivy
+  writes. Writes serialize through the in-process mutation gate
+  (`crates/julie-core/src/workspace/mutation_gate.rs`).
+- There is no per-workspace lock file and no read-only session. `service.json`,
+  `registry.db`, and `indexes/<id>/{db,tantivy}` are the only durable files under
+  `$JULIE_HOME`.
+- `symbols.db` is never migrated. A schema version other than
+  `LATEST_SCHEMA_VERSION` (32) or a `SEMANTIC_INDEX_ENGINE_VERSION` mismatch deletes
+  `indexes/<id>/` and reindexes. `registry.db` keeps its own small migrations.
+- `manage_workspace(operation="rebuild")` deletes `indexes/<id>/` and reindexes.
+  `manage_workspace(operation="status")` reports every checkout: root, watcher,
+  file/symbol/vector counts, database size, Tantivy state and age, last write.
+  `GET /status` carries the same list under `checkouts`.
+- A new checkout of a registered repository seeds from its sibling:
+  `manage_workspace(operation="open", path=...)` copies the sibling's `symbols.db`
+  and `tantivy/`, rewrites the workspace id, and runs the incremental scan.
 
-The file remains on disk after the process exits. That is normal; the OS lock,
-not file deletion, is the source of truth.
+## Semantic Sidecar
 
-## Resident Embedding Host
-
-Embeddings are served by one resident embedding host per `$JULIE_HOME` so
-multiple Julie sessions do not each load the model into VRAM. The host uses
-`embedding-host.lock` plus a Unix socket or Windows named pipe derived from
-`$JULIE_HOME`.
-
-If the host is unavailable, keyword search and structural navigation continue to
-work. Embedding-backed features stay disabled until a session can connect to or
-spawn the host.
+Embeddings are served by the native `julie-semantic-sidecar` (llama.cpp GGUF).
+`JULIE_EMBEDDING_PROVIDER` accepts `auto`, `native`, or `none`. If the sidecar is
+unavailable, keyword search and structural navigation continue to work and
+embedding-backed features stay disabled. See `docs/SEMANTIC_PROVIDERS.md`.
 
 ## Tantivy Schema Compatibility And Auto-Rebuild
 
@@ -99,7 +100,7 @@ sidecar. On mismatch:
 1. The incompatible Tantivy directory is deleted and recreated empty.
 2. The workspace open path rebuilds the Tantivy projection from
    `db/symbols.db`, which remains the source of truth.
-3. Concurrent rebuilds are guarded by the Tantivy rebuild lock.
+3. The per-checkout mutation gate serializes the rebuild with other writers.
 
 Operator impact:
 
@@ -111,8 +112,8 @@ Operator impact:
   or `recreated empty during open; rebuilding projection`.
 
 If a Tantivy directory is corrupt but signatures still match, remove that
-workspace's `tantivy/` directory and restart the MCP session, or run
-`manage_workspace(operation="index", force=true)`.
+workspace's `tantivy/` directory and restart the service, or run
+`manage_workspace(operation="rebuild")`.
 
 ## Dashboard
 
@@ -125,7 +126,7 @@ events.
 
 To move Julie shared state:
 
-1. Stop all MCP clients and any running `julie-server` sessions.
+1. Stop all MCP clients and the service (`julie-server service stop`).
 2. Move the old home:
    ```bash
    mv ~/.julie /mnt/fast-ssd/julie-home
@@ -147,6 +148,8 @@ indexing, or you will split state across two homes.
 ## Removed Legacy Files
 
 Old installs may still contain files such as `daemon.pid`, `daemon.lock`,
-`daemon.state`, `discovery.json`, `daemon.port`, or `daemon.token`. The current
-in-process runtime does not use them for MCP serving. Do not recreate them when
-debugging 3d.3-era behavior.
+`daemon.state`, `discovery.json`, `daemon.port`, `daemon.token`,
+`embedding-host.lock`, `scheduler/`, or per-workspace lock and continuation
+files (`publication.lock`, `continuations.db`, `.symbols.db.init.lock`,
+`tantivy.julie-rebuild.lock`, the old owner lock). The machine service does not
+use them. Do not recreate them.

@@ -11,49 +11,49 @@ Julie provides LSP-quality code intelligence across 36 programming languages usi
 2. **Relational Retrieval**: SQLite structured storage tracking symbols, identifiers, scopes, definitions, calls, and hierarchical relations.
 3. **Semantic Retrieval**: High-dimensional vector embeddings and approximate nearest neighbors (ANN/KNN) for natural language conceptual search, semantic similarity, and symbol associations.
 
-### Dual-Provider Architecture
+### Native Provider Architecture
 
-Julie supports two distinct embedding provider runtimes behind the unified `EmbeddingProvider` trait:
+Julie has one embedding provider runtime behind the `EmbeddingProvider` trait:
 
 ```text
-                                +--------------------------------------+
-                                |         RequestEngine / CLI          |
-                                +--------------------------------------+
-                                                   |
-                             +---------------------+---------------------+
-                             |                                           |
-                    (JULIE_EMBEDDING_PROVIDER=sidecar)          (JULIE_EMBEDDING_PROVIDER=native)
-                             |                                           |
-                             v                                           v
-               +---------------------------+               +---------------------------+
-               |   RpcEmbeddingProvider    |               |  NativeEmbeddingProvider  |
-               | (julie-embedding-host IPC)|               |   (Rust / llama.cpp GGUF) |
-               +---------------------------+               +---------------------------+
-                             |                                           |
-                      UDS / Named Pipe                            UDS / Named Pipe
-                             |                                           |
-                             v                                           v
-               +---------------------------+               +---------------------------+
-               |   julie-embedding-host    |               |  julie-semantic-sidecar   |
-               | (Python/PyTorch resident) |               |  (In-process llama.cpp)   |
-               +---------------------------+               +---------------------------+
+               +--------------------------------------+
+               |         RequestEngine / CLI          |
+               +--------------------------------------+
+                                  |
+                   (JULIE_EMBEDDING_PROVIDER=auto|native)
+                                  |
+                                  v
+                    +---------------------------+
+                    |  NativeEmbeddingProvider  |
+                    |   (Rust / llama.cpp GGUF) |
+                    +---------------------------+
+                                  |
+                          UDS / Named Pipe
+                                  |
+                                  v
+                    +---------------------------+
+                    |  julie-semantic-sidecar   |
+                    |  (In-process llama.cpp)   |
+                    +---------------------------+
 ```
 
-### Provider Comparison Matrix
+The native broker client in `crates/julie-pipeline/src/embeddings/native/` stays in place until
+phase 4 of the machine-service design moves semantics to a sidecar child of the service.
 
-| Operational Dimension | Python Provider (`sidecar`) | Native Provider (`native`) |
-|-----------------------|-----------------------------|----------------------------|
-| **Implementation** | Python 3.12 managed venv (`uv`) | Standalone native Rust binary (`llama.cpp`) |
-| **Default Model** | `nomic-ai/CodeRankEmbed` (768 dims) | `bge-small-en-v1.5-f32` (384 dims) |
-| **Alternative Model** | Custom HuggingFace sentence-transformers | `qwen3-0.6b-f16` (512 dims via MRL) |
-| **Model Weights** | HuggingFace snapshot cache | Local GGUF format (`~/.cache/julie-semantic`) |
-| **Memory Footprint** | ~2,048 – 4,096 MiB RSS (PyTorch runtime) | ~150 MiB (BGE) / ~1,200 MiB (Qwen) |
-| **Startup / Warming** | 3 – 12 seconds (Python import + PyTorch init) | < 350 ms (instant GGUF mmap load) |
-| **Transport** | Unix Domain Socket / Windows Named Pipe (host IPC) | Unix Domain Socket / Windows Named Pipe |
-| **Broker Sharing** | Host singleton (`julie-embedding-host`) across sessions | Multi-session shared broker with lock leases |
-| **Quantization** | FP32 / FP16 PyTorch tensors | Native GGUF FP32 (BGE) / FP16 (Qwen) |
-| **Hardware Acceleration** | CUDA, DirectML, MPS, CPU | Metal (Apple), Vulkan, CUDA, CPU |
-| **Status in Julie** | Established baseline (`auto` default) | Production-ready native alternative |
+### Provider Facts
+
+| Operational Dimension | Native Provider (`native`) |
+|-----------------------|----------------------------|
+| **Implementation** | Standalone native Rust binary (`llama.cpp`) |
+| **Default Model** | `bge-small-en-v1.5-f32` (384 dims) |
+| **Alternative Model** | `qwen3-0.6b-f16` (512 dims via MRL) |
+| **Model Weights** | Local GGUF format (`~/.cache/julie-semantic`) |
+| **Memory Footprint** | ~150 MiB (BGE) / ~1,200 MiB (Qwen) |
+| **Startup / Warming** | < 350 ms (instant GGUF mmap load) |
+| **Transport** | Unix Domain Socket / Windows Named Pipe |
+| **Broker Sharing** | Multi-session shared broker with lock leases |
+| **Quantization** | Native GGUF FP32 (BGE) / FP16 (Qwen) |
+| **Hardware Acceleration** | Metal (Apple), Vulkan, CUDA, CPU |
 
 ---
 
@@ -65,7 +65,7 @@ Selection and discovery are managed through environment variables evaluated duri
 
 | Variable | Values | Default | Purpose |
 |----------|--------|---------|---------|
-| `JULIE_EMBEDDING_PROVIDER` | `auto`, `native`, `sidecar`, `none`, `off`, `disabled` | `auto` | Primary backend selector. `auto` resolves to `sidecar` to preserve the verified baseline. `native` selects the Rust sidecar broker. |
+| `JULIE_EMBEDDING_PROVIDER` | `auto`, `native`, `none` (`off` and `disabled` are aliases of `none`) | `auto` | Primary backend selector. `auto` uses the native sidecar when its binary is found, else `none`. `native` requires the sidecar. Tests get `none` from `.cargo/config.toml`. |
 | `JULIE_NATIVE_SIDECAR_PROGRAM` | Absolute or relative filesystem path | Auto-discovered | Explicit path override to the `julie-semantic-sidecar` binary. |
 | `JULIE_NATIVE_SIDECAR_MODEL` | `bge-small-en-v1.5-f32`, `qwen3-0.6b-f16` | `bge-small-en-v1.5-f32` | Manifest model ID for the native provider. |
 | `JULIE_EMBEDDING_CACHE_DIR` | Absolute filesystem directory | `~/.cache/julie-semantic` | Shared root for GGUF model files, locks, and Unix domain sockets. |
@@ -77,10 +77,9 @@ Selection and discovery are managed through environment variables evaluated duri
 The initialization pipeline processes embedding configuration in two stages:
 1. `parse_provider_preference`:
    - `none`, `off`, `disabled`: Explicitly handled by the server init harness (`init.rs`, `server_in_process.rs`) before factory dispatch. Completely disables embeddings without spawning background hosts, touching sockets, or loading model files.
-   - `auto`: Defaults to `sidecar` (Python) to maintain behavioral stability.
-   - `sidecar`: Connects to or spawns the resident Python embedding host (`julie-embedding-host`).
+   - `auto`: Resolves to `NativeEmbeddingProvider` when the sidecar binary is found, else `none`.
    - `native`: Resolves to `NativeEmbeddingProvider`.
-   - Any unknown string (such as legacy `ort`) fails with an explicit error.
+   - `sidecar` and `ort` fail with "has been removed"; any other string fails with an explicit error.
 2. `resolve_backend_preference`:
    - Verifies platform capabilities and compilation feature flags before returning the resolved backend.
 
@@ -282,7 +281,7 @@ julie-server fast-search "authentication handler" --semantics off       # Pure l
 
 ## 6. Model Switching & Embedding Generation Lifecycle
 
-Switching embedding models—whether changing dimensions (e.g. 768d CodeRankEmbed → 384d BGE) or switching between two distinct models sharing identical dimensions—requires complete, atomic vector invalidation. Comparing vector distances across different embedding spaces produces mathematically meaningless noise.
+Switching embedding models—whether changing dimensions (e.g. 384d BGE → 512d Qwen) or switching between two distinct models sharing identical dimensions—requires complete, atomic vector invalidation. Comparing vector distances across different embedding spaces produces mathematically meaningless noise.
 
 ### Cryptographic Identity: `EncoderIdentity`
 
@@ -499,8 +498,8 @@ Use `manage-workspace` to verify semantic status:
 # Check detailed workspace health:
 julie-server workspace --operation health
 
-# Check vector and symbol statistics:
-julie-server workspace --operation stats
+# Check every checkout's vector and symbol counts:
+julie-server workspace --operation status
 ```
 
 Example health output:
@@ -535,7 +534,7 @@ Vector Coverage: 8420 / 8420 symbols (100%)
 |---|---|---|
 | `NATIVE_SIDECAR_MISSING` | Binary not found in PATH, cache, or target directories | 1. Ensure sidecar is compiled: `cargo build --release` in sidecar repo.<br>2. Set `export JULIE_NATIVE_SIDECAR_PROGRAM=/path/to/julie-semantic-sidecar`. |
 | `MODEL_NOT_PREPARED` | GGUF model weights missing from cache | Run `julie-semantic-sidecar prepare --model <model_id>`. |
-| `SEMANTICS_NOT_READY` (`coverage: missing`) | Workspace has symbols but no vector embeddings generated | Run indexing or workspace rescan to trigger embedding generation. |
+| `SEMANTICS_NOT_READY` (`coverage: missing`) | Workspace has symbols but no vector embeddings generated | Run indexing or `manage_workspace(operation="refresh")` to trigger embedding generation. |
 | `SEMANTICS_NOT_READY` (`coverage: incompatible`) | Model switch occurred; stored vectors belong to a different model | Rescan workspace to rebuild vectors for the newly selected model. |
 | `SEMANTICS_NOT_READY` (`coverage: building`) | Embedding generation is actively computing vectors in background | Wait for indexing to complete or run with `--semantics auto` for lexical fallback. |
 | `Vulkan / GPU initialization failed` | Incompatible GPU driver or shader compilation issue | Set `export JULIE_SIDECAR_FORCE_BACKEND=cpu` to force CPU execution. |
@@ -554,17 +553,17 @@ JULIE_EMBEDDING_PROVIDER=native \
 julie-server fast-search "repository lifecycle lock" --semantics required --json
 ```
 
-#### 2. Switching from Python to Native Provider
+#### 2. Switching Native Models
 ```bash
 # 1. Update environment
 export JULIE_EMBEDDING_PROVIDER=native
-export JULIE_NATIVE_SIDECAR_MODEL=bge-small-en-v1.5-f32
+export JULIE_NATIVE_SIDECAR_MODEL=qwen3-0.6b-f16
 
 # 2. Prepare native weights
-julie-semantic-sidecar prepare --model bge-small-en-v1.5-f32
+julie-semantic-sidecar prepare --model qwen3-0.6b-f16
 
-# 3. Trigger rescan to build generation for new model
-julie-server workspace --operation rescan
+# 3. Refresh to build the generation for the new model
+julie-server workspace --operation refresh
 ```
 
 #### 3. Forcing CPU Execution for Predictable CI/Benchmarks
