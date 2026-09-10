@@ -396,7 +396,7 @@
   <!-- Section 9: Tools -->
   <section id="tools" class="section">
     <h2 class="section-title">Tools</h2>
-    <p class="section-subtitle">13 focused tools. Each one replaces scattershot file reads.</p>
+    <p class="section-subtitle">12 focused tools. Each one replaces scattershot file reads.</p>
 
     <div class="card-grid">
       <div class="card tool-card animate-on-scroll" data-delay="0">
@@ -518,7 +518,7 @@
           <div><span class="result">47 impacted symbols</span></div>
           <div><span class="result">&nbsp; High: login_flow.rs:LoginHandler::handle</span></div>
           <div><span class="result">&nbsp; Tests: auth_tests.rs, session_api.rs</span></div>
-          <div><span class="comment">&nbsp; spillover_handle=br_a1b2 (23 more)</span></div>
+          <div><span class="comment">&nbsp; Output truncated at 10 results; narrow the query or pass a smaller limit.</span></div>
         </div>
         <span class="token-badge">~400 tokens</span>
       </div>
@@ -533,18 +533,6 @@
           <div><span class="result">&nbsp; AuthService::login → insert_session</span></div>
         </div>
         <span class="token-badge">~180 tokens</span>
-      </div>
-
-      <div class="card tool-card animate-on-scroll" data-delay="1100">
-        <div class="tool-name">spillover_get</div>
-        <div class="tool-desc">Fetch the next page from a saved overflow handle</div>
-        <div class="terminal" aria-label="spillover_get paging the next blast_radius result page">
-          <div><span class="prompt">$ </span><span class="command">spillover_get("br_a1b2")</span></div>
-          <div><span class="result">Impact overflow</span></div>
-          <div><span class="result">&nbsp; 11. AuthService::refresh</span></div>
-          <div><span class="comment">&nbsp; More available: spillover_handle=br_c3d4</span></div>
-        </div>
-        <span class="token-badge">~120 tokens</span>
       </div>
 
       <div class="card tool-card animate-on-scroll" data-delay="1200">
