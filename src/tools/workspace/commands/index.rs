@@ -137,11 +137,7 @@ impl ManageWorkspaceTool {
             if is_indexed {
                 // Get symbol count from database using efficient COUNT(*) query
                 let symbol_count = if let Ok(Some(workspace)) = handler.get_workspace().await {
-                    workspace
-                        .store
-                        .as_ref()
-                        .map(|store| store.status().graph.symbols)
-                        .unwrap_or(0)
+                    workspace.store.status().graph.symbols
                 } else {
                     0
                 };
@@ -258,8 +254,8 @@ impl ManageWorkspaceTool {
                     "Workspace indexing complete: {} files, {} symbols, {} relationships\nReady for search and navigation",
                     files_total, symbols_total, relationships_total
                 );
-                if let Some(canonical_revision) = result.canonical_revision {
-                    message.push_str(&format!("\nCanonical revision: {}", canonical_revision));
+                if let Some(facts_revision) = result.facts_revision {
+                    message.push_str(&format!("\nCanonical revision: {}", facts_revision));
                 }
                 if let Some(report) = &seed_report {
                     message.push_str(&format!("\n{report}"));

@@ -115,7 +115,7 @@ impl SystemHealthSnapshot {
             report.push_str(&format!(
                 "Canonical Revision: {}\n",
                 projection
-                    .canonical_revision
+                    .facts_revision
                     .map(|revision| revision.to_string())
                     .unwrap_or_else(|| "none".to_string())
             ));
@@ -274,7 +274,7 @@ impl SystemHealthSnapshot {
             report.push_str(&format!("Corpus Commit: {}\n", qual.corpus_commit));
             report.push_str(&format!(
                 "Revisions: canonical {} / vector {} (equal)\n",
-                qual.canonical_revision, qual.vector_revision
+                qual.facts_revision, qual.vector_revision
             ));
             report.push_str(&format!(
                 "Vector Coverage: {} / {} symbols (100%)\n",

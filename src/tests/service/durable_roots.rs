@@ -52,16 +52,20 @@ async fn durable_roots_hold_only_the_registry_service_record_and_indexes() {
     );
     assert_only(&home.join("indexes"), &[id.as_str()], &[]);
     let index_dir = running.paths.workspace_index_dir(&id);
-    assert_only(&index_dir, &["db", "store", "tantivy"], &[]);
-    assert_only(
-        &index_dir.join("db"),
-        &["symbols.db"],
-        &["symbols.db-wal", "symbols.db-shm"],
+    assert!(
+        !index_dir.join("db").exists(),
+        "db/ is not accepted under {}",
+        index_dir.display()
+    );
+    assert!(
+        !index_dir.join("store").exists(),
+        "store/ is not accepted under {}",
+        index_dir.display()
     );
     assert_only(
-        &index_dir.join("store"),
+        &index_dir,
         &["facts.sqlite", "tantivy"],
         &["facts.sqlite-wal", "facts.sqlite-shm"],
     );
-    assert!(index_dir.join("store/tantivy/julie.meta.json").is_file());
+    assert!(index_dir.join("tantivy/julie.meta.json").is_file());
 }

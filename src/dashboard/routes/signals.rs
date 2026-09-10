@@ -77,7 +77,7 @@ async fn load_report(
         file_pattern: None,
         generated_at: 0,
         from_cache: false,
-        canonical_revision: 0,
+        facts_revision: 0,
         projection_revision: 0,
         config_schema_version: 0,
         summary: ReportSummary {

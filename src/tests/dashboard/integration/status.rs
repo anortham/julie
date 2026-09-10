@@ -164,7 +164,7 @@ async fn test_status_live_exposes_projection_list_contract() {
         assert_eq!(projection["state"], "missing");
         assert_eq!(projection["freshness"], "unavailable");
         assert_eq!(projection["workspace_id"], serde_json::Value::Null);
-        assert_eq!(projection["canonical_revision"], serde_json::Value::Null);
+        assert_eq!(projection["facts_revision"], serde_json::Value::Null);
         assert_eq!(projection["projected_revision"], serde_json::Value::Null);
         assert_eq!(projection["revision_lag"], serde_json::Value::Null);
         assert_eq!(projection["repair_needed"], false);

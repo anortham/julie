@@ -172,7 +172,7 @@ impl FollowerEditFixture {
         };
         let rev: i64 = conn
             .query_row(
-                "SELECT revision FROM canonical_revisions ORDER BY revision DESC LIMIT 1",
+                "SELECT revision FROM facts_revisions ORDER BY revision DESC LIMIT 1",
                 [],
                 |r| r.get(0),
             )

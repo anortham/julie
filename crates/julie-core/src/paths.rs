@@ -351,16 +351,14 @@ impl RegistryPaths {
         self.julie_home.join("indexes")
     }
 
-    /// Directory for a specific workspace's index (SQLite + Tantivy).
+    /// Directory for a specific workspace's index (facts.sqlite + Tantivy).
     pub fn workspace_index_dir(&self, workspace_id: &str) -> PathBuf {
         self.indexes_dir().join(workspace_id)
     }
 
-    /// SQLite database path for a workspace.
-    pub fn workspace_db_path(&self, workspace_id: &str) -> PathBuf {
-        self.workspace_index_dir(workspace_id)
-            .join("db")
-            .join("symbols.db")
+    /// Facts database path for a workspace.
+    pub fn workspace_facts_path(&self, workspace_id: &str) -> PathBuf {
+        self.workspace_index_dir(workspace_id).join("facts.sqlite")
     }
 
     /// Tantivy index directory for a workspace.

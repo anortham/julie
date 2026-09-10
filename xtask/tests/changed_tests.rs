@@ -938,20 +938,7 @@ fn changed_tests_src_extractors_reexport_routes_to_extractor_dep_integration_buc
 }
 
 #[test]
-fn changed_tests_routes_projection_paths_to_projection_bucket() {
-    let manifest = sample_manifest();
-
-    let selection = select_changed_buckets(&manifest, &["src/search/projection.rs".to_string()]);
-
-    assert_eq!(
-        selection.mode,
-        expected_mapped_mode(&manifest, &selection.bucket_names)
-    );
-    assert_eq!(selection.bucket_names, vec!["projection"]);
-}
-
-#[test]
-fn changed_tests_routes_projection_pipeline_paths_to_projection_bucket() {
+fn changed_tests_routes_indexing_pipeline_paths_to_workspace_indexing_bucket() {
     let manifest = sample_manifest();
 
     let selection = select_changed_buckets(
@@ -963,7 +950,7 @@ fn changed_tests_routes_projection_pipeline_paths_to_projection_bucket() {
         selection.mode,
         expected_mapped_mode(&manifest, &selection.bucket_names)
     );
-    assert_eq!(selection.bucket_names, vec!["projection"]);
+    assert_eq!(selection.bucket_names, vec!["tools-workspace-indexing"]);
 }
 
 #[test]
@@ -1321,11 +1308,6 @@ commands = [
   "cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract",
   "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
 ]
-
-[buckets.projection]
-expected_seconds = 40
-timeout_seconds = 90
-commands = ["cargo nextest run --lib tests::integration::projection_repair -- --skip search_quality"]
 
 [buckets.transport]
 expected_seconds = 40

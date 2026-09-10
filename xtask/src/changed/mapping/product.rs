@@ -27,16 +27,12 @@ fn mapped_buckets_for_path(path: &str) -> &'static [&'static str] {
     if matches_exact(
         path,
         &[
-            "src/search/projection.rs",
-            "src/database/projections.rs",
-            "src/health/projection.rs",
             "src/health/evaluation.rs",
             "src/tools/workspace/indexing/index.rs",
             "src/tools/workspace/indexing/pipeline.rs",
-            "src/tests/integration/projection_repair.rs",
         ],
     ) {
-        return &["projection"];
+        return &["tools-workspace-indexing"];
     }
 
     if matches_exact(path, &["src/registry/mod.rs", "src/registry/lifecycle.rs"]) {

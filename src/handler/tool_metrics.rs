@@ -70,24 +70,7 @@ pub(crate) async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<Metri
 
         if let Some(ws) = resolved_workspace.as_ref() {
             if source_bytes.is_none() {
-                if let Some(store) = ws.store.as_ref() {
-                    source_bytes = source_bytes_for_paths(store, &ws.root, &task.source_file_paths);
-                }
-            }
-            if let Some(db_arc) = &ws.db {
-                if let Ok(db) = db_arc.lock() {
-                    let _ = db.insert_tool_call_with_input_bytes(
-                        &task.session_id,
-                        &task.tool_name,
-                        task.duration_ms,
-                        task.result_count,
-                        source_bytes,
-                        task.input_bytes,
-                        Some(task.output_bytes),
-                        task.success,
-                        task.metadata_str.as_deref(),
-                    );
-                }
+                source_bytes = source_bytes_for_paths(&ws.store, &ws.root, &task.source_file_paths);
             }
         }
         if let Some(sb) = source_bytes {

@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 use crate::search::index::SymbolSearchResult;
 use crate::search::language_config::LanguageConfigs;
-use julie_core::database::SymbolDatabase;
 
 /// Score multiplier for results matching an important pattern.
 const IMPORTANT_PATTERN_BOOST: f32 = 1.5;
@@ -222,16 +221,19 @@ pub(crate) fn has_test_intent(query: &str) -> bool {
 /// [`apply_language_affinity_prior`] — `None` makes that a no-op.
 ///
 /// Cheap single SQL query (one row per language); call once per search.
-pub fn compute_dominant_language(db: &SymbolDatabase) -> Option<String> {
-    let counts = db.count_files_by_language().ok()?;
-    if counts.is_empty() {
+pub fn compute_dominant_language(paths: &[(String, String)]) -> Option<String> {
+    if paths.is_empty() {
         return None;
     }
-    let total: i64 = counts.iter().map(|(_, n)| *n).sum();
+    let mut counts: HashMap<String, i64> = HashMap::new();
+    for (_, language) in paths {
+        *counts.entry(language.clone()).or_default() += 1;
+    }
+    let total: i64 = counts.values().sum();
     if total <= 0 {
         return None;
     }
-    let (lang, top_count) = counts.into_iter().next()?;
+    let (lang, top_count) = counts.into_iter().max_by_key(|(_, n)| *n)?;
     if (top_count as f64) / (total as f64) >= NL_LANGUAGE_DOMINANCE_THRESHOLD {
         Some(lang)
     } else {

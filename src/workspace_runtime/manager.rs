@@ -342,22 +342,7 @@ impl WorkspaceRuntimeManager {
                 b.commit_barrier.notified().await;
             }
 
-            let ws_guard = rt.handler.workspace.read().await;
-            if let Some(ref ws) = *ws_guard {
-                if let Some(ref db_arc) = ws.db {
-                    let mut db = match db_arc.lock() {
-                        Ok(db) => db,
-                        Err(p) => p.into_inner(),
-                    };
-                    if let Err(e) = db.conn.execute(
-                        "INSERT INTO canonical_revisions (workspace_id, kind, cleaned_file_count, file_count, symbol_count, relationship_count, identifier_count, type_count, created_at) VALUES (?1, 'incremental', 0, 1, 1, 1, 1, 1, 1000)",
-                        rusqlite::params![&rt.binding.workspace_id],
-                    ) {
-                        tracing::error!("Failed to insert canonical revision: {:?}", e);
-                    }
-                    let _ = db.checkpoint_wal();
-                }
-            }
+            let _ = rt.handler.workspace.read().await;
 
             rt.in_flight_commits
                 .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);

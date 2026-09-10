@@ -2,10 +2,9 @@ use super::{FileChangeEvent, FileChangeType, IncrementalIndexer, SharedEmbedding
 use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 use anyhow::Result;
 use ignore::gitignore::Gitignore;
-use julie_core::database::{ProjectionStatus, SymbolDatabase};
 use julie_core::indexing_state::{IndexingOperation, IndexingRepairReason, SharedIndexingRuntime};
 use julie_core::workspace::mutation_gate::MutationGuard;
-use julie_index::search::projection::TANTIVY_PROJECTION_NAME;
+use julie_index::checkout_store::CheckoutStore;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,8 +14,6 @@ use tokio::sync::Mutex as TokioMutex;
 use tracing::{debug, error, info, warn};
 
 mod processing;
-mod projection;
-mod repairs;
 
 const EXTRACTOR_REPAIR_RETRY_INTERVAL: Duration = Duration::from_secs(30);
 const DUPLICATE_DEBOUNCE_WINDOW: Duration = Duration::from_secs(1);
@@ -29,9 +26,7 @@ const MAX_TANTIVY_RETRY_ATTEMPTS: u32 = 10;
 
 #[derive(Clone)]
 pub(super) struct QueueRuntime {
-    db: Arc<StdMutex<SymbolDatabase>>,
-    search_index: Option<Arc<julie_index::search::SearchIndex>>,
-    store: Option<Arc<julie_index::checkout_store::CheckoutStore>>,
+    store: Arc<CheckoutStore>,
     embedding_provider: SharedEmbeddingProvider,
     lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
     index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -57,9 +52,7 @@ pub(super) struct QueueRuntime {
 impl QueueRuntime {
     pub(super) fn from_indexer(indexer: &IncrementalIndexer) -> Self {
         Self {
-            db: Arc::clone(&indexer.db),
-            search_index: indexer.search_index.as_ref().map(Arc::clone),
-            store: indexer.store.clone(),
+            store: Arc::clone(&indexer.store),
             embedding_provider: Arc::clone(&indexer.embedding_provider),
             lang_configs: Arc::clone(&indexer.lang_configs),
             index_queue: Arc::clone(&indexer.index_queue),
@@ -79,8 +72,7 @@ impl QueueRuntime {
     }
 
     pub(super) fn new(
-        db: Arc<StdMutex<SymbolDatabase>>,
-        search_index: Option<Arc<julie_index::search::SearchIndex>>,
+        store: Arc<CheckoutStore>,
         embedding_provider: SharedEmbeddingProvider,
         lang_configs: Arc<julie_index::search::language_config::LanguageConfigs>,
         index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -95,9 +87,7 @@ impl QueueRuntime {
         mutation_gate_registry: Arc<MutationGateRegistry>,
     ) -> Self {
         Self {
-            db,
-            search_index,
-            store: None,
+            store,
             embedding_provider,
             lang_configs,
             index_queue,
@@ -114,14 +104,6 @@ impl QueueRuntime {
             #[cfg(test)]
             fail_commit_for_test: false,
         }
-    }
-
-    pub(super) fn with_store(
-        mut self,
-        store: Option<Arc<julie_index::checkout_store::CheckoutStore>>,
-    ) -> Self {
-        self.store = store;
-        self
     }
 
     async fn acquire_gate_or_mark_rescan(&self, context: &str) -> Option<MutationGuard<'static>> {
@@ -156,14 +138,8 @@ impl QueueRuntime {
             .await;
     }
 
-    async fn run_cycle_with_retry_age(&self, min_repair_age: Duration) {
-        self.retry_dirty_tantivy().await;
-
+    async fn run_cycle_with_retry_age(&self, _min_repair_age: Duration) {
         self.process_queue_batch().await;
-
-        self.retry_persisted_repairs(min_repair_age).await;
-
-        self.run_repair_scan_if_needed().await;
     }
 
     pub(super) async fn process_pending_changes(&self) -> Result<()> {

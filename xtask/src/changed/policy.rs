@@ -183,7 +183,6 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "core-pipeline",
         "core-runtime",
         "extractor-dep-integration",
-        "projection",
         "tools-get-context-pipeline",
         "tools-get-context-format",
         "tools-get-context-graph",

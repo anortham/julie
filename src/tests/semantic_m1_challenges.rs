@@ -32,7 +32,7 @@ use crate::tests::helpers::workspace::make_isolated_workspace_root;
 use crate::tools::GetContextTool;
 use crate::tools::navigation::FastRefsTool;
 use crate::tools::search::FastSearchParams;
-use julie_core::database::SymbolDatabase;
+use julie_core::database::FactsStore;
 use rusqlite::params;
 
 // ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ async fn challenge_finding_10_zero_eligible_workspace_passes_required_readiness(
         .unwrap();
 
     // 1. Workspace has symbols (1 symbol), but 0 vectors
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = FactsStore::new(&db_path).unwrap();
     let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
         .language("rust")
         .hash("hash1")
@@ -168,10 +168,7 @@ async fn challenge_finding_10_zero_eligible_workspace_passes_required_readiness(
     let sym = crate::tests::helpers::db::symbol_builder("sym_probe", "probe", "src/lib.rs").build();
     db.store_symbols(&[sym]).unwrap();
 
-    let rev = db
-        .get_latest_canonical_revision_number()
-        .unwrap()
-        .unwrap_or(0);
+    let rev = db.get_latest_facts_revision_number().unwrap().unwrap_or(0);
     db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
         .unwrap();
 
@@ -234,7 +231,7 @@ async fn challenge_finding_10_nonzero_eligible_unembedded_workspace_fails_requir
         .and_then(|id| id.storage_key())
         .unwrap();
 
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = FactsStore::new(&db_path).unwrap();
     let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
         .language("rust")
         .hash("hash1")
@@ -246,10 +243,7 @@ async fn challenge_finding_10_nonzero_eligible_unembedded_workspace_fails_requir
     let sym = crate::tests::helpers::db::symbol_builder("sym_probe", "probe", "src/lib.rs").build();
     db.store_symbols(&[sym]).unwrap();
 
-    let rev = db
-        .get_latest_canonical_revision_number()
-        .unwrap()
-        .unwrap_or(0);
+    let rev = db.get_latest_facts_revision_number().unwrap().unwrap_or(0);
     db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
         .unwrap();
 
@@ -363,15 +357,12 @@ async fn challenge_finding_5_fast_refs_strictly_fails_closed_in_required_mode() 
     // Prepare SQLite database with 1 symbol and valid ready generation
     {
         let db_path = binding.as_ref().unwrap().index_root.join("db/symbols.db");
-        let mut db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = FactsStore::new(&db_path).unwrap();
         let expected_key = provider
             .encoder_identity()
             .and_then(|id| id.storage_key())
             .unwrap();
-        let rev = db
-            .get_latest_canonical_revision_number()
-            .unwrap()
-            .unwrap_or(0);
+        let rev = db.get_latest_facts_revision_number().unwrap().unwrap_or(0);
         db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
             .unwrap();
         let gen_id = db
@@ -465,15 +456,12 @@ async fn challenge_finding_5_get_context_strictly_fails_closed_in_required_mode(
     // Prepare SQLite database with ready generation so ensure_ready passes
     {
         let db_path = binding.as_ref().unwrap().index_root.join("db/symbols.db");
-        let mut db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = FactsStore::new(&db_path).unwrap();
         let expected_key = provider
             .encoder_identity()
             .and_then(|id| id.storage_key())
             .unwrap();
-        let rev = db
-            .get_latest_canonical_revision_number()
-            .unwrap()
-            .unwrap_or(0);
+        let rev = db.get_latest_facts_revision_number().unwrap().unwrap_or(0);
         db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
             .unwrap();
         let gen_id = db
@@ -576,15 +564,12 @@ async fn challenge_finding_5_fast_search_strictly_fails_closed_in_required_mode(
     // Prepare SQLite database with ready generation so ensure_ready passes
     {
         let db_path = binding.as_ref().unwrap().index_root.join("db/symbols.db");
-        let mut db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = FactsStore::new(&db_path).unwrap();
         let expected_key = provider
             .encoder_identity()
             .and_then(|id| id.storage_key())
             .unwrap();
-        let rev = db
-            .get_latest_canonical_revision_number()
-            .unwrap()
-            .unwrap_or(0);
+        let rev = db.get_latest_facts_revision_number().unwrap().unwrap_or(0);
         db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
             .unwrap();
         let gen_id = db

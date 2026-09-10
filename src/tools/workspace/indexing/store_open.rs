@@ -1,19 +1,18 @@
 //! Open the checkout store. A version mismatch or a failed open deletes
-//! `store/` and opens a new empty one; facts are never migrated.
+//! `indexes/<id>/` and opens a new empty one; facts are never migrated.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
-use julie_index::checkout_store::{CheckoutStore, FACTS_FILE, STORE_DIR};
+use julie_index::checkout_store::{CheckoutStore, FACTS_FILE};
 use tracing::warn;
 
 use crate::handler::JulieServerHandler;
 
-/// `<index_root>/store` — facts.sqlite and the Tantivy projection live here
-/// until Task 13 moves them up one level.
+/// `<index_root>` — facts.sqlite and the Tantivy projection live here.
 pub(crate) fn store_dir(index_root: &Path) -> PathBuf {
-    index_root.join(STORE_DIR)
+    index_root.to_path_buf()
 }
 
 /// Open `<store_dir>` (facts.sqlite + tantivy). On any open failure, delete
@@ -25,7 +24,7 @@ pub(crate) fn open_or_recreate(store_dir: &Path, root: &Path) -> Result<Checkout
             warn!(
                 error = %err,
                 store_dir = %store_dir.display(),
-                "checkout store open failed; deleting store/ and reopening"
+                "checkout store open failed; deleting indexes/<id>/ and reopening"
             );
             delete_store_dir(store_dir)?;
             CheckoutStore::open(store_dir, root)
@@ -41,7 +40,7 @@ pub(crate) fn delete_store_dir(store_dir: &Path) -> Result<()> {
 }
 
 /// The writer for this checkout: the loaded primary's store, or one opened
-/// from `indexes/<id>/store`. A failed open deletes `store/` and retries.
+/// from `indexes/<id>/`. A failed open deletes `indexes/<id>/` and retries.
 pub(crate) async fn store_for_workspace(
     handler: &JulieServerHandler,
     workspace_id: &str,
@@ -55,8 +54,8 @@ pub(crate) async fn store_for_workspace(
         return Ok(Arc::new(store));
     }
     if handler.loaded_workspace_id().as_deref() == Some(workspace_id) {
-        if let Some(store) = handler.get_workspace().await?.and_then(|ws| ws.store) {
-            return Ok(store);
+        if let Some(ws) = handler.get_workspace().await? {
+            return Ok(ws.store);
         }
     }
     match handler
@@ -68,7 +67,7 @@ pub(crate) async fn store_for_workspace(
             warn!(
                 workspace_id,
                 error = %err,
-                "checkout store open failed; deleting store/ and reopening"
+                "checkout store open failed; deleting indexes/<id>/ and reopening"
             );
             let root = root.to_path_buf();
             let store =

@@ -6,7 +6,6 @@
 pub use julie_index::analysis;
 pub mod cli;
 pub mod cli_tools;
-pub use julie_core::database;
 pub mod embeddings;
 pub mod external_extract;
 pub mod extractors;

@@ -282,11 +282,11 @@ async fn setup_handler_inner() -> FixtureHandlerGuard {
         .await
         .expect("Failed to create handler");
 
-    use crate::database::SymbolDatabase;
+    use crate::database::FactsStore;
     use std::sync::{Arc, Mutex};
 
-    // Open through SymbolDatabase so copied fixtures receive current migrations.
-    let db_struct = SymbolDatabase::new(&fixture_db_dest).expect("Failed to open fixture database");
+    // Open through FactsStore so copied fixtures receive current migrations.
+    let db_struct = FactsStore::new(&fixture_db_dest).expect("Failed to open fixture database");
 
     // Verify the database has data
     let symbol_count: i64 = db_struct

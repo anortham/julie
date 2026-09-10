@@ -274,7 +274,7 @@ impl ManageWorkspaceTool {
             IndexResult {
                 files_processed: applied.new_blobs,
                 orphans_cleaned: applied.removed_paths,
-                canonical_revision: None,
+                facts_revision: None,
                 files_total: snapshot.graph().paths().len(),
                 symbols_total: stats.graph.symbols,
                 relationships_total: stats.graph.edges,

@@ -108,7 +108,7 @@ async fn test_handler_and_route(
     Ok((handler, workspace_root, route))
 }
 
-async fn latest_canonical_revision(
+async fn latest_facts_revision(
     handler: &JulieServerHandler,
     route: &IndexRoute,
 ) -> Result<Option<i64>> {
@@ -117,7 +117,7 @@ async fn latest_canonical_revision(
         .await?
         .expect("database should exist for indexing pipeline tests");
     let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    db.get_current_canonical_revision(&route.workspace_id)
+    db.get_current_facts_revision(&route.workspace_id)
 }
 
 async fn symbol_count(handler: &JulieServerHandler, route: &IndexRoute) -> Result<i64> {
@@ -171,7 +171,7 @@ async fn latest_revision_kind(handler: &JulieServerHandler, route: &IndexRoute) 
     let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     db.conn
         .query_row(
-            "SELECT kind FROM canonical_revisions ORDER BY revision DESC LIMIT 1",
+            "SELECT kind FROM facts_revisions ORDER BY revision DESC LIMIT 1",
             [],
             |row| row.get(0),
         )
@@ -272,7 +272,7 @@ async fn test_indexing_pipeline_reports_stage_history_for_parser_backed_files() 
     );
     assert_eq!(result.files_processed, 1, "one file should be processed");
     assert_eq!(
-        result.canonical_revision,
+        result.facts_revision,
         Some(1),
         "successful pipeline runs should surface the committed canonical revision"
     );
@@ -284,7 +284,7 @@ async fn test_indexing_pipeline_reports_stage_history_for_parser_backed_files() 
         "successful pipeline runs should publish search readiness"
     );
     assert_eq!(
-        latest_canonical_revision(&handler, &route).await?,
+        latest_facts_revision(&handler, &route).await?,
         Some(1),
         "database revision should match the surfaced canonical revision"
     );
@@ -607,7 +607,7 @@ async fn test_indexing_pipeline_keeps_search_unready_when_projection_fails() -> 
         "projection failures should surface repair-needed state"
     );
     assert_eq!(
-        result.canonical_revision,
+        result.facts_revision,
         Some(1),
         "projection failures must still report the committed canonical revision"
     );
@@ -616,7 +616,7 @@ async fn test_indexing_pipeline_keeps_search_unready_when_projection_fails() -> 
         "failed Tantivy projection must not publish search readiness"
     );
     assert_eq!(
-        latest_canonical_revision(&handler, &route).await?,
+        latest_facts_revision(&handler, &route).await?,
         Some(1),
         "canonical revision must commit even when Tantivy projection fails"
     );
@@ -703,7 +703,7 @@ async fn test_projection_waiting_on_tantivy_lock_releases_database_mutex() -> Re
     let mut released_database_mutex = false;
     while Instant::now() < db_deadline {
         if let Ok(db) = database.try_lock() {
-            let state = db.get_projection_state("tantivy", &route.workspace_id)?;
+            let state = db.get_search_state("tantivy", &route.workspace_id)?;
             if state
                 .map(|state| state.status == ProjectionStatus::Building)
                 .unwrap_or(false)

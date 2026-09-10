@@ -40,7 +40,7 @@ async fn out_of_date_schema_version_recreates_index_directory_and_reindexes() ->
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), false)
         .await?;
     assert_eq!(
-        crate::database::SymbolDatabase::new(&db_path)?.get_schema_version()?,
+        crate::database::FactsStore::new(&db_path)?.get_schema_version()?,
         stale_version,
         "opening must not migrate the out-of-date database"
     );
@@ -60,7 +60,7 @@ async fn out_of_date_schema_version_recreates_index_directory_and_reindexes() ->
         !stale_marker.exists(),
         "index directory must be deleted and recreated, not reused"
     );
-    let rebuilt = crate::database::SymbolDatabase::new(&db_path)?;
+    let rebuilt = crate::database::FactsStore::new(&db_path)?;
     assert_eq!(
         rebuilt.get_schema_version()?,
         crate::database::LATEST_SCHEMA_VERSION

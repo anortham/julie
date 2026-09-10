@@ -15,13 +15,13 @@ mod tool_calls;
 mod workspaces;
 
 pub use codehealth::{CodehealthSnapshot, CodehealthSnapshotRow};
-pub use tool_calls::SearchToolCallRow;
+pub use tool_calls::{HistorySummary, SearchToolCallRow, ToolCallSummary};
 pub use workspaces::{WorkspaceCleanupEventRow, WorkspaceRow};
 
 /// Thread-safe daemon database. Shared across sessions as `Arc<DaemonDatabase>`.
 ///
-/// Uses an internal `Mutex<Connection>` so callers don't need to lock externally.
-/// The lock is internal so callers do not lock a connection mutex themselves.
+/// Uses an internal `Mutex<Connection>` so callers do not hold a connection
+/// mutex themselves. The mutex is only held for the duration of each method.
 pub struct DaemonDatabase {
     conn: std::sync::Mutex<Connection>,
 }

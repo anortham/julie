@@ -23,7 +23,7 @@ use crate::request_engine::{
     BindingResolver, RequestContext, RequestEngine, RequestOrigin, RuntimeFactory, ToolRequest,
 };
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
-use julie_core::database::SymbolDatabase;
+use julie_core::database::FactsStore;
 
 // ---------------------------------------------------------------------------
 // Mock Providers
@@ -104,7 +104,7 @@ impl SemanticFixture {
         let db_path = db_dir.join("symbols.db");
 
         // Initialize SQLite DB with symbols but 0 vectors
-        let mut db = SymbolDatabase::new(&db_path).expect("initialize db");
+        let mut db = FactsStore::new(&db_path).expect("initialize db");
         let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
             .language("rust")
             .hash("deadbeef")
@@ -149,7 +149,7 @@ impl SemanticFixture {
     pub async fn ready_with_vectors() -> Self {
         let fixture = Self::provider_ready_without_vectors().await;
         let db_path = fixture.binding.index_root.join("db/symbols.db");
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let expected_key = fixture
             .provider
             .as_ref()
@@ -158,7 +158,7 @@ impl SemanticFixture {
             .and_then(|id| id.storage_key())
             .expect("storage key");
         let rev = db
-            .get_latest_canonical_revision_number()
+            .get_latest_facts_revision_number()
             .expect("canonical rev")
             .unwrap_or(0);
         let gen_id = db
@@ -175,7 +175,7 @@ impl SemanticFixture {
     pub async fn ready_with_mismatched_dimensions() -> Self {
         let fixture = Self::provider_ready_without_vectors().await;
         let db_path = fixture.binding.index_root.join("db/symbols.db");
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let expected_key = fixture
             .provider
             .as_ref()
@@ -192,7 +192,7 @@ impl SemanticFixture {
     pub async fn ready_with_mismatched_model() -> Self {
         let fixture = Self::provider_ready_without_vectors().await;
         let db_path = fixture.binding.index_root.join("db/symbols.db");
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         db.set_embedding_config("other-model", 384, CURRENT_EMBEDDING_FORMAT_VERSION)
             .expect("set config other model");
         fixture
@@ -201,7 +201,7 @@ impl SemanticFixture {
     pub async fn ready_with_stale_format() -> Self {
         let fixture = Self::ready_with_vectors().await;
         let db_path = fixture.binding.index_root.join("db/symbols.db");
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let expected_key = fixture
             .provider
             .as_ref()
@@ -539,7 +539,7 @@ async fn challenge_required_semantics_refuses_missing_identity_without_fallback(
     std::fs::create_dir_all(&db_dir).expect("create db dir");
     let db_path = db_dir.join("symbols.db");
 
-    let mut db = SymbolDatabase::new(&db_path).expect("initialize db");
+    let mut db = FactsStore::new(&db_path).expect("initialize db");
     let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
         .language("rust")
         .hash("deadbeef")
@@ -555,7 +555,7 @@ async fn challenge_required_semantics_refuses_missing_identity_without_fallback(
     // We populate DB with a published generation using encoder_key = "bge-small-en-v1.5" (matching model_name).
     let model_name = "bge-small-en-v1.5";
     let rev = db
-        .get_latest_canonical_revision_number()
+        .get_latest_facts_revision_number()
         .expect("rev")
         .unwrap_or(0);
     let gen_id = db
@@ -915,7 +915,7 @@ async fn adversarial_request_engine_dispatch_integration() {
 
     {
         let db_path = binding.as_ref().unwrap().index_root.join("db/symbols.db");
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let expected_key = provider
             .encoder_identity()
             .and_then(|id| id.storage_key())

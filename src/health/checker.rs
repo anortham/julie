@@ -30,10 +30,8 @@ impl HealthChecker {
     ) -> Result<PrimaryWorkspaceHealth> {
         match handler.primary_workspace_snapshot().await {
             Ok(snapshot) => {
-                let search_index_ready = handler
-                    .get_search_index_for_workspace(&snapshot.binding.workspace_id)
-                    .await?
-                    .is_some();
+                let search_index_ready = snapshot.store.status().tantivy
+                    == julie_index::checkout_store::TantivyState::Present;
 
                 Ok(PrimaryWorkspaceHealth::Ready(PrimaryWorkspaceState {
                     binding: snapshot.binding,
@@ -55,9 +53,10 @@ impl HealthChecker {
                 );
 
                 let search_index_ready = handler
-                    .get_search_index_for_workspace(&binding.workspace_id)
-                    .await?
-                    .is_some();
+                    .workspace_tantivy_dir_for(&binding.workspace_id)
+                    .await
+                    .ok()
+                    .is_some_and(|path| path.join("julie.meta.json").is_file());
 
                 Ok(PrimaryWorkspaceHealth::Ready(PrimaryWorkspaceState {
                     binding,
@@ -222,7 +221,7 @@ impl HealthChecker {
                             .map(|revision| revision.to_string())
                             .unwrap_or_else(|| "unknown".to_string()),
                         projection
-                            .canonical_revision
+                            .facts_revision
                             .map(|revision| revision.to_string())
                             .unwrap_or_else(|| "unknown".to_string()),
                     ))

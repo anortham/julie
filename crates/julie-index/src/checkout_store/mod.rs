@@ -27,9 +27,6 @@ use crate::snapshot::{Snapshot, read_verified};
 use crate::vectors::VectorSet;
 use extractor::FactsExtractor;
 
-/// Index-directory entry that holds the store while the old `db/` and
-/// `tantivy/` are still written beside it; Task 13 moves it up one level.
-pub const STORE_DIR: &str = "store";
 pub const FACTS_FILE: &str = "facts.sqlite";
 pub const TANTIVY_DIR: &str = "tantivy";
 const WRITER_HEAP_BYTES: usize = 64_000_000;

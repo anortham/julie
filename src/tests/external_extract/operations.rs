@@ -4,7 +4,7 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::cli_tools::OutputFormat;
-use crate::database::SymbolDatabase;
+use crate::database::FactsStore;
 use crate::database::types::FileInfo;
 use crate::external_extract::operations::{
     run_external_analyze, run_external_delete, run_external_info, run_external_scan,
@@ -66,7 +66,7 @@ fn batch_for(files: Vec<FileInfo>, symbols: Vec<Symbol>) -> ExtractedBatch {
     batch
 }
 
-fn count_rows(db: &SymbolDatabase, table: &str) -> i64 {
+fn count_rows(db: &FactsStore, table: &str) -> i64 {
     db.conn
         .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
             row.get(0)
@@ -74,7 +74,7 @@ fn count_rows(db: &SymbolDatabase, table: &str) -> i64 {
         .expect("count rows")
 }
 
-fn count_rows_where(db: &SymbolDatabase, table: &str, where_clause: &str) -> i64 {
+fn count_rows_where(db: &FactsStore, table: &str, where_clause: &str) -> i64 {
     db.conn
         .query_row(
             &format!("SELECT COUNT(*) FROM {table} WHERE {where_clause}"),
@@ -310,7 +310,7 @@ public:
 fn extract_force_rebuild_is_atomic_after_extraction_success() {
     let tmp = TempDir::new().expect("temp dir");
     let db_path = tmp.path().join("external.db");
-    let mut db = SymbolDatabase::new(&db_path).expect("db");
+    let mut db = FactsStore::new(&db_path).expect("db");
 
     let old_batch = batch_for(
         vec![make_file("old.rs", "old_hash")],
@@ -346,7 +346,7 @@ fn extract_force_rebuild_is_atomic_after_extraction_success() {
 fn extract_mixed_scan_records_single_revision() {
     let tmp = TempDir::new().expect("temp dir");
     let db_path = tmp.path().join("external.db");
-    let mut db = SymbolDatabase::new(&db_path).expect("db");
+    let mut db = FactsStore::new(&db_path).expect("db");
 
     let seed_batch = batch_for(
         vec![
@@ -396,7 +396,7 @@ fn extract_mixed_scan_records_single_revision() {
 fn extract_delete_clears_cross_file_identifier_targets() {
     let tmp = TempDir::new().expect("temp dir");
     let db_path = tmp.path().join("external.db");
-    let mut db = SymbolDatabase::new(&db_path).expect("db");
+    let mut db = FactsStore::new(&db_path).expect("db");
 
     let mut seed_batch = batch_for(
         vec![
@@ -990,7 +990,7 @@ async fn extract_analyze_marks_current_revision_analyzed() {
 fn extract_bulk_insert_nulls_dangling_parent_id() {
     let tmp = TempDir::new().expect("temp dir");
     let db_path = tmp.path().join("external.db");
-    let mut db = SymbolDatabase::new(&db_path).expect("db");
+    let mut db = FactsStore::new(&db_path).expect("db");
     let file = make_file("lib.rs", "hash1");
     let mut child = make_symbol("sym_child", "child", "lib.rs");
     child.parent_id = Some("sym_missing_parent".to_string());

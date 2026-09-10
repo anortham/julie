@@ -29,7 +29,7 @@ impl ManageWorkspaceTool {
         language: &str,
         workspace_root: &Path,
         files_to_clean: &mut Vec<String>,
-        all_file_infos: &mut Vec<crate::database::FileInfo>,
+        all_file_infos: &mut Vec<julie_pipeline::indexing_core::file_info::FileInfo>,
     ) {
         crate::indexing_core::extraction::queue_failed_parser_file_for_cleanup(
             file_path,

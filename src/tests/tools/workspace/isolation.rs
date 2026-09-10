@@ -11,7 +11,7 @@ mod workspace_isolation {
 
     use crate::Symbol;
     use crate::SymbolKind;
-    use crate::database::SymbolDatabase;
+    use crate::database::FactsStore;
     use crate::handler::JulieServerHandler;
 
     /// BUG REPRODUCTION TEST: Force reindex should NOT delete reference workspace data
@@ -67,7 +67,7 @@ mod workspace_isolation {
 
         // Create and populate reference workspace database
         {
-            let mut ref_db = SymbolDatabase::new(&ref_db_path)?;
+            let mut ref_db = FactsStore::new(&ref_db_path)?;
             let test_symbol = Symbol {
                 extracted: julie_extractors::Symbol {
                     id: "test_ref_symbol".to_string(),
@@ -107,7 +107,7 @@ mod workspace_isolation {
             ref_db_path.exists(),
             "Reference workspace database should exist before force reindex"
         );
-        let ref_db_before = SymbolDatabase::new(&ref_db_path)?;
+        let ref_db_before = FactsStore::new(&ref_db_path)?;
         let symbols_before = ref_db_before.get_symbol_count_for_workspace()?;
         assert_eq!(
             symbols_before, 1,
@@ -133,7 +133,7 @@ mod workspace_isolation {
         );
 
         // Verify reference workspace still has its data
-        let ref_db_after = SymbolDatabase::new(&ref_db_path)?;
+        let ref_db_after = FactsStore::new(&ref_db_path)?;
         let symbols_after = ref_db_after.get_symbol_count_for_workspace()?;
         assert_eq!(
             symbols_after, 1,

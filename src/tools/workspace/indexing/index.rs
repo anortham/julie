@@ -22,7 +22,7 @@ pub(crate) struct IndexResult {
     /// Orphaned files cleaned from the store (deleted from disk since last index)
     pub orphans_cleaned: usize,
     /// Latest canonical SQLite revision after this indexing run
-    pub canonical_revision: Option<i64>,
+    pub facts_revision: Option<i64>,
     /// Total files in the store after indexing
     pub files_total: usize,
     /// Total symbols in the store after indexing
@@ -147,7 +147,7 @@ impl ManageWorkspaceTool {
             return Ok(IndexResult {
                 files_processed: 0,
                 orphans_cleaned,
-                canonical_revision: None,
+                facts_revision: None,
                 files_total,
                 symbols_total,
                 relationships_total,
@@ -183,7 +183,7 @@ impl ManageWorkspaceTool {
         Ok(IndexResult {
             files_processed,
             orphans_cleaned,
-            canonical_revision: pipeline_result.canonical_revision,
+            facts_revision: pipeline_result.facts_revision,
             files_total,
             symbols_total,
             relationships_total,

@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod resolver_tests {
-    use crate::database::{FileInfo, SymbolDatabase};
+    use crate::database::{FileInfo, FactsStore};
     use crate::tools::workspace::indexing::resolver::{
         ParentReferenceContext, build_resolved_relationship, resolve_structured_batch,
         select_best_candidate,
@@ -522,7 +522,7 @@ mod resolver_tests {
     fn test_receiver_scoped_type_context_beats_same_file_method() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let mut db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = FactsStore::new(&db_path).unwrap();
 
         for path in ["src/handler.rs", "src/tools/navigation/call_path.rs"] {
             db.store_file_info(&make_file_info(path, "rust")).unwrap();
@@ -622,7 +622,7 @@ mod resolver_tests {
     fn test_receiver_signature_type_context_beats_same_file_method() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let mut db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = FactsStore::new(&db_path).unwrap();
 
         for path in ["src/handler.rs", "src/tools/navigation/call_path.rs"] {
             db.store_file_info(&make_file_info(path, "rust")).unwrap();
@@ -907,9 +907,9 @@ mod resolver_tests {
     #[test]
     fn test_unmatched_parent_penalized_not_rejected_for_unique_callee() {
         // record_tool_call calls db.insert_tool_call() in handler.rs.
-        // insert_tool_call is a method on SymbolDatabase (has parent_id).
-        // handler.rs has identifiers but doesn't reference "SymbolDatabase" by name
-        // (accesses it through Arc<Mutex<SymbolDatabase>> via workspace abstraction).
+        // insert_tool_call is a method on FactsStore (has parent_id).
+        // handler.rs has identifiers but doesn't reference "FactsStore" by name
+        // (accesses it through Arc<Mutex<FactsStore>> via workspace abstraction).
         //
         // The old hard rejection (return 0) would drop this entirely, losing the
         // callee relationship. With a penalty instead, the unique candidate still
@@ -923,9 +923,9 @@ mod resolver_tests {
         )];
         let pending = make_pending("record_tool_call_id", "insert_tool_call", "src/handler.rs");
 
-        // Caller file HAS identifiers but does NOT reference SymbolDatabase
+        // Caller file HAS identifiers but does NOT reference FactsStore
         let parent_ctx = make_parent_ctx_with_files(
-            &[("symbol_database_struct", "SymbolDatabase")],
+            &[("symbol_database_struct", "FactsStore")],
             &[],                 // no parent reference match
             &["src/handler.rs"], // but file has identifier data
         );

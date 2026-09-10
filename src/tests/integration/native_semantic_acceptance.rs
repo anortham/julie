@@ -45,7 +45,7 @@ fn sample_valid_bge_record_value() -> Value {
         "accelerated": false,
         "gpu_lane_verified": false,
         "corpus_commit": "HEAD",
-        "canonical_revision": 42,
+        "facts_revision": 42,
         "vector_revision": 42,
         "eligible_symbols": 100,
         "embedded_symbols": 100,
@@ -309,7 +309,7 @@ fn test_rejection_empty_corpus_commit() {
 #[test]
 fn test_rejection_revision_lag() {
     let mut v = sample_valid_bge_record_value();
-    v["canonical_revision"] = json!(42);
+    v["facts_revision"] = json!(42);
     v["vector_revision"] = json!(41);
     let err = validate_native_qualification(&v).expect_err("should reject revision lag");
     assert_eq!(
@@ -324,7 +324,7 @@ fn test_rejection_revision_lag() {
 #[test]
 fn test_qualification_rejects_negative_revisions() {
     let mut v = sample_valid_bge_record_value();
-    v["canonical_revision"] = json!(-1);
+    v["facts_revision"] = json!(-1);
     v["vector_revision"] = json!(-1);
     let err = validate_native_qualification(&v).expect_err("should reject negative revisions");
     assert_eq!(
@@ -378,7 +378,7 @@ fn test_accepts_valid_cpu_qualification_baseline_bge() {
     assert_eq!(record.device, "cpu");
     assert!(!record.accelerated);
     assert!(!record.gpu_lane_verified);
-    assert_eq!(record.canonical_revision, record.vector_revision);
+    assert_eq!(record.facts_revision, record.vector_revision);
     assert_eq!(record.embedded_symbols, record.eligible_symbols);
     assert_eq!(
         record.unverified_lanes,
@@ -402,7 +402,7 @@ fn test_accepts_valid_cpu_qualification_baseline_qwen() {
     assert_eq!(record.device, "cpu");
     assert!(!record.accelerated);
     assert!(!record.gpu_lane_verified);
-    assert_eq!(record.canonical_revision, record.vector_revision);
+    assert_eq!(record.facts_revision, record.vector_revision);
     assert_eq!(record.embedded_symbols, record.eligible_symbols);
 }
 
@@ -429,7 +429,7 @@ fn test_accepts_record_with_resolved_backend_and_qualified_at_aliases() {
         "resolved_backend": "cpu",
         "accelerated": false,
         "corpus_commit": "HEAD",
-        "canonical_revision": 142,
+        "facts_revision": 142,
         "vector_revision": 142,
         "eligible_symbols": 8420,
         "embedded_symbols": 8420,
@@ -531,7 +531,7 @@ fn test_workspace_qualification_rejects_stale_or_diverged_workspace_state() {
     assert!(
         validate_qualification_against_workspace(
             &record,
-            record.canonical_revision,
+            record.facts_revision,
             Some(&matching_gen),
             Some(&record.executable_sha256),
         )
@@ -539,7 +539,7 @@ fn test_workspace_qualification_rejects_stale_or_diverged_workspace_state() {
     );
 
     // 2. Bumping DB revision causes CanonicalRevisionMismatch
-    let bumped_rev = record.canonical_revision + 1;
+    let bumped_rev = record.facts_revision + 1;
     let rev_err = validate_qualification_against_workspace(
         &record,
         bumped_rev,
@@ -559,7 +559,7 @@ fn test_workspace_qualification_rejects_stale_or_diverged_workspace_state() {
     };
     let cov_err = validate_qualification_against_workspace(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&diverged_gen),
         Some(&record.executable_sha256),
     )
@@ -576,7 +576,7 @@ fn test_workspace_qualification_rejects_stale_or_diverged_workspace_state() {
     };
     let model_err = validate_qualification_against_workspace(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&other_gen),
         Some(&record.executable_sha256),
     )
@@ -589,7 +589,7 @@ fn test_workspace_qualification_rejects_stale_or_diverged_workspace_state() {
     // 5. No ready generation causes NoReadyGeneration
     let no_gen_err = validate_qualification_against_workspace(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         None,
         Some(&record.executable_sha256),
     )
@@ -738,7 +738,7 @@ fn test_adversarial_missing_fields() {
         "device",
         "accelerated",
         "corpus_commit",
-        "canonical_revision",
+        "facts_revision",
         "vector_revision",
         "eligible_symbols",
         "embedded_symbols",
@@ -950,7 +950,7 @@ fn test_adversarial_unverified_gpu_and_device_claims() {
     // 7. Revision mismatches
     for (can, vec) in [(10, 9), (9, 10)] {
         let mut v = base.clone();
-        v["canonical_revision"] = json!(can);
+        v["facts_revision"] = json!(can);
         v["vector_revision"] = json!(vec);
         assert_eq!(
             validate_native_qualification(&v).unwrap_err(),

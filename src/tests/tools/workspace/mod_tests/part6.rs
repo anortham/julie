@@ -272,27 +272,27 @@ async fn test_startup_missing_embeddings_only_repair_reconciles_web_edges() {
             .expect("workspace should be initialized");
         let db = workspace.db.as_ref().expect("workspace db should exist");
         let mut db_lock = db.lock().unwrap();
-        let canonical_revision = db_lock
-            .get_current_canonical_revision(&workspace_id)
+        let facts_revision = db_lock
+            .get_current_facts_revision(&workspace_id)
             .unwrap()
             .expect("initial index should publish a canonical revision");
 
         for projection in [TANTIVY_PROJECTION_NAME, WEB_EDGES_PROJECTION_NAME] {
             let state = db_lock
-                .get_projection_state(projection, &workspace_id)
+                .get_search_state(projection, &workspace_id)
                 .unwrap()
                 .unwrap_or_else(|| panic!("{projection} projection state should exist"));
-            assert_eq!(state.canonical_revision, Some(canonical_revision));
-            assert_eq!(state.projected_revision, Some(canonical_revision));
+            assert_eq!(state.facts_revision, Some(facts_revision));
+            assert_eq!(state.projected_revision, Some(facts_revision));
         }
 
         db_lock
-            .upsert_projection_state(
+            .upsert_search_state(
                 WEB_EDGES_PROJECTION_NAME,
                 &workspace_id,
                 ProjectionStatus::Ready,
-                Some(canonical_revision),
-                Some(canonical_revision - 1),
+                Some(facts_revision),
+                Some(facts_revision - 1),
                 None,
             )
             .unwrap();
@@ -317,18 +317,18 @@ async fn test_startup_missing_embeddings_only_repair_reconciles_web_edges() {
         .expect("workspace should remain initialized");
     let db = workspace.db.as_ref().expect("workspace db should exist");
     let db_lock = db.lock().unwrap();
-    let canonical_revision = db_lock
-        .get_current_canonical_revision(&workspace_id)
+    let facts_revision = db_lock
+        .get_current_facts_revision(&workspace_id)
         .unwrap()
         .expect("canonical revision should remain available");
 
     for projection in [TANTIVY_PROJECTION_NAME, WEB_EDGES_PROJECTION_NAME] {
         let state = db_lock
-            .get_projection_state(projection, &workspace_id)
+            .get_search_state(projection, &workspace_id)
             .unwrap()
             .unwrap_or_else(|| panic!("{projection} projection state should exist"));
-        assert_eq!(state.canonical_revision, Some(canonical_revision));
-        assert_eq!(state.projected_revision, Some(canonical_revision));
+        assert_eq!(state.facts_revision, Some(facts_revision));
+        assert_eq!(state.projected_revision, Some(facts_revision));
     }
 }
 

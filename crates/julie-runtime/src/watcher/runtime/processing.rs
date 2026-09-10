@@ -29,29 +29,14 @@ impl QueueRuntime {
                         .read()
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
                         .clone();
-                    crate::watcher::dispatch_file_event(
-                        event,
-                        &self.db,
-                        &self.search_index,
-                        &provider_snapshot,
-                        &self.workspace_root,
-                        &self.lang_configs,
-                        &self.tantivy_dirty,
-                        &self.indexing_runtime,
-                        &guard,
-                    )
-                    .await;
+                    crate::watcher::dispatch_file_event(event, &self.workspace_root);
                     drained_any = true;
                 }
                 if drained_any {
-                    self.commit_search_index("shutdown drain", &affected_paths)
-                        .await;
                     self.apply_store_changes(store_changes, guard).await;
                 }
             }
         }
-
-        self.retry_dirty_tantivy().await;
     }
 
     pub(super) async fn process_queue_batch(&self) -> usize {
@@ -148,18 +133,8 @@ impl QueueRuntime {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .clone();
 
-            let atomic_delete_path = crate::watcher::dispatch_file_event(
-                event,
-                &self.db,
-                &self.search_index,
-                &provider_snapshot,
-                &self.workspace_root,
-                &self.lang_configs,
-                &self.tantivy_dirty,
-                &self.indexing_runtime,
-                &guard,
-            )
-            .await;
+            let atomic_delete_path =
+                crate::watcher::dispatch_file_event(event, &self.workspace_root);
 
             if let Some(path) = atomic_delete_path {
                 self.last_processed.lock().await.remove(&path);
@@ -192,7 +167,6 @@ impl QueueRuntime {
         }
 
         if processed_count > 0 {
-            self.commit_search_index("batch", &affected_paths).await;
             self.apply_store_changes(store_changes, guard).await;
         }
 
@@ -200,9 +174,6 @@ impl QueueRuntime {
     }
 
     fn store_changes_for_event(&self, event: &FileChangeEvent) -> Vec<PathChange> {
-        if self.store.is_none() {
-            return Vec::new();
-        }
         let relative = |path: &Path| {
             julie_core::paths::to_relative_unix_style(path, &self.workspace_root).ok()
         };
@@ -239,9 +210,10 @@ impl QueueRuntime {
     /// Runs the store write on the blocking pool with the gate still held. The
     /// guard is consumed here because nothing else in the batch needs it.
     async fn apply_store_changes(&self, changes: Vec<PathChange>, guard: MutationGuard<'static>) {
-        let Some(store) = self.store.clone().filter(|_| !changes.is_empty()) else {
+        if changes.is_empty() {
             return;
-        };
+        }
+        let store = Arc::clone(&self.store);
         let outcome = tokio::task::spawn_blocking(move || {
             let result = store.apply(&changes, &guard);
             drop(guard);

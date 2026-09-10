@@ -160,17 +160,13 @@ pub fn compact_alnum_lc(s: &str) -> String {
 pub fn apply_reranker_to_content_results(
     query: &str,
     results: &mut Vec<ContentSearchResult>,
-    db: Option<&julie_core::database::SymbolDatabase>,
+    titles_map: Option<&std::collections::HashMap<String, Vec<String>>>,
 ) {
-    let Some(db) = db else { return };
+    let Some(titles_map) = titles_map else { return };
     if results.is_empty() {
         return;
     }
     let query_compact = compact_alnum_lc(query);
-    let paths: Vec<&str> = results.iter().map(|r| r.file_path.as_str()).collect();
-    let Ok(titles_map) = db.titles_for_files(&paths) else {
-        return;
-    };
     for result in results.iter_mut() {
         if let Some(titles) = titles_map.get(result.file_path.as_str()) {
             for title in titles {
@@ -196,16 +192,12 @@ pub fn apply_reranker_to_content_results(
 pub fn apply_symbol_title_boost_to_file_results(
     query: &str,
     results: &mut Vec<FileSearchResult>,
-    db: &julie_core::database::SymbolDatabase,
+    titles_map: &std::collections::HashMap<String, Vec<String>>,
 ) {
     if results.is_empty() {
         return;
     }
     let query_compact = compact_alnum_lc(query);
-    let paths: Vec<&str> = results.iter().map(|r| r.file_path.as_str()).collect();
-    let Ok(titles_map) = db.titles_for_files(&paths) else {
-        return;
-    };
     for result in results.iter_mut() {
         if let Some(titles) = titles_map.get(result.file_path.as_str()) {
             for title in titles {

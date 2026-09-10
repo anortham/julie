@@ -59,11 +59,6 @@ pub async fn drain_and_shutdown(runtime: &WorkspaceRuntime, drain_timeout: Durat
     {
         let mut ws_guard = runtime.handler.workspace.write().await;
         if let Some(ref mut ws) = *ws_guard {
-            if let Some(ref db_arc) = ws.db {
-                if let Ok(mut db) = db_arc.lock() {
-                    let _ = db.checkpoint_wal();
-                }
-            }
             ws.watcher = None;
         }
     }

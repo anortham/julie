@@ -277,12 +277,12 @@ mod tests {
         };
         {
             let db = db.lock().unwrap();
-            assert_eq!(db.get_current_canonical_revision(&workspace_id)?, Some(1));
+            assert_eq!(db.get_current_facts_revision(&workspace_id)?, Some(1));
             let projection = db
-                .get_projection_state("tantivy", &workspace_id)?
+                .get_search_state("tantivy", &workspace_id)?
                 .expect("indexed workspace should record projection state");
             assert_eq!(projection.status, ProjectionStatus::Ready);
-            assert_eq!(projection.canonical_revision, Some(1));
+            assert_eq!(projection.facts_revision, Some(1));
         }
 
         {
@@ -305,7 +305,7 @@ mod tests {
             .expect("tantivy projection");
         assert_eq!(tantivy.state, ProjectionState::Ready);
         assert_eq!(tantivy.freshness, ProjectionFreshness::Lagging);
-        assert_eq!(tantivy.canonical_revision, Some(2));
+        assert_eq!(tantivy.facts_revision, Some(2));
         assert_eq!(tantivy.projected_revision, Some(1));
         assert_eq!(tantivy.revision_lag, Some(1));
         assert!(tantivy.repair_needed);
@@ -385,7 +385,7 @@ mod tests {
         assert_eq!(projections[0]["freshness"], "current");
         assert_eq!(projections[1]["name"], "web_edges");
         assert_eq!(projections[1]["freshness"], "lagging");
-        assert_eq!(projections[1]["canonical_revision"], 2);
+        assert_eq!(projections[1]["facts_revision"], 2);
         assert_eq!(projections[1]["projected_revision"], 1);
         assert_eq!(projections[1]["revision_lag"], 1);
         assert_eq!(projections[1]["repair_needed"], true);
@@ -395,7 +395,7 @@ mod tests {
         assert!(!status.contains("degraded runtime"), "{status}");
 
         let metadata_dir = tempfile::tempdir()?;
-        let metadata_db = crate::database::SymbolDatabase::new(
+        let metadata_db = crate::database::FactsStore::new(
             metadata_dir.path().join("projection-metadata.db"),
         )?;
         let missing_metadata = crate::health::projection_health_for_workspace(

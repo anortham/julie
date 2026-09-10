@@ -5,7 +5,6 @@ pub mod compat_marker_v4_test;
 pub mod file_mode_index_tests;
 mod index_boundary_test;
 pub mod language_config_embedded_tests;
-pub mod projection_search_doc_test;
 pub mod reranker_ordering_tests;
 pub mod reranker_tests;
 pub mod schema_phase2_fields_test;

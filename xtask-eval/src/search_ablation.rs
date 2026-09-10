@@ -41,7 +41,6 @@ use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
-use julie::database::{FileInfo, SymbolDatabase};
 use julie::search::{LanguageConfigs, SearchDocument, SearchFilter, SearchIndex};
 use serde::{Deserialize, Serialize};
 
@@ -177,6 +176,9 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
         corpus_data.created
     )?;
 
+    let _ = workspace;
+    bail!("search-ablation still pointed at symbols.db; use the facts.sqlite snapshot instead");
+    #[allow(unreachable_code)]
     let fixture_db_path = workspace.join(FIXTURE_DB_REL);
     if !fixture_db_path.exists() {
         bail!(
@@ -191,9 +193,8 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
     fs::copy(&fixture_db_path, &db_path).context("copying fixture DB")?;
     writeln!(stdout, "Copied fixture DB → {}", db_path.display())?;
 
-    let db = SymbolDatabase::new(&db_path).context("opening copied SymbolDatabase")?;
-    // SymbolDatabase::conn is private from this crate, so query the file
-    // directly via a side-channel connection for counts and schema probes.
+    let db_path_for_count = db_path.clone();
+    let _ = db_path_for_count;
     let fixture_symbol_count = count_symbols(&db_path).context("counting symbols")?;
     writeln!(stdout, "Fixture symbols: {fixture_symbol_count}")?;
 
@@ -204,7 +205,7 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
         .context("opening fresh Tantivy index")?;
 
     writeln!(stdout, "Backfilling Tantivy from SQLite...")?;
-    let symbols = db.get_all_symbols().context("loading symbols")?;
+    let symbols: Vec<julie::Symbol> = Vec::new();
     let mut indexed_symbols = 0usize;
     for sym in &symbols {
         let doc = SearchDocument::for_symbol(sym, vec![], String::new(), String::new());
@@ -212,20 +213,10 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
             indexed_symbols += 1;
         }
     }
-    if let Ok(file_contents) = db.get_all_file_contents_with_language() {
+    {
+        let file_contents: Vec<(String, String, String)> = Vec::new();
         for (path, language, content) in &file_contents {
-            let file_info = FileInfo {
-                path: path.clone(),
-                language: language.clone(),
-                hash: String::new(),
-                size: content.len() as i64,
-                last_modified: 0,
-                last_indexed: 0,
-                symbol_count: 0,
-                line_count: content.lines().count() as i32,
-                content: Some(content.clone()),
-            };
-            let doc = SearchDocument::for_file(&file_info);
+            let doc = SearchDocument::for_file(path, language, content);
             let _ = index.add_search_doc(&doc);
         }
     }
@@ -262,7 +253,7 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
             mode,
             &corpus_data.queries,
             &index,
-            &db,
+            &(),
             limit,
             fixture_has_embeddings,
             stdout,
@@ -323,7 +314,7 @@ fn run_mode(
     mode: Mode,
     queries: &[CorpusQuery],
     index: &SearchIndex,
-    _db: &SymbolDatabase,
+    _db: &(),
     limit: usize,
     fixture_has_embeddings: bool,
     stdout: &mut dyn Write,

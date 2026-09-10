@@ -6,7 +6,7 @@
 //! Design:
 //! - Cheap/identity methods: backed by struct fields, fully configurable.
 //! - Heavyweight DB/index methods: path-based injection — if `primary_db_path`
-//!   is set a real `SymbolDatabase` is opened on each call; otherwise returns a
+//!   is set a real `FactsStore` is opened on each call; otherwise returns a
 //!   descriptive `Err`.  Tests that need a real DB use `julie_core::test_support::db()`
 //!   to obtain a tempdir-backed database path and inject it via `with_primary_db_path`.
 //! - Embedding methods: `Option<Arc<dyn EmbeddingProvider>>` injection; returns `None`
@@ -18,13 +18,12 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use julie_context::{ToolContext, WorkspaceTarget};
-use julie_core::database::SymbolDatabase;
 use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_core::health_types::SystemStatus;
 use julie_core::mcp_compat::CallToolResult;
@@ -48,7 +47,7 @@ pub struct FakeToolContext {
 
     // ── DB / index injection ────────────────────────────────────────────────
     /// Path to a SQLite database file. If set, DB methods open a new
-    /// `SymbolDatabase` connection on each call. Use `db()` from
+    /// `FactsStore` connection on each call. Use `db()` from
     /// `julie_core::test_support` to get a tempdir-backed path.
     pub primary_db_path: Option<PathBuf>,
     /// Workspace-specific SQLite paths used by cross-workspace DB methods.
@@ -156,25 +155,6 @@ impl FakeToolContext {
         self.system_status = status;
         self
     }
-
-    // ── Internal helper ──────────────────────────────────────────────────────
-
-    fn open_db(&self, method: &str) -> Result<SymbolDatabase> {
-        let path = self.primary_db_path.as_ref().ok_or_else(|| {
-            anyhow!(
-                "FakeToolContext::{} not configured — inject via with_primary_db_path",
-                method
-            )
-        })?;
-        SymbolDatabase::new(path)
-    }
-
-    fn open_workspace_db(&self, workspace_id: &str, method: &str) -> Result<SymbolDatabase> {
-        match self.workspace_db_paths.get(workspace_id) {
-            Some(path) => SymbolDatabase::new(path),
-            None => self.open_db(method),
-        }
-    }
 }
 
 #[async_trait]
@@ -203,49 +183,6 @@ impl ToolContext for FakeToolContext {
 
     fn session_id(&self) -> &str {
         &self.session_id
-    }
-
-    // ── Primary DB / index (async) ───────────────────────────────────────────
-
-    async fn primary_pooled_database(&self) -> Result<SymbolDatabase> {
-        self.open_db("primary_pooled_database")
-    }
-
-    async fn primary_pooled_database_and_search_index(
-        &self,
-    ) -> Result<(SymbolDatabase, Arc<SearchIndex>)> {
-        let db = self.open_db("primary_pooled_database_and_search_index")?;
-        let index = self.primary_search_index.clone().ok_or_else(|| {
-            anyhow!(
-                "FakeToolContext::primary_pooled_database_and_search_index not configured \
-                 — inject via with_search_index"
-            )
-        })?;
-        Ok((db, index))
-    }
-
-    // ── Cross-workspace (async) ──────────────────────────────────────────────
-
-    async fn get_pooled_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<SymbolDatabase> {
-        self.open_workspace_db(workspace_id, "get_pooled_database_for_workspace")
-    }
-
-    async fn get_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Arc<Mutex<SymbolDatabase>>> {
-        let db = self.open_workspace_db(workspace_id, "get_database_for_workspace")?;
-        Ok(Arc::new(Mutex::new(db)))
-    }
-
-    async fn get_search_index_for_workspace(
-        &self,
-        _workspace_id: &str,
-    ) -> Result<Option<Arc<SearchIndex>>> {
-        Ok(self.primary_search_index.clone())
     }
 
     async fn get_workspace_root_for_target(&self, _workspace_id: &str) -> Result<PathBuf> {
@@ -343,23 +280,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unconfigured_db_returns_descriptive_err() {
-        let ctx = FakeToolContext::new();
-        let result = ctx.primary_pooled_database().await;
-        assert!(
-            result.is_err(),
-            "expected Err from unconfigured primary_pooled_database"
-        );
-        if let Err(e) = result {
-            let msg = e.to_string();
-            assert!(
-                msg.contains("not configured"),
-                "expected 'not configured' in: {msg}"
-            );
-        }
-    }
-
-    #[tokio::test]
     async fn unconfigured_workspace_root_returns_err() {
         let ctx = FakeToolContext::new();
         assert!(ctx.require_primary_workspace_root().is_err());
@@ -407,12 +327,5 @@ mod tests {
                 .await
                 .is_none()
         );
-    }
-
-    #[tokio::test]
-    async fn get_search_index_unconfigured_is_ok_none() {
-        let ctx = FakeToolContext::new();
-        let result = ctx.get_search_index_for_workspace("ws-1").await.unwrap();
-        assert!(result.is_none());
     }
 }

@@ -229,8 +229,8 @@ async fn test_ranking_source_over_tests() {
     let handler = setup_handler_with_fixture().await;
 
     // Query something that appears in both source and tests
-    // "SymbolDatabase" - used in implementation and tests
-    let results = search_content(&handler, "SymbolDatabase", 20)
+    // "FactsStore" - used in implementation and tests
+    let results = search_content(&handler, "FactsStore", 20)
         .await
         .expect("Search failed");
 
@@ -254,10 +254,10 @@ async fn test_ranking_source_over_tests() {
 async fn test_ranking_exact_match_over_partial() {
     let handler = setup_handler_with_fixture().await;
 
-    // Query: "SymbolDatabase" should rank exact matches higher than partial
-    // Exact: "SymbolDatabase" struct
-    // Partial: "create_symbol_database", "SymbolDatabaseError", etc.
-    let results = search_definitions(&handler, "SymbolDatabase", 10)
+    // Query: "FactsStore" should rank exact matches higher than partial
+    // Exact: "FactsStore" struct
+    // Partial: "create_symbol_database", "FactsStoreError", etc.
+    let results = search_definitions(&handler, "FactsStore", 10)
         .await
         .expect("Search failed");
 
@@ -266,8 +266,8 @@ async fn test_ranking_exact_match_over_partial() {
     // First result should be the exact struct definition, not a derivative
     if !results.is_empty() {
         assert_eq!(
-            results[0].name, "SymbolDatabase",
-            "Exact match 'SymbolDatabase' should rank first, but got '{}'",
+            results[0].name, "FactsStore",
+            "Exact match 'FactsStore' should rank first, but got '{}'",
             results[0].name
         );
     }
@@ -541,7 +541,7 @@ async fn test_edge_case_special_chars_only() {
 async fn test_tokenization_camel_case_splitting() {
     let handler = setup_handler_with_fixture().await;
 
-    // Query: "Symbol" (part of "SymbolDatabase", "SymbolExtractor", etc.)
+    // Query: "Symbol" (part of "FactsStore", "SymbolExtractor", etc.)
     // Tantivy tokenization should split camelCase
     let results = search_definitions(&handler, "Symbol", 15)
         .await

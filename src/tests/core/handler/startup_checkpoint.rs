@@ -74,7 +74,7 @@ async fn checkpoint_active_workspace_wal_uses_rebound_current_primary_store() ->
 
     let rebound_db_path = handler.workspace_db_file_path_for(&rebound_id).await?;
     std::fs::create_dir_all(rebound_db_path.parent().expect("rebound db parent"))?;
-    let _ = crate::database::SymbolDatabase::new(&rebound_db_path)?;
+    let _ = crate::database::FactsStore::new(&rebound_db_path)?;
 
     let rebound_db = handler.get_database_for_workspace(&rebound_id).await?;
     let _rebound_guard = rebound_db.lock().unwrap();

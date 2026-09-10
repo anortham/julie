@@ -13,16 +13,14 @@
 //! use them directly. Do not add them to the trait.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use julie_context::{ToolContext, WorkspaceTarget};
-use julie_core::database::SymbolDatabase;
 use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_core::health_types::SystemStatus;
 use julie_core::mcp_compat::CallToolResult;
-use julie_index::search::SearchIndex;
 use julie_index::snapshot::Snapshot;
 
 use crate::handler::JulieServerHandler;
@@ -51,41 +49,6 @@ impl ToolContext for JulieServerHandler {
     /// NEW accessor — wraps the raw `session_metrics.session_id` field.
     fn session_id(&self) -> &str {
         &self.session_metrics.session_id
-    }
-
-    // ── Primary db / index (async) ───────────────────────────────────────
-
-    async fn primary_pooled_database(&self) -> Result<SymbolDatabase> {
-        JulieServerHandler::primary_pooled_database(self).await
-    }
-
-    async fn primary_pooled_database_and_search_index(
-        &self,
-    ) -> Result<(SymbolDatabase, Arc<SearchIndex>)> {
-        JulieServerHandler::primary_pooled_database_and_search_index(self).await
-    }
-
-    // ── Cross-workspace (async) ──────────────────────────────────────────
-
-    async fn get_pooled_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<SymbolDatabase> {
-        JulieServerHandler::get_pooled_database_for_workspace(self, workspace_id).await
-    }
-
-    async fn get_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Arc<Mutex<SymbolDatabase>>> {
-        JulieServerHandler::get_database_for_workspace(self, workspace_id).await
-    }
-
-    async fn get_search_index_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Option<Arc<SearchIndex>>> {
-        JulieServerHandler::get_search_index_for_workspace(self, workspace_id).await
     }
 
     async fn get_workspace_root_for_target(&self, workspace_id: &str) -> Result<PathBuf> {

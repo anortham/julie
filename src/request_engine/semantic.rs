@@ -160,7 +160,7 @@ impl SemanticReadiness {
             mode,
             status,
             coverage,
-            canonical_revision: None,
+            facts_revision: None,
             lexical_revision: None,
         }
     }
@@ -477,7 +477,6 @@ impl SemanticRuntime for DefaultSemanticRuntime {
         // Rule 4: Symbols or QueryAndSymbols requires vectors the provider can query
         let facts_path = binding
             .index_root
-            .join(julie_index::checkout_store::STORE_DIR)
             .join(julie_index::checkout_store::FACTS_FILE);
         crate::request_engine::semantic_store::check_facts_vectors(
             &facts_path,

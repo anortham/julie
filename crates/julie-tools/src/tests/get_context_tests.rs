@@ -186,8 +186,8 @@ mod tests {
             // Import node — should be excluded
             SymbolSearchResult {
                 id: "import_symbol_db".to_string(),
-                name: "SymbolDatabase".to_string(),
-                signature: "use julie_core::database::SymbolDatabase".to_string(),
+                name: "FactsStore".to_string(),
+                signature: "use julie_core::database::FactsStore".to_string(),
                 doc_comment: String::new(),
                 file_path: "src/handler.rs".to_string(),
                 kind: "import".to_string(),
@@ -200,8 +200,8 @@ mod tests {
             // Actual struct definition — should be selected
             SymbolSearchResult {
                 id: "struct_symbol_db".to_string(),
-                name: "SymbolDatabase".to_string(),
-                signature: "pub struct SymbolDatabase".to_string(),
+                name: "FactsStore".to_string(),
+                signature: "pub struct FactsStore".to_string(),
                 doc_comment: String::new(),
                 file_path: "src/database/mod.rs".to_string(),
                 kind: "struct".to_string(),

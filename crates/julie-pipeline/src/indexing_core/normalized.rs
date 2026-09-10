@@ -13,7 +13,7 @@ pub struct NormalizedExtractionData {
     pub structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub identifiers: Vec<Identifier>,
     pub types: Vec<TypeInfo>,
-    pub type_argument_rows: Vec<julie_core::database::bulk::type_arguments::TypeArgumentRow>,
+    pub type_argument_rows: Vec<julie_facts::rows::FlatTypeArgument>,
     pub literals: Vec<Literal>,
     pub source_regions: Vec<SourceRegion>,
     pub structural_facts: Vec<StructuralFact>,
@@ -51,10 +51,9 @@ pub fn normalize_extraction_results(
         structured_pending_relationships: results.structured_pending_relationships,
         identifiers: results.identifiers,
         types: results.types.into_values().collect(),
-        type_argument_rows:
-            julie_core::database::bulk::type_arguments::flatten_type_argument_usages(
-                &results.type_argument_usages,
-            ),
+        type_argument_rows: julie_facts::rows::flatten_type_argument_usages(
+            &results.type_argument_usages,
+        ),
         literals: results.literals,
         source_regions: results.source_regions,
         structural_facts: results.structural_facts,

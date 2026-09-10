@@ -206,14 +206,14 @@ impl SearchDocument {
     ///
     /// `name` is set to the basename without its extension (e.g. `"parser"`
     /// for `src/parser.rs`).
-    pub fn for_file(file_info: &julie_core::database::FileInfo) -> Self {
-        let normalized_path = normalize_file_path(&file_info.path);
+    pub fn for_file(path: &str, language: &str, content: &str) -> Self {
+        let normalized_path = normalize_file_path(path);
         let basename = basename_for_path(&normalized_path).to_string();
         let name = stem_of_basename(&basename).to_string();
-        let language = file_info.language.clone();
+        let language = language.to_string();
         let role = crate::search::scoring::classify_role(&normalized_path, &language);
         let test_role = crate::search::scoring::test_subrole(&normalized_path);
-        let content = file_info.content.clone().unwrap_or_default();
+        let content = content.to_string();
         Self {
             doc_type: "file".to_string(),
             id: String::new(),

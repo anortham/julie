@@ -37,13 +37,11 @@ use tracing::{debug, info, warn};
 use crate::dashboard::state::DashboardEvent;
 
 use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
-use crate::database::SymbolDatabase;
-use crate::search::{SearchIndex, SearchProjection};
 use crate::workspace::JulieWorkspace;
 use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
-use julie_index::checkout_store::{CheckoutStore, STORE_DIR};
+use julie_index::checkout_store::CheckoutStore;
 use tokio::sync::RwLock;
 
 use self::tool_metrics::{MetricsTask, run_metrics_writer, source_bytes_for_paths};
@@ -52,8 +50,7 @@ use crate::tools::workspace::commands::ManageWorkspaceOperation;
 
 pub(crate) struct PrimaryWorkspaceSnapshot {
     pub binding: PrimaryWorkspaceBinding,
-    pub database: Arc<std::sync::Mutex<SymbolDatabase>>,
-    pub search_index: Option<Arc<SearchIndex>>,
+    pub store: Arc<CheckoutStore>,
     pub indexing_runtime: Option<crate::tools::workspace::indexing::state::SharedIndexingRuntime>,
 }
 
@@ -69,27 +66,20 @@ pub(crate) fn metrics_db_path_for_workspace(
     if let Some(override_root) = index_root_override {
         override_root
             .parent()
-            .map(|shared_indexes| {
-                shared_indexes
-                    .join(workspace_id)
-                    .join("db")
-                    .join("symbols.db")
-            })
+            .map(|shared_indexes| shared_indexes.join(workspace_id).join("facts.sqlite"))
             .unwrap_or_else(|| {
                 current_workspace_root
                     .join(".julie")
                     .join("indexes")
                     .join(workspace_id)
-                    .join("db")
-                    .join("symbols.db")
+                    .join("facts.sqlite")
             })
     } else {
         current_workspace_root
             .join(".julie")
             .join("indexes")
             .join(workspace_id)
-            .join("db")
-            .join("symbols.db")
+            .join("facts.sqlite")
     }
 }
 
@@ -173,10 +163,6 @@ pub struct JulieServerHandler {
     /// A single background task drains this; try_send drops on backpressure
     /// rather than spawning unbounded tasks.
     metrics_tx: tokio::sync::mpsc::Sender<MetricsTask>,
-    /// Cache for non-primary workspace DB connections, keyed by workspace_id with
-    /// the resolved physical db path so root-anchor changes in stdio do not reuse
-    /// stale handles across different `.julie/indexes/...` trees.
-    ref_db_cache: Arc<RwLock<HashMap<String, (PathBuf, Arc<std::sync::Mutex<SymbolDatabase>>)>>>,
     /// Checkout stores opened for non-primary workspaces, keyed by workspace_id.
     ref_store_cache: Arc<RwLock<HashMap<String, Arc<CheckoutStore>>>>,
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
@@ -291,13 +277,6 @@ impl JulieServerHandler {
             if let Err(e) = old_workspace.stop_file_watching().await {
                 warn!("Failed to stop file watching during teardown: {}", e);
             }
-            if let Some(ref search_index) = old_workspace.search_index {
-                if let Err(e) = search_index.shutdown() {
-                    warn!("Failed to shut down search index: {}", e);
-                } else {
-                    info!("Old search index shut down, file lock released");
-                }
-            }
         }
         *workspace_guard = None;
         self.set_loaded_workspace_id(None);
@@ -335,7 +314,6 @@ impl JulieServerHandler {
             workspace_id: Arc::new(StdRwLock::new(None)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             metrics_tx,
-            ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             ref_store_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx: None,
             in_process: false,
@@ -398,13 +376,7 @@ impl JulieServerHandler {
         // Daemon manages embeddings separately (Phase 3).
         ws_clone.embedding_provider = None;
 
-        let already_indexed = if let Some(ref db_arc) = ws_clone.db {
-            let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-            let count = db.count_symbols_for_workspace().unwrap_or(0);
-            count > 0
-        } else {
-            false
-        };
+        let already_indexed = ws_clone.store.status().graph.symbols > 0;
 
         let mut session_workspace = SessionWorkspaceState::new(workspace_startup_hint.clone());
         let initial_workspace_id = workspace_id.clone();
@@ -433,7 +405,6 @@ impl JulieServerHandler {
             workspace_id: Arc::new(StdRwLock::new(workspace_id)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             metrics_tx,
-            ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             ref_store_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
             in_process: false,
@@ -516,7 +487,6 @@ impl JulieServerHandler {
             workspace_id: Arc::new(StdRwLock::new(None)),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
             metrics_tx,
-            ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             ref_store_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
             in_process: false,
@@ -1014,7 +984,8 @@ impl JulieServerHandler {
         if needs_vectors {
             let ws_guard = self.workspace.read().await;
             if let Some(ws) = ws_guard.as_ref() {
-                if let Some(ref store) = ws.store {
+                {
+                    let store = &ws.store;
                     let count = store.status().vector_count as i64;
                     if count > 0 {
                         let _ = db.update_vector_count(ws_id, count);
@@ -1151,16 +1122,10 @@ impl JulieServerHandler {
         {
             return Ok(None);
         }
-        let database = workspace.db.as_ref().cloned().ok_or_else(|| {
-            anyhow::anyhow!(
-                "Database not available. Run manage_workspace(operation=\"index\") first."
-            )
-        })?;
 
         Ok(Some(PrimaryWorkspaceSnapshot {
             binding: binding.clone(),
-            database,
-            search_index: workspace.search_index.as_ref().cloned(),
+            store: Arc::clone(&workspace.store),
             indexing_runtime: Some(Arc::clone(&workspace.indexing_runtime)),
         }))
     }
@@ -1169,89 +1134,12 @@ impl JulieServerHandler {
         &self,
         binding: &PrimaryWorkspaceBinding,
     ) -> Result<PrimaryWorkspaceSnapshot> {
-        let db_path = self
-            .workspace_db_file_path_for(&binding.workspace_id)
+        let store = self
+            .checkout_store_for_workspace(&binding.workspace_id, &binding.workspace_root)
             .await?;
-        if !db_path.exists() {
-            return Err(anyhow::anyhow!(
-                "Database not found for workspace '{}' at {}",
-                binding.workspace_id,
-                db_path.display()
-            ));
-        }
-
-        let database = {
-            let cache = self.ref_db_cache.read().await;
-            cache
-                .get(&binding.workspace_id)
-                .filter(|(cached_path, _)| *cached_path == db_path)
-                .map(|(_, db)| Arc::clone(db))
-        };
-
-        let database = if let Some(database) = database {
-            database
-        } else {
-            let db_path_for_open = db_path.clone();
-            let database = tokio::task::spawn_blocking(move || {
-                let db = SymbolDatabase::new(&db_path_for_open)?;
-                Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(db)))
-            })
-            .await??;
-
-            let mut cache = self.ref_db_cache.write().await;
-            cache.insert(
-                binding.workspace_id.clone(),
-                (db_path.clone(), Arc::clone(&database)),
-            );
-            database
-        };
-
-        let tantivy_path = self
-            .workspace_tantivy_dir_for(&binding.workspace_id)
-            .await?;
-        let search_index = if tantivy_path.join("meta.json").exists() {
-            let workspace_id = binding.workspace_id.clone();
-            let database_for_projection = Arc::clone(&database);
-            let indexing_status = Arc::clone(&self.indexing_status);
-            Some(
-                tokio::task::spawn_blocking(move || {
-                    let configs = crate::search::LanguageConfigs::load_embedded();
-                    let open_outcome =
-                        SearchIndex::open_with_language_configs_outcome(&tantivy_path, &configs)?;
-                    let repair_required = open_outcome.repair_required();
-                    let index = open_outcome.into_index();
-
-                    if repair_required {
-                        warn!(
-                            "Tantivy index for workspace '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
-                            workspace_id,
-                            tantivy_path.display()
-                        );
-
-                        let mut db = database_for_projection
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        let projection = SearchProjection::tantivy(workspace_id.clone());
-                        projection.repair_recreated_open_if_needed(
-                            &mut db,
-                            &index,
-                            repair_required,
-                            Some(&indexing_status.search_ready),
-                        )?;
-                    }
-
-                    Ok::<_, anyhow::Error>(Arc::new(index))
-                })
-                .await??,
-            )
-        } else {
-            None
-        };
-
         Ok(PrimaryWorkspaceSnapshot {
             binding: binding.clone(),
-            database,
-            search_index,
+            store,
             indexing_runtime: None,
         })
     }
@@ -1270,44 +1158,8 @@ impl JulieServerHandler {
             }
         }
 
-        return self
-            .primary_workspace_snapshot_from_binding_paths(&binding)
-            .await;
-    }
-
-    pub(crate) async fn primary_database(&self) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
-        Ok(self.primary_workspace_snapshot().await?.database)
-    }
-
-    /// Pool-aware accessor for the primary workspace database.
-    ///
-    /// Returns an owned `SymbolDatabase` wrapping a pooled connection (or, in
-    /// stdio mode, a fresh owned connection). Multiple sessions or in-flight
-    /// requests can hold their own connections concurrently — unlike
-    /// [`primary_database`], which returns a shared `Arc<Mutex<>>` that
-    /// serializes all callers.
-    ///
-    /// Prefer this method for new code. Migration from `primary_database`
-    /// proceeds incrementally; see Task A2.2c-followup.
-    pub(crate) async fn primary_pooled_database(&self) -> Result<SymbolDatabase> {
-        let workspace_id = self.require_primary_workspace_identity()?;
-        self.get_pooled_database_for_workspace(&workspace_id).await
-    }
-
-    pub(crate) async fn primary_pooled_database_and_search_index(
-        &self,
-    ) -> Result<(SymbolDatabase, Arc<SearchIndex>)> {
-        let snapshot = self.primary_workspace_snapshot().await?;
-        let search_index = snapshot.search_index.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Search index not initialized. Run manage_workspace(operation=\"index\") first."
-            )
-        })?;
-        let database = self
-            .get_pooled_database_for_workspace(&snapshot.binding.workspace_id)
-            .await?;
-
-        Ok((database, search_index))
+        self.primary_workspace_snapshot_from_binding_paths(&binding)
+            .await
     }
 
     /// Active workspace IDs for this session, sorted for stable output.
@@ -1394,14 +1246,6 @@ impl JulieServerHandler {
         })
     }
 
-    pub(crate) async fn workspace_db_file_path_for(&self, workspace_id: &str) -> Result<PathBuf> {
-        Ok(self
-            .workspace_index_dir_for(workspace_id)
-            .await?
-            .join("db")
-            .join("symbols.db"))
-    }
-
     pub(crate) async fn workspace_tantivy_dir_for(&self, workspace_id: &str) -> Result<PathBuf> {
         Ok(self
             .workspace_index_dir_for(workspace_id)
@@ -1409,105 +1253,23 @@ impl JulieServerHandler {
             .join("tantivy"))
     }
 
-    /// Acquire a per-request `SymbolDatabase` backed by a pooled connection.
-    ///
-    /// **Use this for new handler code.** Each call returns a fresh
-    /// `SymbolDatabase` wrapping a `PooledConn` from the workspace's
-    /// `WorkspaceConnectionPool` — distinct handlers no longer serialize on a
-    /// shared `Arc<Mutex<SymbolDatabase>>`. The connection returns to the pool
-    /// when the `SymbolDatabase` is dropped.
-    ///
-    /// In standalone/in-process mode the implementation opens a fresh owned
-    /// `SymbolDatabase` per request — these handlers don't have a cross-session
-    /// concurrency problem, so the extra open cost is acceptable.
-    pub async fn get_pooled_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<SymbolDatabase> {
-        // Open a fresh owned SymbolDatabase. Migrations are idempotent so the cost is bounded.
-        let db_path = self.workspace_db_file_path_for(workspace_id).await?;
-        if !db_path.exists() {
-            return Err(anyhow::anyhow!(
-                "Database not found for workspace '{}' at {}",
-                workspace_id,
-                db_path.display()
-            ));
-        }
-        tokio::task::spawn_blocking(move || SymbolDatabase::new(&db_path))
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?
-    }
-
-    /// Get the database for a specific workspace by ID.
-    ///
-    /// In stdio mode: looks in `{project}/.julie/indexes/{workspace_id}/db/symbols.db`.
-    /// In daemon mode: looks in `~/.julie/indexes/{workspace_id}/db/symbols.db`
-    ///   (sibling of the primary workspace's index dir, not nested under it).
-    ///
-    /// **Prefer `get_pooled_database_for_workspace` for new code** —
-    /// this method returns an Arc<Mutex<...>> that serializes all callers.
-    pub async fn get_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
-        let db_path = self.workspace_db_file_path_for(workspace_id).await?;
-
-        // Fast path: return cached connection for this session (M22).
-        {
-            let cache = self.ref_db_cache.read().await;
-            if let Some((cached_path, db)) = cache.get(workspace_id) {
-                if *cached_path == db_path {
-                    return Ok(Arc::clone(db));
-                }
-            }
-        }
-
-        // In daemon mode, index_root_override points to ~/.julie/indexes/{primary_id}.
-        // Non-primary workspace indexes are siblings: ~/.julie/indexes/{target_id}/, not nested.
-        if !db_path.exists() {
-            return Err(anyhow::anyhow!(
-                "Database not found for workspace '{}' at {}",
-                workspace_id,
-                db_path.display()
-            ));
-        }
-
-        let db_path_for_open = db_path.clone();
-        let db = tokio::task::spawn_blocking(move || {
-            let db = SymbolDatabase::new(&db_path_for_open)?;
-            Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(db)))
-        })
-        .await??;
-
-        // Populate cache for subsequent calls within this session.
-        {
-            let mut cache = self.ref_db_cache.write().await;
-            cache.insert(workspace_id.to_string(), (db_path.clone(), Arc::clone(&db)));
-        }
-
-        Ok(db)
-    }
-
     /// The checkout store for `workspace_id`: the loaded primary's own store, or
-    /// one opened from `indexes/{workspace_id}/store` and cached for the session.
+    /// one opened from `indexes/{workspace_id}/` and cached for the session.
     pub(crate) async fn checkout_store_for_workspace(
         &self,
         workspace_id: &str,
         workspace_root: &Path,
     ) -> Result<Arc<CheckoutStore>> {
         if self.loaded_workspace_id().as_deref() == Some(workspace_id) {
-            if let Some(store) = self.get_workspace().await?.and_then(|ws| ws.store) {
+            if let Some(ws) = self.get_workspace().await? {
                 self.ref_store_cache.write().await.remove(workspace_id);
-                return Ok(store);
+                return Ok(ws.store);
             }
         }
         if let Some(store) = self.ref_store_cache.read().await.get(workspace_id) {
             return Ok(Arc::clone(store));
         }
-        let store_dir = self
-            .workspace_index_dir_for(workspace_id)
-            .await?
-            .join(STORE_DIR);
+        let store_dir = self.workspace_index_dir_for(workspace_id).await?;
         let root = workspace_root.to_path_buf();
         let store =
             tokio::task::spawn_blocking(move || CheckoutStore::open(&store_dir, &root)).await??;
@@ -1521,47 +1283,6 @@ impl JulieServerHandler {
 
     pub(crate) async fn invalidate_checkout_store(&self, workspace_id: &str) {
         self.ref_store_cache.write().await.remove(workspace_id);
-    }
-
-    /// Get the search index for a specific workspace by ID.
-    ///
-    /// In stdio mode: looks in `{project}/.julie/indexes/{workspace_id}/tantivy/`.
-    /// In daemon mode: looks in `~/.julie/indexes/{workspace_id}/tantivy/`.
-    /// Returns `Ok(None)` if the index directory doesn't exist yet.
-    pub async fn get_search_index_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Option<Arc<SearchIndex>>> {
-        let tantivy_path = self.workspace_tantivy_dir_for(workspace_id).await?;
-        if !tantivy_path.join("meta.json").exists() {
-            return Ok(None);
-        }
-
-        let db_path = self.workspace_db_file_path_for(workspace_id).await?;
-
-        let workspace_id = workspace_id.to_string();
-        tokio::task::spawn_blocking(move || {
-            let configs = crate::search::LanguageConfigs::load_embedded();
-            let open_outcome =
-                SearchIndex::open_with_language_configs_outcome(&tantivy_path, &configs)?;
-            let repair_required = open_outcome.repair_required();
-            let index = open_outcome.into_index();
-
-            if repair_required {
-                warn!(
-                    "Tantivy index for workspace '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
-                    workspace_id,
-                    tantivy_path.display()
-                );
-
-                let mut db = SymbolDatabase::new(&db_path)?;
-                let projection = SearchProjection::tantivy(workspace_id.clone());
-                projection.repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
-            }
-
-            Ok(Some(Arc::new(index)))
-        })
-        .await?
     }
 
     /// Get the root path on disk for a specific workspace by ID.

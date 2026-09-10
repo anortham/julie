@@ -17,7 +17,7 @@ mod tests {
             classify_query("SearchWeightProfile"),
             QueryIntent::SymbolLookup
         );
-        assert_eq!(classify_query("SymbolDatabase"), QueryIntent::SymbolLookup);
+        assert_eq!(classify_query("FactsStore"), QueryIntent::SymbolLookup);
     }
 
     #[test]
@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn test_classify_mixed_code_and_nl() {
         assert_eq!(
-            classify_query("SymbolDatabase query methods"),
+            classify_query("FactsStore query methods"),
             QueryIntent::Mixed
         );
     }

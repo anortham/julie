@@ -7,8 +7,9 @@ use julie_extractors::AnnotationMarker;
 use julie_facts::rows::{Span, SymbolRow};
 use tantivy::schema::TantivyDocument;
 
-use super::apply::RELATIONSHIP_TEXT_MAX_BYTES;
 use super::facts_text::truncate_to_whitespace_boundary;
+
+const RELATIONSHIP_TEXT_MAX_BYTES: usize = 512;
 use crate::graph::FileRows;
 use crate::search::index::{SearchDocument, declaration_role_from_metadata, truncate_utf8_bytes};
 use crate::search::schema::SchemaFields;

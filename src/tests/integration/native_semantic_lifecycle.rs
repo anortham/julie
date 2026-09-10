@@ -20,7 +20,7 @@ use crate::request_engine::{
 use crate::tests::helpers::env::EnvVarGuard;
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
 use crate::tests::semantic_request_contract::MockReadyProvider;
-use julie_core::database::SymbolDatabase;
+use julie_core::database::FactsStore;
 use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_pipeline::embeddings::native::launch::{
     derive_broker_paths, find_and_hash_sidecar_binary,
@@ -238,7 +238,7 @@ async fn native_semantics_becomes_ready_without_client_restart() {
 
     // Initialize symbols in symbols.db
     {
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
             .language("rust")
             .hash("feedbeef")
@@ -329,12 +329,12 @@ async fn native_semantics_becomes_ready_without_client_restart() {
 
     // 5. Step 3: Populate compatible SQLite embedding generation & vectors.
     {
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let expected_key = expected_mock_sidecar_identity()
             .storage_key()
             .expect("storage key");
         let rev = db
-            .get_latest_canonical_revision_number()
+            .get_latest_facts_revision_number()
             .expect("canonical rev")
             .unwrap_or(0);
         let gen_id = db
@@ -429,7 +429,7 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
     std::fs::create_dir_all(index_root.join("db")).expect("create db dir");
     let db_path = index_root.join("db/symbols.db");
     {
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
             .language("rust")
             .hash("feedbeef")
@@ -445,7 +445,7 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
             .storage_key()
             .expect("storage key");
         let rev = db
-            .get_latest_canonical_revision_number()
+            .get_latest_facts_revision_number()
             .expect("canonical rev")
             .unwrap_or(0);
         let gen_id = db
@@ -581,7 +581,7 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
 
     // Case 1: DB exists with default config (bge-small-en-v1.5) incompatible with provider (bge-small-en-v1.5-f32)
     {
-        let _db = SymbolDatabase::new(&db_path).expect("open db");
+        let _db = FactsStore::new(&db_path).expect("open db");
     }
     let res_incompatible = runtime
         .ensure_ready(
@@ -599,7 +599,7 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
 
     // Case 1b: Symbols exist and config matches, but 0 generations recorded
     let (expected_key, rev) = {
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
             .language("rust")
             .hash("feedbeef")
@@ -617,7 +617,7 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
             .and_then(|id| id.storage_key())
             .expect("storage key");
         let rev = db
-            .get_latest_canonical_revision_number()
+            .get_latest_facts_revision_number()
             .expect("canonical rev")
             .unwrap_or(0);
         db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
@@ -640,7 +640,7 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
 
     // Case 2: Tables exist, symbols exist, but generation is building
     let gen_id = {
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         let gen_id = db
             .begin_embedding_generation(&expected_key, rev, 384)
             .expect("begin gen");
@@ -677,7 +677,7 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
 
     // Case 3: Publish generation -> Required mode now succeeds!
     {
-        let mut db = SymbolDatabase::new(&db_path).expect("open db");
+        let mut db = FactsStore::new(&db_path).expect("open db");
         db.publish_embedding_generation(gen_id, rev, 1, 1)
             .expect("publish gen");
     }
@@ -767,11 +767,11 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
         .expect("restore complete");
     }
 
-    // Case 6: gen_source_revision < canonical_revisions.revision fails closed (coverage: stale)
+    // Case 6: gen_source_revision < facts_revisions.revision fails closed (coverage: stale)
     {
         let conn = rusqlite::Connection::open(&db_path).expect("open db raw");
         conn.execute(
-            "INSERT INTO canonical_revisions (revision, workspace_id, kind, created_at)
+            "INSERT INTO facts_revisions (revision, workspace_id, kind, created_at)
              VALUES (999, 'ws2', 'incremental', 123456789)",
             [],
         )

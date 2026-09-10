@@ -11,8 +11,38 @@ use tera::Context;
 
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
-use crate::database::analytics::{AggregateStats, CentralitySymbol, FileHotspot};
-use julie_index::checkout_store::{CheckoutStore, STORE_DIR};
+use julie_index::checkout_store::CheckoutStore;
+
+/// A high-centrality symbol returned by `top_symbols_by_centrality`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CentralitySymbol {
+    pub name: String,
+    pub kind: String,
+    pub language: String,
+    pub file_path: String,
+    pub signature: Option<String>,
+    pub reference_score: f64,
+}
+
+/// A high-activity file returned by `file_hotspots`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FileHotspot {
+    pub path: String,
+    pub language: String,
+    pub line_count: i32,
+    pub size: i64,
+    pub symbol_count: i64,
+}
+
+/// Workspace-wide aggregate counts.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct AggregateStats {
+    pub total_files: i64,
+    pub total_symbols: i64,
+    pub total_lines: i64,
+    pub total_relationships: i64,
+    pub language_count: i64,
+}
 use julie_index::graph::{Graph, SymbolId};
 use julie_index::search::scoring::is_test_path;
 use julie_index::snapshot::Snapshot;
@@ -224,13 +254,13 @@ pub(crate) fn open_workspace_snapshot(
     let workspace = require_registered_workspace(state, workspace_id)?;
     let paths =
         crate::paths::RegistryPaths::try_new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let store_dir = paths.workspace_index_dir(workspace_id).join(STORE_DIR);
-    if !store_dir.join("facts.sqlite").exists() {
+    let index_dir = paths.workspace_index_dir(workspace_id);
+    if !index_dir.join("facts.sqlite").exists() {
         return Err(StatusCode::NOT_FOUND);
     }
     let root = std::path::PathBuf::from(&workspace.path);
     let store =
-        CheckoutStore::open(&store_dir, &root).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        CheckoutStore::open(&index_dir, &root).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(store.current())
 }
 

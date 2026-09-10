@@ -3,8 +3,7 @@
 //!
 //! This module manages the .julie workspace folder structure and initialization.
 //! The workspace provides project-local storage for all Julie data including:
-//! - SQLite database (source of truth for symbols and metadata)
-//! - Tantivy full-text search index
+//! - Checkout store (`facts.sqlite` + Tantivy projection)
 //! - Configuration and caching
 //! - Workspace registry for multi-project indexing
 
@@ -22,15 +21,12 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 // Import IncrementalIndexer from watcher module
 use crate::watcher::IncrementalIndexer;
-use julie_index::checkout_store::{CheckoutStore, STORE_DIR, VersionMismatch};
-
-// Forward declarations for types we'll implement later
-pub type SqliteDB = julie_core::database::SymbolDatabase;
+use julie_index::checkout_store::CheckoutStore;
 
 /// The main Julie workspace structure
 ///
 /// Manages all project-local data storage and provides a unified interface
-/// to the search architecture (SQLite + Tantivy full-text search)
+/// to the search architecture (facts.sqlite + Tantivy projection)
 pub struct JulieWorkspace {
     /// Project root directory where MCP was started
     pub root: PathBuf,
@@ -38,18 +34,8 @@ pub struct JulieWorkspace {
     /// The .julie directory for all workspace data
     pub julie_dir: PathBuf,
 
-    /// Database connection (source of truth)
-    /// 🚨 DEADLOCK FIX: Using std::sync::Mutex (not tokio::sync::Mutex)
-    /// Database is accessed from spawn_blocking, so sync Mutex is correct
-    pub db: Option<Arc<std::sync::Mutex<SqliteDB>>>,
-
-    /// Tantivy search index for full-text code search
-    pub search_index: Option<Arc<julie_index::search::SearchIndex>>,
-
-    /// Facts, graph, and Tantivy projection written beside `db` and
-    /// `search_index` until Task 13 retires those. `None` after a facts
-    /// version mismatch.
-    pub store: Option<Arc<CheckoutStore>>,
+    /// Facts, graph, and Tantivy projection for this checkout.
+    pub store: Arc<CheckoutStore>,
 
     /// File watcher for incremental updates
     pub watcher: Option<IncrementalIndexer>,
@@ -101,9 +87,7 @@ impl Clone for JulieWorkspace {
         Self {
             root: self.root.clone(),
             julie_dir: self.julie_dir.clone(),
-            db: self.db.clone(),
-            search_index: self.search_index.clone(),
-            store: self.store.clone(),
+            store: Arc::clone(&self.store),
             watcher: None, // Don't clone file watcher - create new if needed
             embedding_provider: self.embedding_provider.clone(),
             embedding_runtime_status: self.embedding_runtime_status.clone(),
@@ -114,23 +98,44 @@ impl Clone for JulieWorkspace {
     }
 }
 
-/// Open `<index dir>/store` next to `symbols.db`. A facts version mismatch
-/// leaves the store closed; Task 11 owns the delete-and-reindex path.
-pub fn open_checkout_store(db_path: &Path, root: &Path) -> Result<Option<Arc<CheckoutStore>>> {
-    let index_dir = db_path
-        .parent()
-        .and_then(Path::parent)
-        .ok_or_else(|| anyhow!("database path {} has no index dir", db_path.display()))?;
-    match CheckoutStore::open(&index_dir.join(STORE_DIR), root) {
-        Ok(store) => Ok(Some(Arc::new(store))),
-        Err(err) => match err.downcast_ref::<VersionMismatch>() {
-            Some(mismatch) => {
-                warn!(%mismatch, index_dir = %index_dir.display(), "checkout store left closed");
-                Ok(None)
+/// Open `indexes/<id>/`. A failed open deletes the directory and reopens.
+pub fn open_or_recreate_store(index_dir: &Path, root: &Path) -> Result<CheckoutStore> {
+    match CheckoutStore::open(index_dir, root) {
+        Ok(store) => Ok(store),
+        Err(err) => {
+            warn!(
+                error = %err,
+                index_dir = %index_dir.display(),
+                "checkout store open failed; deleting indexes/<id>/ and reopening"
+            );
+            if index_dir.exists() {
+                fs::remove_dir_all(index_dir)
+                    .with_context(|| format!("delete index dir {}", index_dir.display()))?;
             }
-            None => Err(err),
-        },
+            CheckoutStore::open(index_dir, root)
+        }
     }
+}
+
+fn open_store_for(
+    root: &Path,
+    julie_dir: &Path,
+    index_root_override: Option<&Path>,
+) -> Result<Arc<CheckoutStore>> {
+    let workspace_id = registry::generate_workspace_id(
+        root.to_str()
+            .ok_or_else(|| anyhow!("Invalid workspace path"))?,
+    )?;
+    let shared = if let Some(override_root) = index_root_override {
+        override_root
+            .parent()
+            .unwrap_or(override_root)
+            .to_path_buf()
+    } else {
+        julie_dir.join("indexes")
+    };
+    let index_dir = shared.join(workspace_id);
+    Ok(Arc::new(open_or_recreate_store(&index_dir, root)?))
 }
 
 impl Default for WorkspaceConfig {
@@ -179,12 +184,11 @@ impl JulieWorkspace {
         // .julieignore creation now handled by discovery.rs during indexing
         // (auto-generates with smart vendor detection instead of generic template)
 
+        let store = open_store_for(&root, &julie_dir, None)?;
         let mut workspace = Self {
             root,
             julie_dir,
-            db: None,
-            search_index: None,
-            store: None,
+            store,
             watcher: None,
             embedding_provider: None,
             embedding_runtime_status: None,
@@ -193,7 +197,6 @@ impl JulieWorkspace {
             indexing_runtime: julie_core::indexing_state::IndexingRuntimeState::shared(),
         };
 
-        // Initialize persistent components
         workspace.initialize_all_components().await?;
 
         info!("Julie workspace initialized successfully");
@@ -226,13 +229,12 @@ impl JulieWorkspace {
 
                 // Load configuration
                 let config = Self::load_config(&julie_path)?;
+                let store = open_store_for(&root, &julie_path, None)?;
 
                 let mut workspace = Self {
                     root,
                     julie_dir: julie_path,
-                    db: None,
-                    search_index: None,
-                    store: None,
+                    store,
                     watcher: None,
                     embedding_provider: None,
                     embedding_runtime_status: None,
@@ -469,11 +471,7 @@ impl JulieWorkspace {
         } else {
             WatcherState::Unavailable
         };
-        health.search_projection_state = if self.search_index.is_some() {
-            ProjectionState::Ready
-        } else {
-            ProjectionState::Missing
-        };
+        health.search_state = ProjectionState::Ready;
         health.embedding_state = match (
             self.embedding_runtime_status.as_ref(),
             self.embedding_provider.as_ref(),
@@ -499,11 +497,6 @@ impl JulieWorkspace {
         Ok(health)
     }
 
-    /// Get the path to the SQLite database file
-    pub fn db_path(&self) -> PathBuf {
-        self.julie_dir.join("db").join("symbols.db")
-    }
-
     /// Get the root indexes directory (contains all workspace indexes).
     /// When `index_root_override` is set, returns that path directly instead of
     /// the default `{julie_dir}/indexes`.
@@ -525,30 +518,18 @@ impl JulieWorkspace {
         self.index_root_override = Some(path);
     }
 
-    /// Initialize a workspace with db/tantivy redirected to `index_root`.
-    ///
-    /// Mirrors the pattern in `WorkspacePool::init_workspace`: constructs the
-    /// `JulieWorkspace` struct directly (bypassing the full
-    /// `JulieWorkspace::initialize` which writes config under `.julie/`) and
-    /// then calls `initialize_database` + `initialize_search_index` so storage
-    /// always lands under the caller-supplied `index_root`.
-    ///
-    /// Used by the in-process serve path (T8/F2) to make the leader lock and
-    /// the workspace db/tantivy share the same `~/.julie/indexes/{ws}/` tree.
+    /// Initialize a workspace with facts/tantivy redirected to `index_root`.
     pub async fn initialize_with_index_root(root: PathBuf, index_root: PathBuf) -> Result<Self> {
-        // `julie_dir` stays project-local (for config/logs/gitignore);
-        // db and tantivy are redirected to `index_root` via the override.
         let julie_dir = root.join(".julie");
         std::fs::create_dir_all(&julie_dir).with_context(|| {
             format!("Failed to create workspace dir at {}", julie_dir.display())
         })?;
 
+        let store = open_store_for(&root, &julie_dir, Some(&index_root))?;
         let mut workspace = JulieWorkspace {
             root,
             julie_dir,
-            db: None,
-            search_index: None,
-            store: None,
+            store,
             watcher: None,
             embedding_provider: None,
             embedding_runtime_status: None,
@@ -556,11 +537,7 @@ impl JulieWorkspace {
             index_root_override: Some(index_root),
             indexing_runtime: julie_core::indexing_state::IndexingRuntimeState::shared(),
         };
-
-        // These use indexes_root_path() → the override → db/tantivy land in index_root.
-        workspace.initialize_database()?;
-        workspace.initialize_search_index()?;
-
+        workspace.initialize_file_watcher()?;
         Ok(workspace)
     }
 
@@ -579,22 +556,14 @@ impl JulieWorkspace {
         }
     }
 
-    /// Get the path to a specific workspace's index directory (SQLite database)
+    /// Directory for a workspace's facts.sqlite and tantivy projection.
     pub fn workspace_index_path(&self, workspace_id: &str) -> PathBuf {
-        self.shared_indexes_dir().join(workspace_id).join("db")
+        self.shared_indexes_dir().join(workspace_id)
     }
 
     /// Get the path to a specific workspace's Tantivy search index
     pub fn workspace_tantivy_path(&self, workspace_id: &str) -> PathBuf {
         self.shared_indexes_dir().join(workspace_id).join("tantivy")
-    }
-
-    /// Get the path to a specific workspace's SQLite database
-    pub fn workspace_db_path(&self, workspace_id: &str) -> PathBuf {
-        self.shared_indexes_dir()
-            .join(workspace_id)
-            .join("db")
-            .join("symbols.db")
     }
 
     /// Get the path to the general cache
@@ -610,134 +579,10 @@ impl JulieWorkspace {
         vec![self.julie_dir.join("cache").join("parse_cache")]
     }
 
-    /// Initialize persistent database connection
-    pub fn initialize_database(&mut self) -> Result<()> {
-        if self.db.is_some() {
-            return Ok(()); // Already initialized
-        }
-
-        // Compute workspace ID for per-workspace database
-        let workspace_id = registry::generate_workspace_id(
-            self.root
-                .to_str()
-                .ok_or_else(|| anyhow!("Invalid workspace path"))?,
-        )?;
-
-        let db_path = self.workspace_db_path(&workspace_id);
-        info!(
-            "Initializing SQLite database for workspace {} at: {}",
-            workspace_id,
-            db_path.display()
-        );
-
-        // Ensure parent directory exists
-        if let Some(parent) = db_path.parent() {
-            fs::create_dir_all(parent).context(format!(
-                "Failed to create database directory: {}",
-                parent.display()
-            ))?;
-        }
-
-        let database = SqliteDB::new(&db_path)?;
-        self.db = Some(Arc::new(std::sync::Mutex::new(database)));
-        self.store = open_checkout_store(&db_path, &self.root)?;
-
-        info!("Database initialized successfully");
-        Ok(())
-    }
-
-    /// Initialize Tantivy search index for full-text code search
-    pub fn initialize_search_index(&mut self) -> Result<()> {
-        if self.search_index.is_some() {
-            return Ok(()); // Already initialized
-        }
-
-        let workspace_id = registry::generate_workspace_id(
-            self.root
-                .to_str()
-                .ok_or_else(|| anyhow!("Invalid workspace path"))?,
-        )?;
-
-        let tantivy_path = self.workspace_tantivy_path(&workspace_id);
-        info!(
-            "Initializing Tantivy search index at: {}",
-            tantivy_path.display()
-        );
-
-        // If the database has 0 symbols but a Tantivy index exists on disk,
-        // the index contains stale segments from a previous session (e.g.,
-        // after a crash or DB migration).  Delete them before opening —
-        // Tantivy's background merge threads can hit IO errors on corrupted
-        // or Windows-locked stale segments, killing the writer permanently.
-        if tantivy_path.exists() {
-            let db_empty = self
-                .db
-                .as_ref()
-                .and_then(|db| {
-                    db.lock()
-                        .ok()
-                        .and_then(|g| g.count_symbols_for_workspace().ok())
-                })
-                .is_some_and(|count| count == 0);
-
-            if db_empty {
-                info!(
-                    "Database is empty — deleting stale Tantivy index at {}",
-                    tantivy_path.display()
-                );
-                if let Err(e) = std::fs::remove_dir_all(&tantivy_path) {
-                    warn!("Failed to delete stale Tantivy index: {e}");
-                }
-            }
-        }
-
-        // Ensure directory exists (create_dir_all handles parents)
-        std::fs::create_dir_all(&tantivy_path).context(format!(
-            "Failed to create Tantivy index directory: {}",
-            tantivy_path.display()
-        ))?;
-
-        let configs = julie_index::search::LanguageConfigs::load_embedded();
-        let open_outcome =
-            julie_index::search::SearchIndex::open_or_create_with_language_configs_outcome(
-                &tantivy_path,
-                &configs,
-            )
-            .context("Failed to open or create Tantivy search index")?;
-
-        let repair_required = open_outcome.repair_required();
-        let index = open_outcome.into_index();
-
-        if repair_required {
-            warn!(
-                "Tantivy search index at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
-                tantivy_path.display()
-            );
-
-            let db = self.db.as_ref().ok_or_else(|| {
-                anyhow!("Database must be initialized before repairing recreated Tantivy index")
-            })?;
-            let mut db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let projection = julie_index::search::SearchProjection::tantivy(workspace_id.clone());
-            projection.repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
-        }
-
-        self.search_index = Some(Arc::new(index));
-        info!("Tantivy search index initialized successfully");
-        Ok(())
-    }
-
     /// Initialize file watcher for incremental updates
     pub fn initialize_file_watcher(&mut self) -> Result<()> {
         if self.watcher.is_some() {
-            return Ok(()); // Already initialized
-        }
-
-        // Ensure database is initialized before file watcher
-        if self.db.is_none() {
-            return Err(anyhow::anyhow!(
-                "Database not initialized before file watcher"
-            ));
+            return Ok(());
         }
 
         info!("Initializing file watcher for: {}", self.root.display());
@@ -745,12 +590,10 @@ impl JulieWorkspace {
         let shared_provider = Arc::new(std::sync::RwLock::new(self.embedding_provider.clone()));
         let file_watcher = IncrementalIndexer::new(
             self.root.clone(),
-            self.db.as_ref().unwrap().clone(),
-            self.search_index.clone(),
+            Arc::clone(&self.store),
             shared_provider,
             Arc::clone(&self.indexing_runtime),
-        )?
-        .with_store(self.store.clone());
+        )?;
 
         self.watcher = Some(file_watcher);
 
@@ -758,18 +601,8 @@ impl JulieWorkspace {
         Ok(())
     }
 
-    /// Initialize all persistent components (database, search index, file watcher).
-    ///
-    /// Embedding provider initialization is intentionally deferred — it can take
-    /// 30-60s on cold start (venv bootstrap, pip install, model download) and
-    /// nothing in the indexing pipeline needs it.  The embedding provider is
-    /// initialized lazily in [`initialize_embedding_provider`] which is called
-    /// by the embedding pipeline after indexing completes.
+    /// Initialize the file watcher when incremental updates are enabled.
     pub async fn initialize_all_components(&mut self) -> Result<()> {
-        self.initialize_database()?;
-        self.initialize_search_index()?;
-
-        // Initialize file watcher (requires database)
         if self.config.incremental_updates {
             self.initialize_file_watcher()?;
         }
@@ -829,7 +662,7 @@ pub struct WorkspaceHealth {
     pub disk_space_mb: u64,
     pub has_write_permissions: bool,
     pub watcher_state: WatcherState,
-    pub search_projection_state: ProjectionState,
+    pub search_state: ProjectionState,
     pub embedding_state: EmbeddingState,
     pub errors: Vec<String>,
     pub warnings: Vec<String>,
@@ -842,7 +675,7 @@ impl WorkspaceHealth {
             disk_space_mb: 0,
             has_write_permissions: false,
             watcher_state: WatcherState::Unavailable,
-            search_projection_state: ProjectionState::Missing,
+            search_state: ProjectionState::Missing,
             embedding_state: EmbeddingState::NotInitialized,
             errors: Vec::new(),
             warnings: Vec::new(),

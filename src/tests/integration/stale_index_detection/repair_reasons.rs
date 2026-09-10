@@ -130,7 +130,7 @@ async fn test_primary_workspace_repair_plan_reports_extractor_failure_reason() -
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         db_lock.conn.execute(
-            "INSERT INTO indexing_repairs (path, reason, detail, updated_at)
+            "INSERT INTO indexing_issues (path, reason, detail, updated_at)
              VALUES (?1, ?2, ?3, 0)",
             rusqlite::params!["test.rs", "extractor_failure", "seeded startup repair"],
         )?;

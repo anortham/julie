@@ -30,13 +30,13 @@ pub struct ExtractedFileRecord {
 #[derive(Debug)]
 pub struct ParserFileProcessResult {
     pub normalized: NormalizedExtractionData,
-    pub file_info: julie_core::database::FileInfo,
+    pub file_info: crate::indexing_core::file_info::FileInfo,
 }
 
 type TextFileProcessResult = (
     Vec<Symbol>,
     Vec<Relationship>,
-    julie_core::database::FileInfo,
+    crate::indexing_core::file_info::FileInfo,
 );
 
 enum ExtractOutcome {
@@ -257,7 +257,7 @@ pub async fn queue_failed_parser_file_for_cleanup(
     language: &str,
     workspace_root: &Path,
     files_to_clean: &mut Vec<String>,
-    all_file_infos: &mut Vec<julie_core::database::FileInfo>,
+    all_file_infos: &mut Vec<crate::indexing_core::file_info::FileInfo>,
 ) {
     let relative_path = relative_path_for_storage(file_path, workspace_root);
     files_to_clean.push(relative_path.clone());
@@ -266,7 +266,11 @@ pub async fn queue_failed_parser_file_for_cleanup(
     let language_owned = language.to_string();
     let workspace_root_buf = workspace_root.to_path_buf();
     match tokio::task::spawn_blocking(move || {
-        julie_core::database::create_file_info(&file_path_buf, &language_owned, &workspace_root_buf)
+        crate::indexing_core::file_info::create_file_info(
+            &file_path_buf,
+            &language_owned,
+            &workspace_root_buf,
+        )
     })
     .await
     {
@@ -354,7 +358,7 @@ where
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
         let detected_language =
             detect_language_for_indexing_with_content(&file_path_clone, &file_content);
-        let info = julie_core::database::create_file_info(
+        let info = crate::indexing_core::file_info::create_file_info(
             &file_path_clone,
             &detected_language,
             &workspace_root_clone,
@@ -457,7 +461,7 @@ pub async fn process_file_without_parser(
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
         let detected_language =
             detect_language_for_indexing_with_content(&file_path_clone, &file_content);
-        let info = julie_core::database::create_file_info(
+        let info = crate::indexing_core::file_info::create_file_info(
             &file_path_clone,
             &detected_language,
             &workspace_root_clone,

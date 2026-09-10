@@ -111,7 +111,7 @@ pub struct RequestReadiness {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coverage: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub canonical_revision: Option<u64>,
+    pub facts_revision: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lexical_revision: Option<u64>,
 }
@@ -122,7 +122,7 @@ impl RequestReadiness {
             mode,
             status: "ready".to_string(),
             coverage: None,
-            canonical_revision: None,
+            facts_revision: None,
             lexical_revision: None,
         }
     }
@@ -132,7 +132,7 @@ impl RequestReadiness {
             mode: SemanticMode::Off,
             status: "disabled".to_string(),
             coverage: None,
-            canonical_revision: None,
+            facts_revision: None,
             lexical_revision: None,
         }
     }

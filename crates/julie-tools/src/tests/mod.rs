@@ -41,20 +41,13 @@ pub mod refactoring_compute_line_changes_tests;
 pub mod refactoring_import_update_tests;
 
 // Metrics (T2b.6)
-pub mod metrics_file_size_query_tests;
-pub mod metrics_migration_tests;
-// metrics_query_tests STAYS top-crate: #[path] binding to src/tools/metrics/query.rs uses crate::analysis, crate::database, crate::tools::search (top-crate-only paths)
-pub mod metrics_tool_calls_db_tests;
 
 // Search (T2b.6)
-pub mod search_annotation_search_tests;
 pub mod search_lean_format_tests;
 pub mod search_line_match_strategy_tests;
 pub mod search_nl_path_prior_pipeline_tests;
-pub mod search_nl_symbol_query_latency_tests;
 pub mod search_pretokenized_emit_test;
 pub mod search_promotion_tests;
-pub mod search_title_exact_boost_tests;
 pub mod search_zero_hit_reason_tests;
 pub mod tantivy_index_tests;
 pub mod tantivy_integration_tests;

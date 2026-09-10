@@ -10,7 +10,7 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::database::types::FileInfo;
-use crate::database::{SymbolDatabase, create_file_info};
+use crate::database::{FactsStore, create_file_info};
 use crate::extractors::{
     Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, TypeInfo,
     Visibility,
@@ -87,7 +87,7 @@ fn test_bulk_store_symbols_is_atomic() -> Result<()> {
 
     // Create database and simulate crash during bulk_store_symbols
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
 
         let symbols = vec![
             create_test_symbol("function_one", "/test/file1.rs"),
@@ -141,13 +141,13 @@ fn test_bulk_store_files_atomicity() -> Result<()> {
 
     // Store files
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
         db.bulk_store_files(&[file_info1, file_info2])?;
     }
 
     // Verify state is consistent
     {
-        let db = SymbolDatabase::new(&db_path)?;
+        let db = FactsStore::new(&db_path)?;
 
         // Check file count
         let file_count: i64 = db
@@ -179,7 +179,7 @@ fn test_bulk_store_relationships_atomicity() -> Result<()> {
 
     // First create symbols (relationships need existing symbols due to foreign keys)
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
 
         let symbols = vec![
             create_test_symbol("caller", "/test/file1.rs"),
@@ -190,7 +190,7 @@ fn test_bulk_store_relationships_atomicity() -> Result<()> {
 
     // Get symbol IDs
     let (caller_id, callee_id) = {
-        let db = SymbolDatabase::new(&db_path)?;
+        let db = FactsStore::new(&db_path)?;
         let caller_id: String =
             db.conn
                 .query_row("SELECT id FROM symbols WHERE name='caller'", [], |row| {
@@ -206,7 +206,7 @@ fn test_bulk_store_relationships_atomicity() -> Result<()> {
 
     // Create and store relationships
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
 
         let relationships = vec![create_test_relationship(
             &caller_id,
@@ -219,7 +219,7 @@ fn test_bulk_store_relationships_atomicity() -> Result<()> {
 
     // Verify state is consistent
     {
-        let db = SymbolDatabase::new(&db_path)?;
+        let db = FactsStore::new(&db_path)?;
 
         // Check relationship count
         let rel_count: i64 =
@@ -265,7 +265,7 @@ fn test_incremental_update_cleanup_atomicity() -> Result<()> {
 
     // Initial state: file with symbols
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
 
         let symbols = vec![create_test_symbol("old_function_v1", "/test/file.rs")];
         db.bulk_store_symbols(&symbols, "test_workspace")?;
@@ -273,7 +273,7 @@ fn test_incremental_update_cleanup_atomicity() -> Result<()> {
 
     // Verify initial state
     {
-        let db = SymbolDatabase::new(&db_path)?;
+        let db = FactsStore::new(&db_path)?;
         let count = db.count_symbols_for_workspace()?;
         assert_eq!(count, 1, "Should have 1 symbol initially");
     }
@@ -281,7 +281,7 @@ fn test_incremental_update_cleanup_atomicity() -> Result<()> {
     // Simulate incremental update: delete old, insert new
     // This mimics what happens in process_files_optimized
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
 
         // Step 1: Delete old symbols (THIS COMMITS)
         db.delete_symbols_for_file_in_workspace("/test/file.rs")?;
@@ -301,7 +301,7 @@ fn test_incremental_update_cleanup_atomicity() -> Result<()> {
 
     // Final state: should have new symbols
     {
-        let db = SymbolDatabase::new(&db_path)?;
+        let db = FactsStore::new(&db_path)?;
         let count = db.count_symbols_for_workspace()?;
         assert_eq!(count, 1, "Should have 1 symbol after update");
 
@@ -400,7 +400,7 @@ fn test_bulk_store_fresh_atomic_inserts_all_types() -> Result<()> {
     let types = vec![create_test_type_info(&sym1.id, "Result<(), Error>")];
     let symbols = vec![sym1, sym2];
 
-    let mut db = SymbolDatabase::new(&db_path)?;
+    let mut db = FactsStore::new(&db_path)?;
     db.bulk_store_fresh_atomic(
         &files,
         &symbols,
@@ -442,7 +442,7 @@ fn test_bulk_store_fresh_atomic_inserts_all_types() -> Result<()> {
 fn test_bulk_store_fresh_atomic_skips_relationships_with_missing_symbols() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path)?;
+    let mut db = FactsStore::new(&db_path)?;
 
     let file = create_simple_file_info("/test/file1.rs");
     let sym1 = create_test_symbol("fn_one", "/test/file1.rs");
@@ -481,7 +481,7 @@ fn test_bulk_store_fresh_atomic_skips_relationships_with_missing_symbols() -> Re
 fn test_bulk_store_fresh_atomic_nulls_invalid_identifier_refs() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path)?;
+    let mut db = FactsStore::new(&db_path)?;
 
     let file = create_simple_file_info("/test/file1.rs");
     let sym1 = create_test_symbol("fn_one", "/test/file1.rs");
@@ -520,7 +520,7 @@ fn test_bulk_store_fresh_atomic_nulls_invalid_identifier_refs() -> Result<()> {
 fn test_bulk_store_fresh_atomic_skips_types_with_missing_symbols() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path)?;
+    let mut db = FactsStore::new(&db_path)?;
 
     let file = create_simple_file_info("/test/file1.rs");
     let sym1 = create_test_symbol("fn_one", "/test/file1.rs");
@@ -565,19 +565,19 @@ fn test_bulk_store_identifiers_indexes_restored() -> Result<()> {
     let db_path = temp_dir.path().join("test.db");
 
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
         let symbols = vec![create_test_symbol("fn_one", "/test/file1.rs")];
         db.bulk_store_symbols(&symbols, "test_workspace")?;
     }
 
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
         let identifiers = vec![create_test_identifier("fn_one", "/test/file1.rs")];
         db.bulk_store_identifiers(&identifiers, "test_workspace")?;
     }
 
     {
-        let db = SymbolDatabase::new(&db_path)?;
+        let db = FactsStore::new(&db_path)?;
 
         let ident_count: i64 = db
             .conn
@@ -623,13 +623,13 @@ fn test_bulk_store_types_indexes_restored() -> Result<()> {
     let db_path = temp_dir.path().join("test.db");
 
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
         let symbols = vec![create_test_symbol("fn_typed", "/test/file1.rs")];
         db.bulk_store_symbols(&symbols, "test_workspace")?;
     }
 
     let symbol_id = {
-        let db = SymbolDatabase::new(&db_path)?;
+        let db = FactsStore::new(&db_path)?;
         let id: String =
             db.conn
                 .query_row("SELECT id FROM symbols WHERE name='fn_typed'", [], |r| {
@@ -639,13 +639,13 @@ fn test_bulk_store_types_indexes_restored() -> Result<()> {
     };
 
     {
-        let mut db = SymbolDatabase::new(&db_path)?;
+        let mut db = FactsStore::new(&db_path)?;
         let types = vec![create_test_type_info(&symbol_id, "Result<String, Error>")];
         db.bulk_store_types(&types, "test_workspace")?;
     }
 
     {
-        let db = SymbolDatabase::new(&db_path)?;
+        let db = FactsStore::new(&db_path)?;
 
         let type_count: i64 = db
             .conn

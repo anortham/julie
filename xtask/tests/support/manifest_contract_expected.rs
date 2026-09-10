@@ -131,7 +131,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract",
                     "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
                     "cargo nextest run --lib current_parser_release_contracts_parse_without_diagnostics",
-                    "cargo nextest run -p julie-pipeline --lib tests::receiver_type_resolution",
                 ],
             },
         ),
@@ -209,16 +208,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::integration::documentation_indexing -- --skip search_quality",
-                ],
-            },
-        ),
-        (
-            "projection",
-            ExpectedBucket {
-                expected_seconds: 45,
-                timeout_seconds: 120,
-                commands: &[
-                    "cargo nextest run --lib tests::integration::projection_repair -- --skip search_quality",
                 ],
             },
         ),
@@ -344,9 +333,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 45,
                 commands: &[
                     "cargo nextest run --lib tests::tools::metrics::session_metrics_tests tests::tools::metrics::query_tests -- --skip search_quality",
-                    "cargo nextest run -p julie-tools --lib tests::metrics_file_size_query_tests",
-                    "cargo nextest run -p julie-tools --lib tests::metrics_migration_tests",
-                    "cargo nextest run -p julie-tools --lib tests::metrics_tool_calls_db_tests",
                 ],
             },
         ),
@@ -659,7 +645,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "core",
                 owner: "lead",
                 expensive: false,
-                notes: Some("core database layer"),
+                notes: Some("julie-core crate tests"),
             },
         ),
         (
@@ -799,15 +785,6 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("documentation indexing integration coverage"),
-            },
-        ),
-        (
-            "projection",
-            ExpectedBucketMetadata {
-                scope_label: "system",
-                owner: "lead",
-                expensive: false,
-                notes: Some("projection repair gate (backed by integration::projection_repair)"),
             },
         ),
         (

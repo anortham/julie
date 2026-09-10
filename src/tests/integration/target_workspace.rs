@@ -400,8 +400,8 @@ mod target_workspace_tests {
         let (canonical_before_cleanup, projection_before_cleanup) = {
             let db = reference_db.lock().unwrap();
             (
-                db.get_current_canonical_revision(&reference_id)?,
-                db.get_projection_state(TANTIVY_PROJECTION_NAME, &reference_id)?,
+                db.get_current_facts_revision(&reference_id)?,
+                db.get_search_state(TANTIVY_PROJECTION_NAME, &reference_id)?,
             )
         };
 
@@ -460,8 +460,8 @@ mod target_workspace_tests {
         let (canonical_after_cleanup, projection_after_cleanup) = {
             let db = reference_db.lock().unwrap();
             (
-                db.get_current_canonical_revision(&reference_id)?,
-                db.get_projection_state(TANTIVY_PROJECTION_NAME, &reference_id)?,
+                db.get_current_facts_revision(&reference_id)?,
+                db.get_search_state(TANTIVY_PROJECTION_NAME, &reference_id)?,
             )
         };
 
@@ -481,7 +481,7 @@ mod target_workspace_tests {
             "projection state should return to ready after orphan cleanup"
         );
         assert_eq!(
-            projection_after_cleanup.canonical_revision, canonical_after_cleanup,
+            projection_after_cleanup.facts_revision, canonical_after_cleanup,
             "projection state should track the new orphan-cleanup revision"
         );
         assert_eq!(

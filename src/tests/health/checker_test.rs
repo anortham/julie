@@ -30,7 +30,7 @@ fn sample_bge_record() -> crate::request_engine::semantic_qualification::NativeQ
         "accelerated": false,
         "gpu_lane_verified": false,
         "corpus_commit": "HEAD",
-        "canonical_revision": 42,
+        "facts_revision": 42,
         "vector_revision": 42,
         "eligible_symbols": 100,
         "embedded_symbols": 100,
@@ -64,7 +64,7 @@ fn sample_qwen_record() -> crate::request_engine::semantic_qualification::Native
         "accelerated": false,
         "gpu_lane_verified": false,
         "corpus_commit": "HEAD",
-        "canonical_revision": 42,
+        "facts_revision": 42,
         "vector_revision": 42,
         "eligible_symbols": 100,
         "embedded_symbols": 100,
@@ -101,7 +101,7 @@ fn test_qualification_reconciles_happy_path() {
 
     let res = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     );
@@ -134,7 +134,7 @@ fn test_qualification_rejects_backend_mismatch() {
 
     let err = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     )
@@ -179,7 +179,7 @@ fn test_qualification_rejects_active_encoder_mismatch() {
 
     let err = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     )
@@ -223,7 +223,7 @@ fn test_qualification_rejects_device_mismatch() {
 
     let err = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     )
@@ -267,7 +267,7 @@ fn test_qualification_rejects_acceleration_mismatch() {
 
     let err = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     )
@@ -311,7 +311,7 @@ fn test_qualification_rejects_missing_running_sidecar_sha() {
 
     let err = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     )
@@ -354,7 +354,7 @@ fn test_qualification_rejects_executable_sha_mismatch() {
 
     let err = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     )
@@ -472,7 +472,7 @@ fn test_challenge_switching_provider_model_disqualifies_record_in_health_output(
     // Emulate check_health integration logic in src/health/checker.rs:142-156
     match validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     ) {
@@ -546,7 +546,7 @@ fn test_challenge_switching_provider_backend_disqualifies_record_in_health_outpu
     // Emulate check_health integration logic in src/health/checker.rs:142-156
     match validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_facts,
     ) {
@@ -633,7 +633,7 @@ fn test_challenge_active_encoder_none_fails_validation() {
 
     let res = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_no_id,
     );
@@ -657,7 +657,7 @@ fn test_challenge_active_encoder_none_fails_validation() {
     };
     let res_dev = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_no_device,
     );
@@ -673,7 +673,7 @@ fn test_challenge_active_encoder_none_fails_validation() {
     };
     let res_acc = validate_qualification_against_running_runtime(
         &record,
-        record.canonical_revision,
+        record.facts_revision,
         Some(&ready_gen),
         &active_no_accel,
     );

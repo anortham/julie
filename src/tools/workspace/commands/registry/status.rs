@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use anyhow::{Result, anyhow};
-use julie_index::checkout_store::{FACTS_FILE, STORE_DIR, StoreStatus, TantivyState};
+use julie_index::checkout_store::{FACTS_FILE, StoreStatus, TantivyState};
 use serde::{Deserialize, Serialize};
 
 use super::{ManageWorkspaceTool, registry_store_for_handler};
@@ -104,7 +104,7 @@ async fn checkout_status(
     root: PathBuf,
 ) -> Result<CheckoutStatus> {
     let index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
-    let facts_path = index_dir.join(STORE_DIR).join(FACTS_FILE);
+    let facts_path = index_dir.join(FACTS_FILE);
     let facts_mtime = mtime(&facts_path);
     let (store_status, file_count) = if facts_path.exists() {
         match store_for_workspace(handler, &workspace_id, &root).await {

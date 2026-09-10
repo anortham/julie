@@ -35,6 +35,7 @@ dirs = "6"
 # Hashing (native sidecar binary verification and broker key derivation)
 sha2 = "0.10"
 hex = "0.4"
+blake3 = "1.8"
 
 # System bindings (peer PID retrieval on unix domain sockets)
 libc = "0.2"

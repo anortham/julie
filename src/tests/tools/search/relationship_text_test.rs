@@ -10,7 +10,7 @@
 mod relationship_text_test {
     use tempfile::TempDir;
 
-    use crate::database::SymbolDatabase;
+    use crate::database::FactsStore;
     use crate::database::types::FileInfo;
     use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
     // Access the private apply submodule via the pub(crate) re-exports on the projection module.
@@ -20,9 +20,9 @@ mod relationship_text_test {
     use crate::search::projection::collect_relationship_names_bounded;
     use crate::search::{SearchFilter, SearchIndex}; // for search_unified return type
 
-    fn make_db(dir: &TempDir) -> SymbolDatabase {
+    fn make_db(dir: &TempDir) -> FactsStore {
         let db_path = dir.path().join("symbols.db");
-        SymbolDatabase::new(&db_path).expect("create test db")
+        FactsStore::new(&db_path).expect("create test db")
     }
 
     fn make_index(dir: &TempDir) -> SearchIndex {
@@ -61,7 +61,7 @@ mod relationship_text_test {
         }
     }
 
-    fn seed_symbols(db: &mut SymbolDatabase, symbols: &[Symbol]) {
+    fn seed_symbols(db: &mut FactsStore, symbols: &[Symbol]) {
         // Seed a file row so FK constraints are satisfied.
         let file_info = FileInfo {
             path: "src/lib.rs".to_string(),
@@ -277,15 +277,15 @@ mod relationship_text_test {
         let mut db = make_db(&dir);
         let index = make_index(&dir);
 
-        // Seed a symbol so there is data and ensure_canonical_revision creates
+        // Seed a symbol so there is data and ensure_facts_revision creates
         // a revision (it returns None when all tables are empty).
         let sym = make_symbol("sym-sqlerr-001", "error_test_fn");
         seed_symbols(&mut db, &[sym]);
 
         // Create the canonical revision NOW while relationships table is intact
-        // (ensure_canonical_revision queries COUNT(*) FROM relationships).
-        db.ensure_canonical_revision("test-ws-sqlerr")
-            .expect("ensure_canonical_revision");
+        // (ensure_facts_revision queries COUNT(*) FROM relationships).
+        db.ensure_facts_revision("test-ws-sqlerr")
+            .expect("ensure_facts_revision");
 
         // Corrupt the relationships table: keep it existing but with a wrong schema.
         // "no such column" is a real SQL error that is NOT "no such table" —
@@ -308,8 +308,8 @@ mod relationship_text_test {
 
         // The projection state must be Stale (not Ready or Missing).
         let state = db
-            .get_projection_state("tantivy", "test-ws-sqlerr")
-            .expect("get_projection_state");
+            .get_search_state("tantivy", "test-ws-sqlerr")
+            .expect("get_search_state");
         assert_eq!(
             state.map(|s| s.status),
             Some(ProjectionStatus::Stale),
@@ -520,7 +520,7 @@ mod relationship_text_test {
         .unwrap();
 
         let db = Arc::new(Mutex::new(
-            SymbolDatabase::new(&workspace_root.join("watcher.db")).unwrap(),
+            FactsStore::new(&workspace_root.join("watcher.db")).unwrap(),
         ));
         let search_index = Arc::new(make_index(&dir));
 

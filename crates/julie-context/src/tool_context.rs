@@ -9,16 +9,14 @@
 //! in `julie-test-support` and requires T2b.2 + T2b.3 updates).
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 
-use julie_core::database::SymbolDatabase;
 use julie_core::embeddings_contract::EmbeddingProvider;
 use julie_core::health_types::SystemStatus;
 use julie_core::mcp_compat::CallToolResult;
-use julie_index::search::SearchIndex;
 use julie_index::snapshot::Snapshot;
 
 use crate::workspace_target::WorkspaceTarget;
@@ -44,41 +42,6 @@ pub trait ToolContext: Send + Sync {
     /// NEW accessor wrapping the raw `session_metrics.session_id` field.
     /// Callers that need an owned `String` call `.to_string()`.
     fn session_id(&self) -> &str;
-
-    // ── Primary db / index (async) ───────────────────────────────────────
-
-    /// Returns an owned `SymbolDatabase` wrapping a pooled connection for the
-    /// primary workspace.
-    async fn primary_pooled_database(&self) -> Result<SymbolDatabase>;
-
-    /// Returns an owned `SymbolDatabase` plus the primary workspace's
-    /// `SearchIndex`, or an error if the index has not been initialized.
-    async fn primary_pooled_database_and_search_index(
-        &self,
-    ) -> Result<(SymbolDatabase, Arc<SearchIndex>)>;
-
-    // ── Cross-workspace (async) ──────────────────────────────────────────
-
-    /// Returns an owned `SymbolDatabase` wrapping a pooled connection for
-    /// the given workspace ID.
-    async fn get_pooled_database_for_workspace(&self, workspace_id: &str)
-    -> Result<SymbolDatabase>;
-
-    /// Returns a shared `Arc<Mutex<SymbolDatabase>>` for the given workspace ID.
-    ///
-    /// Prefer `get_pooled_database_for_workspace` for new code; this variant
-    /// serializes all callers through the mutex.
-    async fn get_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Arc<Mutex<SymbolDatabase>>>;
-
-    /// Returns the `SearchIndex` for the given workspace ID, or `None` if the
-    /// index has not been created yet.
-    async fn get_search_index_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Option<Arc<SearchIndex>>>;
 
     /// Returns the on-disk root path for the given workspace ID.
     async fn get_workspace_root_for_target(&self, workspace_id: &str) -> Result<PathBuf>;

@@ -2,10 +2,7 @@
 
 pub mod database;
 
-pub mod connection_pool;
 pub mod lifecycle;
 pub mod project_log;
 pub mod shutdown;
 pub mod workspace_registry_store;
-
-pub use self::connection_pool::{PooledConn, WorkspaceConnectionPool};

@@ -4,7 +4,6 @@ use anyhow::Result;
 use julie_core::workspace::mutation_gate::MutationGuard;
 use tracing::info;
 
-use super::finalize::analyze_batch;
 use super::incremental::{existing_path_hashes, path_changes, scan_indexable_files};
 use super::pipeline_persistence::{apply_changes, store_for_route};
 use super::route::IndexRoute;
@@ -17,7 +16,7 @@ use julie_index::checkout_store::PathChange;
 pub(crate) struct IndexingPipelineResult {
     pub state: IndexingBatchState,
     pub files_processed: usize,
-    pub canonical_revision: Option<i64>,
+    pub facts_revision: Option<i64>,
     #[allow(dead_code)]
     pub source_check_state: SourceCheckState,
 }
@@ -49,9 +48,6 @@ pub(crate) async fn run_indexing_pipeline(
     store.rebuild_tantivy_if_needed(guard)?;
 
     transition_stage(&mut state, route, IndexingStage::Analyzing);
-    if let Ok(Some(db)) = route.database_for_read(handler).await {
-        let _ = analyze_batch(handler, route, &db);
-    }
     handler
         .indexing_status
         .search_ready
@@ -64,7 +60,7 @@ pub(crate) async fn run_indexing_pipeline(
     Ok(IndexingPipelineResult {
         state,
         files_processed,
-        canonical_revision: None,
+        facts_revision: None,
         source_check_state: SourceCheckState::Verified {
             files_checked: scanned.len(),
         },

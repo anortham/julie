@@ -1,4 +1,4 @@
-use crate::database::SymbolDatabase;
+use crate::database::FactsStore;
 use crate::extractors::{ExtractionResults, ParseDiagnostic, ParseDiagnosticKind};
 use crate::indexing_core::extraction::extract_files_for_indexing_with_records;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -307,7 +307,7 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
 
     let stored_path = file_info.path.clone();
     let db_path = temp_dir.path().join("index.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = FactsStore::new(&db_path).unwrap();
     db.bulk_store_fresh_atomic(&[file_info], &[], &[], &[], &[], "test-workspace")
         .expect("zero-symbol degraded file should still be stored as a file row");
     db.store_file_parse_diagnostics(&stored_path, &parse_diagnostics)

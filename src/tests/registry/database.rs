@@ -425,7 +425,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // C3: Codehealth Snapshot from SymbolDatabase
+    // C3: Codehealth Snapshot from FactsStore
     // -------------------------------------------------------------------------
 
     #[test]

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicationStamp {
     pub epoch: u64,
-    pub canonical_revision: u64,
+    pub facts_revision: u64,
     pub projected_revision: u64,
     pub generation: u64,
 }

@@ -1,7 +1,7 @@
 use crate::dashboard::routes::intelligence::{
     compute_donut_segments, format_duration_ms, format_number, generate_story_cards, kind_css_var,
 };
-use crate::database::SymbolDatabase;
+use crate::database::FactsStore;
 use crate::database::analytics::{AggregateStats, CentralitySymbol, FileHotspot};
 use crate::database::types::FileInfo;
 use crate::extractors::{RelationshipKind, SymbolKind};
@@ -11,10 +11,10 @@ use crate::tests::helpers::db::{
 use std::collections::HashMap;
 use tempfile::TempDir;
 
-fn test_db() -> (TempDir, SymbolDatabase) {
+fn test_db() -> (TempDir, FactsStore) {
     let tmp = TempDir::new().unwrap();
     let db_path = tmp.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let db = FactsStore::new(&db_path).unwrap();
     (tmp, db)
 }
 
@@ -31,7 +31,7 @@ fn make_file(path: &str, language: &str, line_count: i64, size: i64) -> FileInfo
 }
 
 fn store_function_symbol(
-    db: &mut SymbolDatabase,
+    db: &mut FactsStore,
     id: &str,
     name: &str,
     language: &str,
@@ -54,7 +54,7 @@ fn store_function_symbol(
 }
 
 fn store_call_relationship(
-    db: &mut SymbolDatabase,
+    db: &mut FactsStore,
     id: &str,
     from_symbol_id: &str,
     to_symbol_id: &str,

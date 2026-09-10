@@ -13,7 +13,6 @@
 
 pub(crate) mod dispatch;
 pub mod events;
-mod extraction_write;
 pub mod filtering; // Public for tests
 pub mod handlers; // Public for tests
 pub mod observability; // INFO-level event observability helpers
@@ -36,7 +35,6 @@ use tokio::sync::{Mutex as TokioMutex, mpsc};
 use tracing::{debug, error, info, warn};
 
 use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
-use julie_core::database::SymbolDatabase;
 use julie_core::indexing_state::SharedIndexingRuntime;
 use julie_index::checkout_store::CheckoutStore;
 
@@ -69,10 +67,7 @@ where
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
-    db: Arc<StdMutex<SymbolDatabase>>,
-    search_index: Option<Arc<julie_index::search::SearchIndex>>,
-    /// Written beside `db` and `search_index` for every processed event.
-    store: Option<Arc<CheckoutStore>>,
+    store: Arc<CheckoutStore>,
 
     /// Embedding provider for incremental semantic updates.
     /// Shared with the workspace via Arc<RwLock<...>> so lazy initialization
@@ -125,15 +120,13 @@ impl IncrementalIndexer {
     /// Create a new incremental indexer for the given workspace
     pub fn new(
         workspace_root: PathBuf,
-        db: Arc<StdMutex<SymbolDatabase>>,
-        search_index: Option<Arc<julie_index::search::SearchIndex>>,
+        store: Arc<CheckoutStore>,
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
     ) -> Result<Self> {
         Self::new_with_mutation_gate_registry(
             workspace_root,
-            db,
-            search_index,
+            store,
             embedding_provider,
             indexing_runtime,
             Arc::clone(MutationGateRegistry::global()),
@@ -142,8 +135,7 @@ impl IncrementalIndexer {
 
     pub fn new_with_mutation_gate_registry(
         workspace_root: PathBuf,
-        db: Arc<StdMutex<SymbolDatabase>>,
-        search_index: Option<Arc<julie_index::search::SearchIndex>>,
+        store: Arc<CheckoutStore>,
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
         mutation_gate_registry: Arc<MutationGateRegistry>,
@@ -162,9 +154,7 @@ impl IncrementalIndexer {
 
         Ok(Self {
             watcher: None,
-            db,
-            search_index,
-            store: None,
+            store,
             embedding_provider,
             lang_configs,
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
@@ -181,11 +171,6 @@ impl IncrementalIndexer {
             event_task: None,
             queue_task: None,
         })
-    }
-
-    pub fn with_store(mut self, store: Option<Arc<CheckoutStore>>) -> Self {
-        self.store = store;
-        self
     }
 
     /// Update the shared embedding provider after lazy initialization.
@@ -282,8 +267,7 @@ impl IncrementalIndexer {
         // Clone all the components needed for processing
         let cancel_flag_queue = self.cancel_flag.clone();
         let queue_runtime = runtime::QueueRuntime::new(
-            Arc::clone(&self.db),
-            self.search_index.as_ref().map(Arc::clone),
+            Arc::clone(&self.store),
             Arc::clone(&self.embedding_provider),
             Arc::clone(&self.lang_configs),
             Arc::clone(&self.index_queue),
@@ -296,8 +280,7 @@ impl IncrementalIndexer {
             Arc::clone(&self.tantivy_dirty),
             Arc::clone(&self.indexing_runtime),
             Arc::clone(&self.mutation_gate_registry),
-        )
-        .with_store(self.store.clone());
+        );
 
         let queue_handle = tokio::spawn(async move {
             use tokio::time::{Duration, interval};

@@ -17,7 +17,7 @@
 mod structural_facts_text_test {
     use tempfile::TempDir;
 
-    use crate::database::SymbolDatabase;
+    use crate::database::FactsStore;
     use crate::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
     use crate::database::types::FileInfo;
     use crate::extractors::{StructuralFact, Symbol, SymbolKind};
@@ -26,9 +26,9 @@ mod structural_facts_text_test {
     use crate::search::projection::collect_structural_facts_text_bounded;
     use crate::search::{SearchFilter, SearchIndex, SearchProjection};
 
-    fn make_db(dir: &TempDir) -> SymbolDatabase {
+    fn make_db(dir: &TempDir) -> FactsStore {
         let db_path = dir.path().join("symbols.db");
-        SymbolDatabase::new(&db_path).expect("create test db")
+        FactsStore::new(&db_path).expect("create test db")
     }
 
     fn make_index(dir: &TempDir) -> SearchIndex {
@@ -180,7 +180,7 @@ mod structural_facts_text_test {
     /// into the search index with DB-backed enrichment (the path that
     /// populates relationship_text + structural-facts text).
     fn seed_and_project(
-        db: &mut SymbolDatabase,
+        db: &mut FactsStore,
         index: &SearchIndex,
         file: FileInfo,
         symbols: Vec<Symbol>,
@@ -215,7 +215,7 @@ mod structural_facts_text_test {
     /// empty map — which makes the merge into `relationship_text` a no-op,
     /// preserving byte-identical search behavior for the no-facts case.
     fn facts_text_map(
-        db: &SymbolDatabase,
+        db: &FactsStore,
         symbol_ids: &[String],
     ) -> std::collections::HashMap<String, String> {
         collect_structural_facts_text_bounded(db, symbol_ids, 512)

@@ -7,7 +7,7 @@ license.workspace = true
 description = "Bottom leaf crate of the Julie workspace — shared types and infrastructure"
 
 [features]
-# Enable handler-free test helpers (db builders, open_test_connection, tempdir, cleanup).
+# Enable handler-free test helpers (tempdir, cleanup).
 # Automatically included when cfg(test); downstream consumers enable this feature explicitly.
 test-support = ["dep:tempfile"]
 
@@ -20,9 +20,6 @@ globset = "0.4.16"
 
 # Temp directories — for test_support::tempdir (optional; enabled by test-support feature)
 tempfile = { version = "3.13", optional = true }
-
-# Database
-rusqlite = { version = "0.39.0", features = ["bundled"] }
 
 # Error handling
 anyhow = "1.0"

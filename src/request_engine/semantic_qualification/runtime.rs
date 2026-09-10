@@ -98,9 +98,9 @@ pub fn validate_qualification_against_workspace(
     ready_encoder_key: Option<&str>,
     active_sidecar_sha: Option<&str>,
 ) -> Result<(), WorkspaceQualificationMismatch> {
-    if record.canonical_revision != current_canonical_rev {
+    if record.facts_revision != current_canonical_rev {
         return Err(WorkspaceQualificationMismatch::CanonicalRevisionMismatch {
-            record_rev: record.canonical_revision,
+            record_rev: record.facts_revision,
             workspace_rev: current_canonical_rev,
         });
     }

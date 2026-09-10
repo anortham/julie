@@ -1,4 +1,3 @@
-pub mod batch_resolver;
 pub mod embedding_metadata;
 pub mod embedding_metadata_enrichment;
 pub mod embedding_pipeline;
@@ -10,5 +9,3 @@ pub mod native_broker_replacement_challenge;
 pub mod native_challenge;
 pub mod native_provider;
 pub mod native_provider_challenges;
-pub mod receiver_type_resolution;
-pub mod web_edges;

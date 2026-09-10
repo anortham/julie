@@ -5,8 +5,6 @@ fn watcher_runtime_implementation_files_stay_within_limit() {
     for relative_path in [
         "src/watcher/runtime.rs",
         "src/watcher/runtime/processing.rs",
-        "src/watcher/runtime/repairs.rs",
-        "src/watcher/runtime/projection.rs",
     ] {
         assert_line_limit(relative_path, 500);
     }

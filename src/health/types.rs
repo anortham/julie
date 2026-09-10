@@ -53,7 +53,7 @@ pub struct ProjectionHealth {
     pub state: ProjectionState,
     pub freshness: ProjectionFreshness,
     pub workspace_id: Option<String>,
-    pub canonical_revision: Option<i64>,
+    pub facts_revision: Option<i64>,
     pub projected_revision: Option<i64>,
     pub revision_lag: Option<i64>,
     pub repair_needed: bool,

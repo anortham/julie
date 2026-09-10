@@ -1,6 +1,6 @@
 //! Tests for indexing and embedding pipeline fixes.
 
-use crate::database::SymbolDatabase;
+use crate::database::FactsStore;
 use crate::extractors::SymbolKind;
 use crate::tests::helpers::db::{
     file_info_builder, set_symbol_reference_scores, store_file_info_if_missing, symbol_builder,
@@ -8,10 +8,10 @@ use crate::tests::helpers::db::{
 use tempfile::TempDir;
 
 /// Helper: create a fresh test DB.
-fn create_test_db() -> (SymbolDatabase, TempDir) {
+fn create_test_db() -> (FactsStore, TempDir) {
     let dir = TempDir::new().unwrap();
     let db_path = dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let db = FactsStore::new(&db_path).unwrap();
     (db, dir)
 }
 
@@ -20,7 +20,7 @@ fn create_test_db() -> (SymbolDatabase, TempDir) {
 /// Inserts all non-nullable integer columns (`start_col`, `end_col`, `start_byte`,
 /// `end_byte`) so that `get_all_symbols()` (which SELECTs them as integers) doesn't
 /// fail with "Invalid column type Null".
-fn insert_test_symbol(db: &mut SymbolDatabase, id: &str, name: &str, file_path: &str) {
+fn insert_test_symbol(db: &mut FactsStore, id: &str, name: &str, file_path: &str) {
     store_file_info_if_missing(
         db,
         &file_info_builder(file_path)
@@ -53,8 +53,8 @@ fn test_clear_embeddings_on_separate_db_does_not_affect_other() {
     let primary_path = dir1.path().join("primary.db");
     let reference_path = dir2.path().join("reference.db");
 
-    let mut primary_db = SymbolDatabase::new(&primary_path).unwrap();
-    let mut reference_db = SymbolDatabase::new(&reference_path).unwrap();
+    let mut primary_db = FactsStore::new(&primary_path).unwrap();
+    let mut reference_db = FactsStore::new(&reference_path).unwrap();
 
     // Insert a symbol into each DB so store_embeddings has a valid FK target.
     insert_test_symbol(&mut primary_db, "sym_primary", "primary_fn", "src/main.rs");

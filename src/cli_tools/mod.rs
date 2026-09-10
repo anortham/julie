@@ -274,10 +274,7 @@ pub async fn run_signals_report(
         .current_workspace_id()
         .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-    let db_arc = handler.primary_database().await?;
-    let db = db_arc
-        .lock()
-        .map_err(|e| anyhow::anyhow!("Database lock: {e}"))?;
+    let snapshot = handler.primary_workspace_snapshot().await?.store.current();
 
     let options = crate::analysis::EarlyWarningReportOptions {
         workspace_id,
@@ -287,7 +284,7 @@ pub async fn run_signals_report(
     };
 
     let configs = crate::search::language_config::LanguageConfigs::load_embedded();
-    let report = crate::analysis::generate_early_warning_report(&db, &configs, options)?;
+    let report = crate::analysis::generate_early_warning_report(&snapshot, &configs, options)?;
 
     eprintln!("Elapsed: {:.2?}", start.elapsed());
     Ok(report)

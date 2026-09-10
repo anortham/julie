@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use julie_core::database::SymbolDatabase;
+use julie_core::database::FactsStore;
 use julie_core::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
 use julie_extractors::StructuralFact;
 use julie_extractors::{RelationshipKind, SymbolKind};
@@ -110,7 +110,7 @@ fn seeded_context() -> Result<(Seeded, FakeToolContext)> {
     ])?;
     let temp = TempDir::new()?;
     let db_path = temp.path().join("webnav.db");
-    let mut db = SymbolDatabase::new(&db_path)?;
+    let mut db = FactsStore::new(&db_path)?;
 
     let files = vec![
         file_info_builder("src/client.ts")
@@ -464,7 +464,7 @@ fn seeded_sql_context() -> Result<(Seeded, FakeToolContext)> {
     ])?;
     let temp = TempDir::new()?;
     let db_path = temp.path().join("webnavsql.db");
-    let mut db = SymbolDatabase::new(&db_path)?;
+    let mut db = FactsStore::new(&db_path)?;
 
     let files = vec![
         file_info_builder("schema/tables.sql")

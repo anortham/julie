@@ -133,9 +133,8 @@ impl ManageWorkspaceTool {
                         } else {
                             format!("{} changed files re-indexed.", result.files_processed)
                         };
-                        if let Some(canonical_revision) = result.canonical_revision {
-                            status
-                                .push_str(&format!(" Canonical revision: {}.", canonical_revision));
+                        if let Some(facts_revision) = result.facts_revision {
+                            status.push_str(&format!(" Canonical revision: {}.", facts_revision));
                         }
 
                         Ok(RefreshWorkspaceOutcome::Success(RefreshWorkspaceSuccess {

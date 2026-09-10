@@ -115,7 +115,7 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fast_search_reference_db_cache_tracks_primary_root_changes() -> Result<()> {
-    use crate::database::SymbolDatabase;
+    use crate::database::FactsStore;
     use crate::database::types::FileInfo;
 
     let temp_dir = TempDir::new()?;
@@ -137,7 +137,7 @@ async fn test_fast_search_reference_db_cache_tracks_primary_root_changes() -> Re
         .join("db")
         .join("symbols.db");
     fs::create_dir_all(first_db_path.parent().expect("first db parent"))?;
-    let mut first_db = SymbolDatabase::new(&first_db_path)?;
+    let mut first_db = FactsStore::new(&first_db_path)?;
     let first_file = FileInfo {
         path: "a.rs".to_string(),
         language: "rust".to_string(),
@@ -196,7 +196,7 @@ async fn test_fast_search_reference_db_cache_tracks_primary_root_changes() -> Re
         .join("db")
         .join("symbols.db");
     fs::create_dir_all(second_db_path.parent().expect("second db parent"))?;
-    let mut second_db = SymbolDatabase::new(&second_db_path)?;
+    let mut second_db = FactsStore::new(&second_db_path)?;
     let second_file = FileInfo {
         path: "b.rs".to_string(),
         language: "rust".to_string(),

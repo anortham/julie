@@ -3,9 +3,30 @@ use std::collections::HashMap;
 use anyhow::Result;
 use rusqlite::params;
 
-use crate::database::{HistorySummary, ToolCallSummary};
-
 use super::{DaemonDatabase, now_unix};
+
+/// Per-tool summary for a session or time window.
+#[derive(Default, Clone, serde::Serialize)]
+pub struct ToolCallSummary {
+    pub tool_name: String,
+    pub call_count: u64,
+    pub avg_duration_ms: f64,
+    pub total_input_bytes: u64,
+    pub total_source_bytes: u64,
+    pub total_output_bytes: u64,
+}
+
+/// Aggregated history across sessions.
+#[derive(Default, serde::Serialize)]
+pub struct HistorySummary {
+    pub session_count: u64,
+    pub total_calls: u64,
+    pub total_input_bytes: u64,
+    pub total_source_bytes: u64,
+    pub total_output_bytes: u64,
+    pub per_tool: Vec<ToolCallSummary>,
+    pub durations_by_tool: HashMap<String, Vec<f64>>,
+}
 
 impl DaemonDatabase {
     /// Insert one tool call record. `workspace_id` is the primary workspace for

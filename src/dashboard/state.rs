@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
-use julie_pipeline::indexing_core::web_edges::WEB_EDGES_PROJECTION_NAME;
 use serde::Serialize;
 use tokio::sync::broadcast;
 
@@ -369,7 +368,7 @@ impl DashboardState {
     }
 
     fn projection_health() -> Vec<ProjectionHealth> {
-        [TANTIVY_PROJECTION_NAME, WEB_EDGES_PROJECTION_NAME]
+        [TANTIVY_PROJECTION_NAME]
             .into_iter()
             .map(|name| ProjectionHealth {
                 name: name.to_string(),
@@ -377,7 +376,7 @@ impl DashboardState {
                 state: ProjectionState::Missing,
                 freshness: ProjectionFreshness::Unavailable,
                 workspace_id: None,
-                canonical_revision: None,
+                facts_revision: None,
                 projected_revision: None,
                 revision_lag: None,
                 repair_needed: false,

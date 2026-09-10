@@ -251,14 +251,7 @@ async fn initialize_recovering_store(
 ) -> Result<(), RequestFailure> {
     match handler.initialize_workspace_with_force(None, false).await {
         Ok(()) => {
-            let store_missing = handler
-                .get_workspace()
-                .await
-                .ok()
-                .flatten()
-                .and_then(|ws| ws.store)
-                .is_none();
-            if !store_missing {
+            if handler.get_workspace().await.ok().flatten().is_some() {
                 return Ok(());
             }
             let _ = delete_store_dir(&store_dir(index_root));

@@ -71,43 +71,6 @@ impl julie_context::ToolContext for IsolatedStorageHandler {
     fn session_id(&self) -> &str {
         julie_context::ToolContext::session_id(&self.handler)
     }
-    async fn primary_pooled_database(
-        &self,
-    ) -> anyhow::Result<julie_core::database::SymbolDatabase> {
-        self.handler.primary_pooled_database().await
-    }
-    async fn primary_pooled_database_and_search_index(
-        &self,
-    ) -> anyhow::Result<(
-        julie_core::database::SymbolDatabase,
-        Arc<julie_index::search::SearchIndex>,
-    )> {
-        self.handler
-            .primary_pooled_database_and_search_index()
-            .await
-    }
-    async fn get_pooled_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> anyhow::Result<julie_core::database::SymbolDatabase> {
-        self.handler
-            .get_pooled_database_for_workspace(workspace_id)
-            .await
-    }
-    async fn get_database_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> anyhow::Result<Arc<std::sync::Mutex<julie_core::database::SymbolDatabase>>> {
-        self.handler.get_database_for_workspace(workspace_id).await
-    }
-    async fn get_search_index_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> anyhow::Result<Option<Arc<julie_index::search::SearchIndex>>> {
-        self.handler
-            .get_search_index_for_workspace(workspace_id)
-            .await
-    }
     async fn get_workspace_root_for_target(&self, workspace_id: &str) -> anyhow::Result<PathBuf> {
         self.handler
             .get_workspace_root_for_target(workspace_id)

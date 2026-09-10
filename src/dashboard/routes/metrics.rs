@@ -9,7 +9,7 @@ use tera::Context;
 
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
-use crate::database::{HistorySummary, ToolCallSummary};
+use crate::registry::database::{HistorySummary, ToolCallSummary};
 
 #[derive(Deserialize)]
 pub struct MetricsParams {

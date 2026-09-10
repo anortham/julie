@@ -28,16 +28,8 @@ pub async fn checkpoint_active_workspace_wal(
             return Err(err);
         }
     };
-    let db_arc = primary_snapshot.database;
-
-    tokio::task::spawn_blocking(move || -> Result<Option<(i32, i32, i32)>> {
-        let mut db = db_arc.try_lock().map_err(|e| {
-            anyhow::anyhow!("Could not acquire database lock for checkpoint: {}", e)
-        })?;
-        Ok(Some(db.checkpoint_wal()?))
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("Failed to join checkpoint task: {}", e))?
+    let _ = primary_snapshot;
+    Ok(None)
 }
 
 /// Check if the workspace needs indexing by examining database state
@@ -218,9 +210,10 @@ async fn reconcile_projection_lag_if_needed(
     guard: &MutationGuard<'_>,
     handler: &JulieServerHandler,
 ) -> Result<()> {
-    let Some(store) = handler.get_workspace().await?.and_then(|ws| ws.store) else {
+    let Some(ws) = handler.get_workspace().await? else {
         return Ok(());
     };
+    let store = ws.store;
     if store.rebuild_tantivy_if_needed(guard)? {
         info!("Tantivy rebuilt from facts after startup catch-up");
     }

@@ -15,8 +15,7 @@ pub struct ExtractedBatch {
     /// Flattened ordered/nested generic type-argument rows (Miller bridge
     /// Phase 2), accumulated per file from each result's `TypeArgumentUsage`
     /// trees. Borrowed by `canonical_write_set()` for persistence.
-    pub(crate) all_type_argument_rows:
-        Vec<julie_core::database::bulk::type_arguments::TypeArgumentRow>,
+    pub(crate) all_type_argument_rows: Vec<julie_facts::rows::FlatTypeArgument>,
     /// String-literal call-args captured at carrier sites (Miller bridge Phase
     /// 3). Already carrier-classified-and-gated by the time the batch leaves
     /// `extract_files_for_indexing_with_records` (non-carrier literals dropped).
@@ -25,7 +24,7 @@ pub struct ExtractedBatch {
     pub all_source_regions: Vec<SourceRegion>,
     pub all_structural_facts: Vec<StructuralFact>,
     pub all_complexity_metrics: Vec<ComplexityMetric>,
-    pub all_file_infos: Vec<julie_core::database::FileInfo>,
+    pub all_file_infos: Vec<crate::indexing_core::file_info::FileInfo>,
     pub parse_diagnostics_by_file: Vec<(String, Vec<ParseDiagnostic>)>,
     pub files_to_clean: Vec<String>,
     pub repair_entries: Vec<(String, String)>,
@@ -33,30 +32,6 @@ pub struct ExtractedBatch {
 }
 
 impl ExtractedBatch {
-    /// Borrow this batch's canonical collections as a single
-    /// [`CanonicalWriteSet`](julie_core::database::bulk::atomic::CanonicalWriteSet).
-    ///
-    /// This is the single batch-to-write-set mapping point for every
-    /// production indexing path (live pipeline + external-extract CLI). When a
-    /// new canonical collection is added to both `ExtractedBatch` and
-    /// `CanonicalWriteSet`, this constructor fails to compile until the new
-    /// field is wired — which is the whole point of the parameter object (plan
-    /// cross-cutting Rule 3): no production path can silently drop the new data.
-    pub fn canonical_write_set(&self) -> julie_core::database::bulk::atomic::CanonicalWriteSet<'_> {
-        julie_core::database::bulk::atomic::CanonicalWriteSet {
-            files: &self.all_file_infos,
-            symbols: &self.all_symbols,
-            relationships: &self.all_relationships,
-            identifiers: &self.all_identifiers,
-            types: &self.all_types,
-            type_arguments: &self.all_type_argument_rows,
-            literals: &self.all_literals,
-            source_regions: &self.all_source_regions,
-            structural_facts: &self.all_structural_facts,
-            complexity_metrics: &self.all_complexity_metrics,
-        }
-    }
-
     pub fn new() -> Self {
         Self {
             all_symbols: Vec::new(),
@@ -96,8 +71,13 @@ impl ExtractedBatch {
             .retain(|id| keep_paths.contains(&id.file_path));
         self.all_types
             .retain(|t| retained_symbol_ids.contains(&t.symbol_id));
+        let retained_identifier_ids: std::collections::HashSet<String> = self
+            .all_identifiers
+            .iter()
+            .map(|id| id.id.clone())
+            .collect();
         self.all_type_argument_rows
-            .retain(|ta| keep_paths.contains(&ta.file_path));
+            .retain(|ta| retained_identifier_ids.contains(&ta.identifier_id));
         self.all_literals
             .retain(|lit| keep_paths.contains(&lit.file_path));
         self.all_source_regions

@@ -50,7 +50,7 @@ pub struct NativeQualificationRecord {
     /// Git commit SHA or revision identifier of the qualified corpus.
     pub corpus_commit: String,
     /// SQLite database canonical symbol revision.
-    pub canonical_revision: i64,
+    pub facts_revision: i64,
     /// Vector generation source revision.
     pub vector_revision: i64,
     /// Count of symbols eligible for semantic vector embedding in the corpus.
@@ -130,7 +130,7 @@ pub enum QualificationValidationError {
     #[error("corpus_commit must not be empty")]
     EmptyCorpusCommit,
 
-    #[error("revision mismatch: canonical_revision ({canonical}) != vector_revision ({vector})")]
+    #[error("revision mismatch: facts_revision ({canonical}) != vector_revision ({vector})")]
     RevisionMismatch { canonical: i64, vector: i64 },
 
     #[error("incomplete vector coverage: {embedded} embedded of {eligible} eligible symbols")]
@@ -155,7 +155,7 @@ pub enum QualificationValidationError {
 /// 7. `device` must not be empty.
 /// 8. Device and accelerator consistency: CPU cannot claim acceleration or verified GPU lane.
 /// 9. `corpus_commit` must not be empty.
-/// 10. Revisions must match: `canonical_revision == vector_revision`.
+/// 10. Revisions must match: `facts_revision == vector_revision`.
 /// 11. Vector coverage must be complete: `embedded_symbols >= eligible_symbols`.
 /// 12. `timestamp` must parse as a valid RFC 3339 date-time.
 pub fn validate_native_qualification(
@@ -292,16 +292,16 @@ pub fn validate_native_qualification(
         return Err(QualificationValidationError::EmptyCorpusCommit);
     }
 
-    if record.canonical_revision < 0 || record.vector_revision < 0 {
+    if record.facts_revision < 0 || record.vector_revision < 0 {
         return Err(QualificationValidationError::NegativeRevision {
-            canonical: record.canonical_revision,
+            canonical: record.facts_revision,
             vector: record.vector_revision,
         });
     }
 
-    if record.canonical_revision != record.vector_revision {
+    if record.facts_revision != record.vector_revision {
         return Err(QualificationValidationError::RevisionMismatch {
-            canonical: record.canonical_revision,
+            canonical: record.facts_revision,
             vector: record.vector_revision,
         });
     }

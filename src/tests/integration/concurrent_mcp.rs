@@ -27,7 +27,7 @@
 //!      and actually contend for the gate.
 //!   6. **Explicit `workspace_id` routing** instead of `"primary"`. The
 //!      `"primary"` short-form falls through `handler.primary_database()`
-//!      which still uses the legacy `Arc<Mutex<SymbolDatabase>>`, bypassing
+//!      which still uses the legacy `Arc<Mutex<FactsStore>>`, bypassing
 //!      the very connection-pool surface this test exists to cover. Routing
 //!      by id forces the pooled `get_pooled_database_for_workspace` path.
 //!   7. **DB post-condition for the real mutation**: poll for
@@ -290,7 +290,7 @@ mod tests {
             });
         }
         // FastSearch is the most-used primary tool path. Pre-fix it locked
-        // the legacy `Arc<Mutex<SymbolDatabase>>` for the full search body
+        // the legacy `Arc<Mutex<FactsStore>>` for the full search body
         // (`text_search.rs` primary branch), so this task would wedge under a
         // held legacy mutex. Post-fix it acquires a pooled connection via
         // `primary_pooled_database_and_search_index` and must finish.
