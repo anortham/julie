@@ -5,4 +5,5 @@ mod durable_roots;
 mod http_api;
 mod mcp_http;
 mod process;
+mod semantic_child;
 mod shim;

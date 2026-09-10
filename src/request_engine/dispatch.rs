@@ -35,6 +35,7 @@ impl RequestEngine {
         runtimes: Arc<RuntimeFactory>,
         semantic_runtime: Arc<dyn SemanticRuntime>,
     ) -> Self {
+        runtimes.set_semantic_runtime(Arc::clone(&semantic_runtime));
         Self {
             catalog: ToolCatalog::new(),
             bindings,

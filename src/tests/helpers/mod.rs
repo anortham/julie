@@ -1,5 +1,6 @@
 pub mod cleanup;
 pub mod env;
+pub mod fake_sidecar;
 pub mod mcp;
 pub mod snapshot;
 pub mod tempdir;

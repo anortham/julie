@@ -522,10 +522,10 @@ Copy the `FAKE_SIDECAR` script from Task 1 into a new helper `src/tests/helpers/
 **Step 5.** Commit: `feat(service): share one embedding child across every checkout`.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run --lib tests::service::semantic_child` passes (2 tests).
-- [ ] `cargo nextest run --lib tests::integration::native_semantic_lifecycle` passes.
-- [ ] `JulieWorkspace::initialize_embedding_provider` is deleted; `fast_refs(symbol="create_embedding_provider")` shows exactly one product caller (`acquire_in_process_embedding_provider`).
-- [ ] With `JULIE_EMBEDDING_PROVIDER=none`, indexing and searching never call `create_embedding_provider` (the lexical test proves it through the child state).
+- [x] `cargo nextest run --lib tests::service::semantic_child` passes (2 tests).
+- [x] `cargo nextest run --lib tests::integration::native_semantic_lifecycle` passes.
+- [x] `JulieWorkspace::initialize_embedding_provider` is deleted; `fast_refs(symbol="create_embedding_provider")` shows exactly one product caller (`acquire_in_process_embedding_provider`).
+- [x] With `JULIE_EMBEDDING_PROVIDER=none`, indexing and searching never call `create_embedding_provider` (the lexical test proves it through the child state).
 
 ---
 

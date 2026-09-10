@@ -5,6 +5,7 @@
 //! checkout store.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tracing::{debug, info, warn};
 
@@ -58,88 +59,14 @@ pub(crate) async fn spawn_workspace_embedding(
     handler: &JulieServerHandler,
     workspace_id: String,
 ) -> EmbeddingOutcome {
-    let provider = if let Some(p) = handler.embedding_provider().await {
-        p
-    } else {
-        // Provider not yet initialized. Do it now (deferred from workspace init
-        // to avoid blocking symbol extraction and Tantivy indexing).
-        let existing_runtime_status = handler.embedding_runtime_status().await;
-        if let Some(runtime_status) = existing_runtime_status {
-            let retryable = runtime_status
-                .degraded_reason
-                .as_deref()
-                .map_or(false, |r| {
-                    r.contains("timeout") || r.contains("unavailable") || r.contains("starting")
-                });
-            if !retryable {
-                debug!(
-                    resolved_backend = %runtime_status.resolved_backend.as_str(),
-                    accelerated = runtime_status.accelerated,
-                    degraded_reason = runtime_status.degraded_reason.as_deref().unwrap_or("none"),
-                    "Embedding runtime already settled without a provider in stdio mode; skipping workspace embedding retry"
-                );
-                return EmbeddingOutcome::skipped();
-            }
-        }
-
-        info!("Initializing embedding provider (deferred from workspace startup)...");
-
-        let (workspace_identity_root, workspace_for_init) = {
-            let ws_guard = handler.workspace.read().await;
-            match ws_guard.as_ref() {
-                Some(ws) => (ws.root.clone(), ws.clone()),
-                None => return EmbeddingOutcome::skipped(),
-            }
-        };
-
-        // Run heavy provider initialization off runtime worker threads.
-        let init_result = tokio::task::spawn_blocking(move || {
-            let mut workspace = workspace_for_init;
-            workspace.initialize_embedding_provider();
-            (
-                workspace.embedding_provider.clone(),
-                workspace.embedding_runtime_status.clone(),
-            )
-        })
-        .await;
-
-        let (initialized_provider, initialized_runtime_status) = match init_result {
-            Ok(result) => result,
-            Err(e) => {
-                warn!("Embedding provider init task panicked: {e}");
-                return EmbeddingOutcome::skipped();
-            }
-        };
-
-        // Publish initialized state with short write-lock scope.
-        let mut ws_guard = handler.workspace.write().await;
-        let ws = match ws_guard.as_mut() {
-            Some(ws) => ws,
-            None => return EmbeddingOutcome::skipped(),
-        };
-
-        if ws.root != workspace_identity_root {
-            debug!(
-                expected_workspace_root = %workspace_identity_root.display(),
-                active_workspace_root = %ws.root.display(),
-                "Discarding stale embedding init result after workspace switch"
-            );
-        } else if ws.embedding_provider.is_none() {
-            ws.embedding_provider = initialized_provider.clone();
-            ws.embedding_runtime_status = initialized_runtime_status;
-            // Propagate to file watcher so incremental updates use the new provider
-            if let Some(ref watcher) = ws.watcher {
-                watcher.update_embedding_provider(ws.embedding_provider.clone());
-            }
-        }
-
-        match ws.embedding_provider.clone() {
-            Some(provider) => provider,
-            None => {
-                debug!("Embedding provider unavailable after init, skipping workspace embedding");
-                return EmbeddingOutcome::skipped();
-            }
-        }
+    if julie_pipeline::embeddings::init::embeddings_disabled_by_env() {
+        return EmbeddingOutcome::skipped();
+    }
+    let Some(provider) = handler
+        .acquire_embedding_provider(Duration::from_secs(30))
+        .await
+    else {
+        return EmbeddingOutcome::skipped();
     };
 
     let root = match handler.get_workspace_root_for_target(&workspace_id).await {

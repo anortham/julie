@@ -1,7 +1,6 @@
 //! Integration tests for Milestone N4: Native Semantic Runtime Lifecycle and Dynamic Recovery.
 
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 
 use serde_json::json;
@@ -10,8 +9,8 @@ use tokio_util::sync::CancellationToken;
 use crate::handler::embedding_init::take_nl_definition_embedding_init_attempts;
 use crate::paths::RegistryPaths;
 use crate::request_engine::semantic::{
-    CURRENT_EMBEDDING_FORMAT_VERSION, DefaultSemanticRuntime, RuntimeProviderState, SemanticMode,
-    SemanticReadiness, SemanticRequirement, SemanticRuntime, semantic_mode_needs_provider,
+    DefaultSemanticRuntime, RuntimeProviderState, SemanticMode, SemanticReadiness,
+    SemanticRequirement, SemanticRuntime, semantic_mode_needs_provider,
 };
 use crate::request_engine::types::WorkspaceBinding;
 use crate::request_engine::{
@@ -19,13 +18,53 @@ use crate::request_engine::{
 };
 use crate::tests::helpers::env::EnvVarGuard;
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
-use crate::tests::semantic_request_contract::MockReadyProvider;
-use julie_core::database::FactsStore;
-use julie_core::embeddings_contract::EmbeddingProvider;
-use julie_pipeline::embeddings::native::launch::find_and_hash_sidecar_binary;
+use julie_core::embeddings_contract::{DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity};
+use julie_facts::{FactsStore, Opened};
+
+fn open_facts(path: &std::path::Path) -> FactsStore {
+    match FactsStore::open(path).expect("open facts") {
+        Opened::Ready(store) => store,
+        Opened::VersionMismatch { .. } => panic!("facts version mismatch"),
+    }
+}
+
+fn setup_facts_db(db_path: &std::path::Path) -> rusqlite::Connection {
+    let _store = open_facts(db_path);
+    let conn = rusqlite::Connection::open(db_path).expect("open raw db");
+    conn.execute(
+        "INSERT INTO blobs (hash, language, extractor_version, byte_len) VALUES ('feedbeef', 'rust', '1.0', 100)",
+        [],
+    ).expect("insert blob");
+    conn.execute(
+        "INSERT INTO paths (path, blob_hash, language) VALUES ('src/lib.rs', 'feedbeef', 'rust')",
+        [],
+    ).expect("insert path");
+    conn.execute(
+        "INSERT INTO symbols (blob_hash, ordinal, name, kind, start_line, start_col, end_line, end_col, start_byte, end_byte, annotations)
+         VALUES ('feedbeef', 0, 'probe', 'function', 1, 0, 1, 10, 0, 10, '[]')",
+        [],
+    ).expect("insert symbol");
+    conn
+}
+
+fn set_facts_encoder(conn: &rusqlite::Connection, id: &str, dims: u32) {
+    conn.execute("DELETE FROM encoder", []).expect("delete encoder");
+    conn.execute(
+        "INSERT INTO encoder (id, model_checksum, dimensions, pooling, normalization, instruction_policy)
+         VALUES (?1, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', ?2, 'cls', 'l2', 'v1')",
+        rusqlite::params![id, dims],
+    ).expect("insert encoder");
+}
+
+fn insert_facts_vector(conn: &rusqlite::Connection, encoder_id: &str, dims: usize) {
+    let vec_bytes: Vec<u8> = vec![0.1_f32; dims].iter().flat_map(|v| v.to_le_bytes()).collect();
+    conn.execute(
+        "INSERT OR REPLACE INTO vectors (blob_hash, symbol_ordinal, encoder_id, vector) VALUES ('feedbeef', 0, ?1, ?2)",
+        rusqlite::params![encoder_id, vec_bytes],
+    ).expect("insert vector");
+}
 
 // ============================================================================
-
 // 1. Pure Unit Anchor
 // ============================================================================
 
@@ -40,22 +79,59 @@ fn semantic_off_requires_no_provider() {
 // 2. Integration Anchor Helpers
 // ============================================================================
 
-/// Owns a spawned mock broker and kills it on drop, including on panic.
-#[cfg(unix)]
-fn expected_mock_sidecar_identity() -> julie_core::embeddings_contract::EncoderIdentity {
-    julie_core::embeddings_contract::EncoderIdentity {
-        schema: 1,
-        model_id: "bge-small-en-v1.5-f32".to_string(),
-        weights_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-            .to_string(),
-        dimensions: 384,
-        pooling: "cls".to_string(),
-        normalization: "l2".to_string(),
-        instruction_policy: "v1".to_string(),
-        text_format: 1,
-        runtime_build: "llama.cpp-b3560".to_string(),
+#[derive(Debug, Default)]
+struct MockReadyProvider {
+    pub call_count: std::sync::atomic::AtomicUsize,
+    pub dimensions: usize,
+    pub model_name: String,
+    pub device: String,
+}
+
+impl MockReadyProvider {
+    pub fn new(model_name: &str, dimensions: usize) -> Self {
+        Self {
+            call_count: std::sync::atomic::AtomicUsize::new(0),
+            dimensions,
+            model_name: model_name.to_string(),
+            device: "cpu".to_string(),
+        }
     }
 }
+
+impl EmbeddingProvider for MockReadyProvider {
+    fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> anyhow::Result<Vec<f32>> {
+        self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(vec![0.1_f32; self.dimensions])
+    }
+
+    fn embed_batch(
+        &self,
+        texts: &[String],
+        _budget: &EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<Vec<f32>>> {
+        self.call_count.fetch_add(texts.len(), std::sync::atomic::Ordering::SeqCst);
+        Ok(vec![vec![0.1_f32; self.dimensions]; texts.len()])
+    }
+
+    fn dimensions(&self) -> usize {
+        self.dimensions
+    }
+
+    fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+        Ok(EncoderIdentity::mock(&self.model_name, self.dimensions))
+    }
+
+    fn device_info(&self) -> DeviceInfo {
+        DeviceInfo {
+            runtime: "mock".to_string(),
+            device: self.device.clone(),
+            model_name: self.model_name.clone(),
+            dimensions: self.dimensions,
+        }
+    }
+}
+
+
 
 #[cfg(unix)]
 fn compile_mock_sidecar(dir: &std::path::Path) -> std::path::PathBuf {
@@ -145,7 +221,6 @@ fn main() {
 #[tokio::test]
 #[serial_test::serial(embedding_env)]
 async fn native_semantics_becomes_ready_without_client_restart() {
-    // 1. Setup isolated directories and paths
     let temp_repo = tempfile::tempdir().expect("temp repo dir");
     let root = make_isolated_workspace_root(temp_repo.path(), "native_recovery_ws");
     let temp_home = tempfile::tempdir().expect("temp home dir");
@@ -162,12 +237,10 @@ async fn native_semantics_becomes_ready_without_client_restart() {
     env.set("JULIE_EMBEDDING_CACHE_DIR", &cache_dir);
     env.set("REQUIRE_BARRIER", "1");
 
-    // Seed workspace source files
     let src_dir = root.join("src");
     std::fs::create_dir_all(&src_dir).expect("create src dir");
     std::fs::write(src_dir.join("lib.rs"), "pub fn recovery_probe() {}\n").expect("write file");
 
-    // 2. Initialize long-running RequestEngine
     let semantic_runtime = Arc::new(DefaultSemanticRuntime::from_registry_paths(
         registry_paths.clone(),
     ));
@@ -179,44 +252,20 @@ async fn native_semantics_becomes_ready_without_client_restart() {
         semantic_runtime,
     );
 
-    // Warm up runtime factory so the workspace binding is registered
     let dummy_ctx = RequestContext::new(
         RequestOrigin::Cli,
         Some(Duration::from_secs(30)),
         CancellationToken::new(),
     );
-    let binding = engine
-        .bindings
-        .resolve(None, None, false)
-        .unwrap()
-        .expect("workspace binding resolved");
-    let _ = runtime_factory
-        .acquire(Some(&binding), &dummy_ctx)
-        .await
-        .unwrap();
+    let req_index = ToolRequest::new(
+        "manage_workspace",
+        json!({ "operation": "index", "path": root.to_string_lossy() })
+            .as_object()
+            .unwrap()
+            .clone(),
+    );
+    let _ = engine.execute(req_index, dummy_ctx).await.unwrap();
 
-    let db_path = binding.index_root.join("db/symbols.db");
-
-    // Initialize symbols in symbols.db
-    {
-        let mut db = FactsStore::new(&db_path).expect("open db");
-        let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
-            .language("rust")
-            .hash("feedbeef")
-            .size(100)
-            .last_modified(0)
-            .last_indexed(0)
-            .build();
-        crate::tests::helpers::db::store_file_info_if_missing(&mut db, &file)
-            .expect("store file info");
-        let sym =
-            crate::tests::helpers::db::symbol_builder("sym_1", "recovery_probe", "src/lib.rs")
-                .build();
-        db.store_symbols(&[sym]).expect("store symbols");
-    }
-
-    // 3. Step 1: Initial request with Auto semantics while broker is NOT yet available.
-    // Broker socket does not exist yet -> should gracefully degrade to keyword-only search.
     let req_auto = ToolRequest::new(
         "fast_search",
         json!({ "query": "recovery_probe" })
@@ -237,17 +286,11 @@ async fn native_semantics_becomes_ready_without_client_restart() {
 
     assert!(
         reply_auto.readiness.status.starts_with("degraded"),
-        "expected degraded status while broker unavailable, got: {}",
+        "expected degraded status while sidecar unavailable, got: {}",
         reply_auto.readiness.status
-    );
-    assert_eq!(
-        reply_auto.readiness.coverage,
-        Some("missing".to_string()),
-        "expected coverage to be 'missing' while degraded"
     );
     assert_eq!(reply_auto.readiness.mode, SemanticMode::Auto);
 
-    // Also verify zero-overhead Off mode
     let req_off = ToolRequest::new(
         "fast_search",
         json!({ "query": "recovery_probe" })
@@ -268,33 +311,41 @@ async fn native_semantics_becomes_ready_without_client_restart() {
     assert_eq!(reply_off.readiness.status, "disabled");
     assert_eq!(reply_off.readiness.mode, SemanticMode::Off);
 
-    // 4. Step 2: Release sidecar barrier by creating barrier file.
+    // Release barrier so sidecar child will succeed
     let barrier_file = cache_dir.join("barrier");
     std::fs::write(&barrier_file, "ready").expect("write barrier");
 
-    // 5. Step 3: Populate compatible SQLite embedding generation & vectors.
-    {
-        let mut db = FactsStore::new(&db_path).expect("open db");
-        let expected_key = expected_mock_sidecar_identity()
-            .storage_key()
-            .expect("storage key");
-        let rev = db
-            .get_latest_facts_revision_number()
-            .expect("canonical rev")
-            .unwrap_or(0);
-        let gen_id = db
-            .begin_embedding_generation(&expected_key, rev, 384)
-            .expect("begin generation");
-        assert!(gen_id > 0);
-        db.store_embeddings_for_generation(gen_id, &[("sym_1".to_string(), vec![0.1; 384])])
-            .expect("store embedding");
-        db.publish_embedding_generation(gen_id, rev, 1, 1)
-            .expect("publish generation");
-    }
+    // Populate vectors in facts.sqlite matching the sidecar's expected identity
+    let binding = engine
+        .bindings
+        .resolve(None, None, false)
+        .unwrap()
+        .expect("workspace binding resolved");
+    let db_path = binding.index_root.join(julie_index::checkout_store::FACTS_FILE);
+    let expected_identity = EncoderIdentity {
+        schema: 1,
+        model_id: "bge-small-en-v1.5-f32".to_string(),
+        weights_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+        dimensions: 384,
+        pooling: "cls".to_string(),
+        normalization: "l2".to_string(),
+        instruction_policy: "v1".to_string(),
+        text_format: 1,
+        runtime_build: "llama.cpp-b3560".to_string(),
+    };
+    let expected_key = expected_identity.storage_key().expect("storage key");
+    let conn = rusqlite::Connection::open(&db_path).expect("open facts db");
+    set_facts_encoder(&conn, &expected_key, 384);
+    let blob_hash: String = conn
+        .query_row("SELECT blob_hash FROM paths LIMIT 1", [], |r| r.get(0))
+        .expect("get indexed blob hash");
+    let vec_bytes: Vec<u8> = vec![0.1_f32; 384].iter().flat_map(|v| v.to_le_bytes()).collect();
+    conn.execute(
+        "INSERT OR REPLACE INTO vectors (blob_hash, symbol_ordinal, encoder_id, vector) VALUES (?1, 0, ?2, ?3)",
+        rusqlite::params![blob_hash, expected_key, vec_bytes],
+    ).expect("insert vector");
 
-    // 6. Step 4: Second request with Required semantics in the SAME session.
-    // The runtime dynamically re-probes, attaches to the live host socket,
-    // verifies generation readiness, and transitions to Ready without client restart.
+    // Second request with Required semantics in the SAME session
     let req_required = ToolRequest::new(
         "fast_search",
         json!({ "query": "recovery_probe" })
@@ -311,7 +362,7 @@ async fn native_semantics_becomes_ready_without_client_restart() {
     let reply_required = engine
         .execute(req_required, ctx2)
         .await
-        .expect("required semantics must now succeed after dynamic broker recovery");
+        .expect("required semantics must now succeed after dynamic recovery");
 
     assert_eq!(
         reply_required.readiness.status, "ready",
@@ -321,11 +372,6 @@ async fn native_semantics_becomes_ready_without_client_restart() {
         reply_required.readiness.mode,
         SemanticMode::Required,
         "expected mode to be Required"
-    );
-    assert_eq!(
-        reply_required.readiness.coverage,
-        Some("full".to_string()),
-        "expected coverage to be 'full' after recovery"
     );
 }
 
@@ -353,35 +399,24 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
     env.set("JULIE_EMBEDDING_CACHE_DIR", &cache_dir);
 
     let index_root = temp_home.path().join("indexes/ws1");
-    std::fs::create_dir_all(index_root.join("db")).expect("create db dir");
-    let db_path = index_root.join("db/symbols.db");
+    std::fs::create_dir_all(&index_root).expect("create index dir");
+    let db_path = index_root.join(julie_index::checkout_store::FACTS_FILE);
     {
-        let mut db = FactsStore::new(&db_path).expect("open db");
-        let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
-            .language("rust")
-            .hash("feedbeef")
-            .size(100)
-            .last_modified(0)
-            .last_indexed(0)
-            .build();
-        crate::tests::helpers::db::store_file_info_if_missing(&mut db, &file)
-            .expect("store file info");
-        let sym = crate::tests::helpers::db::symbol_builder("sym_1", "probe", "src/lib.rs").build();
-        db.store_symbols(&[sym]).expect("store symbols");
-        let expected_key = expected_mock_sidecar_identity()
-            .storage_key()
-            .expect("storage key");
-        let rev = db
-            .get_latest_facts_revision_number()
-            .expect("canonical rev")
-            .unwrap_or(0);
-        let gen_id = db
-            .begin_embedding_generation(&expected_key, rev, 384)
-            .expect("begin gen");
-        db.store_embeddings_for_generation(gen_id, &[("sym_1".to_string(), vec![0.1; 384])])
-            .expect("store emb");
-        db.publish_embedding_generation(gen_id, rev, 1, 1)
-            .expect("publish gen");
+        let expected_identity = EncoderIdentity {
+            schema: 1,
+            model_id: "bge-small-en-v1.5-f32".to_string(),
+            weights_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+            dimensions: 384,
+            pooling: "cls".to_string(),
+            normalization: "l2".to_string(),
+            instruction_policy: "v1".to_string(),
+            text_format: 1,
+            runtime_build: "llama.cpp-b3560".to_string(),
+        };
+        let expected_key = expected_identity.storage_key().expect("storage key");
+        let conn = setup_facts_db(&db_path);
+        set_facts_encoder(&conn, &expected_key, 384);
+        insert_facts_vector(&conn, &expected_key, 384);
     }
 
     let binding = WorkspaceBinding {
@@ -478,8 +513,8 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
     let temp_repo = tempfile::tempdir().expect("temp repo dir");
     let root = make_isolated_workspace_root(temp_repo.path(), "challenge_fail_closed_ws");
     let index_root = temp_repo.path().join("indexes/ws2");
-    std::fs::create_dir_all(index_root.join("db")).expect("create db dir");
-    let db_path = index_root.join("db/symbols.db");
+    std::fs::create_dir_all(&index_root).expect("create index dir");
+    let db_path = index_root.join(julie_index::checkout_store::FACTS_FILE);
 
     let binding = WorkspaceBinding {
         workspace_id: "ws2".to_string(),
@@ -506,10 +541,24 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
     assert_eq!(err_missing.code, "SEMANTICS_NOT_READY");
     assert_eq!(err_missing.details["coverage"], "missing");
 
-    // Case 1: DB exists with default config (bge-small-en-v1.5) incompatible with provider (bge-small-en-v1.5-f32)
-    {
-        let _db = FactsStore::new(&db_path).expect("open db");
-    }
+    // Case 1: DB exists with symbols, but no encoder row
+    let conn = setup_facts_db(&db_path);
+    let res_no_encoder = runtime
+        .ensure_ready(
+            &binding,
+            SemanticRequirement::QueryAndSymbols,
+            SemanticMode::Required,
+            deadline,
+            &cancel,
+        )
+        .await;
+    let err_no_encoder =
+        res_no_encoder.expect_err("must fail closed when symbols exist but no encoder");
+    assert_eq!(err_no_encoder.code, "SEMANTICS_NOT_READY");
+    assert_eq!(err_no_encoder.details["coverage"], "missing");
+
+    // Case 2: Encoder row exists with incompatible model/dimensions
+    set_facts_encoder(&conn, "other-model", 384);
     let res_incompatible = runtime
         .ensure_ready(
             &binding,
@@ -520,39 +569,15 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
         )
         .await;
     let err_incompatible =
-        res_incompatible.expect_err("must fail closed when model name is incompatible");
+        res_incompatible.expect_err("must fail closed when model is incompatible");
     assert_eq!(err_incompatible.code, "SEMANTICS_NOT_READY");
     assert_eq!(err_incompatible.details["coverage"], "incompatible");
 
-    // Case 1b: Symbols exist and config matches, but 0 generations recorded
-    let (expected_key, rev) = {
-        let mut db = FactsStore::new(&db_path).expect("open db");
-        let file = crate::tests::helpers::db::file_info_builder("src/lib.rs")
-            .language("rust")
-            .hash("feedbeef")
-            .size(100)
-            .last_modified(0)
-            .last_indexed(0)
-            .build();
-        crate::tests::helpers::db::store_file_info_if_missing(&mut db, &file)
-            .expect("store file info");
-        let sym = crate::tests::helpers::db::symbol_builder("sym_1", "probe", "src/lib.rs").build();
-        db.store_symbols(&[sym]).expect("store symbols");
-
-        let expected_key = mock_provider
-            .encoder_identity()
-            .and_then(|id| id.storage_key())
-            .expect("storage key");
-        let rev = db
-            .get_latest_facts_revision_number()
-            .expect("canonical rev")
-            .unwrap_or(0);
-        db.set_embedding_config(&expected_key, 384, CURRENT_EMBEDDING_FORMAT_VERSION)
-            .expect("align config");
-        (expected_key, rev)
-    };
-
-    let res_no_gen = runtime
+    // Case 3: Encoder row matches, but 0 vectors stored
+    let expected_identity = mock_provider.encoder_identity().expect("encoder identity");
+    let expected_key = expected_identity.storage_key().expect("storage key");
+    set_facts_encoder(&conn, &expected_key, 384);
+    let res_no_vectors = runtime
         .ensure_ready(
             &binding,
             SemanticRequirement::QueryAndSymbols,
@@ -561,35 +586,12 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
             &cancel,
         )
         .await;
-    let err_no_gen = res_no_gen.expect_err("must fail closed when 0 generations recorded");
-    assert_eq!(err_no_gen.code, "SEMANTICS_NOT_READY");
-    assert_eq!(err_no_gen.details["coverage"], "missing");
+    let err_no_vectors =
+        res_no_vectors.expect_err("must fail closed when symbols exist but 0 vectors");
+    assert_eq!(err_no_vectors.code, "SEMANTICS_NOT_READY");
+    assert_eq!(err_no_vectors.details["coverage"], "missing");
 
-    // Case 2: Tables exist, symbols exist, but generation is building
-    let gen_id = {
-        let mut db = FactsStore::new(&db_path).expect("open db");
-        let gen_id = db
-            .begin_embedding_generation(&expected_key, rev, 384)
-            .expect("begin gen");
-        db.store_embeddings_for_generation(gen_id, &[("sym_1".to_string(), vec![0.1; 384])])
-            .expect("store emb");
-        gen_id
-    };
-
-    let res_building = runtime
-        .ensure_ready(
-            &binding,
-            SemanticRequirement::QueryAndSymbols,
-            SemanticMode::Required,
-            deadline,
-            &cancel,
-        )
-        .await;
-    let err_building = res_building.expect_err("must fail closed when generation is building");
-    assert_eq!(err_building.code, "SEMANTICS_NOT_READY");
-    assert_eq!(err_building.details["coverage"], "building");
-
-    // In Auto mode, building should report Degraded { reason: "GENERATION_BUILDING", retryable: true }
+    // In Auto mode, 0 vectors should report Degraded { reason: "VECTORS_MISSING", retryable: true }
     let res_auto = runtime
         .ensure_ready(
             &binding,
@@ -600,14 +602,10 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
         )
         .await
         .expect("auto mode succeeds degraded");
-    assert_eq!(res_auto.reason(), Some("GENERATION_BUILDING"));
+    assert_eq!(res_auto.reason(), Some("VECTORS_MISSING"));
 
-    // Case 3: Publish generation -> Required mode now succeeds!
-    {
-        let mut db = FactsStore::new(&db_path).expect("open db");
-        db.publish_embedding_generation(gen_id, rev, 1, 1)
-            .expect("publish gen");
-    }
+    // Case 4: Store vectors -> Required mode now succeeds!
+    insert_facts_vector(&conn, &expected_key, 384);
 
     let res_ready = runtime
         .ensure_ready(
@@ -618,104 +616,19 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
             &cancel,
         )
         .await
-        .expect("must succeed after publish");
+        .expect("must succeed after vectors stored");
     assert!(res_ready.is_ready());
     if let SemanticReadiness::Ready {
-        vector_generation,
         eligible_symbols,
         embedded_symbols,
         ..
     } = res_ready
     {
-        assert_eq!(vector_generation, Some(gen_id));
         assert_eq!(eligible_symbols, 1);
         assert_eq!(embedded_symbols, 1);
     } else {
         panic!("expected Ready variant");
     }
-
-    // Case 4: format_version == 1 fails closed (coverage: stale)
-    {
-        let conn = rusqlite::Connection::open(&db_path).expect("open db raw");
-        conn.execute(
-            "UPDATE embedding_config SET format_version = 1 WHERE id = 1",
-            [],
-        )
-        .expect("set format 1");
-    }
-    let err_fmt = runtime
-        .ensure_ready(
-            &binding,
-            SemanticRequirement::QueryAndSymbols,
-            SemanticMode::Required,
-            deadline,
-            &cancel,
-        )
-        .await
-        .expect_err("must fail closed when format_version == 1");
-    assert_eq!(err_fmt.code, "SEMANTICS_NOT_READY");
-    assert_eq!(err_fmt.details["coverage"], "stale");
-    {
-        let conn = rusqlite::Connection::open(&db_path).expect("open db raw");
-        conn.execute(
-            "UPDATE embedding_config SET format_version = ?1 WHERE id = 1",
-            rusqlite::params![CURRENT_EMBEDDING_FORMAT_VERSION],
-        )
-        .expect("restore format");
-    }
-
-    // Case 5: embedded_symbols < eligible_symbols fails closed (coverage: incomplete)
-    {
-        let conn = rusqlite::Connection::open(&db_path).expect("open db raw");
-        conn.execute(
-            "UPDATE embedding_generations SET embedded_symbols = 0 WHERE id = ?1",
-            rusqlite::params![gen_id],
-        )
-        .expect("set incomplete");
-    }
-    let err_inc = runtime
-        .ensure_ready(
-            &binding,
-            SemanticRequirement::QueryAndSymbols,
-            SemanticMode::Required,
-            deadline,
-            &cancel,
-        )
-        .await
-        .expect_err("must fail closed when embedded < eligible");
-    assert_eq!(err_inc.code, "SEMANTICS_NOT_READY");
-    assert_eq!(err_inc.details["coverage"], "incomplete");
-    {
-        let conn = rusqlite::Connection::open(&db_path).expect("open db raw");
-        conn.execute(
-            "UPDATE embedding_generations SET embedded_symbols = 1 WHERE id = ?1",
-            rusqlite::params![gen_id],
-        )
-        .expect("restore complete");
-    }
-
-    // Case 6: gen_source_revision < facts_revisions.revision fails closed (coverage: stale)
-    {
-        let conn = rusqlite::Connection::open(&db_path).expect("open db raw");
-        conn.execute(
-            "INSERT INTO facts_revisions (revision, workspace_id, kind, created_at)
-             VALUES (999, 'ws2', 'incremental', 123456789)",
-            [],
-        )
-        .expect("insert advanced rev");
-    }
-    let err_stale_rev = runtime
-        .ensure_ready(
-            &binding,
-            SemanticRequirement::QueryAndSymbols,
-            SemanticMode::Required,
-            deadline,
-            &cancel,
-        )
-        .await
-        .expect_err("must fail closed when generation is stale");
-    assert_eq!(err_stale_rev.code, "SEMANTICS_NOT_READY");
-    assert_eq!(err_stale_rev.details["coverage"], "stale");
 }
 
 #[tokio::test]

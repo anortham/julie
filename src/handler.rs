@@ -176,6 +176,9 @@ pub struct JulieServerHandler {
         Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>,
     /// When true, semantics are explicitly disabled for the current request context.
     pub(crate) semantics_disabled: Arc<std::sync::atomic::AtomicBool>,
+    /// Shared semantic runtime managing embedding providers and readiness across checkouts.
+    pub(crate) semantic_runtime:
+        Arc<std::sync::RwLock<Arc<dyn crate::request_engine::semantic::SemanticRuntime>>>,
 
     /// Index root override for in-process sessions.  When `Some`, the
     /// non-pool branch of `initialize_workspace_with_force` routes db/tantivy
@@ -319,6 +322,9 @@ impl JulieServerHandler {
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            semantic_runtime: Arc::new(std::sync::RwLock::new(Arc::new(
+                crate::request_engine::semantic::NoopSemanticRuntime,
+            ))),
             in_process_index_root: None,
 
             #[cfg(test)]
@@ -410,6 +416,9 @@ impl JulieServerHandler {
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            semantic_runtime: Arc::new(std::sync::RwLock::new(Arc::new(
+                crate::request_engine::semantic::NoopSemanticRuntime,
+            ))),
             in_process_index_root: None,
 
             #[cfg(test)]
@@ -492,6 +501,9 @@ impl JulieServerHandler {
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
             semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            semantic_runtime: Arc::new(std::sync::RwLock::new(Arc::new(
+                crate::request_engine::semantic::NoopSemanticRuntime,
+            ))),
             in_process_index_root: None,
 
             #[cfg(test)]
@@ -692,7 +704,7 @@ impl JulieServerHandler {
         self.current_workspace_root()
     }
 
-    /// Get the embedding provider, preferring daemon shared service over per-workspace.
+    /// Get the active embedding provider from the injected provider or shared semantic runtime.
     pub(crate) async fn embedding_provider(
         &self,
     ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
@@ -708,9 +720,67 @@ impl JulieServerHandler {
                 return Some(Arc::clone(p));
             }
         }
-        // Per-workspace provider
-        let ws = self.workspace.read().await;
-        ws.as_ref().and_then(|ws| ws.embedding_provider.clone())
+        self.semantic_runtime().provider()
+    }
+
+    /// Access the shared semantic runtime.
+    pub fn semantic_runtime(&self) -> Arc<dyn crate::request_engine::semantic::SemanticRuntime> {
+        self.semantic_runtime.read().unwrap().clone()
+    }
+
+    /// Update the shared semantic runtime.
+    pub fn set_semantic_runtime(
+        &self,
+        runtime: Arc<dyn crate::request_engine::semantic::SemanticRuntime>,
+    ) {
+        if let Ok(mut guard) = self.semantic_runtime.write() {
+            *guard = runtime;
+        }
+    }
+
+    /// Acquire the embedding provider through the shared semantic runtime, waiting up to `timeout`.
+    pub async fn acquire_embedding_provider(
+        &self,
+        timeout: Duration,
+    ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
+        if let Some(provider) = self.embedding_provider().await {
+            return Some(provider);
+        }
+        let root = self.current_workspace_root();
+        let id = self.current_workspace_id().unwrap_or_else(|| {
+            crate::workspace::registry::generate_workspace_id(&root.to_string_lossy())
+                .unwrap_or_default()
+        });
+        let index_root = self.in_process_index_root.clone().unwrap_or_else(|| {
+            crate::paths::RegistryPaths::default().workspace_index_dir(&id)
+        });
+        let binding = crate::request_engine::types::WorkspaceBinding {
+            workspace_id: id,
+            root,
+            index_root,
+        };
+        let deadline = tokio::time::Instant::now() + timeout;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let _ = self
+            .semantic_runtime()
+            .ensure_ready(
+                &binding,
+                crate::request_engine::semantic::SemanticRequirement::Query,
+                crate::request_engine::semantic::SemanticMode::Auto,
+                deadline,
+                &cancel,
+            )
+            .await;
+        let provider = self.semantic_runtime().provider();
+        if let Some(ref p) = provider {
+            let ws_guard = self.workspace.read().await;
+            if let Some(ref ws) = *ws_guard {
+                if let Some(ref watcher) = ws.watcher {
+                    watcher.update_embedding_provider(Some(Arc::clone(p)));
+                }
+            }
+        }
+        provider
     }
 
     /// Dynamically inject or clear the in-process embedding provider.

@@ -63,8 +63,14 @@ impl ServiceApp {
         })
     }
 
+    /// Returns a reference to the HTTP application state.
     pub fn state(&self) -> &http::AppState {
         &self.state
+    }
+
+    /// Returns a reference to the service request engine.
+    pub fn engine(&self) -> &Arc<RequestEngine> {
+        &self.state.engine
     }
 
     pub async fn serve(self, listener: tokio::net::TcpListener) -> anyhow::Result<()> {

@@ -305,4 +305,10 @@ pub trait EmbeddingProvider: Send + Sync {
     fn wait_for_exit(&self, _timeout: Duration) -> bool {
         true
     }
+
+    /// Returns the OS process ID of the active sidecar child, if running.
+    fn child_pid(&self) -> Option<u32> {
+        None
+    }
 }
+

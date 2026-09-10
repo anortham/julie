@@ -150,7 +150,6 @@ pub mod integration {
     pub mod lock_contention; // Lock contention regression tests
     #[cfg(any())]
     pub mod native_semantic_acceptance;
-    #[cfg(any())]
     pub mod native_semantic_lifecycle;
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts

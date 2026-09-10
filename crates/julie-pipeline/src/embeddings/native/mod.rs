@@ -181,4 +181,9 @@ impl EmbeddingProvider for NativeEmbeddingProvider {
             c.shutdown();
         }
     }
+
+    fn child_pid(&self) -> Option<u32> {
+        self.child_pid()
+    }
 }
+

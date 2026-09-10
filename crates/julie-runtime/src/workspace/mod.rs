@@ -611,25 +611,6 @@ impl JulieWorkspace {
         Ok(())
     }
 
-    /// Initialize the embedding provider (best-effort).
-    ///
-    /// This is called lazily by the embedding pipeline after indexing completes,
-    /// NOT during workspace initialization. Cold starts (venv bootstrap, pip
-    /// install, model download) can take 30-60s — deferring this lets keyword
-    /// search and navigation become available immediately.
-    ///
-    /// If initialization fails, `embedding_provider` stays `None` and keyword
-    /// search continues to work without embeddings.
-    pub fn initialize_embedding_provider(&mut self) {
-        let (provider, runtime_status) = julie_pipeline::embeddings::create_embedding_provider();
-        self.embedding_provider = provider.clone();
-        self.embedding_runtime_status = runtime_status;
-        // Propagate to file watcher so incremental updates use the new provider
-        if let Some(ref watcher) = self.watcher {
-            watcher.update_embedding_provider(provider);
-        }
-    }
-
     /// Start file watching if initialized.
     ///
     /// `should_watch` lets callers skip the OS notify watcher (for example,

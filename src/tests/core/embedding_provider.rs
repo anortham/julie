@@ -281,16 +281,8 @@ mod tests {
         env.set("JULIE_EMBEDDING_PROVIDER", "definitely-not-valid");
         env.set("JULIE_SKIP_SEARCH_INDEX", "1");
 
-        let temp_dir = TempDir::new().unwrap();
-        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
-            .await
-            .unwrap();
-        workspace.initialize_embedding_provider();
-
-        let status = workspace
-            .embedding_runtime_status
-            .as_ref()
-            .expect("runtime status should be captured");
+        let (_provider, status) = create_embedding_provider();
+        let status = status.expect("runtime status should be captured");
 
         assert!(matches!(
             status.requested_backend,
@@ -306,18 +298,14 @@ mod tests {
         let mut env = EnvVarGuard::new();
         env.set("JULIE_SKIP_SEARCH_INDEX", "1");
 
-        let temp_dir = TempDir::new().unwrap();
-        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
-            .await
-            .unwrap();
-        workspace.initialize_embedding_provider();
+        let (provider, status) = create_embedding_provider();
 
         assert!(
-            workspace.embedding_provider.is_none(),
+            provider.is_none(),
             "Embedding provider should be None when disabled"
         );
         assert!(
-            workspace.embedding_runtime_status.is_none(),
+            status.is_none(),
             "Runtime status should be None when explicitly disabled"
         );
     }

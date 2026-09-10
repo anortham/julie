@@ -49,15 +49,24 @@ pub struct RuntimeFactory {
     runtimes: Arc<RwLock<HashMap<RuntimeKey, Arc<RequestRuntime>>>>,
     unbound_runtime: Arc<RwLock<Option<Arc<RequestRuntime>>>>,
     template_handler: Option<Arc<JulieServerHandler>>,
+    semantic_runtime:
+        Arc<std::sync::RwLock<Arc<dyn crate::request_engine::semantic::SemanticRuntime>>>,
 }
 
 impl RuntimeFactory {
     pub fn new(registry_paths: RegistryPaths) -> Self {
+        let semantic_runtime: Arc<dyn crate::request_engine::semantic::SemanticRuntime> =
+            Arc::new(
+                crate::request_engine::semantic::DefaultSemanticRuntime::from_registry_paths(
+                    registry_paths.clone(),
+                ),
+            );
         Self {
             registry_paths,
             runtimes: Arc::new(RwLock::new(HashMap::new())),
             unbound_runtime: Arc::new(RwLock::new(None)),
             template_handler: None,
+            semantic_runtime: Arc::new(std::sync::RwLock::new(semantic_runtime)),
         }
     }
 
@@ -79,11 +88,13 @@ impl RuntimeFactory {
         let runtime = Arc::new(RequestRuntime::new(Arc::clone(&handler), binding));
         let mut map = HashMap::new();
         map.insert(key, Arc::clone(&runtime));
+        let semantic_runtime = handler.semantic_runtime();
         Self {
             registry_paths,
             runtimes: Arc::new(RwLock::new(map)),
             unbound_runtime: Arc::new(RwLock::new(None)),
             template_handler: Some(Arc::clone(&handler)),
+            semantic_runtime: Arc::new(std::sync::RwLock::new(semantic_runtime)),
         }
     }
 
@@ -93,6 +104,22 @@ impl RuntimeFactory {
 
     pub fn template_handler(&self) -> Option<&Arc<JulieServerHandler>> {
         self.template_handler.as_ref()
+    }
+
+    pub fn semantic_runtime(&self) -> Arc<dyn crate::request_engine::semantic::SemanticRuntime> {
+        self.semantic_runtime.read().unwrap().clone()
+    }
+
+    pub fn set_semantic_runtime(
+        &self,
+        runtime: Arc<dyn crate::request_engine::semantic::SemanticRuntime>,
+    ) {
+        if let Ok(mut guard) = self.semantic_runtime.write() {
+            *guard = Arc::clone(&runtime);
+        }
+        if let Some(ref template) = self.template_handler {
+            template.set_semantic_runtime(runtime);
+        }
     }
 
     pub async fn acquire(
@@ -203,6 +230,9 @@ impl RuntimeFactory {
             handler.session_metrics = Arc::clone(&th.session_metrics);
         }
 
+        handler.set_semantic_runtime(self.semantic_runtime());
+        handler.set_injected_embedding_provider(handler.semantic_runtime().provider());
+
         initialize_recovering_store(&handler, &binding.index_root).await?;
 
         crate::startup::run_primary_workspace_repair(&handler)
@@ -232,7 +262,7 @@ impl RuntimeFactory {
         let daemon_db = DaemonDatabase::open(&self.registry_paths.registry_db())
             .ok()
             .map(Arc::new);
-        let handler = JulieServerHandler::new_in_process_with_daemon_db(
+        let mut handler = JulieServerHandler::new_in_process_with_daemon_db(
             startup_hint,
             None,
             index_root,
@@ -240,6 +270,9 @@ impl RuntimeFactory {
         )
         .await
         .map_err(|e| RequestFailure::internal(format!("Failed to build unbound handler: {e}")))?;
+
+        handler.set_semantic_runtime(self.semantic_runtime());
+        handler.set_injected_embedding_provider(handler.semantic_runtime().provider());
 
         Ok(Arc::new(RequestRuntime::new(Arc::new(handler), None)))
     }

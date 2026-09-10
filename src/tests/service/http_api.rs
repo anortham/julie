@@ -6,6 +6,7 @@ pub(crate) struct Running {
     pub paths: RegistryPaths,
     pub base: String,
     pub token: String,
+    pub engine: std::sync::Arc<crate::request_engine::RequestEngine>,
     _home: tempfile::TempDir,
     task: tokio::task::JoinHandle<anyhow::Result<()>>,
 }
@@ -19,6 +20,7 @@ impl Running {
             registry_paths: paths.clone(),
         })
         .unwrap();
+        let engine = app.engine().clone();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let task = tokio::spawn(app.serve(listener));
@@ -28,12 +30,36 @@ impl Running {
             paths,
             base: format!("http://127.0.0.1:{port}"),
             token: record.token,
+            engine,
             _home: home,
             task,
         }
     }
     pub(crate) fn client(&self) -> reqwest::Client {
         reqwest::Client::new()
+    }
+    pub(crate) fn engine(&self) -> &std::sync::Arc<crate::request_engine::RequestEngine> {
+        &self.engine
+    }
+    pub(crate) async fn api(&self, tool: &str, params: serde_json::Value) -> reqwest::Response {
+        self.client()
+            .post(format!("{}/api/{}", self.base, tool))
+            .bearer_auth(&self.token)
+            .json(&params)
+            .send()
+            .await
+            .unwrap()
+    }
+    pub(crate) async fn status(&self) -> serde_json::Value {
+        self.client()
+            .get(format!("{}/status", self.base))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
     }
     pub(crate) async fn finished(self) -> anyhow::Result<()> {
         self.task.await.unwrap()

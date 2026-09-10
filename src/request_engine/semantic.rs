@@ -186,7 +186,13 @@ pub trait SemanticRuntime: Send + Sync {
 
     /// Invalidate the current provider cache and mark runtime as Degraded.
     async fn invalidate_provider(&self, _reason: &str) {}
+
+    /// Returns the OS process ID of the active sidecar child, if running.
+    fn child_pid(&self) -> Option<u32> {
+        None
+    }
 }
+
 
 /// Default no-op semantic runtime used for testing or disabled configurations.
 #[derive(Debug, Clone, Default)]
@@ -263,6 +269,11 @@ impl DefaultSemanticRuntime {
     pub fn provider(&self) -> Option<Arc<dyn EmbeddingProvider>> {
         self.provider_cache.try_read().ok().and_then(|g| g.clone())
     }
+
+    pub fn child_pid(&self) -> Option<u32> {
+        self.provider().and_then(|p| p.child_pid())
+    }
+
 
     pub async fn runtime_state(&self) -> RuntimeProviderState {
         self.state.read().await.clone()
@@ -492,4 +503,9 @@ impl SemanticRuntime for DefaultSemanticRuntime {
     async fn invalidate_provider(&self, reason: &str) {
         self.invalidate_provider(reason).await;
     }
+
+    fn child_pid(&self) -> Option<u32> {
+        self.child_pid()
+    }
 }
+
