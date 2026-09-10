@@ -1,27 +1,69 @@
 //! Data gathering for deep_dive tool
 //!
-//! Collects symbol context from SQLite: relationships, children, types.
-//! All queries use existing indexed data — no new indexing required.
+//! Collects symbol context from the snapshot: graph neighbors, children,
+//! implementations, the checkout text for bodies, and one facts query for
+//! complexity.
 
 pub mod graph;
-pub mod lookup;
 pub mod similarity;
 pub mod types;
+
+use std::collections::HashMap;
 
 use anyhow::Result;
 use tracing::debug;
 
 use julie_core::Symbol;
-use julie_core::database::SymbolDatabase;
-use julie_core::shared::NOISE_CALLEE_NAMES;
-use julie_extractors::{Relationship, RelationshipKind, SymbolKind};
+use julie_extractors::{RelationshipKind, SymbolKind};
+use julie_index::graph::SymbolId;
+use julie_index::snapshot::Snapshot;
 
-use self::graph::{build_test_refs, enrich_refs, merge_identifier_refs};
 use self::similarity::build_similar;
+use crate::snapshot_rows::{symbol_from_row, to_symbol};
 
-// Public re-exports
-pub use self::lookup::find_symbol;
 pub use self::types::{RefEntry, SimilarEntry, SymbolContext};
+pub use crate::navigation::resolution::find_symbols as find_symbol;
+
+type FileTexts = HashMap<String, Option<String>>;
+
+fn file_text<'a>(
+    snapshot: &Snapshot,
+    texts: &'a mut FileTexts,
+    path: &str,
+) -> Result<Option<&'a str>> {
+    if !texts.contains_key(path) {
+        texts.insert(path.to_string(), snapshot.file_text(path)?);
+    }
+    Ok(texts[path].as_deref())
+}
+
+fn attach_bodies(snapshot: &Snapshot, texts: &mut FileTexts, refs: &mut [RefEntry]) -> Result<()> {
+    for symbol in refs.iter_mut().filter_map(|entry| entry.symbol.as_mut()) {
+        let body = file_text(snapshot, texts, &symbol.file_path)?.and_then(|text| {
+            text.get(symbol.start_byte as usize..symbol.end_byte as usize)
+                .map(str::to_string)
+        });
+        symbol.code_context = body;
+    }
+    Ok(())
+}
+
+fn calls(refs: &[RefEntry]) -> usize {
+    refs.iter()
+        .filter(|entry| matches!(entry.kind, RelationshipKind::Calls))
+        .count()
+}
+
+fn sorted_symbols(graph: &julie_index::graph::Graph, ids: Vec<SymbolId>) -> Vec<Symbol> {
+    let mut ids = ids;
+    ids.sort_by(|a, b| {
+        let (a, b) = (graph.symbol(*a), graph.symbol(*b));
+        a.path
+            .cmp(&b.path)
+            .then(a.span.start_line.cmp(&b.span.start_line))
+    });
+    ids.into_iter().map(|id| to_symbol(graph, id)).collect()
+}
 
 /// Build full context for a symbol.
 ///
@@ -30,99 +72,41 @@ pub use self::types::{RefEntry, SimilarEntry, SymbolContext};
 /// - "context": primary symbol body (30 lines)
 /// - "full": primary symbol body (100 lines) + ref bodies
 pub fn build_symbol_context(
-    db: &SymbolDatabase,
-    symbol: &Symbol,
+    snapshot: &Snapshot,
+    id: SymbolId,
     depth: &str,
     incoming_cap: usize,
     outgoing_cap: usize,
 ) -> Result<SymbolContext> {
-    build_symbol_context_with_semantics(db, symbol, depth, incoming_cap, outgoing_cap, true)
+    build_symbol_context_with_semantics(snapshot, id, depth, incoming_cap, outgoing_cap, true)
 }
 
 pub fn build_symbol_context_with_semantics(
-    db: &SymbolDatabase,
-    symbol: &Symbol,
+    snapshot: &Snapshot,
+    id: SymbolId,
     depth: &str,
     incoming_cap: usize,
     outgoing_cap: usize,
     allow_similarity: bool,
 ) -> Result<SymbolContext> {
-    let symbol_ids = vec![symbol.id.clone()];
-    let needs_body_enrichment = depth != "overview";
+    let graph = snapshot.graph();
+    let row = graph.symbol(id);
+    let mut texts = FileTexts::new();
 
-    // === Incoming references (who references this symbol) ===
-    let raw_incoming = db.get_relationships_to_symbols(&symbol_ids)?;
-    let incoming_total = raw_incoming.len();
-    let incoming_calls_total = raw_incoming
-        .iter()
-        .filter(|rel| matches!(rel.kind, RelationshipKind::Calls))
-        .count();
+    let mut incoming = graph::incoming_refs(graph, id);
+    let incoming_total = incoming.len();
+    let incoming_calls_total = calls(&incoming);
+    incoming.truncate(incoming_cap);
 
-    let incoming_rels: Vec<&Relationship> = raw_incoming.iter().take(incoming_cap).collect();
-    let mut incoming: Vec<RefEntry> = incoming_rels
-        .iter()
-        .map(|rel| RefEntry {
-            kind: rel.kind.clone(),
-            file_path: rel.file_path.clone(),
-            line_number: rel.line_number,
-            symbol: None,
-        })
-        .collect();
+    let mut outgoing = graph::outgoing_refs(graph, id);
+    let outgoing_total = outgoing.len();
+    let outgoing_calls_total = calls(&outgoing);
+    outgoing.truncate(outgoing_cap);
 
-    // Always enrich refs — symbol names are useful at every depth level
-    {
-        let symbol_ids: Vec<String> = incoming_rels
-            .iter()
-            .map(|rel| rel.from_symbol_id.clone())
-            .collect();
-        enrich_refs(db, &mut incoming, &symbol_ids)?;
+    if depth == "full" {
+        attach_bodies(snapshot, &mut texts, &mut incoming)?;
+        attach_bodies(snapshot, &mut texts, &mut outgoing)?;
     }
-
-    // === Outgoing references (what this symbol calls/uses) ===
-    let raw_outgoing = db.get_outgoing_relationships(&symbol.id)?;
-    let outgoing_total = raw_outgoing.len();
-    let outgoing_calls_total = raw_outgoing
-        .iter()
-        .filter(|rel| matches!(rel.kind, RelationshipKind::Calls))
-        .count();
-
-    let outgoing_rels: Vec<&Relationship> = raw_outgoing.iter().take(outgoing_cap).collect();
-    let mut outgoing: Vec<RefEntry> = outgoing_rels
-        .iter()
-        .map(|rel| RefEntry {
-            kind: rel.kind.clone(),
-            file_path: rel.file_path.clone(),
-            line_number: rel.line_number,
-            symbol: None,
-        })
-        .collect();
-
-    {
-        let symbol_ids: Vec<String> = outgoing_rels
-            .iter()
-            .map(|rel| rel.to_symbol_id.clone())
-            .collect();
-        enrich_refs(db, &mut outgoing, &symbol_ids)?;
-    }
-
-    // Filter noise callees — common names like `new`, `len`, `from` that
-    // resolve to wrong symbols because they're too ambiguous
-    let pre_filter_len = outgoing.len();
-    outgoing.retain(|r| {
-        let name = r.symbol.as_ref().map(|s| s.name.as_str()).unwrap_or("");
-        !NOISE_CALLEE_NAMES.contains(&name)
-    });
-    let outgoing_total = outgoing_total.saturating_sub(pre_filter_len - outgoing.len());
-
-    // === Identifier fallback: catch refs that relationships miss ===
-    let (incoming, incoming_total, incoming_calls_total) = merge_identifier_refs(
-        db,
-        symbol,
-        incoming,
-        incoming_total,
-        incoming_calls_total,
-        incoming_cap,
-    )?;
 
     debug!(
         "deep_dive: {} incoming (of {}), {} outgoing (of {})",
@@ -132,40 +116,38 @@ pub fn build_symbol_context_with_semantics(
         outgoing_total
     );
 
-    // === Children (methods, fields for struct/class/trait/enum/module) ===
-    let children = if is_container_kind(&symbol.kind) {
-        db.get_children_by_parent_id(&symbol.id)?
+    let children = if is_container_kind(&row.kind) {
+        sorted_symbols(graph, graph.children(id).collect())
     } else {
         vec![]
     };
 
-    // === Implementations (for trait/interface) ===
-    let implementations = if matches!(symbol.kind, SymbolKind::Interface | SymbolKind::Trait) {
-        db.find_type_implementations(&symbol.name, Some(&symbol.language))
-            .unwrap_or_default()
+    let implementations = if matches!(row.kind, SymbolKind::Interface | SymbolKind::Trait) {
+        sorted_symbols(graph, graph.implementations(id).collect())
     } else {
         vec![]
     };
 
-    // === Primary symbol enrichment (code_context at context/full) ===
-    let symbol = if needs_body_enrichment && symbol.code_context.is_none() {
-        db.get_symbol_by_id(&symbol.id)?
-            .unwrap_or_else(|| symbol.clone())
+    let symbol = if depth == "overview" {
+        to_symbol(graph, id)
     } else {
-        symbol.clone()
+        symbol_from_row(row, file_text(snapshot, &mut texts, &row.path)?)
     };
-    let complexity = db.get_complexity_metric_for_symbol(&symbol.id)?;
+    let complexity = snapshot
+        .facts()?
+        .reader()
+        .complexity_for_symbol(&row.id)?
+        .into_iter()
+        .next();
 
-    // === Test locations (context and full depth) ===
     let test_refs = if depth == "full" || depth == "context" {
-        build_test_refs(db, &symbol)?
+        graph::test_refs(graph, id)
     } else {
         vec![]
     };
 
-    // === Semantically similar symbols (context and full depth) ===
     let similar = if allow_similarity && (depth == "full" || depth == "context") {
-        build_similar(db, &symbol)?
+        build_similar(snapshot)
     } else {
         vec![]
     };

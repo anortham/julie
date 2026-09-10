@@ -1,54 +1,24 @@
 use super::*;
 
-// === build_symbol_context tests ===
+const ENGINE: &str = "pub fn process() {}\n";
+const MAIN_CALLING_PROCESS_AT_LINE_8: &str =
+    "fn main() {\n    let ready = true;\n    let _ = ready;\n    process();\n}\n";
 
 #[test]
 fn test_build_context_with_incoming_relationships() {
-    let (_tmp, mut db) = setup_db();
+    let (_dir, fixture) = fixture(&[
+        ("src/engine.rs", ENGINE),
+        ("src/main.rs", &at_line(5, MAIN_CALLING_PROCESS_AT_LINE_8)),
+    ]);
+    let snapshot = fixture.snapshot();
+    let target = only(&snapshot, "process");
 
-    let symbols = vec![
-        make_symbol(
-            "sym-target",
-            "process",
-            SymbolKind::Function,
-            "src/engine.rs",
-            10,
-            None,
-            None,
-            None,
-            None,
-        ),
-        make_symbol(
-            "sym-caller",
-            "main",
-            SymbolKind::Function,
-            "src/main.rs",
-            5,
-            None,
-            Some("fn main()"),
-            None,
-            None,
-        ),
-    ];
-    db.store_symbols(&symbols).unwrap();
-
-    let rels = vec![make_rel(
-        "rel-1",
-        "sym-caller",
-        "sym-target",
-        RelationshipKind::Calls,
-        "src/main.rs",
-        8,
-    )];
-    db.store_relationships(&rels).unwrap();
-
-    let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+    let ctx = build_symbol_context(&snapshot, target, "overview", 10, 10).unwrap();
 
     assert_eq!(ctx.incoming.len(), 1);
     assert_eq!(ctx.incoming_total, 1);
     assert_eq!(ctx.incoming[0].file_path, "src/main.rs");
     assert_eq!(ctx.incoming[0].line_number, 8);
-    // Overview depth: still enriched (name is always useful)
     assert!(
         ctx.incoming[0].symbol.is_some(),
         "overview should still enrich refs for symbol names"
@@ -58,48 +28,16 @@ fn test_build_context_with_incoming_relationships() {
 
 #[test]
 fn test_build_context_enriches_at_context_depth() {
-    let (_tmp, mut db) = setup_db();
+    let (_dir, fixture) = fixture(&[
+        ("src/engine.rs", ENGINE),
+        ("src/main.rs", &at_line(5, MAIN_CALLING_PROCESS_AT_LINE_8)),
+    ]);
+    let snapshot = fixture.snapshot();
+    let target = only(&snapshot, "process");
 
-    let symbols = vec![
-        make_symbol(
-            "sym-target",
-            "process",
-            SymbolKind::Function,
-            "src/engine.rs",
-            10,
-            None,
-            None,
-            None,
-            None,
-        ),
-        make_symbol(
-            "sym-caller",
-            "main",
-            SymbolKind::Function,
-            "src/main.rs",
-            5,
-            None,
-            Some("fn main()"),
-            None,
-            Some("fn main() { process(); }"),
-        ),
-    ];
-    db.store_symbols(&symbols).unwrap();
-
-    let rels = vec![make_rel(
-        "rel-1",
-        "sym-caller",
-        "sym-target",
-        RelationshipKind::Calls,
-        "src/main.rs",
-        8,
-    )];
-    db.store_relationships(&rels).unwrap();
-
-    let ctx = build_symbol_context(&db, &symbols[0], "context", 15, 15).unwrap();
+    let ctx = build_symbol_context(&snapshot, target, "context", 15, 15).unwrap();
 
     assert_eq!(ctx.incoming.len(), 1);
-    // Context depth: should enrich with symbol data
     assert!(
         ctx.incoming[0].symbol.is_some(),
         "context depth should enrich refs"
@@ -111,45 +49,14 @@ fn test_build_context_enriches_at_context_depth() {
 
 #[test]
 fn test_build_context_with_outgoing_relationships() {
-    let (_tmp, mut db) = setup_db();
-
-    let symbols = vec![
-        make_symbol(
-            "sym-source",
-            "process",
-            SymbolKind::Function,
-            "src/engine.rs",
-            10,
-            None,
-            None,
-            None,
-            None,
-        ),
-        make_symbol(
-            "sym-callee",
-            "validate",
-            SymbolKind::Function,
-            "src/engine.rs",
-            50,
-            None,
-            Some("fn validate()"),
-            None,
-            None,
-        ),
-    ];
-    db.store_symbols(&symbols).unwrap();
-
-    let rels = vec![make_rel(
-        "rel-1",
-        "sym-source",
-        "sym-callee",
-        RelationshipKind::Calls,
+    let (_dir, fixture) = fixture(&[(
         "src/engine.rs",
-        15,
-    )];
-    db.store_relationships(&rels).unwrap();
+        "pub fn process() {\n    validate();\n}\n\nfn validate() {}\n",
+    )]);
+    let snapshot = fixture.snapshot();
+    let source = only(&snapshot, "process");
 
-    let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+    let ctx = build_symbol_context(&snapshot, source, "overview", 10, 10).unwrap();
 
     assert_eq!(ctx.outgoing.len(), 1);
     assert_eq!(ctx.outgoing_total, 1);
@@ -158,71 +65,27 @@ fn test_build_context_with_outgoing_relationships() {
 
 #[test]
 fn test_build_context_with_children() {
-    let (_tmp, mut db) = setup_db();
+    let (_dir, fixture) = fixture(&[(
+        "src/engine.rs",
+        "pub trait UserService {\n    fn users(&self);\n    fn get_user(&self);\n}\n",
+    )]);
+    let snapshot = fixture.snapshot();
+    let parent = only(&snapshot, "UserService");
 
-    let symbols = vec![
-        make_symbol(
-            "sym-parent",
-            "UserService",
-            SymbolKind::Class,
-            "src/engine.rs",
-            1,
-            None,
-            Some("pub struct UserService"),
-            Some(Visibility::Public),
-            None,
-        ),
-        make_symbol(
-            "sym-field",
-            "users",
-            SymbolKind::Property,
-            "src/engine.rs",
-            3,
-            Some("sym-parent"),
-            Some("users: Vec<User>"),
-            None,
-            None,
-        ),
-        make_symbol(
-            "sym-method",
-            "get_user",
-            SymbolKind::Method,
-            "src/engine.rs",
-            10,
-            Some("sym-parent"),
-            Some("pub fn get_user(&self) -> Option<&User>"),
-            Some(Visibility::Public),
-            None,
-        ),
-    ];
-    db.store_symbols(&symbols).unwrap();
-
-    let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+    let ctx = build_symbol_context(&snapshot, parent, "overview", 10, 10).unwrap();
 
     assert_eq!(ctx.children.len(), 2, "should have 2 children");
-    // Children ordered by start_line
     assert_eq!(ctx.children[0].name, "users");
     assert_eq!(ctx.children[1].name, "get_user");
 }
 
 #[test]
 fn test_build_context_non_container_has_no_children() {
-    let (_tmp, mut db) = setup_db();
+    let (_dir, fixture) = fixture(&[("src/engine.rs", ENGINE)]);
+    let snapshot = fixture.snapshot();
+    let function = only(&snapshot, "process");
 
-    let symbols = vec![make_symbol(
-        "sym-func",
-        "process",
-        SymbolKind::Function,
-        "src/engine.rs",
-        10,
-        None,
-        None,
-        None,
-        None,
-    )];
-    db.store_symbols(&symbols).unwrap();
-
-    let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+    let ctx = build_symbol_context(&snapshot, function, "overview", 10, 10).unwrap();
 
     assert!(
         ctx.children.is_empty(),

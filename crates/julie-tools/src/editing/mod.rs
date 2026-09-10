@@ -9,6 +9,7 @@
 pub mod ast_validation;
 pub mod edit_file;
 pub mod rewrite_symbol;
+mod symbol_lookup;
 pub mod syntax;
 pub mod validation;
 

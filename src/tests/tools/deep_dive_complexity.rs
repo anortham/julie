@@ -1,66 +1,28 @@
-use crate::database::SymbolDatabase;
-use crate::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
-use crate::extractors::{ComplexityMetric, SymbolKind};
-use crate::tests::helpers::db::{file_info_builder, symbol_builder};
-use crate::tools::deep_dive::deep_dive_query;
+use std::fs;
+
+use julie_test_support::SnapshotFixture;
 use tempfile::TempDir;
 
-fn seeded_db(complexity_metrics: &[ComplexityMetric]) -> (TempDir, SymbolDatabase) {
-    let temp = TempDir::new().unwrap();
-    let db_path = temp.path().join("deep-dive-complexity.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
-    let file = file_info_builder("src/lib.rs").language("rust").build();
-    let symbol = symbol_builder("symbol-process", "process", "src/lib.rs")
-        .kind(SymbolKind::Function)
-        .span(10, 0, 17, 1)
-        .bytes(100, 220)
-        .signature("fn process(input: Request, retry: bool)")
-        .build();
-    let write_set = CanonicalWriteSet {
-        files: std::slice::from_ref(&file),
-        symbols: std::slice::from_ref(&symbol),
-        complexity_metrics,
-        ..Default::default()
-    };
+use crate::tools::deep_dive::deep_dive_query;
 
-    db.incremental_update_atomic_with_metadata(
-        &[],
-        &write_set,
-        "deep-dive-complexity-test",
-        AtomicPersistenceMetadata::default(),
-    )
-    .unwrap();
+const LIB_WITH_BRANCHY_PROCESS: &str = "pub struct Request;\n\npub fn process(input: Request, retry: bool) {\n    if retry {\n        let _ = &input;\n    }\n    if retry { let _ = &input; }\n    for _ in 0..2 { while retry { if retry { break; } } }\n    if retry { let _ = &input; }\n}\n";
 
-    (temp, db)
+fn seeded(lib_rs: &str) -> (TempDir, SnapshotFixture) {
+    let dir = TempDir::new().unwrap();
+    fs::create_dir_all(dir.path().join("src")).unwrap();
+    fs::write(dir.path().join("src/lib.rs"), lib_rs).unwrap();
+    let fixture = SnapshotFixture::from_tree(dir.path()).unwrap();
+    (dir, fixture)
 }
 
 #[test]
 fn deep_dive_prints_stored_complexity_for_selected_symbol() {
-    let metric = ComplexityMetric {
-        id: "metric-1".into(),
-        file_path: "src/lib.rs".into(),
-        language: "rust".into(),
-        scope: "function".into(),
-        symbol_id: Some("symbol-process".into()),
-        algorithm_id: "structural-v1".into(),
-        covered_lines: 8,
-        covered_bytes: 120,
-        decision_count: 4,
-        loop_count: 2,
-        max_nesting_depth: 3,
-        parameter_count: Some(2),
-        start_line: 10,
-        start_column: 0,
-        end_line: 17,
-        end_column: 1,
-        start_byte: 100,
-        end_byte: 220,
-        metadata: None,
-    };
-    let (_temp, db) = seeded_db(std::slice::from_ref(&metric));
+    let (_dir, fixture) = seeded(LIB_WITH_BRANCHY_PROCESS);
+    let snapshot = fixture.snapshot();
 
     for depth in ["overview", "context", "full"] {
-        let output = deep_dive_query(&db, "process", Some("src/lib.rs"), depth, 20, 20).unwrap();
+        let output =
+            deep_dive_query(&snapshot, "process", Some("src/lib.rs"), depth, 20, 20).unwrap();
 
         assert!(
             output.contains("complexity: decisions=4 loops=2 nesting=3 params=2 lines=8"),
@@ -71,9 +33,11 @@ fn deep_dive_prints_stored_complexity_for_selected_symbol() {
 
 #[test]
 fn deep_dive_omits_complexity_line_when_metric_is_absent() {
-    let (_temp, db) = seeded_db(&[]);
+    let (_dir, fixture) = seeded("pub struct Request;\n");
+    let snapshot = fixture.snapshot();
 
-    let output = deep_dive_query(&db, "process", Some("src/lib.rs"), "overview", 20, 20).unwrap();
+    let output =
+        deep_dive_query(&snapshot, "Request", Some("src/lib.rs"), "overview", 20, 20).unwrap();
 
     assert!(!output.contains("complexity:"));
 }

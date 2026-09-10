@@ -665,7 +665,7 @@ impl RewriteSymbolTool {
         let lookup_db = target.pooled_db(handler).await?;
         let matches = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
             let symbols =
-                crate::deep_dive::data::find_symbol(&lookup_db, &symbol_name_for_lookup, None)?;
+                super::symbol_lookup::find_symbol(&lookup_db, &symbol_name_for_lookup, None)?;
             let filtered = if let Some(ref filter) = file_path_filter {
                 symbols
                     .into_iter()

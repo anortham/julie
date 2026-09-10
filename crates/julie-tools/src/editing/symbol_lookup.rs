@@ -1,3 +1,5 @@
+//! Name lookup over `SymbolDatabase` for the editing tools, until they move onto the snapshot.
+
 use anyhow::Result;
 use serde_json::Value;
 
@@ -68,14 +70,14 @@ pub fn find_symbol(
     apply_context_file_filter(symbols, context_file)
 }
 
-pub(crate) fn qualified_name_leaf(name: &str) -> &str {
+fn qualified_name_leaf(name: &str) -> &str {
     name.rsplit_once("::")
         .map(|(_, tail)| tail)
         .or_else(|| name.rsplit_once('.').map(|(_, tail)| tail))
         .unwrap_or(name)
 }
 
-pub(crate) fn impl_type_name(symbol: &Symbol) -> Option<&str> {
+fn impl_type_name(symbol: &Symbol) -> Option<&str> {
     symbol
         .metadata
         .as_ref()

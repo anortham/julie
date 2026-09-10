@@ -11,9 +11,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::navigation::resolution::WorkspaceTarget;
 use julie_context::ToolContext;
 use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use julie_extractors::SymbolKind;
+use julie_index::graph::{Graph, SymbolId};
+use julie_index::snapshot::Snapshot;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -85,64 +87,21 @@ impl DeepDiveTool {
         let depth = self.depth.as_str();
         debug!("Deep dive: {} (depth: {})", self.symbol, depth);
 
-        // Resolve workspace parameter
         let workspace_target = handler
             .resolve_workspace_target(self.workspace.as_deref())
             .await?;
-
-        let symbol_name = self.symbol.clone();
-        let context_file = self.context_file.clone();
-        let depth_owned = depth.to_string();
+        let snapshot = handler.snapshot(&workspace_target).await?;
         let (incoming_cap, outgoing_cap) = ref_caps(depth);
-        let semantics = self.semantics;
 
-        match workspace_target {
-            WorkspaceTarget::Target(target_workspace_id) => {
-                // Target workspace: pooled DB, read-only, no mutation gate required.
-                let pooled_db = handler
-                    .get_pooled_database_for_workspace(&target_workspace_id)
-                    .await?;
-
-                let result = tokio::task::spawn_blocking(move || -> Result<String> {
-                    let pooled_db = pooled_db.into_read_snapshot()?;
-                    deep_dive_query_with_semantics(
-                        &pooled_db,
-                        &symbol_name,
-                        context_file.as_deref(),
-                        &depth_owned,
-                        incoming_cap,
-                        outgoing_cap,
-                        semantics,
-                    )
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
-
-                return Ok(CallToolResult::text_content(vec![Content::text(result)]));
-            }
-            WorkspaceTarget::Primary => {
-                // Fall through to primary workspace logic below
-            }
-        }
-
-        // Primary workspace: use the current-primary DB store, not the stale loaded one.
-        let pooled_db = handler.primary_pooled_database().await?;
-
-        // All database work in spawn_blocking (SQLite is synchronous)
-        let result = tokio::task::spawn_blocking(move || -> Result<String> {
-            let db = pooled_db.into_read_snapshot()?;
-            deep_dive_query_with_semantics(
-                &db,
-                &symbol_name,
-                context_file.as_deref(),
-                &depth_owned,
-                incoming_cap,
-                outgoing_cap,
-                semantics,
-            )
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
+        let result = deep_dive_query_with_semantics(
+            &snapshot,
+            &self.symbol,
+            self.context_file.as_deref(),
+            depth,
+            incoming_cap,
+            outgoing_cap,
+            self.semantics,
+        )?;
 
         Ok(CallToolResult::text_content(vec![Content::text(result)]))
     }
@@ -150,7 +109,7 @@ impl DeepDiveTool {
 
 /// Shared query logic for both primary and target-workspace deep dives
 pub fn deep_dive_query(
-    db: &julie_core::database::SymbolDatabase,
+    snapshot: &Snapshot,
     symbol_name: &str,
     context_file: Option<&str>,
     depth: &str,
@@ -158,7 +117,7 @@ pub fn deep_dive_query(
     outgoing_cap: usize,
 ) -> Result<String> {
     deep_dive_query_with_semantics(
-        db,
+        snapshot,
         symbol_name,
         context_file,
         depth,
@@ -170,7 +129,7 @@ pub fn deep_dive_query(
 
 /// Shared query logic supporting semantic mode gating
 pub fn deep_dive_query_with_semantics(
-    db: &julie_core::database::SymbolDatabase,
+    snapshot: &Snapshot,
     symbol_name: &str,
     context_file: Option<&str>,
     depth: &str,
@@ -178,8 +137,8 @@ pub fn deep_dive_query_with_semantics(
     outgoing_cap: usize,
     semantics: Option<julie_core::embeddings_contract::SemanticMode>,
 ) -> Result<String> {
-    // Step 1: Find the symbol
-    let symbols = data::find_symbol(db, symbol_name, context_file)?;
+    let graph = snapshot.graph();
+    let symbols = data::find_symbol(graph, symbol_name, context_file);
 
     if symbols.is_empty() {
         return Ok(format!(
@@ -188,46 +147,44 @@ pub fn deep_dive_query_with_semantics(
         ));
     }
 
-    // Step 2: Build context for each matching symbol
     let mut output = String::new();
 
-    // Guard: too many matches → auto-select or return compact disambiguation list
     const DISAMBIGUATION_THRESHOLD: usize = 5;
     let allow_similarity = semantics != Some(julie_core::embeddings_contract::SemanticMode::Off);
     if symbols.len() > DISAMBIGUATION_THRESHOLD {
-        // Check if most results are in the same file (e.g. C++ constructor overloads)
-        if let Some(selected) = auto_select_same_file_overload(db, &symbols) {
+        if let Some(selected) = auto_select_same_file_overload(graph, &symbols) {
             let ctx = data::build_symbol_context_with_semantics(
-                db,
-                &selected,
+                snapshot,
+                selected,
                 depth,
                 incoming_cap,
                 outgoing_cap,
                 allow_similarity,
             )?;
-            let kind = format!("{:?}", selected.kind).to_lowercase();
+            let row = graph.symbol(selected);
+            let kind = format!("{:?}", row.kind).to_lowercase();
             output.push_str(&format!(
                 "Auto-selected {} from {} definitions in {} (prefer class/struct over overloads)\n\n",
                 kind,
                 symbols.len(),
-                selected.file_path,
+                row.path,
             ));
             output.push_str(&formatting::format_symbol_context(&ctx, depth));
             return Ok(output);
         }
 
-        // Results span multiple files — return compact disambiguation list
         output.push_str(&format!(
             "Found {} definitions of '{}'. Use context_file to disambiguate.\n\n",
             symbols.len(),
             symbol_name
         ));
-        for symbol in &symbols {
-            let kind = format!("{:?}", symbol.kind).to_lowercase();
-            let vis = format!("{:?}", symbol.visibility).to_lowercase();
+        for id in &symbols {
+            let row = graph.symbol(*id);
+            let kind = format!("{:?}", row.kind).to_lowercase();
+            let vis = format!("{:?}", row.visibility).to_lowercase();
             output.push_str(&format!(
                 "  {}:{} ({}, {})\n",
-                symbol.file_path, symbol.start_line, kind, vis
+                row.path, row.span.start_line, kind, vis
             ));
         }
         return Ok(output);
@@ -241,17 +198,16 @@ pub fn deep_dive_query_with_semantics(
         ));
     }
 
-    for symbol in &symbols {
+    for id in &symbols {
         let ctx = data::build_symbol_context_with_semantics(
-            db,
-            symbol,
+            snapshot,
+            *id,
             depth,
             incoming_cap,
             outgoing_cap,
             allow_similarity,
         )?;
-        let formatted = formatting::format_symbol_context(&ctx, depth);
-        output.push_str(&formatted);
+        output.push_str(&formatting::format_symbol_context(&ctx, depth));
 
         if symbols.len() > 1 {
             output.push_str("\n---\n\n");
@@ -274,188 +230,37 @@ pub fn deep_dive_query_with_semantics(
 /// 3. First match (fallback)
 ///
 /// Returns None when results span multiple files (real disambiguation needed).
-fn auto_select_same_file_overload(
-    db: &julie_core::database::SymbolDatabase,
-    symbols: &[julie_core::Symbol],
-) -> Option<julie_core::Symbol> {
-    use std::collections::HashMap;
-
-    if symbols.is_empty() {
+fn auto_select_same_file_overload(graph: &Graph, symbols: &[SymbolId]) -> Option<SymbolId> {
+    let first = graph.symbol(*symbols.first()?);
+    if symbols
+        .iter()
+        .any(|id| graph.symbol(*id).path != first.path)
+    {
         return None;
     }
 
-    // Count symbols per file to find the dominant file
-    let mut file_counts: HashMap<&str, usize> = HashMap::new();
-    for s in symbols {
-        *file_counts.entry(&s.file_path).or_insert(0) += 1;
-    }
-
-    let (most_common_file, most_common_count) = file_counts
+    let type_defs: Vec<SymbolId> = symbols
         .iter()
-        .max_by_key(|(_, count)| **count)
-        .map(|(file, count)| (*file, *count))?;
-
-    // Only auto-select when every match is in one file.
-    if most_common_count != symbols.len() {
-        return None;
-    }
-
-    let same_file_symbols: Vec<&julie_core::Symbol> = symbols
-        .iter()
-        .filter(|s| s.file_path == most_common_file)
-        .collect();
-
-    // Priority 1: Prefer class/struct/interface (the type definition itself)
-    use julie_extractors::SymbolKind;
-    let type_defs: Vec<&&julie_core::Symbol> = same_file_symbols
-        .iter()
-        .filter(|s| {
+        .copied()
+        .filter(|id| {
             matches!(
-                s.kind,
+                graph.symbol(*id).kind,
                 SymbolKind::Class | SymbolKind::Struct | SymbolKind::Interface
             )
         })
         .collect();
-
-    if type_defs.len() == 1 {
-        // Exactly one type definition — that's our target
-        return Some((*type_defs[0]).clone());
+    let pool = if type_defs.is_empty() {
+        symbols
+    } else {
+        &type_defs
+    };
+    if pool.len() == 1 {
+        return Some(pool[0]);
     }
-
-    if type_defs.len() > 1 {
-        // Multiple type defs: pick by highest centrality
-        let ids: Vec<&str> = type_defs.iter().map(|s| s.id.as_str()).collect();
-        if let Ok(scores) = db.get_reference_scores(&ids) {
-            let best = type_defs.iter().max_by(|a, b| {
-                let sa = scores.get(&a.id).copied().unwrap_or(0.0);
-                let sb = scores.get(&b.id).copied().unwrap_or(0.0);
-                sa.partial_cmp(&sb).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            if let Some(selected) = best {
-                return Some((**selected).clone());
-            }
-        }
-        // Fallback: first type def
-        return Some((*type_defs[0]).clone());
-    }
-
-    // Priority 2: No type definitions — pick by highest centrality among all same-file symbols
-    let ids: Vec<&str> = same_file_symbols.iter().map(|s| s.id.as_str()).collect();
-    if let Ok(scores) = db.get_reference_scores(&ids) {
-        let best = same_file_symbols.iter().max_by(|a, b| {
-            let sa = scores.get(&a.id).copied().unwrap_or(0.0);
-            let sb = scores.get(&b.id).copied().unwrap_or(0.0);
-            sa.partial_cmp(&sb).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        if let Some(selected) = best {
-            return Some((*selected).clone());
-        }
-    }
-
-    // Priority 3: Fallback to first same-file symbol
-    same_file_symbols.first().map(|s| (*s).clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use julie_core::database::{FileInfo, SymbolDatabase};
-    use julie_core::embeddings_contract::SemanticMode;
-    use julie_extractors::{SymbolKind, Visibility};
-    use tempfile::TempDir;
-
-    fn make_test_sym(id: &str, name: &str, file: &str, line: u32) -> julie_core::Symbol {
-        julie_core::Symbol {
-            extracted: julie_extractors::Symbol {
-                id: id.to_string(),
-                name: name.to_string(),
-                kind: SymbolKind::Function,
-                language: "rust".to_string(),
-                file_path: file.to_string(),
-                start_line: line,
-                end_line: line + 5,
-                start_column: 0,
-                end_column: 0,
-                start_byte: 0,
-                end_byte: 100,
-                parent_id: None,
-                signature: Some(format!("fn {name}()")),
-                doc_comment: None,
-                visibility: Some(Visibility::Public),
-                metadata: None,
-                semantic_group: None,
-                confidence: Some(0.9),
-                content_type: None,
-                body_span: None,
-                body_hash: None,
-                annotations: Vec::new(),
-            },
-            code_context: None,
-        }
-    }
-
-    #[test]
-    fn test_similar_symbols_skipped_when_semantics_off() {
-        let tmp = TempDir::new().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let mut db = SymbolDatabase::new(&db_path).unwrap();
-
-        for file in &["src/engine.rs", "src/handler.rs"] {
-            db.store_file_info(&FileInfo {
-                path: file.to_string(),
-                language: "rust".to_string(),
-                hash: format!("hash_{file}"),
-                size: 500,
-                last_modified: 1000000,
-                last_indexed: 0,
-                symbol_count: 1,
-                line_count: 0,
-                content: None,
-            })
-            .unwrap();
-        }
-
-        let sym_a = make_test_sym("sym-a", "process_data", "src/engine.rs", 10);
-        let sym_b = make_test_sym("sym-b", "handle_data", "src/handler.rs", 20);
-        db.store_symbols(&[sym_a, sym_b]).unwrap();
-
-        db.publish_test_generation("test-encoder", 0, 384).unwrap();
-
-        let emb_a: Vec<f32> = (0..384).map(|i| (i as f32) * 0.01).collect();
-        let mut emb_b = emb_a.clone();
-        emb_b[0] += 0.001;
-        emb_b[1] += 0.001;
-        db.store_embeddings(&[("sym-a".to_string(), emb_a), ("sym-b".to_string(), emb_b)])
-            .unwrap();
-
-        let res_off = deep_dive_query_with_semantics(
-            &db,
-            "process_data",
-            None,
-            "full",
-            10,
-            10,
-            Some(SemanticMode::Off),
-        )
-        .unwrap();
-        assert!(
-            !res_off.contains("Similar"),
-            "Semantics::Off must not compute similar symbols"
-        );
-
-        let res_auto = deep_dive_query_with_semantics(
-            &db,
-            "process_data",
-            None,
-            "full",
-            10,
-            10,
-            Some(SemanticMode::Auto),
-        )
-        .unwrap();
-        assert!(
-            res_auto.contains("handle_data"),
-            "Semantics::Auto should include similar symbols"
-        );
-    }
+    pool.iter().copied().max_by(|a, b| {
+        graph
+            .reference_score(*a)
+            .partial_cmp(&graph.reference_score(*b))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
 }

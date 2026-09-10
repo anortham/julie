@@ -1,42 +1,30 @@
+use std::fs;
+
 use crate::deep_dive::data::{RefEntry, SymbolContext, build_symbol_context, find_symbol};
 use crate::deep_dive::formatting::format_symbol_context;
 use crate::deep_dive::{DeepDiveTool, deep_dive_query};
 use julie_core::Symbol;
-use julie_core::database::{FileInfo, SymbolDatabase};
-use julie_extractors::{IdentifierKind, Relationship, RelationshipKind, SymbolKind, Visibility};
-use julie_test_support::db::identifier_builder;
+use julie_extractors::{RelationshipKind, SymbolKind, Visibility};
+use julie_index::graph::SymbolId;
+use julie_index::snapshot::Snapshot;
+use julie_test_support::SnapshotFixture;
 use tempfile::TempDir;
 
-fn setup_db() -> (TempDir, SymbolDatabase) {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
-
-    for file in &[
-        "src/engine.rs",
-        "src/main.rs",
-        "src/handler.rs",
-        "src/tests/search_tests.rs",
-    ] {
-        store_file(&db, file);
+fn fixture(files: &[(&str, &str)]) -> (TempDir, SnapshotFixture) {
+    let dir = TempDir::new().unwrap();
+    for (path, content) in files {
+        let full = dir.path().join(path);
+        fs::create_dir_all(full.parent().unwrap()).unwrap();
+        fs::write(full, content).unwrap();
     }
-
-    (temp_dir, db)
+    let fixture = SnapshotFixture::from_tree(dir.path()).unwrap();
+    (dir, fixture)
 }
 
-fn store_file(db: &SymbolDatabase, path: &str) {
-    db.store_file_info(&FileInfo {
-        path: path.to_string(),
-        language: "rust".to_string(),
-        hash: format!("hash_{}", path),
-        size: 500,
-        last_modified: 1000000,
-        last_indexed: 0,
-        symbol_count: 2,
-        line_count: 0,
-        content: None,
-    })
-    .unwrap();
+fn only(snapshot: &Snapshot, name: &str) -> SymbolId {
+    let found = find_symbol(snapshot.graph(), name, None);
+    assert_eq!(found.len(), 1, "expected one symbol named {name}");
+    found[0]
 }
 
 fn make_symbol(
@@ -79,28 +67,6 @@ fn make_symbol(
     }
 }
 
-fn make_rel(
-    id: &str,
-    from: &str,
-    to: &str,
-    kind: RelationshipKind,
-    file: &str,
-    line: u32,
-) -> Relationship {
-    Relationship {
-        id: id.to_string(),
-        from_symbol_id: from.to_string(),
-        to_symbol_id: to.to_string(),
-        kind,
-        file_path: file.to_string(),
-        line_number: line,
-        span: None,
-        reference_site_is_exact: false,
-        confidence: 0.9,
-        metadata: None,
-    }
-}
-
 fn make_ref(kind: RelationshipKind, file: &str, line: u32, sym: Option<Symbol>) -> RefEntry {
     RefEntry {
         kind,
@@ -125,26 +91,6 @@ fn empty_context(symbol: Symbol) -> SymbolContext {
         test_refs: vec![],
         similar: vec![],
     }
-}
-
-fn insert_identifier(
-    db: &mut SymbolDatabase,
-    name: &str,
-    kind: IdentifierKind,
-    file: &str,
-    line: u32,
-    containing_symbol_id: Option<&str>,
-) {
-    let mut builder = identifier_builder(format!("ident_{name}_{line}"), name, file)
-        .kind(kind)
-        .line(line)
-        .column(0, 10)
-        .bytes(0, 100)
-        .confidence(0.9);
-    if let Some(containing_symbol_id) = containing_symbol_id {
-        builder = builder.containing_symbol_id(containing_symbol_id);
-    }
-    db.bulk_store_identifiers(&[builder.build()], "").unwrap();
 }
 
 #[test]
@@ -226,80 +172,35 @@ fn test_deep_dive_regression_callable_counts_only_displayed_ref_kind() {
 
 #[test]
 fn test_deep_dive_regression_find_symbol_filters_exports() {
-    let (_tmp, mut db) = setup_db();
+    let (_dir, fixture) = fixture(&[
+        ("src/engine.rs", "pub fn process() {}\n"),
+        ("src/main.rs", "pub use crate::engine::process;\n"),
+    ]);
+    let snapshot = fixture.snapshot();
 
-    let symbols = vec![
-        make_symbol(
-            "sym-def",
-            "process",
-            SymbolKind::Function,
-            "src/engine.rs",
-            10,
-            None,
-            None,
-            None,
-            None,
-        ),
-        make_symbol(
-            "sym-export",
-            "process",
-            SymbolKind::Export,
-            "src/main.rs",
-            1,
-            None,
-            None,
-            None,
-            None,
-        ),
-    ];
-    db.store_symbols(&symbols).unwrap();
-
-    let found = find_symbol(&db, "process", None).unwrap();
+    let found = find_symbol(snapshot.graph(), "process", None);
     assert_eq!(found.len(), 1, "exports should be filtered out");
-    assert_eq!(found[0].kind, SymbolKind::Function);
+    assert_eq!(snapshot.graph().symbol(found[0]).kind, SymbolKind::Function);
 }
 
 #[test]
 fn test_deep_dive_regression_context_file_uses_path_suffix_matching() {
-    let (_tmp, mut db) = setup_db();
-    store_file(&db, "src/test.rs");
-    store_file(&db, "src/contest.rs");
+    let (_dir, fixture) = fixture(&[
+        ("src/test.rs", "pub fn handle() {}\n"),
+        ("src/contest.rs", "pub fn handle() {}\n"),
+    ]);
+    let snapshot = fixture.snapshot();
+    let graph = snapshot.graph();
 
-    let symbols = vec![
-        make_symbol(
-            "sym-test",
-            "handle",
-            SymbolKind::Function,
-            "src/test.rs",
-            10,
-            None,
-            None,
-            None,
-            None,
-        ),
-        make_symbol(
-            "sym-contest",
-            "handle",
-            SymbolKind::Function,
-            "src/contest.rs",
-            20,
-            None,
-            None,
-            None,
-            None,
-        ),
-    ];
-    db.store_symbols(&symbols).unwrap();
-
-    let suffix_match = find_symbol(&db, "handle", Some("test.rs")).unwrap();
+    let suffix_match = find_symbol(graph, "handle", Some("test.rs"));
     assert_eq!(suffix_match.len(), 1);
-    assert_eq!(suffix_match[0].file_path, "src/test.rs");
+    assert_eq!(graph.symbol(suffix_match[0]).path, "src/test.rs");
 
-    let absolute_match = find_symbol(&db, "handle", Some("/tmp/workspace/src/test.rs")).unwrap();
+    let absolute_match = find_symbol(graph, "handle", Some("/tmp/workspace/src/test.rs"));
     assert_eq!(absolute_match.len(), 1);
-    assert_eq!(absolute_match[0].file_path, "src/test.rs");
+    assert_eq!(graph.symbol(absolute_match[0]).path, "src/test.rs");
 
-    let typo_match = find_symbol(&db, "handle", Some("missing.rs")).unwrap();
+    let typo_match = find_symbol(graph, "handle", Some("missing.rs"));
     assert!(
         typo_match.is_empty(),
         "context_file typos should not fall back to all candidates"
@@ -308,66 +209,14 @@ fn test_deep_dive_regression_context_file_uses_path_suffix_matching() {
 
 #[test]
 fn test_deep_dive_regression_same_line_outgoing_refs_keep_distinct_symbols() {
-    let (_tmp, mut db) = setup_db();
+    let (_dir, fixture) = fixture(&[(
+        "src/engine.rs",
+        "pub fn process() {\n    validate(); transform();\n}\nfn validate() {}\nfn transform() {}\n",
+    )]);
+    let snapshot = fixture.snapshot();
+    let source = only(&snapshot, "process");
 
-    let symbols = vec![
-        make_symbol(
-            "sym-source",
-            "process",
-            SymbolKind::Function,
-            "src/engine.rs",
-            10,
-            None,
-            None,
-            None,
-            None,
-        ),
-        make_symbol(
-            "sym-validate",
-            "validate",
-            SymbolKind::Function,
-            "src/engine.rs",
-            50,
-            None,
-            Some("fn validate()"),
-            None,
-            None,
-        ),
-        make_symbol(
-            "sym-transform",
-            "transform",
-            SymbolKind::Function,
-            "src/engine.rs",
-            60,
-            None,
-            Some("fn transform()"),
-            None,
-            None,
-        ),
-    ];
-    db.store_symbols(&symbols).unwrap();
-
-    let rels = vec![
-        make_rel(
-            "rel-validate",
-            "sym-source",
-            "sym-validate",
-            RelationshipKind::Calls,
-            "src/engine.rs",
-            15,
-        ),
-        make_rel(
-            "rel-transform",
-            "sym-source",
-            "sym-transform",
-            RelationshipKind::Calls,
-            "src/engine.rs",
-            15,
-        ),
-    ];
-    db.store_relationships(&rels).unwrap();
-
-    let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+    let ctx = build_symbol_context(&snapshot, source, "overview", 10, 10).unwrap();
     let names: Vec<&str> = ctx
         .outgoing
         .iter()
@@ -379,75 +228,24 @@ fn test_deep_dive_regression_same_line_outgoing_refs_keep_distinct_symbols() {
 
 #[test]
 fn test_deep_dive_regression_qualified_method_identifier_fallback_avoids_bare_name_noise() {
-    let (_tmp, mut db) = setup_db();
-    store_file(&db, "src/tokenizer.rs");
-
-    let symbols = vec![
-        make_symbol(
-            "sym-tokenizer",
-            "CodeTokenizer",
-            SymbolKind::Struct,
+    let (_dir, fixture) = fixture(&[
+        (
             "src/tokenizer.rs",
-            20,
-            None,
-            Some("pub struct CodeTokenizer"),
-            Some(Visibility::Public),
-            None,
+            "pub struct CodeTokenizer;\nimpl CodeTokenizer {\n    pub fn new() -> Self {\n        CodeTokenizer\n    }\n}\n",
         ),
-        make_symbol(
-            "sym-new",
-            "new",
-            SymbolKind::Method,
-            "src/tokenizer.rs",
-            42,
-            Some("sym-tokenizer"),
-            Some("pub fn new() -> Self"),
-            Some(Visibility::Public),
-            None,
-        ),
-        make_symbol(
-            "sym-qualified-caller",
-            "uses_tokenizer",
-            SymbolKind::Function,
+        (
             "src/main.rs",
-            10,
-            None,
-            Some("fn uses_tokenizer()"),
-            None,
-            None,
+            "fn uses_tokenizer() {\n    let _tokenizer = CodeTokenizer::new();\n}\n",
         ),
-        make_symbol(
-            "sym-noisy-caller",
-            "uses_unrelated_new",
-            SymbolKind::Function,
+        (
             "src/handler.rs",
-            30,
-            None,
-            Some("fn uses_unrelated_new()"),
-            None,
-            None,
+            "pub struct Unrelated;\nimpl Unrelated {\n    pub fn new() -> Self {\n        Unrelated\n    }\n}\nfn uses_unrelated_new() {\n    let _unrelated = Unrelated::new();\n}\n",
         ),
-    ];
-    db.store_symbols(&symbols).unwrap();
+    ]);
+    let snapshot = fixture.snapshot();
+    let constructor = only(&snapshot, "CodeTokenizer::new");
 
-    insert_identifier(
-        &mut db,
-        "CodeTokenizer::new",
-        IdentifierKind::Call,
-        "src/main.rs",
-        12,
-        Some("sym-qualified-caller"),
-    );
-    insert_identifier(
-        &mut db,
-        "new",
-        IdentifierKind::Call,
-        "src/handler.rs",
-        35,
-        Some("sym-noisy-caller"),
-    );
-
-    let ctx = build_symbol_context(&db, &symbols[1], "overview", 10, 10).unwrap();
+    let ctx = build_symbol_context(&snapshot, constructor, "overview", 10, 10).unwrap();
     let caller_names: Vec<&str> = ctx
         .incoming
         .iter()
@@ -460,64 +258,22 @@ fn test_deep_dive_regression_qualified_method_identifier_fallback_avoids_bare_na
 
 #[test]
 fn test_deep_dive_regression_auto_select_requires_all_matches_in_one_file() {
-    let (_tmp, mut db) = setup_db();
-
-    for file in &[
-        "include/foo.hpp",
-        "src/foo_adapter.rs",
-        "src/foo_test.rs",
-        "src/foo_generated.rs",
-    ] {
-        store_file(&db, file);
-    }
-
-    let mut symbols = vec![make_symbol(
-        "sym-foo-class",
-        "Foo",
-        SymbolKind::Class,
-        "include/foo.hpp",
-        77,
-        None,
-        Some("class Foo"),
-        Some(Visibility::Public),
-        None,
-    )];
-    for i in 0..3 {
-        symbols.push(make_symbol(
-            &format!("sym-foo-ctor-{}", i),
-            "Foo",
-            SymbolKind::Function,
+    let (_dir, fixture) = fixture(&[
+        (
             "include/foo.hpp",
-            100 + i * 20,
-            Some("sym-foo-class"),
-            Some(&format!("Foo(arg{})", i)),
-            Some(Visibility::Public),
-            None,
-        ));
-    }
-    for (i, file) in [
-        "src/foo_adapter.rs",
-        "src/foo_test.rs",
-        "src/foo_generated.rs",
-    ]
-    .iter()
-    .enumerate()
-    {
-        symbols.push(make_symbol(
-            &format!("sym-foo-other-{}", i),
-            "Foo",
-            SymbolKind::Function,
-            file,
-            10,
-            None,
-            Some("fn Foo()"),
-            Some(Visibility::Public),
-            None,
-        ));
-    }
-    db.store_symbols(&symbols).unwrap();
+            "class Foo {\npublic:\n    Foo() {}\n    Foo(int a) {}\n    Foo(double d) {}\n};\n",
+        ),
+        ("src/foo_adapter.rs", "pub fn Foo() {}\n"),
+        ("src/foo_test.rs", "pub fn Foo() {}\n"),
+        ("src/foo_generated.rs", "pub fn Foo() {}\n"),
+    ]);
+    let snapshot = fixture.snapshot();
+    assert!(
+        find_symbol(snapshot.graph(), "Foo", None).len() > 5,
+        "the fixture must define more than five symbols named Foo"
+    );
 
-    let result = deep_dive_query(&db, "Foo", None, "overview", 10, 10).unwrap();
+    let result = deep_dive_query(&snapshot, "Foo", None, "overview", 10, 10).unwrap();
 
     assert!(
         result.contains("Use context_file to disambiguate"),

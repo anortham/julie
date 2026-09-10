@@ -1,5 +1,6 @@
 use julie_core::Symbol;
-use julie_extractors::{ComplexityMetric, RelationshipKind};
+use julie_extractors::RelationshipKind;
+use julie_facts::rows::ComplexityRow;
 pub use julie_index::search::similarity::SimilarEntry;
 
 /// Aggregated context for a single symbol, ready for formatting
@@ -8,7 +9,7 @@ pub struct SymbolContext {
     /// The primary symbol being investigated
     pub symbol: Symbol,
     /// Extractor-provided structural complexity metric
-    pub complexity: Option<ComplexityMetric>,
+    pub complexity: Option<ComplexityRow>,
     /// Incoming references: who calls/uses this symbol
     pub incoming: Vec<RefEntry>,
     /// Total incoming before capping

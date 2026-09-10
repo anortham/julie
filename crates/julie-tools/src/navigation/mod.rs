@@ -14,7 +14,7 @@ mod fast_refs;
 pub(crate) mod fast_refs_semantic;
 pub mod formatting;
 pub mod resolution;
-mod sites;
+pub(crate) mod sites;
 
 pub use call_path::CallPathTool;
 pub use fast_refs::{FastRefsTool, FoundReferences, find_references};
