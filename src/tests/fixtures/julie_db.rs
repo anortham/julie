@@ -1,5 +1,6 @@
-//! Pre-indexed snapshot of Julie's codebase for testing
-//! Eliminates 60s reindexing per test, loads in <100ms
+//! Pre-indexed snapshot of Julie's codebase for testing.
+//! Git-ignored and built on demand (about 40 s once per checkout); the
+//! `search-quality` bucket runs `ensure_julie_fixture` before its tests.
 
 use crate::tests::test_helpers::open_test_connection;
 use anyhow::{Result, bail};
@@ -30,10 +31,16 @@ pub struct FixtureMetadata {
     pub indexed_files: Vec<String>,
     /// Known symbols per file (for test assertions)
     pub known_symbols: HashMap<String, Vec<String>>,
+    /// `symbols.db` schema version the snapshot was built with
+    #[serde(default)]
+    pub schema_version: i32,
+    /// Engine version the snapshot was built with
+    #[serde(default)]
+    pub engine_version: String,
 }
 
 impl JulieTestFixture {
-    /// Build fixture database (run once manually, checked into git)
+    /// Build the fixture database into the git-ignored snapshot directory.
     pub async fn build() -> Result<Self> {
         use crate::tests::helpers::workspace::create_isolated_storage_handler;
         use crate::tools::workspace::ManageWorkspaceTool;
@@ -66,30 +73,15 @@ impl JulieTestFixture {
 
         index_tool.call_tool(&handler).await?;
 
-        println!("✅ Indexing triggered, waiting for completion...");
-
-        // Wait for Tantivy indexing to complete
-        Self::wait_for_indexing(&handler).await?;
-
         println!("✅ Indexing complete, extracting database...");
 
         // For Julie, we want the primary workspace (not reference workspaces)
         // The primary workspace ID is generated from the Julie root path
         use crate::workspace::registry::generate_workspace_id;
         let expected_workspace_id = generate_workspace_id(&julie_root.to_string_lossy())?;
-        let workspace_dir = handler.workspace_index_dir(&expected_workspace_id);
-        if !workspace_dir.exists() {
-            bail!(
-                "Primary workspace directory not found. Expected: {}, Available: {:?}",
-                &expected_workspace_id,
-                fs::read_dir(handler.indexes_dir())?
-                    .filter_map(|entry| entry.ok())
-                    .map(|entry| entry.file_name())
-                    .collect::<Vec<_>>()
-            );
-        }
-
-        let source_db = workspace_dir.join("db/symbols.db");
+        let source_db = handler
+            .workspace_db_file_path_for(&expected_workspace_id)
+            .await?;
 
         if !source_db.exists() {
             bail!("Database not found at: {}", source_db.display());
@@ -148,6 +140,18 @@ impl JulieTestFixture {
         }
 
         let metadata: FixtureMetadata = serde_json::from_str(&fs::read_to_string(&metadata_path)?)?;
+        if metadata.schema_version != crate::database::LATEST_SCHEMA_VERSION
+            || metadata.engine_version
+                != crate::tools::workspace::indexing::engine_version::SEMANTIC_INDEX_ENGINE_VERSION
+        {
+            bail!(
+                "Fixture at {} was built for schema {} / engine {}; current is schema {}. Indexes are rebuilt, never migrated.\nRun: cargo test --lib ensure_julie_fixture -- --ignored --nocapture",
+                fixture_dir.display(),
+                metadata.schema_version,
+                metadata.engine_version,
+                crate::database::LATEST_SCHEMA_VERSION
+            );
+        }
 
         Ok(Self {
             fixture_db_path: fixture_db,
@@ -182,23 +186,6 @@ impl JulieTestFixture {
     /// Get known symbols for a file
     pub fn known_symbols(&self, file_path: &str) -> Option<&Vec<String>> {
         self.metadata.known_symbols.get(file_path)
-    }
-
-    /// Wait for indexing to complete (helper)
-    async fn wait_for_indexing(handler: &crate::handler::JulieServerHandler) -> Result<()> {
-        use std::sync::atomic::Ordering;
-        use tokio::time::{Duration, sleep};
-
-        // Wait for search indexing to complete
-        for _ in 0..60 {
-            if handler.indexing_status.search_ready.load(Ordering::Relaxed) {
-                println!("✅ Search indexing complete");
-                return Ok(());
-            }
-            sleep(Duration::from_millis(500)).await;
-        }
-
-        bail!("Indexing timeout after 30 seconds");
     }
 
     /// Build metadata from indexed workspace (helper)
@@ -256,6 +243,10 @@ impl JulieTestFixture {
             symbol_count: symbol_count as usize,
             indexed_files,
             known_symbols,
+            schema_version: crate::database::LATEST_SCHEMA_VERSION,
+            engine_version:
+                crate::tools::workspace::indexing::engine_version::SEMANTIC_INDEX_ENGINE_VERSION
+                    .to_string(),
         })
     }
 }
@@ -264,11 +255,27 @@ impl JulieTestFixture {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    #[ignore] // Run by the search-quality bucket: cargo test --lib ensure_julie_fixture -- --ignored --nocapture
+    async fn ensure_julie_fixture() -> Result<()> {
+        match JulieTestFixture::load() {
+            Ok(fixture) => println!(
+                "✅ Fixture current: {} files, {} symbols",
+                fixture.metadata.file_count, fixture.metadata.symbol_count
+            ),
+            Err(reason) => {
+                println!("🔨 Rebuilding fixture: {reason}");
+                JulieTestFixture::build().await?;
+            }
+        }
+        Ok(())
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     #[ignore] // Run manually: cargo test --lib build_julie_fixture -- --ignored --nocapture
     async fn build_julie_fixture() -> Result<()> {
         println!("🔨 Building Julie test fixture database...");
-        println!("This is a ONE-TIME operation - fixture will be checked into git");
+        println!("The snapshot is git-ignored; ensure_julie_fixture rebuilds it when stale");
 
         let fixture = JulieTestFixture::build().await?;
 

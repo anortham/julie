@@ -165,7 +165,7 @@ Evidence may be reused only at the same HEAD commit SHA and the same scope label
 
 ## Dogfooding Tests
 
-The `search_quality` bucket loads a real 100MB SQLite fixture, backfills a Tantivy index, and runs real searches. It is a regression guard, not a fast unit-tier pass.
+The `search_quality` bucket indexes this repository into a git-ignored snapshot (`fixtures/databases/julie-snapshot/`, about 300 MB, built once in about 40 s and rebuilt when the schema or engine version changes), backfills a Tantivy index, and runs real searches. It is a regression guard, not a fast unit-tier pass.
 
 **When to run:**
 - After significant search/ranking changes

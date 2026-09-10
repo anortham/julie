@@ -164,7 +164,7 @@ For the tight edit-test loop during implementation:
 
 ### Why Dogfood Is Slow
 
-The `search_quality` bucket loads a **100MB SQLite fixture**, backfills a Tantivy index from it, and runs real searches. It is a regression guard, not a quick unit-tier pass.
+The `search_quality` bucket indexes this repository into a git-ignored snapshot (`fixtures/databases/julie-snapshot/`, about 300 MB, built once in about 40 s and rebuilt when the schema or engine version changes), backfills a Tantivy index from it, and runs real searches. It is a regression guard, not a quick unit-tier pass.
 
 ### The Rules
 
@@ -224,7 +224,7 @@ cargo nextest run --lib test_namespace           # namespace de-boost tests
 
 ### Rebuilding Fixture Database
 
-Only needed when the test fixture schema changes or after adding new source to the fixture:
+The snapshot is git-ignored and never migrated. The `search-quality` bucket rebuilds it when it is missing or was built for another schema or engine version. To force a rebuild:
 ```bash
 cargo test --lib build_julie_fixture -- --ignored --nocapture
 ```

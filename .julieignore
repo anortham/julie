@@ -40,6 +40,7 @@
 # Test fixture data (not source code)
 # ═══════════════════════════════════════════════════════════════
 fixtures/databases/
+fixtures/search-quality/
 
 
 # ═══════════════════════════════════════════════════════════════

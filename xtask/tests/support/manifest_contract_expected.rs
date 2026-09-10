@@ -217,9 +217,12 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "search-quality",
             ExpectedBucket {
-                expected_seconds: 180,
-                timeout_seconds: 300,
-                commands: &["cargo nextest run --lib search_quality"],
+                expected_seconds: 220,
+                timeout_seconds: 420,
+                commands: &[
+                    "cargo test --lib ensure_julie_fixture -- --ignored --nocapture",
+                    "cargo nextest run --lib search_quality tests::fixtures::julie_db",
+                ],
             },
         ),
         (

@@ -626,10 +626,14 @@ commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_
 
 [buckets.search-quality]
 # Heavy dogfood search-quality suite backed by the large fixture/index path.
-# OnceCell-shared handler: fixture loads once per binary, not per test (151s on dev).
-expected_seconds = 180
-timeout_seconds = 300
+# The snapshot is git-ignored: ensure_julie_fixture builds it (about 40 s) when
+# missing or built for another schema/engine version, then the suite runs.
+expected_seconds = 220
+timeout_seconds = 420
 scope_label = "dogfood"
 expensive = true
 notes = "heavy fixture-backed relevance suite"
-commands = ["cargo nextest run --lib search_quality"]
+commands = [
+    "cargo test --lib ensure_julie_fixture -- --ignored --nocapture",
+    "cargo nextest run --lib search_quality tests::fixtures::julie_db",
+]

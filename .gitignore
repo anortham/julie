@@ -84,3 +84,6 @@ __pycache__/
 docs/future/
 .codenav
 .agents/
+
+# Search-quality snapshot of this repo; built on demand by ensure_julie_fixture
+fixtures/databases/julie-snapshot/

@@ -127,9 +127,11 @@ async fn test_hyphenated_tree_sitter() {
         .expect("Search failed");
 
     // Should find extractor files (tree-sitter is used across all extractors)
-    let has_extractors = results
-        .iter()
-        .any(|r| r.file_path.contains("extractors") || r.file_path.contains("parse"));
+    let has_extractors = results.iter().any(|r| {
+        r.file_path.contains("extract")
+            || r.file_path.contains("parse")
+            || r.file_path.contains("tree-sitter")
+    });
     assert!(
         has_extractors,
         "Should find extractor/parser files for 'tree-sitter parse', got:\n{}",
@@ -804,7 +806,7 @@ async fn test_fast_refs_reference_kind_filter_with_identifiers() {
             db_lock
                 .conn
                 .query_row(
-                    "SELECT name FROM identifiers WHERE kind = 'call' GROUP BY name HAVING COUNT(*) >= 2 LIMIT 1",
+                    "SELECT name FROM identifiers WHERE kind = 'call' AND name GLOB '[A-Za-z_]*' GROUP BY name HAVING COUNT(*) >= 2 LIMIT 1",
                     [],
                     |row| row.get::<_, String>(0),
                 )
