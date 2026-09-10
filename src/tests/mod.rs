@@ -92,6 +92,7 @@ pub mod tools {
     // get_context_pipeline_relevance_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     // get_context_pipeline_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     pub mod get_context_primary_rebind_tests; // GetContextTool current-primary rebound routing tests
+    pub mod get_context_target_workspace_metrics_tests;
     // get_context_quality_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     // get_context_relevance_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
     // get_context_scoring_tests relocated to crates/julie-tools/src/tests/ (T2b.6)

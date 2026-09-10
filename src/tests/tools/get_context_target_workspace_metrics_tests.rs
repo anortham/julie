@@ -8,7 +8,6 @@ use rmcp::service::{RequestContext, serve_directly};
 use serde_json::Value;
 use tempfile::TempDir;
 
-use crate::database::types::FileInfo;
 use crate::handler::JulieServerHandler;
 use crate::registry::database::DaemonDatabase;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -59,25 +58,6 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
         )
         .await?,
     );
-    {
-        let primary_db = primary_ws
-            .db
-            .as_ref()
-            .expect("primary workspace should have a database")
-            .clone();
-        let primary_db = primary_db.lock().unwrap();
-        primary_db.store_file_info(&FileInfo {
-            path: file_path.to_string(),
-            language: "rust".to_string(),
-            hash: "primary-hash".to_string(),
-            size: primary_bytes,
-            last_modified: 1,
-            last_indexed: 1,
-            symbol_count: 0,
-            line_count: 1,
-            content: Some(primary_content.to_string()),
-        })?;
-    }
 
     let target_path = target_root.canonicalize()?;
     let target_path_str = target_path.to_string_lossy().to_string();
@@ -181,12 +161,12 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
     assert_eq!(
         recorded.1,
         Some(target_bytes),
-        "get_context source_bytes should be resolved from the requested target workspace db"
+        "get_context source_bytes should be resolved from the requested target checkout"
     );
     assert_eq!(
         handler.session_metrics.total_source_bytes(),
         target_bytes as u64,
-        "get_context session source_bytes should be resolved from the requested target workspace db"
+        "get_context session source_bytes should be resolved from the requested target checkout"
     );
 
     let _ = service.cancel().await;
