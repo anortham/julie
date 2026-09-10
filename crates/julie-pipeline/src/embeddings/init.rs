@@ -22,7 +22,7 @@ use crate::embeddings::{
 /// This is a pure function with no workspace dependency. Callers assign the
 /// results to whatever owns the provider (workspace, daemon service, etc.).
 /// True when `JULIE_EMBEDDING_PROVIDER` turns embeddings off, so no provider
-/// will ever exist in this process and missing vectors are not a repair.
+/// will ever exist in this process and missing vectors need no catch-up.
 pub fn embeddings_disabled_by_env() -> bool {
     std::env::var("JULIE_EMBEDDING_PROVIDER")
         .map(|provider| provider_name_disables_embeddings(&provider))
