@@ -1,9 +1,10 @@
 use super::http_api::Running;
-use crate::service::client::{ConnectError, connect_or_start};
+use crate::service::client::{ConnectError, connect_or_start, connect_or_start_within};
 use crate::service::discovery::{self, ServiceRecord};
 use julie_core::paths::RegistryPaths;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 #[tokio::test]
 async fn connects_to_a_running_service_without_spawning() {
@@ -42,11 +43,17 @@ async fn stale_record_is_removed_and_the_spawn_hook_runs_once() {
     .unwrap();
     let spawns = Arc::new(AtomicUsize::new(0));
     let s = Arc::clone(&spawns);
-    let result = connect_or_start(&paths, move || {
-        s.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    })
+    let started = Instant::now();
+    let result = connect_or_start_within(
+        &paths,
+        move || {
+            s.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        },
+        Duration::from_millis(200),
+    )
     .await;
+    assert!(started.elapsed() < Duration::from_secs(1));
     assert!(matches!(result, Err(ConnectError::Unavailable(_))));
     assert_eq!(spawns.load(Ordering::SeqCst), 1);
     assert!(discovery::read_record(&paths).unwrap().is_none());
@@ -141,11 +148,17 @@ async fn try_connect_removes_the_record_when_its_pid_is_dead() {
     .unwrap();
     let spawns = Arc::new(AtomicUsize::new(0));
     let s = Arc::clone(&spawns);
-    let result = connect_or_start(&paths, move || {
-        s.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    })
+    let started = Instant::now();
+    let result = connect_or_start_within(
+        &paths,
+        move || {
+            s.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        },
+        Duration::from_millis(200),
+    )
     .await;
+    assert!(started.elapsed() < Duration::from_secs(1));
     assert!(matches!(result, Err(ConnectError::Unavailable(_))));
     assert_eq!(spawns.load(Ordering::SeqCst), 1);
     assert!(discovery::read_record(&paths).unwrap().is_none());

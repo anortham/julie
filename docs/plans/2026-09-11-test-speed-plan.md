@@ -89,10 +89,10 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 4 to 6 use `serial-worke
 **Approach:** Add `connect_or_start_within`; keep `connect_or_start` for production callers. In the tests call `connect_or_start_within(&paths, hook, Duration::from_millis(200))`. In the race test, loop `while !handler.indexing_status.search_ready.load(Ordering::Acquire)` with `tokio::time::sleep(50ms)` and a `tokio::time::timeout(10 s)` around the loop so a real regression still fails. TDD: first change the tests, see them still take 10 s (RED on the wall-time expectation you assert with `Instant`), then implement.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run --lib -p julie stale_record_is_removed_and_the_spawn_hook_runs_once` and `try_connect_removes_the_record_when_its_pid_is_dead` each report under 1 s.
-- [ ] `cargo nextest run --lib -p julie test_search_after_indexing_complete` reports under 6 s and still asserts the search result.
-- [ ] `connect_or_start` callers unchanged; `cargo check` clean.
-- [ ] Worker-scope verification passes and the change is handed to the lead per commit mode.
+- [x] `cargo nextest run --lib -p julie stale_record_is_removed_and_the_spawn_hook_runs_once` and `try_connect_removes_the_record_when_its_pid_is_dead` each report under 1 s (0.212 s, 0.210 s).
+- [x] `cargo nextest run --lib -p julie test_search_after_indexing_complete` reports under 6 s and still asserts the search result (0.040 s; the test now indexes first because `initialize_workspace_with_force` does not index).
+- [x] `connect_or_start` callers unchanged; `cargo check` clean.
+- [x] Worker-scope verification passes and the change is handed to the lead per commit mode.
 
 ### Task 2: Re-export index and index crate opt-level
 
