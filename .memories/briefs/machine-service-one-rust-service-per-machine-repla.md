@@ -4,7 +4,7 @@ title: "Machine service: one Rust service per machine replaces per-session
   Miller and Julie"
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-11T12:21:20.893Z
+updated: 2026-09-11T13:00:49.390Z
 tags:
   - machine-service
   - architecture
@@ -24,24 +24,28 @@ Build `julie-service`: one process per developer machine, stateless MCP over HTT
 
 ## Status (2026-09-11)
 
-- Phases 1, 2, 3, 4, and 6a are landed on `main` at `f57a1655`. Gate findings live in `docs/findings/*-machine-service-phase*-gate.md`. Main is not pushed.
+- Phases 1, 2, 3, 4, and 6a are landed on `main`. Gate findings live in `docs/findings/*-machine-service-phase*-gate.md`. Main is not pushed.
 - Phase 5 (edit on the new engine) was absorbed by phase 3 Task 12. The `content` tool and the per-path mutex were never built; `content` is a Miller name and belongs to 6b.
 - Phase 6b (Miller tool names, `inspect` and `trace` folds, telemetry rename) is deferred. Decision date: about 2026-09-25, after two weeks of `tool_calls` rows compared to the baseline table in `docs/findings/2026-09-11-machine-service-phase6a-gate.md`.
 - Phase 7 (continuous testing, design section 11) needs its own design review before any plan.
+- **In progress:** hybrid auto backend on branch `hybrid-auto` in `.worktrees/hybrid-auto`. Plan: `docs/plans/2026-09-11-hybrid-auto-backend-plan.md`. Task 1 landed (feat + fix + refactor commits). Task 2 (scorecard, head-to-head, finding, ledger) is lead-run and pending.
 
 ## Owner's sequence after 6a (set 2026-09-11)
 
-1. **Hybrid by default search.** `auto` uses hybrid when the semantic index reports ready, else lexical. Gated by `dogfood` and the semantic-value scorecard. Head-to-head evidence: hybrid 77/90 percent top-5 by task class, Julie default 46/20.
-2. **Deployment story.** What the machine-service architecture changed for users: install path, user instructions, harness support (Claude Code plugin, Codex, OpenCode, Cursor), and the easiest route to users. Plugin repo needs the two session-start hook files and the skill list.
-3. **Code cleanup.** Build warnings (clippy reported 326), dead code, and outdated docs and plans that carry no present value.
-4. **Dashboard.** Current state, target state, and functionality.
-5. **Troubleshooting on the dashboard.** Logs and error info, plus an easy path for a user to submit a bug report with supporting evidence.
+1. **Hybrid by default search.** In progress, see above.
+2. **Registry hygiene (owner decision 2026-09-11).** Run `run_cleanup_sweep` in the background at service start; today only `manage_workspace list` runs it and 231 dead temp rows piled up. Give the CLI test bucket an isolated `JULIE_HOME` so tests stop writing the live registry.
+3. **Test speed (owner decision 2026-09-11).** "We spend 90 percent of our time waiting on tests." Make the suites faster or run fewer of them. Candidates: prebuild cost (126 s cold for nano), the 40 s fixture build for dogfood, duplicate coverage across buckets (`cargo xtask test inventory`), and gate tiers that rerun what `changed` already ran.
+4. **Deployment story.** What the machine-service architecture changed for users: install path, user instructions, harness support (Claude Code plugin, Codex, OpenCode, Cursor), and the easiest route to users. Plugin repo needs the two session-start hook files and the skill list.
+5. **Code cleanup.** Build warnings (clippy reported 326), dead code, and outdated docs and plans that carry no present value.
+6. **Dashboard.** Current state, target state, and functionality.
+7. **Troubleshooting on the dashboard.** Logs and error info, plus an easy path for a user to submit a bug report with supporting evidence.
 
 Each item gets its own brainstorm, plan, worktree, and gate finding. Push to origin is still the owner's call.
 
 ## Follow-ups (not blocking)
 
-- Service resident memory is about 3.3 GB with eleven workspaces open. Measured, not yet acted on.
+- Service resident memory was 3.3 GB with eleven workspaces open in 6a; part of that was 232 dead checkouts. Re-measure after item 2.
+- The sidecar binary comes from `~/source/julie-semantic-sidecar/target/release/`; copy it beside `julie-server` before any semantic run.
 - Rust `xtask-eval revival` harness still deferred.
 
 ## Where work happens
