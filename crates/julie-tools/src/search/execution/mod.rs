@@ -96,7 +96,7 @@ pub async fn execute_search_unified(
     );
     let backend_fallback = if params.backend.value != SearchBackend::Lexical {
         // Only an explicit semantic/hybrid request may pay the provider
-        // lazy-init wait; an auto-selected hybrid run must not block a plain
+        // lazy-init wait; an auto-selected semantic run must not block a plain
         // query on a degraded or starting provider.
         let provider = if params.backend.explicit {
             handler
