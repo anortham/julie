@@ -415,3 +415,61 @@ async fn edit_file_records_result_count() -> Result<()> {
     assert_eq!(count, Some(1));
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_adapter_records_client_from_request_context_meta() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let adapter = crate::handler::mcp_adapter::McpAdapter::new(
+        Arc::new(handler.request_engine()),
+        Some(handler.current_workspace_root()),
+    );
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+    let mut context = RequestContext::new(NumberOrString::Number(1), service.peer().clone());
+    context.meta.insert(
+        "julie".to_string(),
+        serde_json::json!({"client":"grok/1.0.25","session":"shim-1"}),
+    );
+    let request = CallToolRequestParams::new("get_symbols").with_arguments(json_object(
+        serde_json::json!({ "file_path": "src/lib.rs" }),
+    ));
+    adapter
+        .call_tool(request, context)
+        .await
+        .expect("get_symbols through adapter");
+
+    let db = handler.daemon_db.as_ref().expect("registry.db").clone();
+    let (client, session) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let row = {
+                let conn = db.conn_for_test();
+                let mut stmt = conn.prepare(
+                    "SELECT client, client_session FROM tool_calls
+                     WHERE tool_name = 'get_symbols' AND success = 1
+                     ORDER BY id DESC LIMIT 1",
+                )?;
+                let mut rows = stmt.query([])?;
+                rows.next()?
+                    .map(|row| {
+                        Ok::<(Option<String>, Option<String>), rusqlite::Error>((
+                            row.get(0)?,
+                            row.get(1)?,
+                        ))
+                    })
+                    .transpose()?
+            };
+            if let Some(row) = row {
+                break Ok::<(Option<String>, Option<String>), anyhow::Error>(row);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await??;
+
+    assert_eq!(client.as_deref(), Some("grok/1.0.25"));
+    assert_eq!(session.as_deref(), Some("shim-1"));
+    let _ = service.cancel().await;
+    Ok(())
+}
