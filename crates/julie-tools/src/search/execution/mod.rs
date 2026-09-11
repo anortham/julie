@@ -94,7 +94,6 @@ pub async fn execute_search_unified(
         &normalized_file_pattern,
         params.exclude_tests,
     );
-    let mut auto_symbol_pass_was_empty = false;
     let backend_fallback = if params.backend.value != SearchBackend::Lexical {
         // Only an explicit semantic/hybrid request may pay the provider
         // lazy-init wait; an auto-selected hybrid run must not block a plain
@@ -129,7 +128,6 @@ pub async fn execute_search_unified(
                 if params.backend.explicit || !execution.hits.is_empty() {
                     return Ok(execution);
                 }
-                auto_symbol_pass_was_empty = true;
             } else if params.semantic_mode
                 == Some(julie_core::embeddings_contract::SemanticMode::Required)
             {
@@ -141,14 +139,6 @@ pub async fn execute_search_unified(
             == Some(julie_core::embeddings_contract::SemanticMode::Required)
         {
             anyhow::bail!("SEMANTICS_NOT_READY: Embedding provider unavailable in Required mode");
-        }
-
-        if !auto_symbol_pass_was_empty
-            && params.semantic_mode == Some(julie_core::embeddings_contract::SemanticMode::Required)
-        {
-            anyhow::bail!(
-                "SEMANTICS_NOT_READY: SemanticMode::Required cannot fall back to lexical search"
-            );
         }
 
         params.backend.explicit

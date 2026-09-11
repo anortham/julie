@@ -413,7 +413,7 @@ async fn explicit_lexical_zero_hits_do_not_use_semantic_fallback() -> Result<()>
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn lexical_zero_hits_skip_semantic_fallback_for_plain_language_noise() -> Result<()> {
+async fn lexical_zero_hits_skip_semantic_fallback_for_a_single_plain_word() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
 
     let run = FastSearchTool {

@@ -20,7 +20,7 @@ get_context(query="<area, concept, or module name>")
 
 Conceptual queries work well here, not just symbol names. For example, `get_context(query="error handling and retries")` will find relevant symbols by meaning via semantic search.
 
-For a quick concept-to-symbol probe before expanding context, use `fast_search(query="...", backend="semantic")` or `backend="hybrid"`. Those backends return symbol-backed hits only; use explicit `backend="lexical"` for file names, path fragments, or pure lexical comparison. Omitting `backend` is normal search and may show a labeled semantic fallback only when an identifier-like unscoped lexical query returns zero hits and embeddings are ready.
+For a quick concept-to-symbol probe before expanding context, use `fast_search(query="...", backend="semantic")` or `backend="hybrid"`. Those backends return symbol-backed hits only; use explicit `backend="lexical"` for file names, path fragments, or pure lexical comparison. Omitting `backend` runs hybrid for natural-language queries when vectors are ready, else lexical; lexical may show a labeled semantic fallback only when an identifier-like unscoped query returns zero hits and embeddings are ready.
 
 This returns:
 - **Pivots**: The most relevant symbols with full code bodies
