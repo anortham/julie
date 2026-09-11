@@ -112,18 +112,25 @@ fn group_is_file_only(group: &[&SearchHit]) -> bool {
 }
 
 fn compact_hit_line(hit: &SearchHit, grouped: bool) -> String {
-    let row = match &hit.backing {
+    match &hit.backing {
         SearchHitBacking::File(_) => hit.file.clone(),
         SearchHitBacking::LineMatch(line_match) => {
             let content = trim_compact_line(&line_match.line_content);
-            format!("{}:{} {content}", hit.file, line_match.line_number)
+            if grouped {
+                format!("  :{} {content}", line_match.line_number)
+            } else {
+                format!("{}:{} {content}", hit.file, line_match.line_number)
+            }
         }
         SearchHitBacking::Symbol(_) => {
             let line = hit.line.unwrap_or(0);
-            format!("{}:{line} {} {}", hit.file, hit.name, hit.kind)
+            if grouped {
+                format!("  :{line} {} {}", hit.name, hit.kind)
+            } else {
+                format!("{}:{line} {} {}", hit.file, hit.name, hit.kind)
+            }
         }
-    };
-    if grouped { format!("  {row}") } else { row }
+    }
 }
 
 fn trim_compact_line(content: &str) -> String {

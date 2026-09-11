@@ -11,6 +11,15 @@ use crate::tools::search::text_search::definition_search_with_index_for_test;
 use crate::tools::search::trace::{LineEnrichmentStatus, ZeroHitReason};
 use julie_test_support::FakeToolContext;
 
+fn compact_text_has_path_line(text: &str, path: &str, line: u32) -> bool {
+    let ungrouped = format!("{path}:{line}");
+    if text.contains(&ungrouped) {
+        return true;
+    }
+    let grouped_row = format!("  :{line} ");
+    text.contains(path) && text.lines().any(|row| row.starts_with(&grouped_row))
+}
+
 fn extract_text(result: &CallToolResult) -> String {
     result
         .content
@@ -436,7 +445,7 @@ async fn content_locations_format_omits_matching_line_text() -> Result<()> {
 
     let text = extract_text(&result);
     assert!(
-        text.contains("src/app.rs:2"),
+        compact_text_has_path_line(&text, "src/app.rs", 2),
         "compact output should include file and line, got:\n{text}"
     );
     assert!(
@@ -488,7 +497,7 @@ async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> 
         "line hits should preserve the indexed file language instead of defaulting to Rust"
     );
     assert!(
-        text.contains("src/app.py:2"),
+        compact_text_has_path_line(&text, "src/app.py", 2),
         "compact output should include the Python file and line, got:\n{text}"
     );
     assert_eq!(execution.trace.result_count, execution.hits.len());
@@ -545,7 +554,7 @@ public:
 
     let text = extract_text(&run.result);
     assert!(
-        text.contains("include/Widget.h:6"),
+        compact_text_has_path_line(&text, "include/Widget.h", 6),
         "C++ .h compact output should include the matching line, got:\n{text}"
     );
 
