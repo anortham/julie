@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 // Import IncrementalIndexer from watcher module
 use crate::watcher::IncrementalIndexer;
-use julie_index::checkout_store::CheckoutStore;
+use julie_index::checkout_store::{CheckoutStore, VersionMismatch};
 
 /// The main Julie workspace structure
 ///
@@ -98,21 +98,25 @@ impl Clone for JulieWorkspace {
     }
 }
 
-/// Open `indexes/<id>/`. A failed open deletes the directory and reopens.
+/// Open `indexes/<id>/`. Only a facts version mismatch deletes the directory
+/// and reopens; every other failure propagates with the directory intact.
 pub fn open_or_recreate_store(index_dir: &Path, root: &Path) -> Result<CheckoutStore> {
     match CheckoutStore::open(index_dir, root) {
         Ok(store) => Ok(store),
-        Err(err) => {
+        Err(err) if err.downcast_ref::<VersionMismatch>().is_some() => {
             warn!(
                 error = %err,
                 index_dir = %index_dir.display(),
-                "checkout store open failed; deleting indexes/<id>/ and reopening"
+                "facts version mismatch; deleting indexes/<id>/ and reopening"
             );
             if index_dir.exists() {
                 fs::remove_dir_all(index_dir)
                     .with_context(|| format!("delete index dir {}", index_dir.display()))?;
             }
             CheckoutStore::open(index_dir, root)
+        }
+        Err(err) => {
+            Err(err).with_context(|| format!("open checkout store {}", index_dir.display()))
         }
     }
 }

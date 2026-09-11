@@ -1,16 +1,16 @@
 //! Planning logic for primary workspace catch-up indexing.
 //!
 //! Compares `paths` to the scanned tree and blob hashes to disk. A failed
-//! store open (engine mismatch) means the directory was deleted.
+//! store open propagates; only `store_engine_mismatch` asks for a rebuild.
 
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use crate::tools::workspace::indexing::store_open::{
-    delete_store_dir, store_dir, store_engine_mismatch, store_for_workspace,
+    store_dir, store_engine_mismatch, store_for_workspace,
 };
 use anyhow::Result;
 use std::collections::HashSet;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PrimaryWorkspaceRepairPlan {
@@ -44,28 +44,8 @@ pub(crate) async fn plan_primary_workspace_repair(
         }));
     }
 
-    let store = match store_for_workspace(handler, &route.workspace_id, &route.workspace_root).await
-    {
-        Ok(store) => store,
-        Err(err) => {
-            warn!(error = %err, "checkout store failed to open; deleting indexes/<id>/ for reindex");
-            delete_store_dir(&store_path)?;
-            return Ok(Some(PrimaryWorkspaceRepairPlan {
-                reasons: vec![IndexingRepairReason::SemanticVersionChanged],
-            }));
-        }
-    };
-
-    let facts = match store.current().facts() {
-        Ok(facts) => facts,
-        Err(err) => {
-            warn!(error = %err, "facts reader failed; deleting indexes/<id>/ for reindex");
-            delete_store_dir(&store_path)?;
-            return Ok(Some(PrimaryWorkspaceRepairPlan {
-                reasons: vec![IndexingRepairReason::SemanticVersionChanged],
-            }));
-        }
-    };
+    let store = store_for_workspace(handler, &route.workspace_id, &route.workspace_root).await?;
+    let facts = store.current().facts()?;
     let path_rows = facts.reader().paths()?;
     if path_rows.is_empty() {
         info!("📊 Store has no paths - indexing needed");

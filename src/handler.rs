@@ -47,6 +47,7 @@ use tokio::sync::RwLock;
 use self::tool_metrics::{MetricsTask, run_metrics_writer, source_bytes_for_paths};
 use crate::tools::metrics::session::{SessionMetrics, extract_source_paths};
 use crate::tools::workspace::commands::ManageWorkspaceOperation;
+use crate::tools::workspace::indexing::store_open::open_or_recreate;
 
 pub(crate) struct PrimaryWorkspaceSnapshot {
     pub binding: PrimaryWorkspaceBinding,
@@ -1363,6 +1364,10 @@ impl JulieServerHandler {
 
     /// The checkout store for `workspace_id`: the loaded primary's own store, or
     /// one opened from `indexes/{workspace_id}/` and cached for the session.
+    /// Opens through `open_or_recreate`, so a facts version mismatch rebuilds the
+    /// directory and every other open failure propagates. The empty store left by
+    /// a rebuild is never cached: the checkout's own handler reindexes it, and a
+    /// cached empty store would hide that work for the rest of the session.
     pub(crate) async fn checkout_store_for_workspace(
         &self,
         workspace_id: &str,
@@ -1379,13 +1384,15 @@ impl JulieServerHandler {
         }
         let store_dir = self.workspace_index_dir_for(workspace_id).await?;
         let root = workspace_root.to_path_buf();
-        let store =
-            tokio::task::spawn_blocking(move || CheckoutStore::open(&store_dir, &root)).await??;
-        let store = Arc::new(store);
-        self.ref_store_cache
-            .write()
-            .await
-            .insert(workspace_id.to_string(), Arc::clone(&store));
+        let opened =
+            tokio::task::spawn_blocking(move || open_or_recreate(&store_dir, &root)).await??;
+        let store = Arc::new(opened.store);
+        if !opened.rebuilt {
+            self.ref_store_cache
+                .write()
+                .await
+                .insert(workspace_id.to_string(), Arc::clone(&store));
+        }
         Ok(store)
     }
 

@@ -80,7 +80,7 @@ pub mod tools {
         pub mod refresh_routing; // Primary force-refresh should reuse full index path
         pub mod seed; // Sibling checkout seed copy tests
         pub mod status_rebuild; // manage_workspace status and rebuild operations
-        pub mod store_open; // Failed facts open deletes store/ and reopens
+        pub mod store_open; // Only a version mismatch deletes indexes/<id>/
         // root_safety.rs relocated to crates/julie-runtime/src/tests/ (T2c.3 — tests julie-runtime's workspace::root_safety)
         pub mod utils; // Workspace utilities tests // Registry service tests
     }

@@ -1,12 +1,12 @@
-//! Open the checkout store. A version mismatch or a failed open deletes
+//! Open the checkout store. Only a facts version mismatch deletes
 //! `indexes/<id>/` and opens a new empty one; facts are never migrated.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use julie_facts::{FactsStore, Opened};
-use julie_index::checkout_store::{CheckoutStore, FACTS_FILE};
+use julie_index::checkout_store::{CheckoutStore, FACTS_FILE, VersionMismatch};
 use tracing::warn;
 
 use crate::handler::JulieServerHandler;
@@ -16,19 +16,36 @@ pub(crate) fn store_dir(index_root: &Path) -> PathBuf {
     index_root.to_path_buf()
 }
 
-/// Open `<store_dir>` (facts.sqlite + tantivy). On any open failure, delete
-/// the directory and create a new store in its place.
-pub(crate) fn open_or_recreate(store_dir: &Path, root: &Path) -> Result<CheckoutStore> {
+/// An opened checkout store. `rebuilt` marks the empty store that replaced a
+/// version-mismatched one, so a caller can refuse to hold on to it.
+pub(crate) struct OpenedCheckout {
+    pub store: CheckoutStore,
+    pub rebuilt: bool,
+}
+
+/// Open `<store_dir>` (facts.sqlite + tantivy). A facts version mismatch
+/// deletes the directory and creates a new store in its place; every other
+/// failure propagates with the directory intact.
+pub(crate) fn open_or_recreate(store_dir: &Path, root: &Path) -> Result<OpenedCheckout> {
     match CheckoutStore::open(store_dir, root) {
-        Ok(store) => Ok(store),
-        Err(err) => {
+        Ok(store) => Ok(OpenedCheckout {
+            store,
+            rebuilt: false,
+        }),
+        Err(err) if err.downcast_ref::<VersionMismatch>().is_some() => {
             warn!(
                 error = %err,
                 store_dir = %store_dir.display(),
-                "checkout store open failed; deleting indexes/<id>/ and reopening"
+                "facts version mismatch; deleting indexes/<id>/ and reopening"
             );
             delete_store_dir(store_dir)?;
-            CheckoutStore::open(store_dir, root)
+            Ok(OpenedCheckout {
+                store: CheckoutStore::open(store_dir, root)?,
+                rebuilt: true,
+            })
+        }
+        Err(err) => {
+            Err(err).with_context(|| format!("open checkout store {}", store_dir.display()))
         }
     }
 }
@@ -54,7 +71,8 @@ pub(crate) fn store_engine_mismatch(store_dir: &Path) -> bool {
 }
 
 /// The writer for this checkout: the loaded primary's store, or one opened
-/// from `indexes/<id>/`. A failed open deletes `indexes/<id>/` and retries.
+/// from `indexes/<id>/`. Only a version mismatch deletes the directory; every
+/// other failed open returns the error with the directory intact.
 pub(crate) async fn store_for_workspace(
     handler: &JulieServerHandler,
     workspace_id: &str,
@@ -63,30 +81,16 @@ pub(crate) async fn store_for_workspace(
     let store_dir = store_dir(&handler.workspace_index_dir_for(workspace_id).await?);
     if !store_dir.join(FACTS_FILE).exists() {
         let root = root.to_path_buf();
-        let store =
+        let opened =
             tokio::task::spawn_blocking(move || open_or_recreate(&store_dir, &root)).await??;
-        return Ok(Arc::new(store));
+        return Ok(Arc::new(opened.store));
     }
     if handler.loaded_workspace_id().as_deref() == Some(workspace_id) {
         if let Some(ws) = handler.get_workspace().await? {
             return Ok(ws.store);
         }
     }
-    match handler
+    handler
         .checkout_store_for_workspace(workspace_id, root)
         .await
-    {
-        Ok(store) => Ok(store),
-        Err(err) => {
-            warn!(
-                workspace_id,
-                error = %err,
-                "checkout store open failed; deleting indexes/<id>/ and reopening"
-            );
-            let root = root.to_path_buf();
-            let store =
-                tokio::task::spawn_blocking(move || open_or_recreate(&store_dir, &root)).await??;
-            Ok(Arc::new(store))
-        }
-    }
 }

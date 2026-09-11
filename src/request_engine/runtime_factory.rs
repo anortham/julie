@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::warn;
 
 use crate::handler::JulieServerHandler;
 use crate::paths::RegistryPaths;
@@ -11,7 +12,6 @@ use crate::registry::database::DaemonDatabase;
 use crate::request_engine::types::{
     RequestContext, RequestFailure, RequestReadiness, SemanticMode, WorkspaceBinding,
 };
-use crate::tools::workspace::indexing::store_open::{delete_store_dir, store_dir};
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -159,9 +159,10 @@ impl RuntimeFactory {
                     initialize_recovering_store(runtime.handler(), &b.index_root).await?;
                 }
                 if !*runtime.handler().is_indexed.read().await {
-                    crate::startup::run_primary_workspace_repair(runtime.handler())
-                        .await
-                        .ok();
+                    warn_on_repair_failure(
+                        &b.index_root,
+                        crate::startup::run_primary_workspace_repair(runtime.handler()).await,
+                    );
                 }
 
                 Ok(runtime)
@@ -234,9 +235,10 @@ impl RuntimeFactory {
 
         initialize_recovering_store(&handler, &binding.index_root).await?;
 
-        crate::startup::run_primary_workspace_repair(&handler)
-            .await
-            .ok();
+        warn_on_repair_failure(
+            &binding.index_root,
+            crate::startup::run_primary_workspace_repair(&handler).await,
+        );
 
         Ok(Arc::new(RequestRuntime::new(
             Arc::new(handler),
@@ -277,31 +279,34 @@ impl RuntimeFactory {
     }
 }
 
-async fn initialize_recovering_store(
+/// Report a repair scan that did not run. The checkout keeps whatever it had,
+/// so the operator needs the path and the cause in the message itself: the
+/// dashboard error buffer keeps only the message, not the structured fields.
+pub(crate) fn warn_on_repair_failure(
+    index_root: &std::path::Path,
+    outcome: anyhow::Result<Option<crate::startup::PrimaryWorkspaceRepairPlan>>,
+) {
+    if let Err(err) = outcome {
+        warn!(
+            "startup repair scan failed for {}: {err:#}",
+            index_root.display()
+        );
+    }
+}
+
+pub(crate) async fn initialize_recovering_store(
     handler: &JulieServerHandler,
     index_root: &std::path::Path,
 ) -> Result<(), RequestFailure> {
-    match handler.initialize_workspace_with_force(None, false).await {
-        Ok(()) => {
-            if handler.get_workspace().await.ok().flatten().is_some() {
-                return Ok(());
-            }
-            let _ = delete_store_dir(&store_dir(index_root));
-            handler
-                .initialize_workspace_with_force(None, false)
-                .await
-                .map_err(|e| {
-                    RequestFailure::internal(format!("Failed to initialize workspace: {e}"))
-                })
-        }
-        Err(e) => {
-            let _ = delete_store_dir(&store_dir(index_root));
-            handler
-                .initialize_workspace_with_force(None, false)
-                .await
-                .map_err(|_| {
-                    RequestFailure::internal(format!("Failed to initialize workspace: {e}"))
-                })
-        }
+    handler
+        .initialize_workspace_with_force(None, false)
+        .await
+        .map_err(|e| RequestFailure::internal(format!("Failed to initialize workspace: {e}")))?;
+    if handler.get_workspace().await.ok().flatten().is_none() {
+        return Err(RequestFailure::internal(format!(
+            "Failed to initialize workspace at {}",
+            index_root.display()
+        )));
     }
+    Ok(())
 }
