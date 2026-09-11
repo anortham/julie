@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use julie_index::checkout_store::{CheckoutStore, PathChange};
 use rusqlite::Connection;
@@ -9,7 +10,9 @@ use tracing_subscriber::layer::SubscriberExt;
 
 use crate::dashboard::error_buffer::ErrorBuffer;
 use crate::handler::JulieServerHandler;
+use crate::registry::database::DaemonDatabase;
 use crate::request_engine::runtime_factory::{initialize_recovering_store, warn_on_repair_failure};
+use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::store_open::{open_or_recreate, store_for_workspace};
 use crate::workspace::open_or_recreate_store;
 use crate::workspace::registry::generate_workspace_id;
@@ -291,4 +294,74 @@ async fn a_rebuilt_checkout_store_is_not_cached_empty() {
         reopened.status().graph.symbols > 0,
         "a rebuilt store must not be cached, or the checkout stays empty for the session"
     );
+}
+
+#[tokio::test]
+async fn status_over_a_locked_checkout_reports_not_loaded_and_deletes_nothing() {
+    let temp = TempDir::new().unwrap();
+    let primary_root = temp.path().join("primary");
+    let locked_root = temp.path().join("locked");
+    fs::create_dir_all(&primary_root).unwrap();
+    fs::create_dir_all(&locked_root).unwrap();
+    let primary_root = primary_root.canonicalize().unwrap();
+    let locked_root = locked_root.canonicalize().unwrap();
+    let primary_id = generate_workspace_id(&primary_root.to_string_lossy()).unwrap();
+    let locked_path = locked_root.to_string_lossy().to_string();
+    let locked_id = generate_workspace_id(&locked_path).unwrap();
+    let indexes = temp.path().join("indexes");
+    let locked_store_dir = indexes.join(&locked_id);
+    build_store_with_one_rust_file(&locked_store_dir, &locked_root).await;
+    let before = symbol_count(&locked_store_dir);
+    assert!(before > 0);
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp.path().join("daemon.db")).unwrap());
+    daemon_db
+        .upsert_workspace(&locked_id, &locked_path, "ready")
+        .unwrap();
+
+    let handler = JulieServerHandler::new_in_process_with_daemon_db(
+        WorkspaceStartupHint {
+            path: primary_root.clone(),
+            source: Some(WorkspaceStartupSource::Cli),
+        },
+        None,
+        Some(indexes.join(&primary_id)),
+        Some(Arc::clone(&daemon_db)),
+    )
+    .await
+    .unwrap();
+
+    let lock = hold_exclusive_lock(&locked_store_dir);
+
+    let result = ManageWorkspaceTool {
+        operation: "status".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .expect("status must report a locked checkout instead of failing");
+
+    let structured = result
+        .structured_content
+        .expect("status must return structured content");
+    let checkouts = structured["checkouts"]
+        .as_array()
+        .expect("status must list checkouts")
+        .clone();
+    let row = checkouts
+        .iter()
+        .find(|row| row["workspace_id"] == locked_id.as_str())
+        .unwrap_or_else(|| panic!("status must include the locked checkout: {checkouts:?}"));
+    assert_eq!(row["tantivy"], "absent", "{row:?}");
+    assert_eq!(row["symbol_count"], 0, "{row:?}");
+    assert_eq!(row["blob_count"], 0, "{row:?}");
+    assert_eq!(row["last_write_at"], serde_json::Value::Null, "{row:?}");
+
+    assert!(facts_path(&locked_store_dir).exists());
+    drop(lock);
+    assert_eq!(symbol_count(&locked_store_dir), before);
 }
