@@ -1,0 +1,1211 @@
+{
+  "generated_at": "2026-09-11T13:25:15.562865+00:00",
+  "scorecard": "/home/murphy/source/julie/.worktrees/hybrid-auto/docs/eval/semantic-value/scorecard.toml",
+  "backends": [
+    "lexical",
+    "hybrid",
+    "semantic"
+  ],
+  "warnings": [],
+  "summary": {
+    "scored_cases": 23,
+    "backend_metrics": {
+      "lexical": {
+        "cases": 23,
+        "top1": 0.30434782608695654,
+        "top3": 0.391304347826087,
+        "top5": 0.43478260869565216,
+        "top8": 0.43478260869565216,
+        "mrr": 0.35144927536231885,
+        "p95_latency_ms": 338
+      },
+      "hybrid": {
+        "cases": 23,
+        "top1": 0.5652173913043478,
+        "top3": 0.7391304347826086,
+        "top5": 0.9130434782608695,
+        "top8": 0.9130434782608695,
+        "mrr": 0.6768115942028985,
+        "p95_latency_ms": 391
+      },
+      "semantic": {
+        "cases": 23,
+        "top1": 0.782608695652174,
+        "top3": 0.9130434782608695,
+        "top5": 0.9130434782608695,
+        "top8": 0.9130434782608695,
+        "mrr": 0.8478260869565217,
+        "p95_latency_ms": 55
+      }
+    },
+    "outcomes": {
+      "tie": 9,
+      "semantic_win": 14
+    },
+    "fallback_cases": [],
+    "errors": []
+  },
+  "cases": [
+    {
+      "id": "express-lazy-router",
+      "repo": "express",
+      "language": "JavaScript",
+      "category": "concept",
+      "query": "where does the app lazily create the router for middleware",
+      "intent": "Find application router setup.",
+      "expected_any": [
+        "lib/application.js"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js"
+          ],
+          "latency_ms": 87,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "lib/express.js"
+          ],
+          "latency_ms": 83,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js"
+          ],
+          "latency_ms": 19,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "express-mount-middleware",
+      "repo": "express",
+      "language": "JavaScript",
+      "category": "concept",
+      "query": "how does a mounted express app restore request and response prototypes",
+      "intent": "Find mounted app middleware wrapper.",
+      "expected_any": [
+        "lib/application.js"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "lib/express.js"
+          ],
+          "latency_ms": 84,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "lib/express.js",
+            "lib/response.js"
+          ],
+          "latency_ms": 100,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "lib/express.js",
+            "lib/response.js"
+          ],
+          "latency_ms": 19,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "flask-view-dispatch",
+      "repo": "flask",
+      "language": "Python",
+      "category": "implementation",
+      "query": "where do class based views dispatch a request to methods",
+      "intent": "Find MethodView/View dispatch.",
+      "expected_any": [
+        "src/flask/views.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "src/flask/app.py"
+          ],
+          "latency_ms": 30,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/flask/views.py",
+            "src/flask/app.py",
+            "src/flask/wrappers.py"
+          ],
+          "latency_ms": 48,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/flask/views.py",
+            "src/flask/app.py"
+          ],
+          "latency_ms": 20,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "flask-blueprint-registration",
+      "repo": "flask",
+      "language": "Python",
+      "category": "concept",
+      "query": "how are nested blueprints registered on an application",
+      "intent": "Find blueprint registration logic.",
+      "expected_any": [
+        "src/flask/sansio/blueprints.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "CHANGES.rst",
+            "docs/cli.rst"
+          ],
+          "latency_ms": 30,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/app.py"
+          ],
+          "latency_ms": 36,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/app.py"
+          ],
+          "latency_ms": 23,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "flask-request-context-session",
+      "repo": "flask",
+      "language": "Python",
+      "category": "concept",
+      "query": "where does request context open the session",
+      "intent": "Find request context session setup.",
+      "expected_any": [
+        "src/flask/ctx.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "src/flask/sansio/scaffold.py"
+          ],
+          "latency_ms": 12,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 3,
+          "hits": [
+            "src/flask/sessions.py",
+            "src/flask/app.py",
+            "src/flask/ctx.py",
+            "src/flask/testing.py"
+          ],
+          "latency_ms": 57,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "src/flask/sessions.py",
+            "src/flask/ctx.py",
+            "src/flask/app.py",
+            "src/flask/testing.py"
+          ],
+          "latency_ms": 24,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "gson-strictness",
+      "repo": "gson",
+      "language": "Java",
+      "category": "concept",
+      "query": "where is JSON parser strictness and lenient behavior configured",
+      "intent": "Find strictness or reader code.",
+      "expected_any": [
+        "gson/src/main/java/com/google/gson/Strictness.java",
+        "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+        "gson/src/main/java/com/google/gson/GsonBuilder.java"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 4,
+          "hits": [
+            "gson/src/main/java/com/google/gson/JsonStreamParser.java",
+            "gson/src/main/java/com/google/gson/JsonParser.java",
+            "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+            "gson/src/main/java/com/google/gson/stream/JsonReader.java"
+          ],
+          "latency_ms": 268,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 3,
+          "hits": [
+            "gson/src/main/java/com/google/gson/JsonParser.java",
+            "gson/src/main/java/com/google/gson/JsonStreamParser.java",
+            "gson/src/main/java/com/google/gson/Strictness.java",
+            "gson/src/main/java/com/google/gson/stream/JsonWriter.java"
+          ],
+          "latency_ms": 341,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "gson/src/main/java/com/google/gson/Strictness.java",
+            "gson/src/main/java/com/google/gson/JsonParser.java",
+            "gson/src/main/java/com/google/gson/stream/MalformedJsonException.java",
+            "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+            "gson/src/main/java/com/google/gson/Gson.java",
+            "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+            "gson/src/main/java/com/google/gson/JsonPrimitive.java"
+          ],
+          "latency_ms": 35,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "gson-reflective-fields",
+      "repo": "gson",
+      "language": "Java",
+      "category": "implementation",
+      "query": "where are object fields reflected into type adapters",
+      "intent": "Find reflective adapter factory.",
+      "expected_any": [
+        "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "Troubleshooting.md"
+          ],
+          "latency_ms": 18,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 4,
+          "hits": [
+            "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+            "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ObjectTypeAdapter.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java"
+          ],
+          "latency_ms": 247,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/CollectionTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ObjectTypeAdapter.java"
+          ],
+          "latency_ms": 38,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "gson-type-adapter",
+      "repo": "gson",
+      "language": "Java",
+      "category": "concept",
+      "query": "where does a custom type adapter read and write json values",
+      "intent": "Find TypeAdapter abstraction.",
+      "expected_any": [
+        "gson/src/main/java/com/google/gson/TypeAdapter.java"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "gson/src/main/java/com/google/gson/Gson.java"
+          ],
+          "latency_ms": 29,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 5,
+          "hits": [
+            "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/TypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/TypeAdapter.java",
+            "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java"
+          ],
+          "latency_ms": 337,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/JsonSerializer.java",
+            "gson/src/main/java/com/google/gson/JsonDeserializer.java",
+            "gson/src/main/java/com/google/gson/internal/bind/CollectionTypeAdapterFactory.java"
+          ],
+          "latency_ms": 38,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "moshi-polymorphic-labels",
+      "repo": "moshi",
+      "language": "Kotlin/Java",
+      "category": "concept",
+      "query": "where does polymorphic json choose subtype by label",
+      "intent": "Find polymorphic adapter factory.",
+      "expected_any": [
+        "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt"
+          ],
+          "latency_ms": 347,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi/src/main/java/com/squareup/moshi/Json.kt"
+          ],
+          "latency_ms": 385,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt"
+          ],
+          "latency_ms": 45,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "moshi-record-adapter",
+      "repo": "moshi",
+      "language": "Kotlin/Java",
+      "category": "implementation",
+      "query": "where are java records converted into json adapters",
+      "intent": "Find record adapter.",
+      "expected_any": [
+        "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "moshi-adapters/src/main/java/com/squareup/moshi/Rfc3339DateJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/AdapterMethodsFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/StandardJsonAdapters.kt"
+          ],
+          "latency_ms": 327,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 5,
+          "hits": [
+            "moshi/src/main/java/com/squareup/moshi/internal/StandardJsonAdapters.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/AdapterMethodsFactory.kt",
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/EnumJsonAdapter.kt"
+          ],
+          "latency_ms": 389,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/CollectionJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/StandardJsonAdapters.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/MapJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/Moshi.kt"
+          ],
+          "latency_ms": 48,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "moshi-json-adapter-null-wrapper",
+      "repo": "moshi",
+      "language": "Kotlin/Java",
+      "category": "concept",
+      "query": "where does a json adapter wrap null serialization behavior",
+      "intent": "Find JsonAdapter null wrappers.",
+      "expected_any": [
+        "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 3,
+          "hits": [
+            "moshi/src/main/java/com/squareup/moshi/internal/NullSafeJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/NonNullJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/Rfc3339DateJsonAdapter.kt"
+          ],
+          "latency_ms": 338,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 4,
+          "hits": [
+            "moshi/src/main/java/com/squareup/moshi/internal/NullSafeJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/StandardJsonAdapters.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/NonNullJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/CollectionJsonAdapter.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/Rfc3339DateJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/RecordJsonAdapter.kt"
+          ],
+          "latency_ms": 452,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/NullSafeJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/StandardJsonAdapters.kt",
+            "moshi/src/main/java/com/squareup/moshi/Moshi.kt",
+            "moshi/src/main/java/com/squareup/moshi/-MoshiKotlinExtensions.kt"
+          ],
+          "latency_ms": 47,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "alamofire-interceptor-selection",
+      "repo": "alamofire",
+      "language": "Swift",
+      "category": "concept",
+      "query": "where does a request combine session and request interceptors for retry and adaptation",
+      "intent": "Find Session adapter/retrier selection.",
+      "expected_any": [
+        "Source/Core/Session.swift"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "Documentation/AdvancedUsage.md",
+            "docs/docsets/Alamofire.docset/Contents/Resources/Documents/search.json",
+            "docs/search.json",
+            "CHANGELOG.md"
+          ],
+          "latency_ms": 47,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RetryPolicy.swift"
+          ],
+          "latency_ms": 352,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "Source/Core/Request.swift",
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RetryPolicy.swift"
+          ],
+          "latency_ms": 36,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "alamofire-multipart-boundary",
+      "repo": "alamofire",
+      "language": "Swift",
+      "category": "implementation",
+      "query": "where is multipart form data boundary and content type generated",
+      "intent": "Find MultipartFormData boundary generator.",
+      "expected_any": [
+        "Source/Features/MultipartFormData.swift"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/docsets/Alamofire.docset/Contents/Resources/Documents/search.json",
+            "docs/docsets/Alamofire.docset/Contents/Resources/Documents/Classes.html",
+            "docs/search.json",
+            "docs/Classes.html"
+          ],
+          "latency_ms": 41,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/MultipartFormData.swift"
+          ],
+          "latency_ms": 346,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/MultipartFormData.swift"
+          ],
+          "latency_ms": 67,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "alamofire-auth-refresh-window",
+      "repo": "alamofire",
+      "language": "Swift",
+      "category": "concept",
+      "query": "where does authentication interceptor prevent excessive credential refresh attempts",
+      "intent": "Find AuthenticationInterceptor refresh window.",
+      "expected_any": [
+        "Source/Features/AuthenticationInterceptor.swift"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/AuthenticationInterceptor.swift"
+          ],
+          "latency_ms": 291,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/AuthenticationInterceptor.swift"
+          ],
+          "latency_ms": 369,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/AuthenticationInterceptor.swift"
+          ],
+          "latency_ms": 46,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "cobra-command-execute",
+      "repo": "cobra",
+      "language": "Go",
+      "category": "implementation",
+      "query": "where does a command execute with context and traverse subcommands",
+      "intent": "Find command execution entry points.",
+      "expected_any": [
+        "command.go"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "0 content matches for \"where does a command execute with context and traverse subcommands\" with file_pattern=*.go,**/*.go.",
+            "Content search requires all tokens on the same line (under Tokens strategy) or the same file (under FileLevel strategy). Multi-token zero-hits usually mean",
+            "- Concept query \u2192 try: get_context(query=\"where does a command execute with context and traverse subcommands\")",
+            "- Symbol lookup \u2192 try: fast_search(query=\"where\")",
+            "- Literal phrase \u2192 drop to 1-2 key tokens",
+            "Tokens: [where, does, a, command, execute, with, context, and, traverse, subcommands]",
+            "Strategy used: FileLevel",
+            "Filters: file_pattern=*.go,**/*.go, language=(none), exclude_tests=true",
+            "Zero-hit reason: test_filtered"
+          ],
+          "latency_ms": 4,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "command.go"
+          ],
+          "latency_ms": 130,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "command.go"
+          ],
+          "latency_ms": 30,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "cobra-flag-completion",
+      "repo": "cobra",
+      "language": "Go",
+      "category": "implementation",
+      "query": "where are custom flag completion functions registered",
+      "intent": "Find flag completion registration.",
+      "expected_any": [
+        "completions.go"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "completions.go"
+          ],
+          "latency_ms": 18,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "completions.go",
+            "shell_completions.go",
+            "bash_completions.go"
+          ],
+          "latency_ms": 67,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "completions.go",
+            "shell_completions.go"
+          ],
+          "latency_ms": 28,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "sinatra-route-dispatch",
+      "repo": "sinatra",
+      "language": "Ruby",
+      "category": "concept",
+      "query": "where are matching routes processed and dispatched with filters",
+      "intent": "Find Sinatra route dispatch.",
+      "expected_any": [
+        "lib/sinatra/base.rb"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb"
+          ],
+          "latency_ms": 46,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb"
+          ],
+          "latency_ms": 73,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb"
+          ],
+          "latency_ms": 36,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "sinatra-route-compile",
+      "repo": "sinatra",
+      "language": "Ruby",
+      "category": "implementation",
+      "query": "where are route patterns compiled into regular expressions",
+      "intent": "Find route compile logic.",
+      "expected_any": [
+        "lib/sinatra/base.rb"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "CHANGELOG.md"
+          ],
+          "latency_ms": 33,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb"
+          ],
+          "latency_ms": 50,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb"
+          ],
+          "latency_ms": 36,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "nlohmann-json-pointer",
+      "repo": "nlohmann-json",
+      "language": "C++",
+      "category": "concept",
+      "query": "where are json pointer tokens parsed and resolved",
+      "intent": "Find json_pointer implementation.",
+      "expected_any": [
+        "include/nlohmann/detail/json_pointer.hpp"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "include/nlohmann/detail/input/lexer.hpp"
+          ],
+          "latency_ms": 35,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "include/nlohmann/detail/json_pointer.hpp",
+            "include/nlohmann/json_fwd.hpp",
+            "include/nlohmann/json.hpp"
+          ],
+          "latency_ms": 346,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "include/nlohmann/detail/json_pointer.hpp",
+            "include/nlohmann/json_fwd.hpp",
+            "include/nlohmann/json.hpp"
+          ],
+          "latency_ms": 55,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "nlohmann-binary-reader",
+      "repo": "nlohmann-json",
+      "language": "C++",
+      "category": "implementation",
+      "query": "where are cbor msgpack and ubjson binary formats read",
+      "intent": "Find binary reader.",
+      "expected_any": [
+        "include/nlohmann/detail/input/binary_reader.hpp"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "include/nlohmann/detail/input/input_adapters.hpp"
+          ],
+          "latency_ms": 18,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "include/nlohmann/detail/input/binary_reader.hpp"
+          ],
+          "latency_ms": 359,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "include/nlohmann/detail/output/binary_writer.hpp",
+            "include/nlohmann/json.hpp"
+          ],
+          "latency_ms": 54,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "nlohmann-sax-parser",
+      "repo": "nlohmann-json",
+      "language": "C++",
+      "category": "concept",
+      "query": "where does the parser emit sax events while reading json",
+      "intent": "Find parser/SAX implementation.",
+      "expected_any": [
+        "include/nlohmann/detail/input/parser.hpp"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "include/nlohmann/detail/input/json_sax.hpp"
+          ],
+          "latency_ms": 288,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "include/nlohmann/detail/input/json_sax.hpp",
+            "include/nlohmann/json.hpp"
+          ],
+          "latency_ms": 391,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "include/nlohmann/json.hpp",
+            "include/nlohmann/detail/input/parser.hpp",
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "include/nlohmann/detail/input/json_sax.hpp"
+          ],
+          "latency_ms": 47,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "newtonsoft-serializer-internal-reader",
+      "repo": "newtonsoft-json",
+      "language": "C#",
+      "category": "implementation",
+      "query": "where does json serializer deserialize through an internal reader",
+      "intent": "Find Json.NET serializer deserialization internals.",
+      "expected_any": [
+        "Src/Newtonsoft.Json/JsonSerializer.cs",
+        "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalReader.cs"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalReader.cs",
+            "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalBase.cs",
+            "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalWriter.cs"
+          ],
+          "latency_ms": 203,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalBase.cs",
+            "Src/Newtonsoft.Json/JsonSerializer.cs",
+            "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalWriter.cs",
+            "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalReader.cs",
+            "Src/Newtonsoft.Json/Serialization/JsonSerializerProxy.cs"
+          ],
+          "latency_ms": 248,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Src/Newtonsoft.Json/JsonSerializer.cs",
+            "Src/Newtonsoft.Json/Serialization/JsonSerializerProxy.cs"
+          ],
+          "latency_ms": 30,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "jq-compile-bytecode",
+      "repo": "jq",
+      "language": "C",
+      "category": "implementation",
+      "query": "where does jq compile a program string into bytecode",
+      "intent": "Find jq program compilation path.",
+      "expected_any": [
+        "src/execute.c",
+        "src/compile.c"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "src/jq.h",
+            "src/execute.c",
+            "src/compile.c",
+            "src/main.c",
+            "src/jq_parser.h",
+            "src/bytecode.h"
+          ],
+          "latency_ms": 104,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "src/jq.h",
+            "src/execute.c",
+            "src/jq_parser.h",
+            "src/compile.c"
+          ],
+          "latency_ms": 152,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "src/jq.h",
+            "src/execute.c",
+            "src/jq_parser.h",
+            "src/linker.c"
+          ],
+          "latency_ms": 23,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    }
+  ]
+}

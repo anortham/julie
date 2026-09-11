@@ -94,12 +94,12 @@ Commit mode for every task: `serial-worker-commit`.
 **Approach:** Write the seven tests first and confirm each fails for the right reason (the resolve signature change makes the file fail to compile until step 1; write the tests against the new signature). Then steps 1 through 5. Run `cargo check` after each step. Follow razorback:test-driven-development. Use `deep_dive` on `execute_search_unified` and `run_symbol_backend_pass` before editing.
 
 **Acceptance criteria:**
-- [ ] The seven tests pass with `cargo nextest run --lib <name>`.
-- [ ] `cargo check` and `cargo fmt --check` pass.
-- [ ] `wc -c JULIE_AGENT_INSTRUCTIONS.md` is at most 1,900; `wc -c .claude/hooks/julie-routing-block.md` is at most 4,000.
-- [ ] All three tool descriptions and both instruction files say the same thing about the omitted backend.
-- [ ] Telemetry JSON carries `backend_auto`.
-- [ ] One commit: `feat(search): omitted backend runs hybrid for natural-language queries when vectors are ready`.
+- [x] The seven tests pass with `cargo nextest run --lib <name>`.
+- [x] `cargo check` and `cargo fmt --check` pass.
+- [x] `wc -c JULIE_AGENT_INSTRUCTIONS.md` is at most 1,900; `wc -c .claude/hooks/julie-routing-block.md` is at most 4,000.
+- [x] All three tool descriptions and both instruction files say the same thing about the omitted backend.
+- [x] Telemetry JSON carries `backend_auto`.
+- [x] One commit: `feat(search): omitted backend runs hybrid for natural-language queries when vectors are ready`.
 
 ---
 
@@ -126,7 +126,7 @@ Commit mode for every task: `serial-worker-commit`.
 6. Write the ledger with every row from Task 1's worker runs, the lead's `changed`, `tools-search-hybrid`, `dev`, `dogfood`, `full`, fmt, clippy, and the two harness runs.
 
 **Acceptance criteria:**
-- [ ] Scorecard: hybrid relative MRR at least 20 percent over lexical. If it fails, stop and report; do not tune weights in this plan.
-- [ ] Head-to-head: `auto` top-5 within one row per class of 10/13 and 9/10; `inspect.symbol` 23/23.
-- [ ] `dogfood`, `dev`, `full`, fmt, clippy pass in the gate worktree at Task 1's SHA.
-- [ ] Finding and ledger committed: `docs(search): hybrid auto backend evidence and ledger`.
+- [x] Scorecard: hybrid relative MRR at least 20 percent over lexical. If it fails, stop and report; do not tune weights in this plan.
+- [x] Head-to-head: `auto` top-5 within one row per class of 10/13 and 9/10; `inspect.symbol` 23/23.
+- [x] `dogfood`, `dev`, `full`, fmt, clippy pass in the gate worktree at Task 1's SHA.
+- [x] Finding and ledger committed: `docs(search): hybrid auto backend evidence and ledger`.
