@@ -1,8 +1,8 @@
 # Hybrid Auto Backend Finding
 
-**Verdict:** passed on 2026-09-11. An omitted `backend` now runs hybrid symbol search for natural-language queries when the workspace has ready vectors, and lexical otherwise. Every other query shape and every explicit backend behave as before.
+**Verdict:** passed on 2026-09-11. An omitted `backend` now runs semantic symbol search for natural-language queries when the workspace has ready vectors, and lexical otherwise. Every other query shape and every explicit backend behave as before. The plan shipped hybrid first; the owner switched the auto choice to semantic the same day on the evidence in the last section.
 
-Plan: `docs/plans/2026-09-11-hybrid-auto-backend-plan.md`. Design: `docs/plans/2026-09-11-hybrid-auto-backend-design.md`. Ledger: `docs/plans/2026-09-11-hybrid-auto-backend-ledger.md`. Branch `hybrid-auto`, product commits `28a616cb..74eb5b81` over `main` at `d82cbc76`.
+Plan: `docs/plans/2026-09-11-hybrid-auto-backend-plan.md`. Design: `docs/plans/2026-09-11-hybrid-auto-backend-design.md`. Ledger: `docs/plans/2026-09-11-hybrid-auto-backend-ledger.md`. Branch `hybrid-auto`, product commits `28a616cb..dcfe855f` over `main` at `d82cbc76`.
 
 ## What changed
 
@@ -70,3 +70,25 @@ All 23 auto search rows ran hybrid; none fell back to lexical. `fast_search` p50
 - Decide semantic vs hybrid for the auto NL path after one more head-to-head with `--julie-backends auto,semantic`.
 - Make `readiness.status` reflect published vectors, not registry counts.
 - Find what deleted the corpus index directories.
+
+## Semantic instead of hybrid (owner decision, same day)
+
+Commits `78553133` and `dcfe855f`: `SearchBackend::resolve` returns `Semantic` for the auto case, the compact header reads `(semantic)`, tests and the six doc strings follow. Gates at `dcfe855f`: hybrid bucket, dev 30 buckets 54 s warm, full 47 buckets 92 s warm with `NEXTEST_TEST_THREADS=6`, fmt, clippy 0 errors.
+
+Head-to-head `20260911T141759Z` (`--skip-miller --require-semantics --julie-backends auto,hybrid,semantic`, warm indexes):
+
+| backend | top-1 | top-5 | p50 | p95 | p50 bytes |
+|---|---:|---:|---:|---:|---:|
+| auto (semantic) | 18/23 | 20/23 | 15 ms | 22 ms | 388 |
+| hybrid | 13/23 | 19/23 | 34 ms | 72 ms | 479 |
+| semantic | 18/23 | 20/23 | 16 ms | 23 ms | 388 |
+
+By class: concept 69 / 77 percent, implementation 90 / 100 percent (top-1 / top-5). All 23 auto rows carry the `(semantic)` label. `inspect.symbol` 23/23. The earlier `20260911T133520Z` run with the hybrid binary showed the same semantic column, so the switch cost nothing and gained five top-1 rows.
+
+Scorecard `2026-09-11T14-17-58Z`: lexical MRR 0.351, hybrid 0.677, semantic 0.848 (p95 48 ms). Identical to the first run.
+
+One behavior to know: the first natural-language query after a service start runs lexical, because the auto path never waits for the embedding child to spawn. The second query runs semantic.
+
+## Incident during the second evidence run
+
+The first attempt at this evidence (`2026-09-11T14-13-10Z`, `20260911T141321Z`, both discarded) came back degraded: every corpus `facts.sqlite` was reborn at 14:10 to 14:13 UTC when the restarted service reopened each repo, and jq and Newtonsoft re-embedded from zero. Earlier the same day all ten corpus indexes and later both julie checkout indexes vanished with their registry rows intact. Suspects, recorded in checkpoint `6bbb54be`: `open_or_recreate` deletes `indexes/<id>/` on any open failure including a transient busy timeout during restart; force reindex deletes the primary index dir and some tests run against the live `JULIE_HOME`. No service log file exists to confirm. Folded into brief item 2.

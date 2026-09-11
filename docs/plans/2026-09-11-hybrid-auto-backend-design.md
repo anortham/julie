@@ -1,6 +1,6 @@
 # Hybrid Auto Backend Design
 
-**Status:** draft for owner review
+**Status:** implemented. Owner amendment 2026-09-11: auto picks `semantic`, not `hybrid`, for NL-shaped queries (evidence in `docs/findings/2026-09-11-hybrid-auto-backend.md`). Read `hybrid` below as `semantic`.
 **Owner decision (2026-09-11):** start with natural-language-shaped queries only; revisit after live dogfooding.
 **Path:** lightweight. This document is the implementation spec.
 

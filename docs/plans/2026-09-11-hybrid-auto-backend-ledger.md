@@ -29,3 +29,11 @@ Environment note: the `search-quality` bucket copies the 300 MB fixture into a t
 | Scorecard hybrid vs lexical | `run_scorecard.py --service --backend lexical --backend hybrid --backend semantic` | lead-eval | 74eb5b81 | pass (MRR 0.677 vs 0.351, +93% relative; semantic 0.848) | 2026-09-11T13:25Z | no |
 | Head-to-head auto vs 6a hybrid | `run_matrix.py --skip-miller --require-semantics --julie-backends auto,hybrid` | lead-eval | 74eb5b81 | pass (auto 77%/90% top-5 = hybrid; inspect 23/23; 23/23 auto rows ran hybrid; p50 38 ms) | 2026-09-11T13:26Z | no |
 | Resident memory | `julie-server service status` | lead-status | 74eb5b81 | report-only: RSS 5,269 MB, 13 live + 37 dead checkouts, sidecar 204 MB | 2026-09-11T13:27Z | no |
+| Semantic auto: worker tests | `cargo nextest run --lib <name>` ×7 | worker-exact | 78553133 | pass (red was E0599 on the renamed helper) | 2026-09-11T13:50Z | no |
+| Semantic auto: hybrid bucket | `cargo xtask test bucket tools-search-hybrid` | lead-bucket | dcfe855f | pass (0.9s warm) | 2026-09-11T13:56Z | no |
+| Semantic auto: dev | `cargo xtask test dev` | lead-dev | dcfe855f | pass (30 buckets, 54.2s warm) | 2026-09-11T13:58Z | no |
+| Semantic auto: full | `NEXTEST_TEST_THREADS=6 cargo xtask test full` | lead-full | dcfe855f | pass (47 buckets, 91.7s warm) | 2026-09-11T14:02Z | no |
+| Semantic auto: fmt, clippy | `cargo fmt --check`; `cargo clippy --workspace --all-targets` | lead-clippy | dcfe855f | pass (0 errors) | 2026-09-11T14:05Z | no |
+| Semantic auto: scorecard, first attempt | `run_scorecard.py --service …` | lead-eval | dcfe855f | DISCARDED: service was rebuilding every corpus index after restart (see finding) | 2026-09-11T14:13Z | no |
+| Semantic auto: scorecard | `run_scorecard.py --service --backend lexical --backend hybrid --backend semantic` | lead-eval | dcfe855f | pass (semantic MRR 0.848, hybrid 0.677, lexical 0.351) | 2026-09-11T14:18Z | no |
+| Semantic auto: head-to-head | `run_matrix.py --skip-miller --require-semantics --julie-backends auto,hybrid,semantic` | lead-eval | dcfe855f | pass (auto 18/23 top-1, 20/23 top-5, p50 15 ms, 23/23 rows semantic; inspect 23/23) | 2026-09-11T14:18Z | no |
