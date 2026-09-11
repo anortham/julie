@@ -1,0 +1,6 @@
+[test-groups.dogfood]
+max-threads = 6
+
+[[profile.default.overrides]]
+filter = 'test(/search_quality/) | test(/fixtures::julie_db/) | test(/dogfood/)'
+test-group = 'dogfood'

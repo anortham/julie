@@ -40,78 +40,42 @@ struct EditingTestCase {
 ## Running Tests
 
 ```bash
-# Default ≤10s-declared local confidence gate (warm bucket wall)
-cargo xtask test fast
+# One exact test during the edit loop (about 3.5 s incremental rebuild)
+cargo check
+cargo nextest run --lib <exact_test_name>
 
-# Smallest core slice (nano ⊆ fast)
-cargo xtask test nano
-
-# Diff-scoped buckets; OverBudget (non-zero) when mapped sum exceeds fast budget
-cargo xtask test changed
-# Explicit scale-up when OverBudget: unique(mapped ∪ dev)
-cargo xtask test changed --scale
-
-# Default batch gate after a completed change set
+# Batch gate after a completed change set, and before handoff
 cargo xtask test dev
 
-# When touching startup/workspace/system flows
-cargo xtask test system
-
-# When changing search/scoring/tokenization
+# Search-quality gate after search, scoring, ranking, or graph changes
 cargo xtask test dogfood
 
-# Broad pre-merge pass
+# Dev, then dogfood, before merge
 cargo xtask test full
-
-# List all buckets
-cargo xtask test list
-
-# Run one focused bucket as the lead
-cargo xtask test bucket <name>
-
-# Report-only inventory audit. Does not run tests.
-cargo xtask test inventory --bucket <name>
-cargo xtask test inventory --tier dev
 
 # Product-linked search matrix / eval harnesses (Cargo alias → xtask-eval package)
 cargo xtask-eval search-matrix mine --days 7 --out artifacts/search-matrix/seeds-YYYY-MM-DD.json
 cargo xtask-eval search-matrix baseline --profile smoke
 cargo xtask-eval search-matrix baseline --profile breadth --out artifacts/search-matrix/breadth-YYYY-MM-DD.json
 
-# Narrow filter for a specific test
+# Narrow filter to zoom in on a failure a tier reported
 cargo nextest run --lib test_stemming
 # Note: per-extractor tests now live in the external anortham/julie-extractors repo
 ```
 
-### Warm vs cold accounting
-
-Runner summaries print:
-
-- `SUMMARY: … (warm)` — selected bucket commands after every selected Rust test target has been prebuilt; non-test commands remain bucket work
-- `PREBUILD:` — summed compile/link time for the deterministic, de-duplicated `--no-run` commands derived from selected `cargo nextest run` and `cargo test` package/target selectors
-- `COLD WALL:` — `PREBUILD + warm`; it may exceed the 60s **declared** fast budget on a cold machine
-
-The `cargo xtask …` frontend stays lean. Runner prebuild compiles only the Rust test targets implied by the selected bucket commands; buckets with no Rust test command report zero prebuild time. Use `cargo xtask-eval …` for product-linked harnesses.
-
 ## Test Tiers
 
-| Tier | Command | When to use |
-|------|---------|-------------|
-| nano | `cargo xtask test nano` | Ultra-tight loop (`nano ⊆ fast`) |
-| fast | `cargo xtask test fast` | Default local gate (declared sum ≤10s; warm wall) |
-| smoke | `cargo xtask test smoke` | Quick sanity check |
-| changed | `cargo xtask test changed` | Diff-scoped; **OverBudget** if mapped sum > fast budget (no bare `dev` fallback) |
-| changed --scale | `cargo xtask test changed --scale` | OverBudget escalate: `unique(mapped ∪ dev)` |
-| dev | `cargo xtask test dev` | After normal changes (batch gate) |
-| system | `cargo xtask test system` | Startup/workspace/system changes |
-| dogfood | `cargo xtask test dogfood` | Search/scoring/tokenization changes |
-| full | `cargo xtask test full` | Pre-merge broad pass |
+`xtask/src/runner.rs` holds the exact command list for each tier.
 
-## Focused Buckets And Inventory
+| Tier | Command | What it runs | When to use |
+|------|---------|--------------|-------------|
+| dev | `cargo xtask test dev` | Builds `julie-server`. Runs the whole workspace except the dogfood set. Then runs the ignored `tests::cli::` tests. About 20 s warm. | Once per completed batch, and before handoff |
+| dogfood | `cargo xtask test dogfood` | Ensures the search-quality fixture. Then runs the dogfood set: `search_quality`, `fixtures::julie_db`, `dogfood`. About 15 s, plus 42 s when the fixture rebuilds. | After search, scoring, ranking, or graph changes |
+| full | `cargo xtask test full` | Dev, then dogfood. | Before merge |
 
-Leads may use `cargo xtask test bucket <name>` when a plan names a focused bucket and a full tier would waste time. This is still lead-owned verification. Workers run exact tests only and should not run bucket commands unless the plan explicitly assigns that diagnostic task.
+The dogfood set runs at most six tests at a time. `.config/nextest.toml` sets test group `dogfood` to `max-threads = 6`. No environment variable is needed.
 
-Use `cargo xtask test inventory --bucket <name>` or `cargo xtask test inventory --tier dev` to audit selected tests with `cargo nextest list`. Inventory is diagnostic evidence, not a passing test gate. It can prove overlap, duplicate selection, or non-inventoryable commands, but it does not replace an exact test, `changed`, or `dev` run.
+Workers run exact tests only, at most two runs per change (RED, GREEN). The lead runs `dev` once per batch. Never run more than one cargo test command at once.
 
 ## Standalone CLI Dogfood Contract
 
@@ -146,7 +110,7 @@ Use the copy-ready ledger section in `docs/plans/verification-ledger-template.md
 Each ledger row must record:
 - invariant
 - command
-- scope label
+- scope label (`worker-red-green`, `dev`, `dogfood`, `full`, or `live`)
 - commit SHA
 - result
 - timestamp (UTC)
@@ -195,17 +159,16 @@ only writer for its checkout. There is no cross-process lock, no read-only
 session, and no promotion path, so there is nothing multi-process to test except
 the service lifecycle itself.
 
-- **`service-process` bucket** (`cargo xtask test bucket service-process`): the one
-  multi-process bucket. It builds `julie-server`, then runs
-  `tests::service::process` with real subprocesses: the shim starts the service,
-  stale `service.json` recovery, idle exit, version mismatch, and `stop`.
-  Design section 12 caps it at 20 s.
+- **Service process tests** (`tests::service::process`, inside `cargo xtask test dev`):
+  the one multi-process suite. The dev tier builds `julie-server` first, then the
+  suite runs real subprocesses: the shim starts the service, stale `service.json`
+  recovery, idle exit, version mismatch, and `stop`. Design section 12 caps it at 20 s.
 - **No embedding process in tests**: `.cargo/config.toml` sets
   `JULIE_EMBEDDING_PROVIDER=none` for every test binary. `cargo xtask test dev`
-  runs in about 55 s warm (it was about 195 s when tests spawned an embedding
+  runs in about 20 s warm (it was about 195 s when tests spawned an embedding
   host). Set `JULIE_EMBEDDING_PROVIDER=native` explicitly for a test that needs
   the native sidecar.
-- **`complexity-words` bucket** (on demand, not in any tier): runs
+- **Complexity words** (on demand, not in any tier): run
   `scripts/complexity-words.sh main`, which flags design-section-4 words in
   product code added on the branch.
 - **Source-edit recovery** (`cargo nextest run -p julie --lib tests::edit_recovery_contract::`):

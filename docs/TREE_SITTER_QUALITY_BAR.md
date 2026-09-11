@@ -157,10 +157,7 @@ A release can claim this quality bar only when there are no open target gaps and
 | Gate | Command | Required when |
 | --- | --- | --- |
 | Formatter | `cargo fmt --check` | Always |
-| Extractor dependency integration | `cargo xtask test bucket extractor-dep-integration` | Always for parser re-pin, extractor contract version changes |
-| Changed tier | `cargo xtask test changed` | Always after localized implementation changes |
-| Dev tier | `cargo xtask test dev` | Always before release handoff |
-| System tier | `cargo xtask test system` | Startup, watcher, workspace, daemon, or repair changes |
+| Dev tier | `cargo xtask test dev` | Always. It contains the extractor contract tests for parser re-pins and contract version changes |
 | Dogfood tier | `cargo xtask test dogfood` | Graph, search, refs, ranking, or navigation changes |
 | Full tier | `cargo xtask test full` | Final release candidate |
 | Release build | `cargo build --release` | Final release candidate |
@@ -193,6 +190,8 @@ These are known gaps against the fixed target. This list is allowed to grow as t
 ## Verification Ledger
 
 Record release evidence with the template in [verification-ledger-template.md](plans/verification-ledger-template.md). Evidence may be reused only when the scope label and commit SHA match the current HEAD exactly, and only when there are no open target gaps for the claimed release scope.
+
+The rows below are historical evidence. They name bucket and tier commands that the runner retired on 2026-09-11. Do not run those commands. Use the Release Gates table above.
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 | --- | --- | --- | --- | --- | --- | --- |

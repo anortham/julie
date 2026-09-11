@@ -6,12 +6,14 @@
 // This test module captures the race condition in a reproducible way.
 
 use crate::handler::JulieServerHandler;
+use crate::tests::helpers::mcp::call_tool_result_text;
 use crate::tools::search::FastSearchTool;
 use crate::tools::symbols::GetSymbolsTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use tokio::time::timeout;
 
@@ -178,11 +180,26 @@ mod tests {
                 true,
             )
             .await?;
+        ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_path.to_string_lossy().to_string()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            detailed: None,
+        }
+        .call_tool(&handler)
+        .await?;
 
-        // Wait for initial indexing to complete (generous timeout)
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        let started = Instant::now();
+        timeout(Duration::from_secs(10), async {
+            while !handler.indexing_status.search_ready.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await?;
+        assert!(started.elapsed() < Duration::from_secs(6));
 
-        // Now search should definitely work
         let search_tool = FastSearchTool {
             query: "target_function".to_string(),
             limit: 15,
@@ -201,7 +218,7 @@ mod tests {
         )
         .await??;
 
-        println!("✅ Search after indexing: {:?}", result);
+        assert!(call_tool_result_text(&result).contains("target_function"));
         Ok(())
     }
 

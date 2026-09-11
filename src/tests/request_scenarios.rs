@@ -247,6 +247,7 @@ async fn test_scenario_2_refactoring_pipeline() {
             "--dry-run=false",
             "--workspace",
             &apply_ws,
+            "--standalone",
             "--json",
         ])
         .await;

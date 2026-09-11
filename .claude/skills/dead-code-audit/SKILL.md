@@ -129,7 +129,7 @@ Before editing code:
 - write or identify the regression test that protects live behavior
 - remove tests that only preserve the fossil behavior
 - run the narrowest relevant test first
-- after a batch, the lead session runs `cargo xtask test changed`, then `cargo xtask test dev`
+- after a batch, the lead session runs `cargo xtask test dev`
 
 Never add a new test whose only purpose is to keep a questionable symbol alive.
 

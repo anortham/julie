@@ -14,7 +14,7 @@ Julie treats parser output as a data contract. A tree-sitter dependency upgrade 
 ## Upgrade Rules
 
 1. Parser crates and golden fixtures are managed in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. Make upgrades there; release a new tag; then re-pin julie's git-dep.
-2. After re-pinning here, run `cargo xtask test bucket extractor-dep-integration` for any tree-sitter core, parser crate, parser git revision, or expected-output change caused by grammar drift.
+2. After re-pinning here, run `cargo xtask test dev` for any tree-sitter core, parser crate, parser git revision, or expected-output change caused by grammar drift.
 3. If a parser crate cannot be updated, record the blocker here with the failing command or dependency resolver error.
 4. Git parser dependencies must be pinned by `rev` in the external `julie-extractors` repo. Floating branch dependencies are not acceptable for parser infrastructure.
 5. Expected-output changes are acceptable only when they match reviewed parser behavior. Do not erase symbols, relationships, identifiers, types, or diagnostics just to make the gate pass.
@@ -99,17 +99,12 @@ three enrichment domains already present in the upstream contract:
 
 ## Commands
 
-Parser tests and golden gates run in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. After re-pinning the git-dep here, run the Julie-side extractor dependency integration gate:
+Parser tests and golden gates run in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. After re-pinning the git-dep here, run the Julie-side gate:
 
 ```bash
-cargo xtask test bucket extractor-dep-integration
-```
-
-For branch handoff after parser work, also run the plan-required broader gates:
-
-```bash
-cargo xtask test changed
 cargo xtask test dev
 ```
 
-Add `cargo xtask test system` when watcher, startup, indexing, or workspace lifecycle code changed. Add `cargo xtask test dogfood` when graph or search behavior changed.
+The dev tier contains the three contract tests: `test_semantic_index_engine_version_includes_extraction_contract`, `real_world_parser_upgrade_contracts_assert_expected_outputs`, and `current_parser_release_contracts_parse_without_diagnostics`.
+
+Add `cargo xtask test dogfood` when graph or search behavior changed. Run `cargo xtask test full` before merge.

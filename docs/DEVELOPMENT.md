@@ -21,8 +21,8 @@ cargo build
 # Narrow test during iteration (default)
 cargo nextest run --lib <exact_test_name>
 
-# Diff-scoped coverage after a localized change
-cargo xtask test changed
+# Batch gate after three to five edits, and before handoff
+cargo xtask test dev
 
 # Run specific tests during development (narrow filter, not full suite)
 # Note: per-extractor tests now live in the external anortham/julie-extractors repo

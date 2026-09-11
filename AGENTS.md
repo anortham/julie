@@ -34,13 +34,10 @@ The 36 extractors live upstream in [`anortham/julie-extractors`](https://github.
 cargo check                    # Type-check only (fastest compilation, no binary)
 cargo build                    # Debug build
 cargo build --release          # Release build (for live MCP testing)
-cargo nextest run --lib <test_name>  # Default: narrowest test first
-cargo xtask test nano          # Minimal regression check (nano ⊆ fast)
-cargo xtask test fast          # Default ≤10s-declared local gate (warm bucket wall)
-cargo xtask test bucket extractor-dep-integration  # Parser/extractor dependency upgrade gate
-cargo xtask test changed       # Diff-scoped buckets; OverBudget unless under fast budget
-cargo xtask test changed --scale  # OverBudget only: unique(mapped ∪ dev)
-cargo xtask test dev           # Batch gate before handoff — not per edit
+cargo nextest run --lib <name>       # Default: one exact test first
+cargo xtask test dev           # Batch gate: whole workspace, once per batch (about 20 s warm)
+cargo xtask test dogfood       # Search-quality gate after search, scoring, ranking, or graph changes
+cargo xtask test full          # Dev then dogfood, before merge
 cargo xtask-eval search-matrix|eval  # Product-linked harnesses (Cargo alias → xtask-eval)
 cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)
 cargo xtask dev-link           # (maintainer-only) Symlink installed plugin binaries → target/release (`--dry-run` to preview)
@@ -77,7 +74,7 @@ This project **MUST** follow Test-Driven Development:
 3. **Verify the test fails** — run ONLY your specific test: `cargo nextest run --lib <test_name> 2>&1 | tail -10`
 4. **Fix the bug** with minimal changes
 5. **Verify the test passes** — same narrow command as step 3
-6. **Ensure no regressions**: if you're the main session, use `cargo xtask test changed` during the local loop, then run `cargo xtask test dev` once per completed batch. **If you're a subagent, SKIP this step**; the orchestrator handles it
+6. **Ensure no regressions**: if you are the main session, run `cargo xtask test dev` once per completed batch. **If you are a subagent, SKIP this step**; the lead session handles it
 
 See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CONTROL methodology.
 
@@ -85,146 +82,67 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 
 ## 🚨 RUNNING TESTS (USE THE XTASK RUNNER)
 
-**The full suite is still too expensive to run after every small change.** Use the xtask runner as the canonical interface so the same calibrated buckets show up everywhere.
+Three tiers exist. Each tier runs one `cargo nextest run --workspace` pass. `xtask/src/runner.rs` holds the exact command lists.
 
-**You edited one function.** The right command is `cargo nextest run --lib <the_test_name>`. Not `dev`. Not `changed`. The narrowest test you have.
+| Tier | Command | What it runs | When to use |
+|------|---------|--------------|-------------|
+| **Dev** | `cargo xtask test dev` | Builds `julie-server`. Runs the whole workspace except the dogfood set. Then runs the ignored `tests::cli::` tests. About 20 s warm. | Once per completed batch, and before handoff |
+| **Dogfood** | `cargo xtask test dogfood` | Ensures the search-quality fixture. Then runs the dogfood set: `search_quality`, `fixtures::julie_db`, `dogfood`. About 15 s, plus 42 s when the fixture rebuilds. | After search, scoring, ranking, or graph changes |
+| **Full** | `cargo xtask test full` | Dev, then dogfood. | Before merge |
 
-### Workflow Helper
+The dogfood set runs at most six tests at a time. `.config/nextest.toml` sets test group `dogfood` to `max-threads = 6`. No environment variable is needed.
 
-| Command | What it does | When to use |
-|---------|--------------|-------------|
-| `cargo nextest run --lib <name>` | Run one specific test by name | Default during RED/GREEN loop |
-| `cargo xtask test bucket <name>` | Run one named bucket with command timing | Lead-owned focused gate after a coherent batch |
-| `cargo xtask test changed` | Maps the git diff to buckets; runs them when under the fast declared budget; **OverBudget** (non-zero exit, no auto-`dev`) when mapped sum exceeds it | After a localized change |
-| `cargo xtask test changed --scale` | On OverBudget only: run `unique(mapped ∪ dev)` with an explicit scale-union rationale | When you intentionally want the broader gate |
-| `cargo xtask test inventory --bucket <name>` | Report selected tests and duplicate coverage without running tests | Diagnostic evidence only, never a passing gate |
-| `cargo xtask-eval …` | Product-linked search-matrix / eval harnesses via `.cargo/config.toml` alias | Investigation harnesses; not a substitute for `dogfood` |
+### 🔥 Edit Loop (Edit → Verify)
 
-### Canonical Test Tiers
+1. Run `cargo check` after each code change.
+2. Run `cargo nextest run --lib <exact_test_name>` for the test you wrote. The incremental rebuild takes about 3.5 s.
+3. Batch three to five edits. Then run `cargo xtask test dev` once.
 
-| Tier | Command | What it covers | When to use |
-|------|---------|----------------|-------------|
-| **Nano** | `cargo xtask test nano` | Smallest core slice (`nano ⊆ fast`) | Ultra-tight loop between edit batches |
-| **Fast** | `cargo xtask test fast` | Declared ≤10s local confidence gate (warm bucket wall) | Default local gate when you want more than a single test |
-| **Smoke** | `cargo xtask test smoke` | Small confidence slice of the fastest buckets | Quick sanity check when you want a tiny run |
-| **Dev** | `cargo xtask test dev` | Fast batch-level regression tier for ordinary code changes (<10m expected) | Once per completed batch, before handoff |
-| **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
-| **Dogfood** | `cargo xtask test dogfood` | `search_quality` bucket | Use after search/scoring/tokenization changes |
-| **Full** | `cargo xtask test full` | Dev + broad tool/system/dogfood/release buckets | Use for broad pre-merge confidence |
-| **Benchmark** | `cargo xtask test benchmark` | Focused `system_health` integration bucket | Use when iterating on health-report latency or a narrow benchmark harness |
+The extractor dependency re-pin gate is `cargo xtask test dev`. It contains the three contract tests: `test_semantic_index_engine_version_includes_extraction_contract`, `real_world_parser_upgrade_contracts_assert_expected_outputs`, and `current_parser_release_contracts_parse_without_diagnostics`.
 
-### Warm vs cold accounting
-
-Runner summaries report three clocks:
-
-- **Warm** — selected bucket commands after every selected Rust test target has been prebuilt; non-test commands remain bucket work (`SUMMARY: … (warm)`)
-- **PREBUILD** — summed compile/link time for deterministic, de-duplicated `--no-run` commands derived from selected `cargo nextest run` and `cargo test` package/target selectors
-- **COLD WALL** — `PREBUILD + warm` (cold `fast` may exceed the 60s **declared** budget without falsifying it)
-
-The `cargo xtask …` frontend stays lean. Runner prebuild compiles only the Rust test targets implied by selected bucket commands; buckets with no Rust test command report zero prebuild time. Product-linked harnesses live under `cargo xtask-eval …`.
-
-### Default Workflow
-
-1. **During the local loop (narrow edits)**: run the specific test by name:
-   ```
-   cargo nextest run --lib <exact_test_name>
-   ```
-   This is the default. One test, seconds of wall-clock.
-2. **After a localized change affecting one subsystem**: `cargo xtask test changed`. Under the fast declared budget it runs the mapped buckets; if mapped sum exceeds the budget it prints **OverBudget** (mapped buckets + declared sum + next steps) and exits non-zero — it does **not** silently fall back to bare `dev`.
-3. **If OverBudget**: narrow the diff, run `cargo xtask test fast`, or explicitly escalate with `cargo xtask test changed --scale` (`unique(mapped ∪ dev)`). Shared/unmapped paths still fall back to `dev` as before.
-4. **After a completed batch or before handoff**: run `cargo xtask test dev` once. Not per edit.
-5. **If you changed startup/workspace/system flows**: add `cargo xtask test system`
-6. **If you changed search/scoring/tokenization**: add `cargo xtask test dogfood`
-7. **For a broad pre-merge pass**: run `cargo xtask test full`
-8. **To inspect the calibrated buckets**: run `cargo xtask test list`
-9. **To audit overlap without running tests**: run `cargo xtask test inventory --bucket <name>` or `cargo xtask test inventory --tier dev`. Inventory is diagnostic evidence, not a passing test gate.
-
-### 🔥 Fast Feedback Loop (Edit → Verify)
-
-For the tight edit-test loop during implementation:
-
-1. **`cargo check`** — Type-checks only, no codegen. Use FIRST after any code
-   change to catch compilation errors (~2-5 seconds).
-2. **`cargo nextest run --lib <exact_test_name>`** — After `cargo check` passes,
-   run the specific test. Incremental rebuilds now take ~5-15 seconds.
-3. **Batch before broader testing** — Make 3-5 edits before running
-   `cargo xtask test changed` or `cargo xtask test fast` / `dev`.
-4. **`cargo xtask test nano`** or **`cargo xtask test fast`** — Quick local
-   confidence between batches (`nano ⊆ fast`; declared fast sum ≤10s warm wall).
-
-### Known Pre-Existing Failures
-
-**All tiers are currently green.** If a test fails, it's a real regression, not a known issue. Investigate it.
-
-(#33, resolved 2026-05-30): the `tools-workspace-targeting` rebind tests (`tests::tools::workspace::global_targeting::rebind_index`, `test_manage_workspace_index_*`) used to fail **only on a polluted dev box**, never on clean CI. Root cause was **test non-hermeticity, not a product bug**: the fixtures created marker-less temp workspaces under `$TMPDIR`, so `find_workspace_root` walked up past them to a stray `/private/tmp/Cargo.toml` and resolved every workspace to `tmp_*` instead of `target_*`. Product rebind code was correct and untouched. The resolution-critical fixtures now drop a `.git` marker via `make_isolated_workspace_root` / `mark_workspace_root` (`src/tests/helpers/workspace.rs`) so resolution stops at the temp workspace. Most other temp-workspace tests still assume a clean `$TMPDIR` (as CI always has) — **do not leave stray workspace markers (`Cargo.toml`, `.git`, `.julie`) in your system temp root**, or you will get spurious local-only failures.
-
-(Previous known failures in `core-embeddings` and `workspace_init` were resolved as of 2026-03-19.)
-
-(The per-language extractor unit suite — every one of the 36 extractors — lives and runs in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo. Julie's own dev/full tiers no longer include extractor-unit or golden buckets.)
-
-### Why Dogfood Is Slow
-
-The `search_quality` bucket indexes this repository into a git-ignored snapshot (`fixtures/databases/julie-snapshot/`, about 300 MB, built once in about 40 s and rebuilt when the schema or engine version changes), backfills a Tantivy index from it, and runs real searches. It is a regression guard, not a quick unit-tier pass.
+`cargo xtask-eval search-matrix|eval` runs the product-linked harnesses. They are investigation tools, not a substitute for `dogfood`.
 
 ### The Rules
 
-1. **Run the narrowest test first.** `cargo nextest run --lib <test_name>` for a single function. `cargo xtask test changed` for a localized subsystem change. `cargo xtask test dev` only once per completed batch.
-2. **Run `cargo xtask test dev` once per completed batch, not after every file edit.**
-3. **Escalate with xtask tiers instead of inventing ad hoc canonical commands.**
-4. **Use raw cargo filters only to narrow failures** after `changed` or an xtask tier reports a *new* failure. Not as a shortcut to avoid the runner.
-5. **Do not run `cargo nextest run --lib` without a specific filter.** During RED/GREEN, an exact test name is the ceiling for workers; `changed` is the ceiling for the main session.
-6. **Run one test command at a time.** On Windows, parallel `cargo nextest` invocations fight over the same output binary (`LNK1104` linker lock error). Never launch multiple test runs concurrently.
+1. **Run the narrowest test first.** `cargo nextest run --lib <name>` for one function.
+2. **Run `cargo xtask test dev` once per completed batch,** not after every edit.
+3. **Use raw cargo filters only to narrow a failure** that a tier reported. Example: `cargo nextest run --lib tests::tools::search`.
+4. **Do not run `cargo nextest run --lib` without a filter.** That runs the whole suite.
+5. **Run one cargo test command at a time.** On Windows, parallel `cargo nextest` runs fight over the same output binary (`LNK1104` linker lock error).
 
 ### 🚨 Subagent & Worker Agent Test Rules (CRITICAL)
 
-**When running as a subagent, worker, or dispatched agent** (e.g., via subagent-driven development, worktree agents, or any delegated task):
+**When running as a subagent, worker, or dispatched agent** (via subagent-driven development, worktree agents, or any delegated task):
 
 **YOU MUST:**
-- Workers run exact tests only. The orchestrating session handles regression checks.
-- Run ONLY the specific test you wrote: `cargo nextest run --lib <exact_test_name> 2>&1 | tail -10`
-- Use the narrowest possible test filter for your changed area
-- Limit yourself to **2 test runs per fix**: once to verify RED, once to verify GREEN
+- Run only the exact test you wrote: `cargo nextest run --lib <exact_test_name> 2>&1 | tail -10`
+- Limit yourself to **2 test runs per change**: one to verify RED, one to verify GREEN
 
 **YOU MUST NOT:**
-- ❌ Run `cargo xtask test changed`; the main session handles bucket selection
-- ❌ Run `cargo xtask test dev` or any xtask tier; **the orchestrating session handles regression checks**
-- ❌ Run `cargo nextest run --lib` without a specific test filter — this runs the ENTIRE suite
-- ❌ Run `cargo nextest run` with broad module filters when a specific test name will do
-- ❌ Sleep, poll, or retry test commands — if a test fails, diagnose and fix or report back
+- ❌ Run `cargo xtask test dev`, `dogfood`, or `full`; **the lead session runs `dev` once per batch**
+- ❌ Run `cargo nextest run --lib` without a specific test filter
+- ❌ Sleep, poll, or retry test commands. If a test fails, diagnose and fix, or report back
 - ❌ Run tests more than twice per change cycle (red → green, done)
 
-**Why this exists:** Multiple subagents each running broad suites creates 6+ parallel compilation/test processes that grind the machine to a halt. A targeted test takes seconds. `cargo xtask test dev` is a multi-minute batch gate. Six of them in parallel turns the machine into soup.
-
-**The contract:** Subagents run narrow targeted tests. The orchestrating session uses `cargo xtask test changed` during the local loop, then runs `cargo xtask test dev` once per batch of completed changes. This is not optional.
+**Why this exists:** Six subagents that each run a broad suite start six parallel build and test processes. That grinds the machine to a halt. A targeted test takes seconds.
 
 ### Verification Ledger Contract
 
-Plan docs should use `docs/plans/verification-ledger-template.md` for verification evidence.
+Plan docs use `docs/plans/verification-ledger-template.md` for verification evidence. Scope labels are `worker-red-green`, `dev`, `dogfood`, `full`, and `live`.
 
-Reuse evidence only when the required scope label matches and the commit SHA matches the current HEAD exactly. If either value differs, rerun the command and record a new ledger row.
+Reuse evidence only when the scope label matches and the commit SHA matches the current HEAD exactly. If either value differs, run the command again and record a new ledger row.
 
-### Narrowing Failures With Raw Cargo Filters
+### Known Failures
 
-When an xtask tier fails and you need to zoom in, use targeted cargo filters like these:
+**All tiers are green. A failure is a regression.** Investigate it.
 
-```bash
-# By module area
-cargo nextest run --lib tests::core              # database, workspace init
-cargo nextest run --lib tests::tools::search     # search engine tests
-cargo nextest run --lib tests::tools::get_context # get_context tests
-cargo nextest run --lib tests::tools::deep_dive  # deep_dive tests
-cargo nextest run --lib tests::integration       # integration tests
-cargo nextest run --lib tests::tools::editing    # editing tools
+(#33, resolved 2026-05-30): the workspace rebind tests (`tests::tools::workspace::global_targeting::rebind_index`, `test_manage_workspace_index_*`) used to fail **only on a polluted dev box**, never on clean CI. Root cause was **test non-hermeticity, not a product bug**: the fixtures created marker-less temp workspaces under `$TMPDIR`, so `find_workspace_root` walked up past them to a stray `/private/tmp/Cargo.toml` and resolved every workspace to `tmp_*` instead of `target_*`. Product rebind code was correct and untouched. The resolution-critical fixtures now drop a `.git` marker via `make_isolated_workspace_root` / `mark_workspace_root` (`src/tests/helpers/workspace.rs`) so resolution stops at the temp workspace. Most other temp-workspace tests still assume a clean `$TMPDIR` (as CI always has) — **do not leave stray workspace markers (`Cargo.toml`, `.git`, `.julie`) in your system temp root**, or you will get spurious local-only failures.
 
-# By specific test name
-cargo nextest run --lib test_stemming            # all stemming tests
-cargo nextest run --lib test_centrality          # all centrality tests
-cargo nextest run --lib test_namespace           # namespace de-boost tests
-```
+(The per-language extractor unit suite — every one of the 36 extractors — lives and runs in the external [`anortham/julie-extractors`](https://github.com/anortham/julie-extractors) repo.)
 
 ### Rebuilding Fixture Database
 
-The snapshot is git-ignored and never migrated. The `search-quality` bucket rebuilds it when it is missing or was built for another schema or engine version. To force a rebuild:
+The dogfood tier indexes this repository into a git-ignored snapshot (`fixtures/databases/julie-snapshot/`, about 300 MB). The snapshot is never migrated. The tier rebuilds it when it is missing or was built for another schema or engine version. To force a rebuild:
 ```bash
 cargo test --lib build_julie_fixture -- --ignored --nocapture
 ```

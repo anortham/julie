@@ -115,20 +115,38 @@ pub async fn connect_or_start(
     paths: &RegistryPaths,
     spawn: impl Fn() -> std::io::Result<()>,
 ) -> Result<ServiceClient, ConnectError> {
+    connect_or_start_within(paths, spawn, Duration::from_secs(10)).await
+}
+
+/// Connect to the running service, or spawn one and poll until `deadline` elapses.
+pub async fn connect_or_start_within(
+    paths: &RegistryPaths,
+    spawn: impl Fn() -> std::io::Result<()>,
+    deadline: Duration,
+) -> Result<ServiceClient, ConnectError> {
     if let Some(client) = try_connect(paths).await? {
         return Ok(client);
     }
     spawn().map_err(|e| ConnectError::Unavailable(format!("could not start service: {e}")))?;
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
+    let give_up_at = Instant::now() + deadline;
+    while Instant::now() < give_up_at {
         tokio::time::sleep(Duration::from_millis(100)).await;
         if let Some(client) = try_connect(paths).await? {
             return Ok(client);
         }
     }
-    Err(ConnectError::Unavailable(
-        "service did not start within 10 s".into(),
-    ))
+    Err(ConnectError::Unavailable(format!(
+        "service did not start within {}",
+        describe_deadline(deadline)
+    )))
+}
+
+fn describe_deadline(deadline: Duration) -> String {
+    if deadline < Duration::from_secs(1) {
+        format!("{} ms", deadline.as_millis())
+    } else {
+        format!("{} s", deadline.as_secs())
+    }
 }
 
 pub fn spawn_detached_service() -> std::io::Result<()> {

@@ -2,14 +2,14 @@
 //!
 //! Contract (design): `cargo tree -p xtask -e normal --depth 1` must not include
 //! `julie`, `rusqlite`, `serde_json`, `tempfile`, or `tokio`. Direct normals are
-//! allowlisted to `anyhow`, `serde`, `toml`. `tempfile` may exist as a **dev**-dep only.
+//! allowlisted to `anyhow`. `tempfile` and `toml` may exist as **dev**-deps only.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Allowed direct normal (`[dependencies]`) package names for lean xtask.
-const ALLOWED_DIRECT_NORMALS: &[&str] = &["anyhow", "serde", "toml"];
+const ALLOWED_DIRECT_NORMALS: &[&str] = &["anyhow"];
 
 /// Packages that must never appear as normal deps (direct or depth-1 tree).
 const FORBIDDEN_NORMALS: &[&str] = &["julie", "rusqlite", "serde_json", "tempfile", "tokio"];

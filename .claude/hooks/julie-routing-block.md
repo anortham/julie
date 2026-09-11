@@ -22,7 +22,7 @@ Compact by default. More rows end with a `next:` line; pass `offset` for that pa
 - New task: get_context > deep_dive key symbols > fast_refs > implement
 - Flow tracing: call_path > deep_dive hops you need
 - Change impact: blast_radius > inspect likely callers/tests > implement > rerun
-- Extractor dependency changes: `cargo xtask test bucket extractor-dep-integration`
+- Extractor dependency changes: re-pin, then `cargo xtask test dev`
 - Bug fix: fast_search > deep_dive > write failing test > fix
 - Refactor: fast_refs > deep_dive
 

@@ -1,18 +1,8 @@
-pub mod changed;
 pub mod cli;
 pub mod dev_workflow;
-pub mod inventory;
-pub mod manifest;
 pub mod process;
 pub mod runner;
 pub mod sync_plugin;
-
-pub use cli::TestCommand;
-pub use manifest::{BucketConfig, TestManifest};
-pub use runner::{
-    BucketResult, BucketStatus, CommandExecutor, CommandOutcome, ProcessCommandExecutor,
-    RunFailure, RunSummary,
-};
 
 use std::path::{Path, PathBuf};
 
@@ -47,7 +37,7 @@ mod tests {
     use super::{resolve_workspace_root, workspace_root};
 
     #[test]
-    fn manifest_tests_workspace_root_points_to_repository_root() {
+    fn workspace_root_points_to_repository_root() {
         let root = workspace_root();
 
         assert!(root.join("Cargo.toml").is_file());
@@ -55,7 +45,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_tests_workspace_root_from_rejects_path_without_parent() {
+    fn workspace_root_from_rejects_path_without_parent() {
         let error = resolve_workspace_root("/").unwrap_err();
 
         assert!(
