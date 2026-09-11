@@ -659,17 +659,17 @@ fn test_signals_all_flags() {
 
 #[test]
 fn test_agent_instructions_recommend_standalone_for_quick_dogfood_checks() {
-    let instructions_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("JULIE_AGENT_INSTRUCTIONS.md");
-    let instructions = std::fs::read_to_string(&instructions_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", instructions_path.display()));
+    let block_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(".claude/hooks/julie-routing-block.md");
+    let block = std::fs::read_to_string(&block_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", block_path.display()));
 
     assert!(
-        instructions.contains("quick tool behavior checks before live MCP tests"),
-        "agent instructions must recommend standalone for quick checks before live MCP tests"
+        block.contains("quick checks before live MCP"),
+        "routing block must recommend standalone for quick checks before live MCP"
     );
     assert!(
-        instructions.contains("does not prove machine-service MCP serving"),
-        "agent instructions must state standalone does not prove machine-service MCP serving"
+        block.contains("Standalone CLI does not prove MCP serving or handler binding"),
+        "routing block must state standalone does not prove MCP serving"
     );
 }

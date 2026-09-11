@@ -30,7 +30,7 @@ Do not grep/find when Julie tools exist. Do not read files without get_symbols f
 
 ## CLI
 
-Named wrappers before live MCP: `julie-server call-path FROM TO` (`--from-file` / `--to-file` if names clash); `blast-radius` (git diff) or `--files path`; `patterns --operation search --query route --json`; `search "TODO" --regions comment,doc_comment --json`; `tool call_path --params '{"from":"...","to":"..."}' --json`. Standalone CLI does not prove MCP serving or handler binding. Capture stderr `julie: mode=...` for execution-path evidence.
+Named wrappers for quick checks before live MCP: `julie-server call-path FROM TO` (`--from-file` / `--to-file` if names clash); `blast-radius` (git diff) or `--files path`; `patterns --operation search --query route --json`; `search "TODO" --regions comment,doc_comment --json`; `tool call_path --params '{"from":"...","to":"..."}' --json`. Standalone CLI does not prove MCP serving or handler binding. Capture stderr `julie: mode=...` for execution-path evidence.
 
 ## External extract
 
