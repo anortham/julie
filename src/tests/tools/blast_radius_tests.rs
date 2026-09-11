@@ -1,8 +1,50 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
+use std::path::Path;
+use std::process::Command;
 
 use crate::tests::helpers::mcp::call_tool_result_text;
 use crate::tests::helpers::snapshot::snapshot_context_from_files;
 use crate::tools::impact::BlastRadiusTool;
+
+fn git_in(root: &Path, args: &[&str]) -> Result<()> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .output()?;
+    if !output.status.success() {
+        bail!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(())
+}
+
+fn init_clean_git_repo(root: &Path) -> Result<()> {
+    git_in(root, &["init", "-b", "main"])?;
+    git_in(root, &["add", "-A"])?;
+    git_in(
+        root,
+        &[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "init",
+        ],
+    )?;
+    Ok(())
+}
 
 fn readable(symbol: &str, max_depth: u32, limit: u32) -> BlastRadiusTool {
     BlastRadiusTool {
@@ -145,7 +187,7 @@ async fn test_blast_radius_related_test_symbol_overflow_is_counted() -> Result<(
 
 #[tokio::test]
 async fn test_blast_radius_rejects_unknown_seed_and_empty_request() -> Result<()> {
-    let (_tree, context) =
+    let (tree, context) =
         snapshot_context_from_files(&[("src/worker.rs", "pub fn run_pipeline() {}\n")])?;
 
     let unknown = readable("no_such_symbol", 1, 5)
@@ -158,11 +200,19 @@ async fn test_blast_radius_rejects_unknown_seed_and_empty_request() -> Result<()
         "Unknown symbol ids for blast_radius: no_such_symbol"
     );
 
-    let empty = BlastRadiusTool::default()
+    let nongit = BlastRadiusTool::default()
         .call_tool(&context)
         .await
         .unwrap_err()
         .to_string();
-    assert_eq!(empty, "blast_radius requires symbol_ids or file_paths.");
+    assert!(
+        nongit.contains("git") && nongit.contains("failed"),
+        "empty request in a non-git workspace should return the git error, got: {nongit}"
+    );
+
+    init_clean_git_repo(tree.path())?;
+    let empty = BlastRadiusTool::default().call_tool(&context).await?;
+    let text = call_tool_result_text(&empty);
+    assert_eq!(text.trim(), "No changed files in the working tree.");
     Ok(())
 }
