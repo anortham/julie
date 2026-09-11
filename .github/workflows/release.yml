@@ -15,9 +15,9 @@ jobs:
   # ==========================================================================
   # Server binary build (julie-server)
   #
-  # The plugin spawns julie-server directly: the MCP entry point serves
-  # in-process over stdio. Semantics run through the native
-  # julie-semantic-sidecar, which ships separately; there is no Python host.
+  # Each archive holds julie-server and the native julie-semantic-sidecar
+  # side by side. The script .github/scripts/pack-release.sh downloads the
+  # pinned sidecar release, checks its sha256, and packs both binaries.
   # ==========================================================================
   build:
     name: Build ${{ matrix.target }}
@@ -26,22 +26,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows (sidecar handles CUDA/DirectML/CPU via PyTorch)
+          # Windows (sidecar bundled by pack-release.sh, vulkan)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             exe_suffix: ".exe"
 
-          # macOS Apple Silicon (sidecar for MPS acceleration)
+          # macOS Apple Silicon (sidecar bundled by pack-release.sh, metal)
           - os: macos-latest
             target: aarch64-apple-darwin
             exe_suffix: ""
 
-          # macOS Intel
+          # macOS Intel (sidecar bundled by pack-release.sh, metal)
           - os: macos-15-intel
             target: x86_64-apple-darwin
             exe_suffix: ""
 
-          # Linux (sidecar for CUDA/CPU acceleration)
+          # Linux (sidecar bundled by pack-release.sh, vulkan)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             exe_suffix: ""
@@ -85,22 +85,13 @@ jobs:
         run: |
           codesign --force --sign - target/${{ matrix.target }}/release/julie-server${{ matrix.exe_suffix }}
 
-      - name: Create archive
+      - name: Create archive (julie-server + julie-semantic-sidecar)
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          SERVER_BIN="julie-server${{ matrix.exe_suffix }}"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.zip"
-            cp "./target/${{ matrix.target }}/release/${SERVER_BIN}" "${SERVER_BIN}"
-            7z a "${ARCHIVE}" "${SERVER_BIN}"
-          else
-            ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.tar.gz"
-            tar -czf "${ARCHIVE}" \
-              -C target/${{ matrix.target }}/release \
-              "${SERVER_BIN}"
-          fi
-          echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
+          ARCHIVE=$(bash .github/scripts/pack-release.sh "${{ matrix.target }}" "${GITHUB_REF#refs/tags/v}" "target/${{ matrix.target }}/release" . | tail -n 1)
+          echo "ARCHIVE=$(basename "${ARCHIVE}")" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -147,9 +138,10 @@ jobs:
 
           ### What's Included
 
-          Each archive ships one binary:
+          Each archive ships two binaries at the archive root:
 
-          - **\`julie-server\`** — The MCP entry point your client spawns. Serves in-process over stdio. Semantics run through the native \`julie-semantic-sidecar\`; there is no Python runtime.
+          - **\`julie-server\`**: the MCP entry point your client spawns.
+          - **\`julie-semantic-sidecar\`**: the native embedding sidecar for semantic search (metal on macOS, vulkan on Linux and Windows). julie-server finds it beside itself.
 
           ### Platform Support
           | Platform | Archive |
@@ -195,7 +187,7 @@ jobs:
         run: |
           echo "Release v${{ steps.version.outputs.version }} created successfully"
           echo ""
-          echo "Bundled binary: julie-server"
+          echo "Bundled binaries: julie-server, julie-semantic-sidecar"
           echo ""
           echo "Platforms built:"
           echo "  - Windows (x86_64-pc-windows-msvc)"
