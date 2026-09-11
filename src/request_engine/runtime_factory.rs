@@ -9,6 +9,7 @@ use tracing::warn;
 use crate::handler::JulieServerHandler;
 use crate::paths::RegistryPaths;
 use crate::registry::database::DaemonDatabase;
+use crate::registry::project_log::{ProjectLog, SERVICE_LOG_PREFIX};
 use crate::request_engine::types::{
     RequestContext, RequestFailure, RequestReadiness, SemanticMode, WorkspaceBinding,
 };
@@ -274,6 +275,10 @@ impl RuntimeFactory {
 
         handler.set_semantic_runtime(self.semantic_runtime());
         handler.set_injected_embedding_provider(handler.semantic_runtime().provider());
+        handler.project_log = Some(Arc::new(ProjectLog::in_dir(
+            self.registry_paths.logs_dir(),
+            SERVICE_LOG_PREFIX,
+        )));
 
         Ok(Arc::new(RequestRuntime::new(Arc::new(handler), None)))
     }

@@ -1,3 +1,4 @@
+use crate::registry::project_log::{ProjectLog, SERVICE_LOG_PREFIX};
 use crate::request_engine::RequestEngine;
 use crate::request_engine::types::{RequestContext, RequestFailure, RequestOrigin, ToolRequest};
 use crate::service::status::{ErrorRecord, RequestRecord, StatusLog, now_rfc3339};
@@ -163,13 +164,23 @@ async fn require_token(
     }
 }
 
-async fn status(State(state): State<AppState>) -> Json<crate::service::status::StatusDocument> {
+async fn status(State(state): State<AppState>) -> Json<Value> {
     let embedding_child = state.engine.semantic_runtime().child_status();
-    Json(
-        state
-            .status
-            .document(checkouts(&state).await, embedding_child),
-    )
+    let document = state
+        .status
+        .document(checkouts(&state).await, embedding_child);
+    let mut body = serde_json::to_value(document).unwrap_or_else(|_| Value::Object(Map::new()));
+    let log = ProjectLog::current_path(
+        &state.engine.runtimes.registry_paths().logs_dir(),
+        SERVICE_LOG_PREFIX,
+    );
+    if let Some(object) = body.as_object_mut() {
+        object.insert(
+            "log".into(),
+            Value::String(log.to_string_lossy().into_owned()),
+        );
+    }
+    Json(body)
 }
 
 async fn checkouts(state: &AppState) -> Vec<CheckoutStatus> {

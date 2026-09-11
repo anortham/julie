@@ -351,6 +351,11 @@ impl RegistryPaths {
         self.julie_home.join("indexes")
     }
 
+    /// Directory holding the machine service log files.
+    pub fn logs_dir(&self) -> PathBuf {
+        self.julie_home.join("logs")
+    }
+
     /// Directory for a specific workspace's index (facts.sqlite + Tantivy).
     pub fn workspace_index_dir(&self, workspace_id: &str) -> PathBuf {
         self.indexes_dir().join(workspace_id)

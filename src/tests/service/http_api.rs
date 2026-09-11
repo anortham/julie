@@ -256,3 +256,21 @@ async fn idle_exit_removes_service_json() {
         .unwrap();
     assert!(discovery::read_record(&paths).unwrap().is_none());
 }
+
+#[tokio::test]
+async fn status_reports_a_service_log_under_the_julie_home() {
+    let running = Running::start(None).await;
+    running
+        .api("manage_workspace", serde_json::json!({"operation": "list"}))
+        .await;
+    let body = running.status().await;
+    let log = body["log"].as_str().expect("status has no log path");
+    let expected_prefix = running
+        .paths
+        .logs_dir()
+        .join("julie-service.log.")
+        .to_string_lossy()
+        .into_owned();
+    assert!(log.starts_with(&expected_prefix), "{log}");
+    assert!(std::fs::metadata(log).unwrap().len() > 0);
+}
