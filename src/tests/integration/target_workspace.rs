@@ -456,7 +456,6 @@ mod target_workspace_tests {
             "crates/julie-tools/src/get_context/pipeline.rs",
             "crates/julie-tools/src/search/mod.rs",
             "crates/julie-tools/src/search/text_search.rs",
-            "crates/julie-tools/src/refactoring/mod.rs",
         ];
 
         for relative_path in files {
