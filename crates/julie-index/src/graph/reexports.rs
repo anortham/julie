@@ -7,8 +7,46 @@ use julie_extractors::SymbolKind;
 use super::resolve::is_definition;
 use super::{SymbolId, SymbolTable};
 
+/// Import symbols paired with the module path of their file. `resolve` builds
+/// it once, and every unresolved `crate::` reference reads it.
+pub(super) struct ReexportIndex {
+    imports: Vec<(SymbolId, Vec<String>)>,
+}
+
+impl ReexportIndex {
+    pub(super) fn build(symbols: &SymbolTable) -> Self {
+        let mut imports = Vec::new();
+        for file in 0..symbols.files().len() as u32 {
+            for id in symbols.symbols_in_file(file) {
+                let id = SymbolId(id);
+                let row = symbols.symbol(id);
+                if row.kind == SymbolKind::Import {
+                    imports.push((id, module_path(&row.path)));
+                }
+            }
+        }
+        Self { imports }
+    }
+
+    fn ids(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.imports.iter().map(|(id, _)| *id)
+    }
+
+    fn in_module<'a>(&'a self, qualifier: &'a [&str]) -> impl Iterator<Item = SymbolId> + 'a {
+        self.imports
+            .iter()
+            .filter(move |(_, module)| path_ends_with(module, qualifier))
+            .map(|(id, _)| *id)
+    }
+}
+
 /// Unique definition reached through a named or glob `pub use`, else `None`.
-pub fn resolve_reexport(symbols: &SymbolTable, name: &str, from_file: u32) -> Option<SymbolId> {
+pub fn resolve_reexport(
+    symbols: &SymbolTable,
+    index: &ReexportIndex,
+    name: &str,
+    from_file: u32,
+) -> Option<SymbolId> {
     if file_language(symbols, from_file) != Some("rust") || !name.starts_with("crate::") {
         return None;
     }
@@ -16,9 +54,8 @@ pub fn resolve_reexport(symbols: &SymbolTable, name: &str, from_file: u32) -> Op
     if qualifier.is_empty() {
         return None;
     }
-    let imports = import_ids(symbols);
-    let mut targets = direct_targets(symbols, &imports, leaf, &qualifier);
-    targets.extend(glob_targets(symbols, &imports, leaf, &qualifier));
+    let mut targets = direct_targets(symbols, index, leaf, &qualifier);
+    targets.extend(glob_targets(symbols, index, leaf, &qualifier));
     targets.sort();
     targets.dedup();
     match targets.as_slice() {
@@ -32,19 +69,6 @@ fn file_language(symbols: &SymbolTable, file: u32) -> Option<&str> {
         .symbols
         .first()
         .map(|row| row.language.as_str())
-}
-
-fn import_ids(symbols: &SymbolTable) -> Vec<SymbolId> {
-    let mut ids = Vec::new();
-    for file in 0..symbols.files().len() as u32 {
-        for id in symbols.symbols_in_file(file) {
-            let id = SymbolId(id);
-            if symbols.symbol(id).kind == SymbolKind::Import {
-                ids.push(id);
-            }
-        }
-    }
-    ids
 }
 
 fn module_path(path: &str) -> Vec<String> {
@@ -190,48 +214,40 @@ fn follow_named_use(
     definition_in_namespace(symbols, leaf, &namespace, crate_name)
 }
 
-fn in_reexport_module(symbols: &SymbolTable, import: SymbolId, qualifier: &[&str]) -> bool {
-    path_ends_with(&module_path(&symbols.symbol(import).path), qualifier)
-}
-
 fn direct_targets(
     symbols: &SymbolTable,
-    imports: &[SymbolId],
+    index: &ReexportIndex,
     leaf: &str,
     qualifier: &[&str],
 ) -> Vec<SymbolId> {
-    imports
-        .iter()
-        .copied()
-        .filter(|id| in_reexport_module(symbols, *id, qualifier))
+    index
+        .in_module(qualifier)
         .filter_map(|id| follow_named_use(symbols, id, leaf, None))
         .collect()
 }
 
 fn glob_targets(
     symbols: &SymbolTable,
-    imports: &[SymbolId],
+    index: &ReexportIndex,
     leaf: &str,
     qualifier: &[&str],
 ) -> Vec<SymbolId> {
-    let crates: HashSet<String> = imports
-        .iter()
-        .copied()
-        .filter(|id| in_reexport_module(symbols, *id, qualifier))
+    let crates: HashSet<String> = index
+        .in_module(qualifier)
         .filter_map(|id| glob_crate_name(symbols.symbol(id).signature.as_deref()?))
         .filter(|name| {
-            imports
-                .iter()
-                .any(|id| file_is_crate_root(&symbols.symbol(*id).path, name))
+            index
+                .ids()
+                .any(|id| file_is_crate_root(&symbols.symbol(id).path, name))
         })
         .collect();
     let mut targets = Vec::new();
     for crate_name in crates {
-        for import in imports {
-            if !file_is_crate_root(&symbols.symbol(*import).path, &crate_name) {
+        for import in index.ids() {
+            if !file_is_crate_root(&symbols.symbol(import).path, &crate_name) {
                 continue;
             }
-            if let Some(id) = follow_named_use(symbols, *import, leaf, Some(&crate_name)) {
+            if let Some(id) = follow_named_use(symbols, import, leaf, Some(&crate_name)) {
                 targets.push(id);
             }
         }

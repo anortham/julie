@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use julie_extractors::{IdentifierKind, RelationshipKind, SymbolKind};
 use julie_facts::rows::{IdentifierRow, RelationshipRow};
 
+use super::reexports::ReexportIndex;
 use super::{Edge, EdgeKind, SymbolId, SymbolTable};
 
 /// Resolve every identifier and relationship row against `symbols`, plus the
@@ -34,6 +35,7 @@ pub fn resolve<'a>(
             );
         }
     }
+    let reexports = ReexportIndex::build(symbols);
     let mut qualified_sites: HashSet<(SymbolId, u32, &str)> = HashSet::new();
     for row in relationships {
         let Some(file) = symbols.file_index(&row.path) else {
@@ -49,7 +51,7 @@ pub fn resolve<'a>(
                 if !qualifier.is_empty() {
                     qualified_sites.insert((from, row.line_number, leaf));
                 }
-                resolve_target(symbols, &row.to_name, file)
+                resolve_target(symbols, &reexports, &row.to_name, file)
             }
         };
         if let Some(to) = to {
@@ -69,7 +71,7 @@ pub fn resolve<'a>(
         if qualified_sites.contains(&(from, row.span.start_line, row.name.as_str())) {
             continue;
         }
-        if let Some(to) = resolve_target(symbols, &row.name, file) {
+        if let Some(to) = resolve_target(symbols, &reexports, &row.name, file) {
             push(&mut edges, from, to, kind);
         }
     }
@@ -161,7 +163,12 @@ fn qualifier_matches(symbols: &SymbolTable, id: SymbolId, qualifier: &[&str]) ->
 /// parent or file path matches the qualifier (none left drops the edge);
 /// same-file definitions win; then the best definition priority. A tie at
 /// the best priority is ambiguous: no target.
-pub fn resolve_target(symbols: &SymbolTable, name: &str, from_file: u32) -> Option<SymbolId> {
+pub fn resolve_target(
+    symbols: &SymbolTable,
+    reexports: &ReexportIndex,
+    name: &str,
+    from_file: u32,
+) -> Option<SymbolId> {
     let exact = symbols.find_by_name(name);
     let (leaf, qualifier) = if exact.is_empty() {
         split_qualified(name)
@@ -188,7 +195,7 @@ pub fn resolve_target(symbols: &SymbolTable, name: &str, from_file: u32) -> Opti
         .map(|id| definition_priority(&symbols.symbol(*id).kind))
         .min()
     else {
-        return super::reexports::resolve_reexport(symbols, name, from_file);
+        return super::reexports::resolve_reexport(symbols, reexports, name, from_file);
     };
     let mut top = candidates
         .iter()

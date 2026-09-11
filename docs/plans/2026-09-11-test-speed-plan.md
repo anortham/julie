@@ -119,11 +119,11 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 4 to 6 use `serial-worke
 **Approach:** Measure first: run the baseline command three times and record the walls. Write a unit test in the index crate that builds a small `SymbolTable` with a `crate::a::B` re-export and asserts `resolve_reexport` still returns the same target through the index (RED: the index type does not exist). Implement `ReexportIndex`, thread it through `resolve` -> `resolve_target` -> `resolve_reexport`, and make `direct_targets` and `glob_targets` read precomputed paths. Re-measure at `opt-level = 0`, record. Then add the `Cargo.toml` override and measure a third time. If the algorithm change alone gives under 2x on the fixture, revert it and keep only the profile override, and say so in the report. Keep `module_path` behavior identical (`src`/`Sources`, `mod.rs`, `lib.rs`, `main.rs` handling).
 
 **Acceptance criteria:**
-- [ ] New index-crate test passes: `cargo nextest run -p julie-index <test_name>`.
-- [ ] Existing graph tests pass: `cargo nextest run -p julie-index tests::graph`.
-- [ ] Three walls recorded for `test_stemming_estimation_finds_estimator` at each of: baseline, index only, index plus profile. Reported in the worker summary.
-- [ ] `Cargo.toml` carries `[profile.dev.package.julie-index] opt-level = 1`.
-- [ ] Worker-scope verification passes and the change is handed to the lead per commit mode.
+- [x] New index-crate tests pass: `cargo nextest run -p julie-index crate_call_through_reexport_resolves_to_the_definition` and `crate_call_through_missing_reexport_drops_the_edge`.
+- [x] Existing graph tests pass: `cargo nextest run -p julie-index tests::graph` (39 tests).
+- [x] Three walls recorded for `test_stemming_estimation_finds_estimator`: baseline 8.37, 9.72, 8.69 s; index only 3.13, 3.15, 3.09 s; index plus profile 1.41, 1.43, 1.39 s.
+- [x] `Cargo.toml` carries `[profile.dev.package.julie-index] opt-level = 1`.
+- [x] Worker-scope verification passes and the change is handed to the lead per commit mode.
 
 ### Task 3: Fix the failing uncovered scenario test
 
