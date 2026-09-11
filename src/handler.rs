@@ -1441,13 +1441,8 @@ impl JulieServerHandler {
         }
     }
 
-    /// Returns the agent instructions embedded at compile time.
-    ///
-    /// `JULIE_AGENT_INSTRUCTIONS.md` is product metadata that ships with Julie,
-    /// not something found in user workspaces. Embedding via `include_str!`
-    /// guarantees instructions are always available regardless of deployment.
     fn load_agent_instructions(&self) -> Option<String> {
-        Some(include_str!("../JULIE_AGENT_INSTRUCTIONS.md").to_string())
+        Some(mcp_adapter::AGENT_INSTRUCTIONS.to_string())
     }
 }
 

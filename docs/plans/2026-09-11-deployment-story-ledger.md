@@ -1,31 +1,12 @@
-# Verification Ledger Template
+# Deployment Story Verification Ledger
 
-Use this section in plan docs to capture proof for every required test scope.
+Plan: `docs/plans/2026-09-11-deployment-story-plan.md`. Reuse a row only when the scope label matches and the commit SHA equals the current HEAD.
 
 ## Verification Ledger
 
-Record one row per verification run. Every column is required. Leave this table
-empty until a command has actually run or evidence has actually been reused.
-
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
-
-## Example Rows
-
-These rows show the expected shape. Do not copy them into plan evidence.
-
-| Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
-|---|---|---|---|---|---|---|
-| Example: worker exact test for docs contract passes before handoff | `cargo nextest run --lib docs_contract_tests_verification_ledger_template_is_operational 2>&1 \| tail -10` | worker-red-green | example-sha | pass | 2026-05-03T15:20:00Z | no |
-| Example: the lead runs the batch gate once per batch | `cargo xtask test dev` | dev | example-sha | pass | 2026-05-03T15:42:00Z | no |
-| Example: expensive search-quality gate is documented once per HEAD | `cargo xtask test dogfood` | dogfood | example-sha | pass | 2026-05-03T16:35:00Z | no |
-
-## Reuse Rule
-
-You may reuse evidence only when all of the following are true:
-
-1. The required `Scope Label` matches.
-2. The `Commit SHA` matches the current HEAD exactly.
-3. The reused row already has `Result` set to `pass`.
-
-When reusing evidence, add a new row with `Evidence Reused` set to `yes` and record the reused command and commit SHA.
+| Batch A (tasks 1 to 5) leaves the whole workspace green: 2208 passed, 13 ignored CLI tests passed | `cargo xtask test dev` | dev | 622c616d | pass (39.2 s wall) | 2026-09-11T21:02:00Z | no |
+| Plugin tests green after the manifest and hook change: 20 pass, 0 fail | `node --test --test-reporter=tap hooks/` (julie-plugin) | plugin-tests | bbd2c53 (julie-plugin) | pass | 2026-09-11T20:56:45Z | no (worker run, Task 5 report) |
+| Packed Linux archive runs through `run.cjs`: sidecar beside the binary, embedding child ready on poll 1, `fast_search` 6 hits, service stopped | Task 6 steps (see `.razorback` report and the finding) | live | 622c616d (julie), bbd2c53 (julie-plugin) | pass, except `initialize` lacked `instructions` (fixed below) | 2026-09-11T21:06:00Z | no |
+| Service `initialize` carries the agent instructions | `cargo nextest run --lib initialize_over_http_carries_the_agent_instructions` | worker-red-green | working tree on 622c616d | RED then pass | 2026-09-11T21:12:00Z | no |

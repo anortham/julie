@@ -146,3 +146,29 @@ async fn mcp_traffic_counts_as_activity_for_idle_exit_and_the_status_log() {
     assert_eq!(requests[0]["tool"], "manage_workspace");
     assert_eq!(requests[0]["outcome"], "ok");
 }
+
+#[tokio::test]
+async fn initialize_over_http_carries_the_agent_instructions() {
+    let running = Running::start(None).await;
+    let (status, body) = rpc(
+        &running,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "julie-test", "version": "0"}
+            }
+        }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let instructions = body["result"]["instructions"].as_str().unwrap_or("");
+    assert!(instructions.contains("`fast_search`"), "{body}");
+    assert_eq!(
+        body["result"]["serverInfo"]["version"],
+        env!("CARGO_PKG_VERSION")
+    );
+}

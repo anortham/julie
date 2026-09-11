@@ -241,11 +241,11 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 6, 7, 8 run under `seria
 **Approach:** Use `JULIE_HOME` so the packed binary starts its own service and does not attach to the developer service running from `target/debug`. Read `src/service/status` output fields with `julie-server service status` first to learn the exact embedding field name; do not guess it. Delete the scratch `JULIE_HOME` at the end. Leave the packed archive in the plugin's `bin/archives/` (git-ignored) for Task 7.
 
 **Acceptance criteria:**
-- [ ] The packed archive lists `julie-server` and `julie-semantic-sidecar` at the root.
-- [ ] `run.cjs` extracted both beside each other in `<plugin>/bin/x86_64-unknown-linux-gnu/`.
-- [ ] `initialize` returned `serverInfo.version` `8.0.0` and the instructions text; `fast_search` returned at least one result.
-- [ ] `service status` reported the embedding child ready before the 60 s limit.
-- [ ] The scratch service is stopped and the report holds every command and output.
+- [x] The packed archive lists `julie-server` and `julie-semantic-sidecar` at the root.
+- [x] `run.cjs` extracted both beside each other in `<plugin>/bin/x86_64-unknown-linux-gnu/`.
+- [x] `initialize` returned `serverInfo.version` `8.0.0` and the instructions text; `fast_search` returned at least one result.
+- [x] `service status` reported the embedding child ready before the 60 s limit.
+- [x] The scratch service is stopped and the report holds every command and output.
 
 ### Task 7: Six harness install checks (lead)
 

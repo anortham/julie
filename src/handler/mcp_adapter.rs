@@ -42,6 +42,9 @@ pub fn julie_protocol_versions() -> Vec<ProtocolVersion> {
 }
 
 /// Construct server metadata and capabilities advertised during MCP discovery/initialize.
+/// Agent instructions embedded at compile time; served on every MCP `initialize`.
+pub const AGENT_INSTRUCTIONS: &str = include_str!("../../JULIE_AGENT_INSTRUCTIONS.md");
+
 pub fn get_server_info(instructions: Option<String>) -> ServerInfo {
     let server_info = Implementation::new("Julie", env!("CARGO_PKG_VERSION"))
         .with_title("Julie - Code Intelligence Server");
