@@ -93,14 +93,14 @@ Before the owner tags: build the Linux archive the way the workflow does (releas
 
 ## Acceptance criteria
 
-- [ ] `release.yml` packs `julie-semantic-sidecar` beside `julie-server` for all four targets, sha256 verified, sidecar version pinned in one place.
-- [ ] Version 8.0.0 in `Cargo.toml`, `Cargo.lock`, `docs/site/index.html`; `docs/release-notes/v8.0.0.md` exists and covers the machine service, removed features, upgrade notes, and caveats.
-- [ ] Plugin repo has the manifests in section 3, the hook, `JULIE_AGENT_INSTRUCTIONS.md`, no `uv` text, no `install-codex.cjs`; `node --test hooks/*.test.cjs` passes; the plugin's CLAUDE.md records the hook reason.
-- [ ] `JULIE_AGENT_INSTRUCTIONS.md` under 2 KB; `julie-routing-block.md`, the pretool hooks, and `.agents/skills/` are gone from julie; the dev hook prints the instructions file; `cargo xtask sync-plugin --dry-run` reports the instructions file.
-- [ ] README and plugin README list the six harnesses with commands verified against current docs (each task cites the doc URL it checked), and no HTTP-URL registration.
-- [ ] Local end-to-end: packed Linux archive through `run.cjs`, one search, embedding child ready, sidecar found beside the binary.
-- [ ] `cargo xtask test dev` green (docs contract tests included); plugin tests green.
-- [ ] Finding at `docs/findings/2026-09-11-deployment-story.md` with the owner runbook and the verification evidence.
+- [x] `release.yml` packs `julie-semantic-sidecar` beside `julie-server` for all four targets, sha256 verified, sidecar version pinned in one place.
+- [x] Version 8.0.0 in `Cargo.toml`, `Cargo.lock`, `docs/site/index.html`; `docs/release-notes/v8.0.0.md` exists and covers the machine service, removed features, upgrade notes, and caveats.
+- [x] Plugin repo has the manifests in section 3, the hook, `JULIE_AGENT_INSTRUCTIONS.md`, no `uv` text, no `install-codex.cjs`; `node --test hooks/*.test.cjs` passes; the plugin's CLAUDE.md records the hook reason.
+- [x] `JULIE_AGENT_INSTRUCTIONS.md` under 2 KB; `julie-routing-block.md`, the pretool hooks, and `.agents/skills/` are gone from julie; the dev hook prints the instructions file; `cargo xtask sync-plugin --dry-run` reports the instructions file.
+- [x] README and plugin README list the six harnesses with commands verified against current docs (each task cites the doc URL it checked), and no HTTP-URL registration.
+- [x] Local end-to-end: packed Linux archive through `run.cjs`, one search, embedding child ready, sidecar found beside the binary.
+- [x] `cargo xtask test dev` green (docs contract tests included); plugin tests green.
+- [x] Finding at `docs/findings/2026-09-11-deployment-story.md` with the owner runbook and the verification evidence.
 
 ## Rejected
 

@@ -83,7 +83,7 @@ Julie uses embeddings for semantic search, related symbol discovery, and intelli
 
 ## Installation
 
-Every install path runs the same launcher and the same machine service. The [`julie-plugin`](https://github.com/anortham/julie-plugin) repo carries the release archives, the skills, and one manifest per harness. `hooks/run.cjs` extracts the archive on first use and starts `julie-server`, which is the stdio shim that auto-starts the machine service. No Rust toolchain is required.
+Every install path runs the same launcher and the same machine service. The [`julie-plugin`](https://github.com/anortham/julie-plugin) repo carries the release archives, the skills, and one install path per harness. `hooks/run.cjs` extracts the archive on first use and starts `julie-server`, which is the stdio shim that auto-starts the machine service. You need Node.js 22.5 or newer for the launcher. You do not need a Rust toolchain.
 
 | Harness | Install |
 |---------|---------|
@@ -110,7 +110,7 @@ codex plugin marketplace add anortham/julie-plugin
 codex plugin add julie@julie-plugin
 ```
 
-The plugin adds the skills and the session hooks. Then register the server in `~/.codex/config.toml`:
+The plugin adds the skills and the session hooks. Run `codex`, open `/hooks`, and trust the two Julie hooks. Then register the server in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.julie]
@@ -237,7 +237,7 @@ cd julie
 cargo build --release
 ```
 
-**Workspace resolution:** the shim binds every tool call to `JULIE_WORKSPACE` when it is set, else to the directory the client started it in. Every harness above starts a server from its own config in the project directory. Set `JULIE_WORKSPACE` when a client starts Julie somewhere else. A call can also name a checkout with its `workspace` argument.
+**Workspace resolution:** the shim binds every tool call to `JULIE_WORKSPACE` when you set it, else to the directory the client started it in. Every harness above starts a server from its own config in the project directory. Set `JULIE_WORKSPACE` when a client starts Julie somewhere else. A call can also name a checkout with its `workspace` argument.
 
 <a id="available-env-options"></a>
 **Available env options:**
@@ -254,7 +254,7 @@ cargo build --release
 
 Julie indexes your workspace automatically on first connection or first primary tool call. Ask your agent to run `manage_workspace(operation="health")` if you want to confirm which workspace is bound. First indexing may take a few seconds on small projects and longer on large repos; later sessions reuse the cached index and file watcher updates.
 
-## Tools (13)
+## Tools (10)
 
 ### Search & Navigation
 
@@ -428,11 +428,11 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Claude Code, Codex, and An
 
 | Harness | Skills Directory | Notes |
 |---------|-----------------|-------|
-| **Claude Code** | `.claude/skills/` | Installed by the plugin |
-| **Codex** | `~/.codex/skills/` or `.agents/skills/` | Installed by the plugin |
-| **Antigravity** | `~/.gemini/antigravity-cli/plugins/julie/skills/` | Installed by the plugin |
+| **Claude Code** | `~/.claude/plugins/cache/julie-plugin/julie/<version>/skills/` | Installed by the plugin |
+| **Codex** | `~/.codex/plugins/cache/julie-plugin/julie/<version>/skills/` | Installed by the plugin |
+| **Antigravity** | `~/.gemini/config/plugins/julie/skills/` (agy 1.2.1) | Installed by the plugin |
 | **OpenCode** | `~/.config/opencode/skills/` or `.opencode/skills/` | Run `node bin/install-opencode.cjs` from the plugin clone |
-| **VS Code / GitHub Copilot** | `.claude/skills/` or `.github/skills/` | Reads `.claude/skills/` natively when the julie repo is cloned |
+| **VS Code / GitHub Copilot** | `.claude/skills/` or `.github/skills/` | Reads `.claude/skills/` natively from a clone of the julie repo |
 | **Gemini CLI** | `.gemini/skills/` or `.agents/skills/` | Copy skill directories |
 | **Windsurf** | `.windsurf/skills/` | Copy skill directories |
 | **Cursor** | `.cursor/rules/` | Copy `SKILL.md` content into `.mdc` files in the rules directory |
@@ -531,7 +531,7 @@ julie-server tool edit_file --params-file edit_req.json --json
 cat edit_req.json | julie-server tool edit_file --params-stdin --json
 ```
 
-The `julie-server extract` subcommand is documented in [External Extract](#external-extract-host-integration).
+[External Extract](#external-extract-host-integration) documents the `julie-server extract` subcommand.
 ### Zero-Warmup Discovery (`tools list` & `tools schema`)
 
 Instant catalog inspection answering in <15ms without starting file watchers, compiling indexes, or warming embedding models:

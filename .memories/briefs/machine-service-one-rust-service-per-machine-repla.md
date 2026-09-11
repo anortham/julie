@@ -4,12 +4,14 @@ title: "Machine service: one Rust service per machine replaces per-session
   Miller and Julie"
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-11T20:07:06.423Z
+updated: 2026-09-11T22:13:57.580Z
 tags:
   - machine-service
   - architecture
   - complexity-rule
 ---
+
+# Machine service: one Rust service per machine replaces per-session Miller and Julie
 
 ## Direction
 
@@ -30,7 +32,8 @@ Build `julie-service`: one process per developer machine, stateless MCP over HTT
 - Phase 7 (continuous testing, design section 11) needs its own design review before any plan.
 - **Semantic auto backend merged** into main at `df586f46`. Finding: `docs/findings/2026-09-11-hybrid-auto-backend.md`.
 - **Index and registry hygiene merged** into main at `9b0e65b2`. Finding: `docs/findings/2026-09-11-index-hygiene.md`. Service log: `~/.julie/logs/julie-service.log.<date>`.
-- **Test speed merged** into main at `8c4d74b0` (merge commit, worktree removed). Finding: `docs/findings/2026-09-11-test-speed.md`. Report: `.memories/autonomous-run-2026-09-11-test-speed.md`. The live service (pid 509986 at 20:03) runs main's release binary; julie graph loads in 629 ms.
+- **Test speed merged** into main at `8c4d74b0` (merge commit, worktree removed). Finding: `docs/findings/2026-09-11-test-speed.md`. Report: `.memories/autonomous-run-2026-09-11-test-speed.md`.
+- **Deployment story ready for the owner** on branch `deployment-story` (worktree `.worktrees/deployment-story`) and plugin branch `v8-deployment` in `~/source/julie-plugin`. Finding with the owner runbook: `docs/findings/2026-09-11-deployment-story.md`. Not merged, not tagged, not pushed. The live service runs the branch's 8.0.0 release binary.
 
 ## Test commands (since item 3)
 
@@ -41,8 +44,8 @@ Three tiers only, each one `cargo nextest run --workspace` call: `cargo xtask te
 1. **Semantic by default search.** Done and merged. Auto equals the semantic column: 18/23 top-1, 20/23 top-5, p50 15 ms; scorecard MRR 0.848 vs lexical 0.351.
 2. **Registry and index hygiene.** Done and merged. Deferred from the finding: dashboard error buffer layer never installed, partial vector backfill does not resume after restart, `new_files` repair on every restart, RSS 2.9 GB with eleven workspaces, stray `/tmp` registry row.
 3. **Test speed.** Done and merged. dev 50.5 s to 12.2 s; full 94 s to 26.4 s with dogfood included; dogfood 124 s to 14.6 s; 319 unrun tests now run; xtask 11,470 to 2,233 lines; dogfood store open 8.4 s to 1.4 s (re-export index plus opt-level 1 for julie-index); three 10 s waits removed; process-fixture service leak fixed (129 processes, 8.2 GB). Deferred: `workspace_isolation_smoke` 5 to 14 s floor, `store_open` 5 s lock waits, dogfood six-thread cap, Alamofire graph load 3 s in release, other parity tests call the CLI without `--standalone`.
-4. **Deployment story. NEXT.** What the machine-service architecture changed for users: install path, user instructions, harness support (Claude Code plugin, Codex, OpenCode, Cursor), and the easiest route to users. Plugin repo needs the two session-start hook files and the skill list. Astra's review: the tracked `.agents/skills/editing` copy still mandates the deleted rewrite and rename tools while the `.claude` copy is updated. Web-search harness paths before writing (CLAUDE.md rule).
-5. **Code cleanup.** Build warnings (clippy reported 326), dead code, and outdated docs and plans that carry no present value.
+4. **Deployment story (v8.0.0).** Done on the branch; the owner merges, tags, and pushes with the runbook in the finding. Release archives carry `julie-semantic-sidecar` 0.1.0 (`.github/scripts/pack-release.sh`, sha256 pinned); version 8.0.0 plus `docs/release-notes/v8.0.0.md`; one routing text `JULIE_AGENT_INSTRUCTIONS.md` served on `initialize` and printed by the session hooks; plugin repo with a manifest per harness; six harness checks pass. Design change from the checks: Codex and Antigravity start a plugin's MCP servers inside the plugin directory and send no roots, so both register Julie from their own config and the plugin carries only skills and hooks for them. Product fix: the stdio shim honors `JULIE_WORKSPACE`. Deferred: a one-step Codex or Antigravity path needs a harness signal that names the project; an Antigravity hook (root `hooks.json`); plugin manifests at 7.18.0 until the workflow bumps them.
+5. **Code cleanup. NEXT.** Build warnings (clippy reported 326), dead code, and outdated docs and plans that carry no present value.
 6. **Dashboard.** Current state, target state, and functionality.
 7. **Troubleshooting on the dashboard.** Logs and error info, plus an easy path for a user to submit a bug report with supporting evidence. The service log file from item 2 is the starting point.
 
@@ -65,6 +68,8 @@ Read-only review by three reviewers. Recommends: keep facts plus immutable snaps
 - `edit_file` through MCP writes relative to the primary workspace, so an agent working in a worktree cannot use it safely (Opus implementer report, 2026-09-11).
 - The sidecar binary comes from `~/source/julie-semantic-sidecar/target/release/`; copy it beside `julie-server` before any semantic run (memory note `sidecar-binary-location`).
 - A test binary built in a worktree that shares `target/` bakes that worktree's path into `CARGO_MANIFEST_DIR`; touch `src/lib.rs` after switching checkouts.
+- A running stdio shim from an older build refuses a newer service until the harness restarts it (item 4 side finding).
+- Workers' Julie MCP calls failed with "could not start service: No such file or directory" during item 4 Batch A while the lead's worked; not reproduced.
 - Rust `xtask-eval revival` harness still deferred.
 
 ## Where work happens

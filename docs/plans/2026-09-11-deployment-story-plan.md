@@ -270,8 +270,8 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 6, 7, 8 run under `seria
 **Approach:** `JULIE_HOME` stays default here so the harness sessions use the developer service, which is fine: the check proves the launcher and the manifests, Task 6 proved the packed binary. Never edit the owner's repo-local `.codex/config.toml`. If a harness cannot be driven non-interactively, record "manual" with the exact steps the owner runs.
 
 **Acceptance criteria:**
-- [ ] Six result lines, each with the command, the outcome, and the doc URL for the install path.
-- [ ] Every backed-up config is restored byte for byte (`cmp`), and no plugin install remains.
+- [x] Six result lines, each with the command, the outcome, and the doc URL for the install path.
+- [x] Every backed-up config is restored byte for byte (`cmp`), and no plugin install remains.
 
 ### Task 8: Finding, ledger, gate (lead)
 
@@ -294,6 +294,6 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 6, 7, 8 run under `seria
 **What to build:** Run `cargo xtask test dev` in the worktree and `node --test hooks/*.test.cjs` in the plugin at the final HEADs; record both in the ledger. Write the finding: verdict, what shipped (per design section), the end-to-end evidence (Task 6), the six harness results (Task 7), the owner runbook as a numbered checklist (push main; `git tag v8.0.0`; push the tag; wait for `release.yml`; check the release page body equals `docs/release-notes/v8.0.0.md`; in the plugin repo push `v8-deployment` and merge it; run `update-binaries.yml` with `version=8.0.0 tag=v8.0.0`; review and push; fresh install on one machine; `julie-server service status` shows the embedding child ready after one search), deferred items, and side findings. Update the brief: item 4 done, next item per the owner sequence. Run razorback:finishing-a-development-branch afterwards; the owner decides the merge.
 
 **Acceptance criteria:**
-- [ ] Ledger has `dev` and plugin-tests rows at the final HEADs, both passed.
-- [ ] Finding exists with the runbook and the evidence for every design acceptance criterion.
-- [ ] Brief updated; checkpoint committed with the finding.
+- [x] Ledger has `dev` and plugin-tests rows at the final HEADs, both passed.
+- [x] Finding exists with the runbook and the evidence for every design acceptance criterion.
+- [x] Brief updated; checkpoint committed with the finding.
