@@ -84,6 +84,15 @@ fn ref_caps(depth: &str) -> (usize, usize) {
 
 impl DeepDiveTool {
     pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
+        self.call_tool_counted(handler)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    pub async fn call_tool_counted(
+        &self,
+        handler: &dyn ToolContext,
+    ) -> Result<(CallToolResult, u32)> {
         let depth = self.depth.as_str();
         debug!("Deep dive: {} (depth: {})", self.symbol, depth);
 
@@ -92,6 +101,9 @@ impl DeepDiveTool {
             .await?;
         let snapshot = handler.snapshot(&workspace_target).await?;
         let (incoming_cap, outgoing_cap) = ref_caps(depth);
+        let graph = snapshot.graph();
+        let resolved =
+            !data::find_symbol(graph, &self.symbol, self.context_file.as_deref()).is_empty();
 
         let result = deep_dive_query_with_semantics(
             &snapshot,
@@ -103,7 +115,10 @@ impl DeepDiveTool {
             self.semantics,
         )?;
 
-        Ok(CallToolResult::text_content(vec![Content::text(result)]))
+        Ok((
+            CallToolResult::text_content(vec![Content::text(result)]),
+            if resolved { 1 } else { 0 },
+        ))
     }
 }
 

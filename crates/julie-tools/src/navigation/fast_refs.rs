@@ -101,6 +101,17 @@ impl FastRefsTool {
         workspace_target: &WorkspaceTarget,
         budget: Option<julie_core::embeddings_contract::EmbeddingRequestBudget>,
     ) -> Result<CallToolResult> {
+        self.call_tool_counted(handler, workspace_target, budget)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    pub async fn call_tool_counted(
+        &self,
+        handler: &dyn ToolContext,
+        workspace_target: &WorkspaceTarget,
+        budget: Option<julie_core::embeddings_contract::EmbeddingRequestBudget>,
+    ) -> Result<(CallToolResult, u32)> {
         debug!("Finding references for: {}", self.symbol);
 
         let snapshot = handler.snapshot(workspace_target).await?;
@@ -126,9 +137,10 @@ impl FastRefsTool {
 
             let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &HashMap::new());
             result_text.push_str(&semantic_section);
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                result_text,
-            )]));
+            return Ok((
+                CallToolResult::text_content(vec![Content::text(result_text)]),
+                0,
+            ));
         }
 
         let definitions = if self.include_definition {
@@ -136,15 +148,17 @@ impl FastRefsTool {
         } else {
             Vec::new()
         };
+        let count = found.references.len() as u32;
         let lean_output = format_lean_refs_results(
             &self.symbol,
             &definitions,
             &found.references,
             &found.source_names,
         );
-        Ok(CallToolResult::text_content(vec![Content::text(
-            lean_output,
-        )]))
+        Ok((
+            CallToolResult::text_content(vec![Content::text(lean_output)]),
+            count,
+        ))
     }
 
     /// Definitions and references for callers that edit every site.

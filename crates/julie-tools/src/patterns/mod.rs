@@ -98,16 +98,29 @@ impl PatternsTool {
         handler: &dyn ToolContext,
         workspace_target: &WorkspaceTarget,
     ) -> Result<CallToolResult> {
+        self.call_tool_counted(handler, workspace_target)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    pub async fn call_tool_counted(
+        &self,
+        handler: &dyn ToolContext,
+        workspace_target: &WorkspaceTarget,
+    ) -> Result<(CallToolResult, u32)> {
         let metadata_filters = self.validate()?;
         let snapshot = handler.snapshot(workspace_target).await?;
         let tool = self.clone();
-        let rendered = tokio::task::spawn_blocking(move || -> Result<String> {
+        let (rendered, count) = tokio::task::spawn_blocking(move || -> Result<(String, u32)> {
             let facts = snapshot.facts()?;
             tool.execute(&facts.reader(), metadata_filters)
         })
         .await
         .map_err(|error| anyhow!("patterns query task failed: {error}"))??;
-        Ok(CallToolResult::text_content(vec![Content::text(rendered)]))
+        Ok((
+            CallToolResult::text_content(vec![Content::text(rendered)]),
+            count,
+        ))
     }
 
     fn validate(&self) -> Result<Vec<(String, String)>> {
@@ -162,7 +175,7 @@ impl PatternsTool {
         &self,
         reader: &FactsReader<'_>,
         metadata_filters: Vec<(String, String)>,
-    ) -> Result<String> {
+    ) -> Result<(String, u32)> {
         let mut observed =
             observed_structural_patterns(reader, self.language.as_deref(), self.path.as_deref())?;
         if let Some(pattern_id) = self.pattern_id.as_deref() {
@@ -170,12 +183,16 @@ impl PatternsTool {
         }
 
         if self.operation == PatternsOperation::List {
-            return formatting::format_list(observed, self.format);
+            let count = observed.len() as u32;
+            return Ok((formatting::format_list(observed, self.format)?, count));
         }
 
         let matched_pattern_ids = self.matched_pattern_ids(&observed);
         if self.operation == PatternsOperation::Search && matched_pattern_ids.is_empty() {
-            return formatting::format_search(Vec::new(), &matched_pattern_ids, self.format);
+            return Ok((
+                formatting::format_search(Vec::new(), &matched_pattern_ids, self.format)?,
+                0,
+            ));
         }
         let facts = search_structural_facts(
             reader,
@@ -192,10 +209,23 @@ impl PatternsTool {
         match self.operation {
             PatternsOperation::List => unreachable!(),
             PatternsOperation::Search => {
-                formatting::format_search(facts, &matched_pattern_ids, self.format)
+                let count = facts.len() as u32;
+                Ok((
+                    formatting::format_search(facts, &matched_pattern_ids, self.format)?,
+                    count,
+                ))
             }
             PatternsOperation::Summary => {
-                formatting::format_summary(facts, self.group_by, self.facet.as_deref(), self.format)
+                let count = facts.len() as u32;
+                Ok((
+                    formatting::format_summary(
+                        facts,
+                        self.group_by,
+                        self.facet.as_deref(),
+                        self.format,
+                    )?,
+                    count,
+                ))
             }
         }
     }

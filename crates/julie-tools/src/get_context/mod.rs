@@ -123,8 +123,19 @@ impl GetContextTool {
         workspace_target: crate::navigation::resolution::WorkspaceTarget,
         budget: Option<julie_core::embeddings_contract::EmbeddingRequestBudget>,
     ) -> Result<CallToolResult> {
-        let result =
+        self.call_tool_counted(handler, workspace_target, budget)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    pub async fn call_tool_counted(
+        &self,
+        handler: &dyn ToolContext,
+        workspace_target: crate::navigation::resolution::WorkspaceTarget,
+        budget: Option<julie_core::embeddings_contract::EmbeddingRequestBudget>,
+    ) -> Result<(CallToolResult, u32)> {
+        let (result, count) =
             pipeline::run_with_target_and_budget(self, handler, workspace_target, budget).await?;
-        Ok(CallToolResult::success(vec![Content::text(result)]))
+        Ok((CallToolResult::success(vec![Content::text(result)]), count))
     }
 }

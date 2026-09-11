@@ -15,7 +15,7 @@ mod tool_calls;
 mod workspaces;
 
 pub use codehealth::{CodehealthSnapshot, CodehealthSnapshotRow};
-pub use tool_calls::{HistorySummary, SearchToolCallRow, ToolCallSummary};
+pub use tool_calls::{CallClient, HistorySummary, SearchToolCallRow, ToolCallSummary};
 pub use workspaces::{WorkspaceCleanupEventRow, WorkspaceRow};
 
 /// Thread-safe daemon database. Shared across sessions as `Arc<DaemonDatabase>`.

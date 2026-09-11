@@ -8,6 +8,39 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 /// directory when the caller omitted it or asked for the primary workspace.
 /// The service is stateless, so the shim is the only place that knows which
 /// checkout the agent session runs in.
+pub struct ClientStamp {
+    session: String,
+    client: Option<String>,
+}
+
+impl ClientStamp {
+    pub fn new(session: impl Into<String>) -> Self {
+        Self {
+            session: session.into(),
+            client: None,
+        }
+    }
+
+    pub fn observe(&mut self, message: &mut serde_json::Value) {
+        match message["method"].as_str() {
+            Some("initialize") => {
+                let info = &message["params"]["clientInfo"];
+                if let Some(name) = info["name"].as_str() {
+                    let version = info["version"].as_str().unwrap_or("");
+                    self.client = Some(format!("{name}/{version}"));
+                }
+            }
+            Some("tools/call") => {
+                message["params"]["_meta"]["julie"] = serde_json::json!({
+                    "client": self.client.clone().unwrap_or_default(),
+                    "session": self.session,
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
 pub fn bind_default_workspace(message: &mut serde_json::Value, root: &Path) {
     if message["method"].as_str() != Some("tools/call") {
         return;
@@ -39,6 +72,7 @@ where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
 {
+    let mut stamp = ClientStamp::new(uuid::Uuid::new_v4().to_string());
     let mut line = String::new();
     loop {
         line.clear();
@@ -58,6 +92,7 @@ where
             }
         };
         bind_default_workspace(&mut message, workspace_root);
+        stamp.observe(&mut message);
         let method = message["method"].as_str().unwrap_or("").to_string();
         let is_request = !message["id"].is_null();
         let body = serde_json::to_vec(&message)?;

@@ -147,6 +147,20 @@ fn shim_binds_tool_calls_to_its_working_directory_unless_a_workspace_is_named() 
     assert_eq!(list, before);
 }
 
+#[test]
+fn shim_stamps_client_and_session_meta_on_tool_calls() {
+    let mut stamp = crate::service::shim::ClientStamp::new("shim-1");
+    let mut init = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+        "params":{"clientInfo":{"name":"grok","version":"1.0.25"}}});
+    stamp.observe(&mut init);
+    let mut call = serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call",
+        "params":{"name":"fast_refs","arguments":{"symbol":"x"}}});
+    stamp.observe(&mut call);
+    assert_eq!(call["params"]["_meta"]["julie"]["client"], "grok/1.0.25");
+    assert_eq!(call["params"]["_meta"]["julie"]["session"], "shim-1");
+    assert!(init["params"].get("_meta").is_none());
+}
+
 #[tokio::test]
 async fn shim_answers_with_an_error_and_keeps_serving_when_the_service_cannot_restart() {
     let running = Running::start(None).await;

@@ -296,7 +296,7 @@ Expected: PASS (8 tests).
 - `serial-worker-commit`: `git commit -m "feat(telemetry): record client, client session, version, and result counts for every tool"` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] The ten new tests pass.
+- [x] The ten new tests pass.
 - [ ] After `cargo build --release` and `julie-server service restart`, one `fast_refs` call from this Claude Code session produces a row whose `client` starts with the client's name, whose `client_session` is non-empty, whose `julie_version` equals `Cargo.toml`, and whose `result_count` is not NULL (lead verifies with `sqlite3 ~/.julie/registry.db`).
 - [ ] `sqlite3 ~/.julie/registry.db "select count(*) from tool_calls"` is unchanged after the lead runs `cargo xtask test dev` and `cargo xtask test system` at this commit.
 - [ ] Tests pass and the change is committed by the worker per commit mode.

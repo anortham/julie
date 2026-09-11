@@ -43,8 +43,8 @@ impl JulieServerHandler {
         let metadata = tool_targets::get_symbols_metadata(&params);
         let input_bytes = Self::input_bytes_from_metadata(&metadata);
         let source_file_paths = vec![params.file_path.clone()];
-        let result = match params.call_tool(self).await {
-            Ok(result) => result,
+        let (result, count) = match params.call_tool_counted(self).await {
+            Ok(counted) => counted,
             Err(e) => {
                 let message = format!("get_symbols failed: {}", e);
                 self.record_tool_failure(
@@ -60,7 +60,7 @@ impl JulieServerHandler {
             }
         };
         let report = ToolCallReport {
-            result_count: None,
+            result_count: Some(count),
             input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes: Self::output_bytes_from_result(&result),

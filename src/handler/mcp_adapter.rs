@@ -220,10 +220,10 @@ impl McpAdapter {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
+        let client = call_client_from_meta(request.meta.as_ref());
         let (req, app_ctx) = self.adapt_request(request, &context)?;
-        let reply = self
-            .engine
-            .execute(req, app_ctx)
+        let reply = crate::handler::tool_metrics::CALL_CLIENT
+            .scope(client, self.engine.execute(req, app_ctx))
             .await
             .map_err(to_mcp_error)?;
         let result = to_mcp_tool_result(reply)?;
@@ -262,6 +262,20 @@ impl McpAdapter {
     pub fn get_info(&self) -> ServerInfo {
         get_server_info(self.instructions.clone())
     }
+}
+
+fn call_client_from_meta(
+    meta: Option<&rmcp::model::RequestMetaObject>,
+) -> Option<crate::registry::database::CallClient> {
+    let meta = meta?;
+    let value = serde_json::to_value(meta).ok()?;
+    let julie = value.get("julie")?;
+    let name = julie.get("client")?.as_str()?.to_string();
+    let session = julie.get("session")?.as_str()?.to_string();
+    if name.is_empty() && session.is_empty() {
+        return None;
+    }
+    Some(crate::registry::database::CallClient { name, session })
 }
 
 impl rmcp::ServerHandler for McpAdapter {

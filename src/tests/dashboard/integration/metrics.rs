@@ -165,6 +165,7 @@ async fn test_metrics_table_renders_input_bytes_for_tools() {
             Some(1_024),
             true,
             Some(r#"{"dry_run":true}"#),
+            None,
         )
         .unwrap();
 

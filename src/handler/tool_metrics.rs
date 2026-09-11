@@ -9,8 +9,13 @@ use tracing::warn;
 
 use crate::dashboard::state::DashboardEvent;
 use crate::handler::{JulieServerHandler, PrimaryWorkspaceBinding};
+use crate::registry::database::CallClient;
 use crate::tools::metrics::session::{SessionMetrics, ToolCallReport, ToolKind};
 use crate::workspace::JulieWorkspace;
+
+tokio::task_local! {
+    pub(crate) static CALL_CLIENT: Option<CallClient>;
+}
 
 /// Indexed size for `paths`: `blobs.byte_len` when the path is in facts, else
 /// the on-disk file size under `root`.
@@ -60,6 +65,7 @@ pub(crate) struct MetricsTask {
     pub metadata_str: Option<String>,
     pub daemon_db: Option<Arc<crate::registry::database::DaemonDatabase>>,
     pub workspace_id: Option<String>,
+    pub client: Option<CallClient>,
 }
 
 /// Single background task that drains the metrics channel and writes to SQLite.
@@ -90,6 +96,7 @@ pub(crate) async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<Metri
             let output_bytes = task.output_bytes;
             let success = task.success;
             let metadata_str = task.metadata_str.clone();
+            let client = task.client.clone();
 
             let _ = tokio::task::spawn_blocking(move || {
                 if let Err(e) = db.insert_tool_call_with_input_bytes(
@@ -103,6 +110,7 @@ pub(crate) async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<Metri
                     Some(output_bytes),
                     success,
                     metadata_str.as_deref(),
+                    client.as_ref(),
                 ) {
                     warn!("Failed to write tool call to daemon.db: {}", e);
                 }
@@ -177,6 +185,7 @@ impl JulieServerHandler {
             },
             daemon_db: self.daemon_db.clone(),
             workspace_id,
+            client: CALL_CLIENT.try_with(|c| c.clone()).ok().flatten(),
         });
     }
 

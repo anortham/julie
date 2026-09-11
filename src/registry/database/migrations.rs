@@ -37,6 +37,9 @@ pub(super) fn run_migrations(conn: &mut Connection) -> Result<()> {
     if current < 7 {
         migration_007_drop_search_compare_tables(conn)?;
     }
+    if current < 8 {
+        migration_008_add_tool_call_client_columns(conn)?;
+    }
 
     Ok(())
 }
@@ -244,6 +247,43 @@ fn migration_007_drop_search_compare_tables(conn: &mut Connection) -> Result<()>
     )?;
     tx.commit()?;
     info!("registry.db migration 007 complete");
+    Ok(())
+}
+
+fn migration_008_add_tool_call_client_columns(conn: &mut Connection) -> Result<()> {
+    info!("registry.db migration 008: add client columns to tool_calls");
+    let has_tool_calls = table_exists_in(conn, "tool_calls")?;
+    let existing = if has_tool_calls {
+        let mut stmt = conn.prepare("PRAGMA table_info(tool_calls)")?;
+        let mut rows = stmt.query([])?;
+        let mut names = Vec::new();
+        while let Some(row) = rows.next()? {
+            let name: String = row.get(1)?;
+            names.push(name);
+        }
+        names
+    } else {
+        Vec::new()
+    };
+    let tx = conn.transaction()?;
+    if has_tool_calls {
+        if !existing.iter().any(|n| n == "client") {
+            tx.execute("ALTER TABLE tool_calls ADD COLUMN client TEXT", [])?;
+        }
+        if !existing.iter().any(|n| n == "client_session") {
+            tx.execute("ALTER TABLE tool_calls ADD COLUMN client_session TEXT", [])?;
+        }
+        if !existing.iter().any(|n| n == "julie_version") {
+            tx.execute("ALTER TABLE tool_calls ADD COLUMN julie_version TEXT", [])?;
+        }
+    }
+    tx.execute(
+        "INSERT OR REPLACE INTO schema_version (version, applied_at)
+         VALUES (8, unixepoch())",
+        [],
+    )?;
+    tx.commit()?;
+    info!("registry.db migration 008 complete");
     Ok(())
 }
 

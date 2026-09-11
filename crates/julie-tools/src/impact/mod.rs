@@ -101,12 +101,21 @@ impl Default for BlastRadiusTool {
 
 impl BlastRadiusTool {
     pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
-        let result = run(self, handler).await?;
-        Ok(CallToolResult::success(vec![Content::text(result)]))
+        self.call_tool_counted(handler)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    pub async fn call_tool_counted(
+        &self,
+        handler: &dyn ToolContext,
+    ) -> Result<(CallToolResult, u32)> {
+        let (text, count) = run(self, handler).await?;
+        Ok((CallToolResult::success(vec![Content::text(text)]), count))
     }
 }
 
-pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<String> {
+pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<(String, u32)> {
     let target = handler
         .resolve_workspace_target(tool.workspace.as_deref())
         .await?;
@@ -115,10 +124,12 @@ pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<St
     run_with_snapshot(tool, &snapshot)
 }
 
-fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<String> {
+fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<(String, u32)> {
     match tool.mode.as_deref() {
         None | Some("default") | Some("web") => {}
-        Some(other) => return Ok(format!("mode must be 'default' or 'web'; got '{other}'")),
+        Some(other) => {
+            return Ok((format!("mode must be 'default' or 'web'; got '{other}'"), 0));
+        }
     }
     let graph = snapshot.graph();
     let seed_context = seed::resolve_seed_context(tool, graph)?;
@@ -182,11 +193,15 @@ fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<Stri
         web_callers_total,
     };
 
-    Ok(format_blast_radius(
-        &seed_context,
-        &visible_impacts,
-        &visible_likely_tests,
-        format,
-        header,
+    let count = visible_impacts.len() as u32;
+    Ok((
+        format_blast_radius(
+            &seed_context,
+            &visible_impacts,
+            &visible_likely_tests,
+            format,
+            header,
+        ),
+        count,
     ))
 }

@@ -59,8 +59,8 @@ impl JulieServerHandler {
         let workspace_snapshot = self
             .metrics_workspace_binding_for_target(&workspace_target)
             .await;
-        let result = match params.call_tool_with_target(self, &workspace_target).await {
-            Ok(result) => result,
+        let (result, count) = match params.call_tool_counted(self, &workspace_target).await {
+            Ok(counted) => counted,
             Err(error) => {
                 let message = format!("patterns failed: {error}");
                 self.record_tool_failure(
@@ -76,7 +76,7 @@ impl JulieServerHandler {
             }
         };
         let report = ToolCallReport {
-            result_count: None,
+            result_count: Some(count),
             input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes: Self::output_bytes_from_result(&result),

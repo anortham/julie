@@ -105,9 +105,17 @@ pub struct GetSymbolsTool {
 
 impl GetSymbolsTool {
     pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
+        self.call_tool_counted(handler)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    pub async fn call_tool_counted(
+        &self,
+        handler: &dyn ToolContext,
+    ) -> Result<(CallToolResult, u32)> {
         let mode = validated_mode(self.mode.as_deref())?;
 
-        // Resolve workspace parameter (primary vs explicit workspace)
         let workspace_target = handler
             .resolve_workspace_target(self.workspace.as_deref())
             .await?;
@@ -127,7 +135,6 @@ impl GetSymbolsTool {
                 .await
             }
             WorkspaceTarget::Primary => {
-                // Primary workspace logic
                 primary::get_symbols_from_primary(
                     handler,
                     &self.file_path,

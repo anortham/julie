@@ -130,7 +130,7 @@ impl JulieServerHandler {
             };
             let output_bytes = Self::output_bytes_from_result(&result);
             let report = ToolCallReport {
-                result_count: None,
+                result_count: Some(1),
                 input_bytes: Self::input_bytes_from_metadata(&metadata),
                 source_bytes: None,
                 output_bytes,
@@ -323,7 +323,7 @@ impl JulieServerHandler {
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = vec![params.file_path.clone()];
         let report = ToolCallReport {
-            result_count: None,
+            result_count: Some(1),
             input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,

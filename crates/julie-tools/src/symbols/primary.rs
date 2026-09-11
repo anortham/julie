@@ -20,7 +20,7 @@ pub async fn get_symbols_from_primary(
     target: Option<&str>,
     limit: Option<u32>,
     mode: &str,
-) -> Result<CallToolResult> {
+) -> Result<(CallToolResult, u32)> {
     info!(
         "📋 Getting symbols for file: {} (depth: {})",
         file_path, max_depth
@@ -52,7 +52,10 @@ pub async fn get_symbols_from_primary(
 
     if symbols.is_empty() {
         let message = format!("No symbols found in: {}", file_path);
-        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+        return Ok((
+            CallToolResult::text_content(vec![Content::text(message)]),
+            0,
+        ));
     }
 
     let (symbols_to_return, _was_truncated, _total_symbols) =
@@ -60,7 +63,10 @@ pub async fn get_symbols_from_primary(
 
     if symbols_to_return.is_empty() {
         let message = format!("No symbols found after filtering in: {}", file_path);
-        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+        return Ok((
+            CallToolResult::text_content(vec![Content::text(message)]),
+            0,
+        ));
     }
 
     // When target is set, upgrade "minimal" to "full" — the user explicitly asked for this
@@ -71,6 +77,7 @@ pub async fn get_symbols_from_primary(
         mode
     };
     let symbols_to_return = extract_code_bodies(symbols_to_return, &absolute_path, body_mode)?;
-
-    format_symbol_response(file_path, symbols_to_return, target)
+    let count = symbols_to_return.len() as u32;
+    let result = format_symbol_response(file_path, symbols_to_return, target)?;
+    Ok((result, count))
 }

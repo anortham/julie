@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::registry::database::DaemonDatabase;
+    use crate::registry::database::{CallClient, DaemonDatabase};
     use tempfile::TempDir;
 
     fn create_test_db() -> (DaemonDatabase, TempDir) {
@@ -892,6 +892,42 @@ mod tests {
         // Verify orphans are gone
         assert!(!indexes_dir.join("julie_316c0b08").exists());
         assert!(!indexes_dir.join("sealab_72d18461").exists());
+    }
+
+    #[test]
+    fn tool_call_rows_carry_client_session_and_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = DaemonDatabase::open(&dir.path().join("registry.db")).unwrap();
+        db.insert_tool_call_with_input_bytes(
+            "ws",
+            "handler-session",
+            "fast_refs",
+            3.0,
+            Some(0),
+            None,
+            Some(40),
+            Some(120),
+            true,
+            None,
+            Some(&CallClient {
+                name: "grok/1.0.25".into(),
+                session: "shim-1".into(),
+            }),
+        )
+        .unwrap();
+        let (client, session, version, count): (String, String, String, i64) = db
+            .conn_for_test()
+            .query_row(
+                "SELECT client, client_session, julie_version, result_count FROM tool_calls",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (client.as_str(), session.as_str(), count),
+            ("grok/1.0.25", "shim-1", 0)
+        );
+        assert_eq!(version, env!("CARGO_PKG_VERSION"));
     }
 
     mod workspace_status;

@@ -71,6 +71,7 @@ pub fn run_pipeline_with_options(
         task_signals,
         SemanticMode::Auto,
     )
+    .map(|(text, _)| text)
 }
 
 fn reference_scores<'a>(
@@ -98,7 +99,7 @@ pub fn run_pipeline_with_mode(
     precomputed_embedding: Option<TaggedQueryEmbedding>,
     task_signals: Option<&TaskSignals>,
     semantic_mode: SemanticMode,
-) -> Result<String> {
+) -> Result<(String, u32)> {
     use super::allocation::TokenBudget;
     use super::entries::{build_neighbor_entries, build_pivot_entries};
     use super::formatting::{ContextData, format_context_with_mode};
@@ -143,7 +144,7 @@ pub fn run_pipeline_with_mode(
             allocation: TokenBudget::new(0).allocate(0, 0),
             truncated: false,
         };
-        return Ok(format_context_with_mode(&empty_data, output_format));
+        return Ok((format_context_with_mode(&empty_data, output_format), 0));
     }
 
     let ref_scores = reference_scores(
@@ -219,7 +220,11 @@ pub fn run_pipeline_with_mode(
         truncated: !neighbor_output.overflow_entries.is_empty(),
     };
 
-    Ok(format_context_with_mode(&context_data, output_format))
+    let count = (context_data.pivots.len() + context_data.neighbors.len()) as u32;
+    Ok((
+        format_context_with_mode(&context_data, output_format),
+        count,
+    ))
 }
 
 /// Handler entry point: resolves the workspace, takes its snapshot, delegates to run_pipeline.
@@ -239,7 +244,9 @@ pub async fn run_with_target(
     handler: &dyn ToolContext,
     workspace_target: WorkspaceTarget,
 ) -> Result<String> {
-    run_with_target_and_budget(tool, handler, workspace_target, None).await
+    run_with_target_and_budget(tool, handler, workspace_target, None)
+        .await
+        .map(|(text, _)| text)
 }
 
 /// Same as `run_with_target`, but accepts an optional `EmbeddingRequestBudget`
@@ -249,7 +256,7 @@ pub async fn run_with_target_and_budget(
     handler: &dyn ToolContext,
     workspace_target: WorkspaceTarget,
     budget: Option<EmbeddingRequestBudget>,
-) -> Result<String> {
+) -> Result<(String, u32)> {
     let budget = budget.unwrap_or_default();
     let query = tool.query.clone();
     let max_tokens = tool.max_tokens;
@@ -265,7 +272,7 @@ pub async fn run_with_target_and_budget(
     let snapshot: Arc<Snapshot> = handler.snapshot(&workspace_target).await?;
     let embedding_provider = handler.embedding_provider().await;
 
-    tokio::task::spawn_blocking(move || -> Result<String> {
+    tokio::task::spawn_blocking(move || -> Result<(String, u32)> {
         let precomputed_embedding = if semantic_mode == SemanticMode::Off {
             None
         } else {

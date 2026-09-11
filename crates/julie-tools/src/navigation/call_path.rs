@@ -407,20 +407,29 @@ impl CallPathTool {
     }
 
     pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
+        self.call_tool_counted(handler)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    pub async fn call_tool_counted(
+        &self,
+        handler: &dyn ToolContext,
+    ) -> Result<(CallToolResult, u32)> {
         if self.from.is_empty() || self.to.is_empty() {
-            return Self::response_result(&Self::diagnostic_response(
+            return Self::counted_response(&Self::diagnostic_response(
                 "both 'from' and 'to' are required",
             ));
         }
         if !(1..=MAX_HOPS).contains(&self.max_hops) {
-            return Self::response_result(&Self::diagnostic_response(format!(
+            return Self::counted_response(&Self::diagnostic_response(format!(
                 "max_hops must be in the range 1..={MAX_HOPS}"
             )));
         }
         match self.mode.as_deref() {
             None | Some("default") | Some("web") => {}
             Some(other) => {
-                return Self::response_result(&Self::diagnostic_response(format!(
+                return Self::counted_response(&Self::diagnostic_response(format!(
                     "mode must be 'default' or 'web'; got '{other}'"
                 )));
             }
@@ -429,7 +438,7 @@ impl CallPathTool {
         let snapshot = match self.resolve_snapshot(handler).await {
             Ok(snapshot) => snapshot,
             Err(error) => {
-                return Self::response_result(&Self::diagnostic_response(format!(
+                return Self::counted_response(&Self::diagnostic_response(format!(
                     "Workspace resolution failed: {error}"
                 )));
             }
@@ -445,7 +454,12 @@ impl CallPathTool {
             self.from, self.to, response.found, response.hops
         );
 
-        Self::response_result(&response)
+        Self::counted_response(&response)
+    }
+
+    fn counted_response(response: &CallPathResponse) -> Result<(CallToolResult, u32)> {
+        let result = Self::response_result(response)?;
+        Ok((result, u32::from(response.found)))
     }
 }
 

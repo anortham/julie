@@ -42,8 +42,8 @@ impl JulieServerHandler {
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = tool_targets::blast_radius_metadata(&params);
         let source_file_paths = params.file_paths.clone();
-        let result = match params.call_tool(self).await {
-            Ok(result) => result,
+        let (result, count) = match params.call_tool_counted(self).await {
+            Ok(counted) => counted,
             Err(e) => {
                 let message = format!("blast_radius failed: {}", e);
                 self.record_tool_failure(
@@ -61,7 +61,7 @@ impl JulieServerHandler {
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
-            result_count: None,
+            result_count: Some(count),
             input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,

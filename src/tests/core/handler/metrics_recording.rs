@@ -235,3 +235,183 @@ async fn test_deep_dive_failure_metrics_records_failed_handler_call() -> Result<
     let _ = service.cancel().await;
     Ok(())
 }
+
+async fn indexed_metrics_handler() -> Result<(JulieServerHandler, TempDir)> {
+    let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
+    std::fs::create_dir_all(temp_dir.path().join("src"))?;
+    std::fs::write(
+        temp_dir.path().join("src/lib.rs"),
+        "pub fn alpha() {\n    beta();\n}\npub fn beta() {}\n",
+    )?;
+    let mut handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    attach_daemon_db(&mut handler, temp_dir.path())?;
+    let index_tool = crate::tools::workspace::ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+    Ok((handler, temp_dir))
+}
+
+async fn wait_result_count(handler: &JulieServerHandler, tool_name: &str) -> Result<Option<i64>> {
+    let db = handler.daemon_db.as_ref().expect("registry.db").clone();
+    let tool_name = tool_name.to_string();
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let row = {
+                let conn = db.conn_for_test();
+                let mut stmt = conn.prepare(
+                    "SELECT result_count FROM tool_calls
+                     WHERE tool_name = ?1 AND success = 1
+                     ORDER BY id DESC LIMIT 1",
+                )?;
+                let mut rows = stmt.query([tool_name.as_str()])?;
+                rows.next()?
+                    .map(|row| row.get::<_, Option<i64>>(0))
+                    .transpose()?
+            };
+            if let Some(count) = row {
+                break Ok::<Option<i64>, anyhow::Error>(count);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await?
+}
+
+async fn call_and_count(
+    handler: &JulieServerHandler,
+    tool: &str,
+    args: serde_json::Value,
+) -> Result<Option<i64>> {
+    let tool = tool.to_string();
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+    let request = CallToolRequestParams::new(tool.clone()).with_arguments(json_object(args));
+    let result = <JulieServerHandler as ServerHandler>::call_tool(
+        handler,
+        request,
+        RequestContext::new(NumberOrString::Number(1), service.peer().clone()),
+    )
+    .await;
+    assert!(result.is_ok(), "{tool} failed: {result:?}");
+    let count = wait_result_count(handler, &tool).await?;
+    let _ = service.cancel().await;
+    Ok(count)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn get_symbols_records_result_count() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let count = call_and_count(
+        &handler,
+        "get_symbols",
+        serde_json::json!({ "file_path": "src/lib.rs" }),
+    )
+    .await?;
+    assert_eq!(count, Some(2));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn fast_refs_records_result_count() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let count = call_and_count(
+        &handler,
+        "fast_refs",
+        serde_json::json!({ "symbol": "beta", "include_definition": false }),
+    )
+    .await?;
+    assert_eq!(count, Some(1));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn deep_dive_records_result_count() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let count = call_and_count(
+        &handler,
+        "deep_dive",
+        serde_json::json!({ "symbol": "alpha" }),
+    )
+    .await?;
+    assert_eq!(count, Some(1));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn call_path_records_result_count() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let count = call_and_count(
+        &handler,
+        "call_path",
+        serde_json::json!({ "from": "alpha", "to": "beta" }),
+    )
+    .await?;
+    assert_eq!(count, Some(1));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn blast_radius_records_result_count() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let count = call_and_count(
+        &handler,
+        "blast_radius",
+        serde_json::json!({ "file_paths": ["src/lib.rs"], "include_tests": false }),
+    )
+    .await?;
+    assert_eq!(count, Some(0));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn get_context_records_result_count() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let count = call_and_count(
+        &handler,
+        "get_context",
+        serde_json::json!({ "query": "alpha", "entry_symbols": ["alpha"] }),
+    )
+    .await?;
+    assert_eq!(count, Some(2));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn patterns_records_result_count() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let count = call_and_count(
+        &handler,
+        "patterns",
+        serde_json::json!({ "operation": "search", "query": "no-such-pattern" }),
+    )
+    .await?;
+    assert_eq!(count, Some(0));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn edit_file_records_result_count() -> Result<()> {
+    let (handler, _tmp) = indexed_metrics_handler().await?;
+    let count = call_and_count(
+        &handler,
+        "edit_file",
+        serde_json::json!({
+            "file_path": "src/lib.rs",
+            "old_text": "pub fn beta() {}",
+            "new_text": "pub fn beta() { }",
+            "dry_run": true
+        }),
+    )
+    .await?;
+    assert_eq!(count, Some(1));
+    Ok(())
+}

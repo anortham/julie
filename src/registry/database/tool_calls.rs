@@ -5,6 +5,12 @@ use rusqlite::params;
 
 use super::{DaemonDatabase, now_unix};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CallClient {
+    pub name: String,
+    pub session: String,
+}
+
 /// Per-tool summary for a session or time window.
 #[derive(Default, Clone, serde::Serialize)]
 pub struct ToolCallSummary {
@@ -55,6 +61,7 @@ impl DaemonDatabase {
             output_bytes,
             success,
             metadata,
+            None,
         )
     }
 
@@ -71,13 +78,15 @@ impl DaemonDatabase {
         output_bytes: Option<u64>,
         success: bool,
         metadata: Option<&str>,
+        client: Option<&CallClient>,
     ) -> Result<()> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "INSERT INTO tool_calls
                 (workspace_id, session_id, timestamp, tool_name, duration_ms,
-                 result_count, source_bytes, input_bytes, output_bytes, success, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 result_count, source_bytes, input_bytes, output_bytes, success, metadata,
+                 client, client_session, julie_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 workspace_id,
                 session_id,
@@ -90,6 +99,9 @@ impl DaemonDatabase {
                 output_bytes.map(|v| v as i64),
                 if success { 1 } else { 0 },
                 metadata,
+                client.map(|c| c.name.as_str()),
+                client.map(|c| c.session.as_str()),
+                env!("CARGO_PKG_VERSION"),
             ],
         )?;
         Ok(())

@@ -79,11 +79,11 @@ impl JulieServerHandler {
         let workspace_snapshot = self
             .metrics_workspace_binding_for_target(&workspace_target)
             .await;
-        let result = match params
-            .call_tool_with_target_and_budget(self, workspace_target, Some(budget))
+        let (result, count) = match params
+            .call_tool_counted(self, workspace_target, Some(budget))
             .await
         {
-            Ok(result) => result,
+            Ok(counted) => counted,
             Err(e) => {
                 let message = format!("get_context failed: {}", e);
                 self.record_tool_failure(
@@ -104,7 +104,7 @@ impl JulieServerHandler {
             .metrics_source_bytes_for_binding(workspace_snapshot.as_ref(), &source_file_paths)
             .await;
         let report = ToolCallReport {
-            result_count: None,
+            result_count: Some(count),
             input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes,
             output_bytes,
