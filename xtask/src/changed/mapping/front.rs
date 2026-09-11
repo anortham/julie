@@ -123,7 +123,6 @@ fn handler_tool_buckets_for_path(path: &str) -> Option<&'static [&'static str]> 
             "tools-get-context-format",
             "tools-get-context-graph",
         ]),
-        "src/handler/tools/rename_symbol.rs" => Some(&["tools-refactoring"]),
         "src/handler/tools/manage_workspace.rs" => Some(&[
             "tools-workspace-discovery",
             "tools-workspace-indexing",
@@ -131,9 +130,7 @@ fn handler_tool_buckets_for_path(path: &str) -> Option<&'static [&'static str]> 
             "tools-workspace-targeting",
             "workspace-init",
         ]),
-        "src/handler/tools/edit_file.rs" | "src/handler/tools/rewrite_symbol.rs" => {
-            Some(&["tools-editing"])
-        }
+        "src/handler/tools/edit_file.rs" => Some(&["tools-editing"]),
         "src/handler/search_telemetry.rs" => Some(SEARCH_TOOL_BUCKETS_WITH_HANDLER_TELEMETRY),
         _ => None,
     }

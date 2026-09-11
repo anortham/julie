@@ -12,8 +12,6 @@ const USEFUL_ACTIONS: &[&str] = &[
     "call_path",
     "get_context",
     "edit_file",
-    "rewrite_symbol",
-    "rename_symbol",
 ];
 
 #[derive(Debug, Clone, Serialize)]

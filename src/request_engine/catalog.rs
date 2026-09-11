@@ -222,22 +222,4 @@ register_tool_catalog! {
         unbound: |_p| false,
         semantics: |_p| SemanticRequirement::None,
     },
-    "rename_symbol" => {
-        variant: RenameSymbol,
-        type: crate::tools::RenameSymbolTool,
-        description: "Rename a symbol across the entire codebase with index-aware updates.",
-        access: |p| if p.dry_run { AccessClass::Preview } else { AccessClass::SourceEdit },
-        workspace: |p| p.workspace.as_deref(),
-        unbound: |_p| false,
-        semantics: |_p| SemanticRequirement::None,
-    },
-    "rewrite_symbol" => {
-        variant: RewriteSymbol,
-        type: crate::tools::editing::rewrite_symbol::RewriteSymbolTool,
-        description: "Rewrite a symbol by name without reading the file first. Preview with dry_run=true.",
-        access: |p| if p.dry_run { AccessClass::Preview } else { AccessClass::SourceEdit },
-        workspace: |p| p.workspace.as_deref(),
-        unbound: |_p| false,
-        semantics: |_p| SemanticRequirement::None,
-    },
 }

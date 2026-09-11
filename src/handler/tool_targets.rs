@@ -1,11 +1,10 @@
 use serde_json::{Value, json};
 
 use crate::tools::editing::edit_file::EditFileTool;
-use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
 use crate::tools::get_context::GetContextTool;
 use crate::tools::navigation::{CallPathTool, FastRefsTool};
 use crate::tools::patterns::PatternsTool;
-use crate::tools::{BlastRadiusTool, DeepDiveTool, GetSymbolsTool, RenameSymbolTool};
+use crate::tools::{BlastRadiusTool, DeepDiveTool, GetSymbolsTool};
 
 fn target_metadata(symbol_name: Option<&str>, file_path: Option<&str>, line: Option<u32>) -> Value {
     json!({
@@ -121,20 +120,6 @@ pub(crate) fn blast_radius_metadata(params: &BlastRadiusTool) -> Value {
     })
 }
 
-pub(crate) fn rename_symbol_metadata(params: &RenameSymbolTool) -> Value {
-    json!({
-        "kind": "rename_symbol",
-        "dry_run": params.dry_run,
-        "applied": false,
-        "input_bytes": serde_json::to_vec(params).map(|bytes| bytes.len() as u64).unwrap_or(0),
-        "old_name": params.old_name,
-        "new_name": params.new_name,
-        "scope": params.scope,
-        "workspace": params.workspace,
-        "target": target_metadata(Some(&params.old_name), params.scope.as_deref(), None),
-    })
-}
-
 pub(crate) fn edit_file_metadata(params: &EditFileTool) -> Value {
     merge_object(
         params.base_metrics_metadata(),
@@ -142,17 +127,6 @@ pub(crate) fn edit_file_metadata(params: &EditFileTool) -> Value {
             "file": params.file_path,
             "workspace": params.workspace,
             "target": target_metadata(None, Some(&params.file_path), None),
-        }),
-    )
-}
-
-pub(crate) fn rewrite_symbol_metadata(params: &RewriteSymbolTool) -> Value {
-    merge_object(
-        params.base_metrics_metadata(),
-        json!({
-            "workspace": params.workspace,
-            "file_path": params.file_path,
-            "target": target_metadata(Some(&params.symbol), params.file_path.as_deref(), None),
         }),
     )
 }

@@ -366,18 +366,6 @@ relationships. Those typed tables power region search, `patterns`, and
   - Dry-run preview with unified diff output (standard `@@` hunk headers)
   - Bracket balance validation for code files
   - CRLF-aware matching preserves line ending style
-- `rewrite_symbol` - Edit a symbol by name without reading the file first
-  - Operations: `replace_full`, `replace_body`, `replace_signature`, `insert_before`, `insert_after`, `add_doc`
-  - Symbol lookup by qualified name (e.g., `MyClass::method`); use `file_path` to disambiguate
-  - Combine with `deep_dive` for zero-read editing workflows
-  - Dry-run preview with unified diff output
-
-### Refactoring
-
-- `rename_symbol` - Rename symbols across the workspace
-  - Updates all references atomically
-  - Scope control: `workspace` (default), `all`, or `file:<path>` to disambiguate shared names
-  - Preview mode with `dry_run` parameter
 
 ### Workspace Management
 
@@ -463,7 +451,7 @@ The plugin distributes four user-facing skills (`/editing`, `/explore-area`, `/i
 
 | Skill | Description |
 |-------|-------------|
-| `/editing` | Zero-read editing: understand and modify code using `edit_file`, `rewrite_symbol`, and `rename_symbol` without reading files first |
+| `/editing` | Zero-read editing: understand and modify code using `edit_file` without reading files first |
 
 ### Navigation & Analysis Skills
 
@@ -711,13 +699,12 @@ src/
 ├── embeddings/      # Embedding pipeline, native sidecar client and protocol
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
-│   ├── editing/     # edit_file, rewrite_symbol
+│   ├── editing/     # edit_file
 │   ├── get_context/ # Token-budgeted context retrieval
 │   ├── impact/      # blast_radius
 │   ├── metrics/     # Session metrics for the dashboard
 │   ├── navigation/  # fast_refs, call_path
 │   ├── patterns/    # patterns
-│   ├── refactoring/ # rename_symbol
 │   ├── search/      # fast_search
 │   ├── symbols/     # get_symbols
 │   └── workspace/   # manage_workspace

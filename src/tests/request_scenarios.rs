@@ -136,7 +136,7 @@ async fn test_scenario_1_codebase_exploration_pipeline() {
 }
 
 /// Scenario 2: Refactoring Pipeline
-/// fast_refs -> blast_radius -> edit_file (preview) -> rename_symbol (preview) -> apply
+/// fast_refs -> blast_radius -> edit_file (preview) -> apply
 #[tokio::test]
 async fn test_scenario_2_refactoring_pipeline() {
     let mut fixture = ProcessFixture::from_env().await;
@@ -228,47 +228,7 @@ async fn test_scenario_2_refactoring_pipeline() {
     assert!(content_orig.contains("calculate_sum"));
     assert!(!content_orig.contains("compute_sum"));
 
-    // Step 4: Preview rename_symbol with dry_run: true
-    let mcp_r4 = fixture
-        .rpc(json!({
-            "jsonrpc": "2.0", "id": 204, "method": "tools/call", "params": {
-                "name": "rename_symbol", "arguments": {
-                    "old_name": "calculate_sum",
-                    "new_name": "compute_sum",
-                    "dry_run": true
-                }, "_meta": modern_meta()
-            }
-        }))
-        .await;
-    let (code4, cli_r4) = fixture
-        .cli_json(&[
-            "rename",
-            "calculate_sum",
-            "compute_sum",
-            "--dry-run=true",
-            "--workspace",
-            &ws,
-            "--json",
-        ])
-        .await;
-    assert_eq!(code4, 0);
-    assert_tool_parity("rename_symbol", &cli_r4, &mcp_r4);
-    let r4_content = mcp_r4["result"]["content"].to_string();
-    assert!(r4_content.contains("calculate_sum"));
-    assert!(r4_content.contains("compute_sum"));
-
-    // Verify disk remains unchanged after rename_symbol preview
-    let content_post_rename = std::fs::read_to_string(fixture.root().join("src/main.rs")).unwrap();
-    assert!(
-        content_post_rename.contains("calculate_sum"),
-        "calculate_sum must still exist after rename preview"
-    );
-    assert!(
-        !content_post_rename.contains("compute_sum"),
-        "compute_sum must not exist after rename preview"
-    );
-
-    // Step 5: Shut down leader MCP and apply edit in a fresh workspace
+    // Step 4: Shut down leader MCP and apply edit in a fresh workspace
     fixture.shutdown().await;
 
     let mut apply_fixture = ProcessFixture::from_env().await;

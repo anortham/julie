@@ -63,12 +63,6 @@ async fn run_main(cli: Cli) -> anyhow::Result<()> {
         Some(Command::Edit(args)) => {
             run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
-        Some(Command::Rename(args)) => {
-            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
-        }
-        Some(Command::Rewrite(args)) => {
-            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
-        }
         Some(Command::Workspace(args)) => {
             run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }

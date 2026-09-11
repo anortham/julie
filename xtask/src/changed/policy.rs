@@ -209,7 +209,6 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "tools-call-path",
         "tools-fast-refs",
         "tools-blast-spillover",
-        "tools-refactoring",
         "tools-metrics",
         "tools-format-filter",
         "core-fast",

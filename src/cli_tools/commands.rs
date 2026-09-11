@@ -13,7 +13,7 @@ use crate::request_engine::RequestFailure;
 use super::CliToolCommand;
 use super::subcommands::{
     BlastRadiusArgs, CallPathArgs, ContextArgs, DeepDiveArgs, EditArgs, GenericToolArgs,
-    PatternsArgs, RefsArgs, RenameArgs, RewriteArgs, SearchArgs, SymbolsArgs, WorkspaceArgs,
+    PatternsArgs, RefsArgs, SearchArgs, SymbolsArgs, WorkspaceArgs,
 };
 
 fn resolve_git_diff_file_paths(rev: &str) -> Result<Vec<String>> {
@@ -402,57 +402,6 @@ impl CliToolCommand for EditArgs {
         if let Some(ref occ) = self.occurrence {
             map.insert("occurrence".into(), Value::String(occ.clone()));
         }
-        if let Some(ref ws) = self.workspace {
-            map.insert("workspace".into(), Value::String(ws.clone()));
-        }
-        Ok(map)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// rename -> rename_symbol
-// ---------------------------------------------------------------------------
-
-#[async_trait]
-impl CliToolCommand for RenameArgs {
-    fn tool_name(&self) -> &'static str {
-        "rename_symbol"
-    }
-
-    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
-        let mut map = Map::new();
-        map.insert("old_name".into(), Value::String(self.old_name.clone()));
-        map.insert("new_name".into(), Value::String(self.new_name.clone()));
-        if let Some(ref s) = self.scope {
-            map.insert("scope".into(), Value::String(s.clone()));
-        }
-        map.insert("dry_run".into(), Value::Bool(self.dry_run));
-        if let Some(ref ws) = self.workspace {
-            map.insert("workspace".into(), Value::String(ws.clone()));
-        }
-        Ok(map)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// rewrite -> rewrite_symbol
-// ---------------------------------------------------------------------------
-
-#[async_trait]
-impl CliToolCommand for RewriteArgs {
-    fn tool_name(&self) -> &'static str {
-        "rewrite_symbol"
-    }
-
-    fn to_tool_args_map(&self) -> Result<Map<String, Value>, RequestFailure> {
-        let mut map = Map::new();
-        map.insert("symbol".into(), Value::String(self.symbol.clone()));
-        map.insert("operation".into(), Value::String(self.operation.clone()));
-        map.insert("content".into(), Value::String(self.content.clone()));
-        if let Some(ref f) = self.file_path {
-            map.insert("file_path".into(), Value::String(f.clone()));
-        }
-        map.insert("dry_run".into(), Value::Bool(self.dry_run));
         if let Some(ref ws) = self.workspace {
             map.insert("workspace".into(), Value::String(ws.clone()));
         }

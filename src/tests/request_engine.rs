@@ -173,22 +173,19 @@ async fn unknown_tool_rejects_before_runtime() {
     assert_eq!(result.unwrap_err().code, "UNKNOWN_TOOL");
 }
 
-#[tokio::test]
-async fn catalog_schemas_valid_and_match_all_12_tools() {
-    use crate::request_engine::catalog::ToolCatalog;
-    let list = ToolCatalog::list();
-    assert_eq!(list.len(), 12);
-    for tool in &list {
-        assert!(
-            tool.schema.is_object(),
-            "Tool '{}' schema must be an object",
-            tool.name
-        );
-        assert!(
-            !tool.description.is_empty(),
-            "Tool '{}' description must not be empty",
-            tool.name
-        );
+#[test]
+fn catalog_lists_exactly_the_ten_tools() {
+    use crate::request_engine::catalog::{AVAILABLE_TOOLS, ToolCatalog};
+
+    let expected = [
+        "blast_radius", "call_path", "deep_dive", "edit_file", "fast_refs", "fast_search",
+        "get_context", "get_symbols", "manage_workspace", "patterns",
+    ];
+    assert_eq!(AVAILABLE_TOOLS, &expected);
+    let listed: Vec<&str> = ToolCatalog::list().iter().map(|t| t.name).collect();
+    assert_eq!(listed, expected);
+    for old in ["rewrite_symbol", "rename_symbol"] {
+        assert!(ToolCatalog::schema(old).is_err(), "{old} still has a schema");
     }
 }
 
@@ -556,59 +553,6 @@ async fn five_concurrent_requests_execute_without_deadlock_or_corruption() {
 }
 
 #[tokio::test]
-async fn rewrite_symbol_preview_dry_run_leaves_disk_untouched() {
-    let fixture = RequestFixture::indexed().await;
-    let before = std::fs::read(fixture.root.join("src/lib.rs")).unwrap();
-    let response = fixture
-        .execute(
-            "rewrite_symbol",
-            serde_json::json!({
-                "symbol": "request_probe",
-                "operation": "replace_body",
-                "content": "{\n    let _preview = 1;\n}\n",
-                "dry_run": true
-            }),
-        )
-        .await;
-    assert!(
-        response.is_ok(),
-        "rewrite_symbol with dry_run=true must succeed: {:?}",
-        response.err()
-    );
-    assert_eq!(
-        std::fs::read(fixture.root.join("src/lib.rs")).unwrap(),
-        before,
-        "Disk bytes must remain untouched during preview dry_run"
-    );
-}
-
-#[tokio::test]
-async fn rename_symbol_preview_dry_run_leaves_disk_untouched() {
-    let fixture = RequestFixture::indexed().await;
-    let before = std::fs::read(fixture.root.join("src/lib.rs")).unwrap();
-    let response = fixture
-        .execute(
-            "rename_symbol",
-            serde_json::json!({
-                "old_name": "request_probe",
-                "new_name": "renamed_request_probe",
-                "dry_run": true
-            }),
-        )
-        .await;
-    assert!(
-        response.is_ok(),
-        "rename_symbol with dry_run=true must succeed: {:?}",
-        response.err()
-    );
-    assert_eq!(
-        std::fs::read(fixture.root.join("src/lib.rs")).unwrap(),
-        before,
-        "Disk bytes must remain untouched during preview dry_run"
-    );
-}
-
-#[tokio::test]
 async fn sensitive_roots_rejected_before_creating_directories() {
     let temp_home = tempfile::tempdir().expect("temp home");
     let registry_paths = RegistryPaths::with_home(temp_home.path().to_path_buf());
@@ -693,10 +637,6 @@ async fn missing_workspace_on_various_non_unbound_tools_rejects() {
         (
             "edit_file",
             serde_json::json!({ "file_path": "src/lib.rs", "old_text": "a", "new_text": "b", "dry_run": true }),
-        ),
-        (
-            "rename_symbol",
-            serde_json::json!({ "old_name": "a", "new_name": "b", "dry_run": true }),
         ),
     ];
 

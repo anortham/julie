@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use crate::cli_tools::subcommands::{
     BlastRadiusArgs, CallPathArgs, ContextArgs, DeepDiveArgs, EditArgs, GenericToolArgs,
-    GlobalToolFlags, PatternsArgs, RefsArgs, RenameArgs, RewriteArgs, SearchArgs, SignalsArgs,
-    SymbolsArgs, ToolsArgs, WorkspaceArgs,
+    GlobalToolFlags, PatternsArgs, RefsArgs, SearchArgs, SignalsArgs, SymbolsArgs, ToolsArgs,
+    WorkspaceArgs,
 };
 use crate::external_extract::ExternalExtractRawArgs;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
@@ -59,12 +59,6 @@ pub enum Command {
     /// Edit a file with search-and-replace
     #[command(name = "edit", alias = "edit_file")]
     Edit(EditArgs),
-    /// Rename a symbol across the codebase
-    #[command(name = "rename", alias = "rename_symbol")]
-    Rename(RenameArgs),
-    /// Rewrite a symbol definition
-    #[command(name = "rewrite", alias = "rewrite_symbol")]
-    Rewrite(RewriteArgs),
     /// Manage workspaces (index, list, stats, health, etc.)
     #[command(name = "workspace")]
     Workspace(WorkspaceArgs),

@@ -246,24 +246,6 @@ impl RequestEngine {
             DecodedTool::GetSymbols(p) => handler.execute_get_symbols(p).await,
             DecodedTool::ManageWorkspace(p) => handler.execute_manage_workspace(p).await,
             DecodedTool::Patterns(p) => handler.execute_patterns(p).await,
-            DecodedTool::RenameSymbol(p) => {
-                handler
-                    .execute_rename_symbol_with_context(
-                        p,
-                        context.to_std_deadline(),
-                        &context.cancellation,
-                    )
-                    .await
-            }
-            DecodedTool::RewriteSymbol(p) => {
-                handler
-                    .execute_rewrite_symbol_with_context(
-                        p,
-                        context.to_std_deadline(),
-                        &context.cancellation,
-                    )
-                    .await
-            }
         };
 
         result.map_err(|e| {

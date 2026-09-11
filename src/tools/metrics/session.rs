@@ -33,16 +33,13 @@ pub enum ToolKind {
     DeepDive = 3,
     GetContext = 4,
     BlastRadius = 5,
-    RenameSymbol = 6,
-    ManageWorkspace = 7,
-    QueryMetrics = 8,
-    CallPath = 9,
-    EditFile = 10,
-    RewriteSymbol = 11,
+    ManageWorkspace = 6,
+    CallPath = 7,
+    EditFile = 8,
 }
 
 impl ToolKind {
-    pub const COUNT: usize = 12;
+    pub const COUNT: usize = 9;
 
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
@@ -52,12 +49,9 @@ impl ToolKind {
             "deep_dive" => Some(Self::DeepDive),
             "get_context" => Some(Self::GetContext),
             "blast_radius" => Some(Self::BlastRadius),
-            "rename_symbol" => Some(Self::RenameSymbol),
             "manage_workspace" => Some(Self::ManageWorkspace),
-            "query_metrics" => Some(Self::QueryMetrics),
             "call_path" => Some(Self::CallPath),
             "edit_file" => Some(Self::EditFile),
-            "rewrite_symbol" => Some(Self::RewriteSymbol),
             _ => None,
         }
     }
@@ -70,12 +64,9 @@ impl ToolKind {
             Self::DeepDive => "deep_dive",
             Self::GetContext => "get_context",
             Self::BlastRadius => "blast_radius",
-            Self::RenameSymbol => "rename_symbol",
             Self::ManageWorkspace => "manage_workspace",
-            Self::QueryMetrics => "query_metrics",
             Self::CallPath => "call_path",
             Self::EditFile => "edit_file",
-            Self::RewriteSymbol => "rewrite_symbol",
         }
     }
 }

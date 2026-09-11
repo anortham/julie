@@ -11,7 +11,6 @@ pub mod get_context;
 pub mod impact;
 pub mod navigation;
 pub mod patterns;
-pub mod refactoring;
 pub mod search;
 pub mod shared;
 pub mod snapshot_rows;
@@ -24,7 +23,6 @@ pub use get_context::GetContextTool;
 pub use impact::BlastRadiusTool;
 pub use navigation::{CallPathTool, FastRefsTool};
 pub use patterns::{PatternsFormat, PatternsGroupBy, PatternsOperation, PatternsTool};
-pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;
 pub use symbols::GetSymbolsTool;
 

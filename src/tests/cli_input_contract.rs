@@ -9,9 +9,7 @@ use crate::cli_tools::input::{
     MAX_INPUT_BYTES, parse_request_input, read_bounded_input, resolve_parameter_map,
 };
 use crate::cli_tools::replay::parse_replay_line;
-use crate::cli_tools::subcommands::{
-    DeepDiveArgs, EditArgs, GenericToolArgs, RenameArgs, RewriteArgs,
-};
+use crate::cli_tools::subcommands::{DeepDiveArgs, EditArgs, GenericToolArgs};
 use crate::request_engine::RequestFailure;
 
 #[test]
@@ -196,30 +194,6 @@ fn cli_subcommands_map_to_canonical_mcp_tools() {
     let map = edit.to_tool_args_map().unwrap();
     assert_eq!(map["file_path"], "src/main.rs");
     assert_eq!(map["dry_run"], true);
-
-    let rename = RenameArgs {
-        old_name: "old_fn".into(),
-        new_name: "new_fn".into(),
-        scope: None,
-        dry_run: false,
-        workspace: None,
-    };
-    assert_eq!(rename.tool_name(), "rename_symbol");
-    let map = rename.to_tool_args_map().unwrap();
-    assert_eq!(map["old_name"], "old_fn");
-    assert_eq!(map["dry_run"], false);
-
-    let rewrite = RewriteArgs {
-        symbol: "func".into(),
-        operation: "replace_full".into(),
-        content: "fn func() {}".into(),
-        file_path: None,
-        dry_run: true,
-        workspace: None,
-    };
-    assert_eq!(rewrite.tool_name(), "rewrite_symbol");
-    let map = rewrite.to_tool_args_map().unwrap();
-    assert_eq!(map["symbol"], "func");
 }
 
 #[test]
@@ -743,30 +717,6 @@ fn cli_subcommands_parse_with_global_and_target_workspace_flags() {
                     assert_eq!(args.workspace.as_deref(), expected_target);
                 }
                 _ => panic!("expected Edit command"),
-            },
-        },
-        TargetWsCase {
-            subcommand: "rename",
-            extra_args: &["old_sym", "new_sym"],
-            verify: |cmd, expected_target| match cmd {
-                Command::Rename(args) => {
-                    assert_eq!(args.old_name, "old_sym");
-                    assert_eq!(args.new_name, "new_sym");
-                    assert_eq!(args.workspace.as_deref(), expected_target);
-                }
-                _ => panic!("expected Rename command"),
-            },
-        },
-        TargetWsCase {
-            subcommand: "rewrite",
-            extra_args: &["my_sym", "-c", "fn my_sym() {}"],
-            verify: |cmd, expected_target| match cmd {
-                Command::Rewrite(args) => {
-                    assert_eq!(args.symbol, "my_sym");
-                    assert_eq!(args.content, "fn my_sym() {}");
-                    assert_eq!(args.workspace.as_deref(), expected_target);
-                }
-                _ => panic!("expected Rewrite command"),
             },
         },
         TargetWsCase {

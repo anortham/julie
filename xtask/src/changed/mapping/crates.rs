@@ -128,9 +128,6 @@ fn mapped_buckets_for_path(path: &str) -> &'static [&'static str] {
     if matches_prefix(path, &["crates/julie-tools/src/tests/editing_"]) {
         return &["tools-editing"];
     }
-    if matches_prefix(path, &["crates/julie-tools/src/tests/refactoring_"]) {
-        return &["tools-refactoring"];
-    }
     if matches_prefix(path, &["crates/julie-tools/src/tests/metrics_"]) {
         return &["tools-metrics"];
     }

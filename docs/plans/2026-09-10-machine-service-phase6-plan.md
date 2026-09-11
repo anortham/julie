@@ -141,9 +141,9 @@ Expected: PASS
 - `serial-worker-commit`: `git commit -m "refactor(tools): delete rewrite_symbol and rename_symbol"` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] `catalog_lists_exactly_the_ten_tools` passes.
+- [x] `catalog_lists_exactly_the_ten_tools` passes.
 - [ ] `cargo check --workspace --all-targets` is clean; `grep -rn "rewrite_symbol\|rename_symbol\|RenameSymbolTool\|RewriteSymbolTool" src crates xtask xtask-eval .claude README.md docs/site JULIE_AGENT_INSTRUCTIONS.md --include='*' ` returns nothing.
-- [ ] `edit_file` still works: `julie-server edit src/lib.rs --old-text "<any line>" --new-text "<same line>" --dry-run` (or the equivalent `tool edit_file --params`) returns a preview.
+- [x] `edit_file` still works: `julie-server edit src/lib.rs --old-text "<any line>" --new-text "<same line>" --dry-run` (or the equivalent `tool edit_file --params`) returns a preview.
 - [ ] Tests pass and the change is committed by the worker per commit mode.
 
 ---

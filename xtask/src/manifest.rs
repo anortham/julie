@@ -238,7 +238,6 @@ mod tests {
             "tools-workspace-targeting",
             "tools-editing",
             "tools-call-path",
-            "tools-refactoring",
         ] {
             assert!(
                 full_buckets.iter().any(|bucket| bucket == bucket_name),

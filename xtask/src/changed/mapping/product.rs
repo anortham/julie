@@ -233,13 +233,6 @@ fn mapped_buckets_for_path(path: &str) -> &'static [&'static str] {
         ];
     }
 
-    if matches_prefix(
-        path,
-        &["src/tools/refactoring/", "src/tests/tools/refactoring/"],
-    ) {
-        return &["tools-refactoring"];
-    }
-
     if matches_prefix(path, &["src/tools/metrics/", "src/tests/tools/metrics/"]) {
         return &["tools-metrics"];
     }

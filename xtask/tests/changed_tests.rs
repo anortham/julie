@@ -613,9 +613,7 @@ fn changed_tests_misc_tool_paths_select_split_tool_buckets() {
         &manifest,
         &[
             "src/tools/symbols/mod.rs".to_string(),
-            "src/tools/editing/rewrite.rs".to_string(),
             "src/tools/deep_dive/mod.rs".to_string(),
-            "src/tools/refactoring/rename.rs".to_string(),
             "src/tools/metrics/centrality.rs".to_string(),
             // filtering_tests relocated to julie-tools (T2b.6); use new path
             "crates/julie-tools/src/tests/filtering_tests.rs".to_string(),
@@ -630,9 +628,7 @@ fn changed_tests_misc_tool_paths_select_split_tool_buckets() {
         selection.bucket_names,
         vec![
             "tools-get-symbols",
-            "tools-editing",
             "tools-deep-dive",
-            "tools-refactoring",
             "tools-metrics",
             "tools-format-filter",
         ]
@@ -749,10 +745,8 @@ fn changed_tests_handler_tool_files_select_specific_buckets() {
         &[
             "src/handler/tools/get_symbols.rs".to_string(),
             "src/handler/tools/get_context.rs".to_string(),
-            "src/handler/tools/rename_symbol.rs".to_string(),
             "src/handler/tools/manage_workspace.rs".to_string(),
             "src/handler/tools/edit_file.rs".to_string(),
-            "src/handler/tools/rewrite_symbol.rs".to_string(),
         ],
     );
 
@@ -772,7 +766,6 @@ fn changed_tests_handler_tool_files_select_specific_buckets() {
             "tools-workspace-targeting",
             "tools-get-symbols",
             "tools-editing",
-            "tools-refactoring",
             "workspace-init",
         ]
     );
@@ -1107,7 +1100,6 @@ dev = [
   "tools-call-path",
   "tools-fast-refs",
   "tools-blast-spillover",
-  "tools-refactoring",
   "tools-metrics",
   "tools-format-filter",
   "core-fast",
@@ -1275,11 +1267,6 @@ commands = ["cargo test --lib tests::tools::fast_refs_primary_rebind_tests"]
 expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::blast_radius"]
-
-[buckets.tools-refactoring]
-expected_seconds = 10
-timeout_seconds = 40
-commands = ["cargo test --lib tests::tools::refactoring::"]
 
 [buckets.tools-metrics]
 expected_seconds = 10

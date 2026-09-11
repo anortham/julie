@@ -18,10 +18,8 @@
 - `get_context`: Token-budgeted area orientation (pivots + neighbors). Supports task inputs like `edited_files`, `entry_symbols`, `stack_trace`, `failing_test`, `max_hops`, and `prefer_tests`.
 - `blast_radius`: Deterministic impact analysis for changed files or internal symbol IDs. Returns impacts ranked by centrality and hops plus linked tests. Use before refactoring or after a change. Prefer `file_paths` when you know a symbol name or file path; `symbol_ids` are internal Julie IDs, not names like `AuthService::validate`.
 - `patterns`: Query persisted `structural_facts` without writing raw grammar-specific tree-sitter queries. Use `operation="list"` to discover observed pattern IDs, `operation="search"` with `pattern_id` or `query`, and `operation="summary"` with `group_by` or `facet`. Optional filters are `path`, `language`, `where`, and `limit`.
-- `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
 - `manage_workspace`: Operations `index`, `list`, `open`, `remove`, `refresh`, `health`, `rebuild` (delete a checkout's index and index it again from scratch), `status` (every known checkout: root, watcher, file/symbol/vector counts, database size, Tantivy state and age, last write), `recover_edit`, and `dashboard`. For cross-workspace work, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
 - `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
-- `rewrite_symbol`: Rewrite a symbol by name. Operations: replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc. Always `dry_run=true` first.
 
 The persisted extractor-enrichment domains are `source_regions`,
 `structural_facts`, and `complexity_metrics`. Use their public tool surfaces
@@ -29,8 +27,7 @@ instead of reading those SQLite tables directly.
 
 ## Editing Workflow
 
-`edit_file` and `rewrite_symbol` are the DEFAULT for file modifications. They edit without reading the file first.
-- Code symbols: `deep_dive` > `rewrite_symbol` (`dry_run=true` first)
+`edit_file` is the DEFAULT for file modifications. It edits without reading the file first.
 - Any text: `edit_file(old_text=..., new_text=..., dry_run=true)`
 - Read + Edit is the FALLBACK, not the default. Use only when Julie tools genuinely cannot handle the edit.
 
@@ -42,7 +39,7 @@ instead of reading those SQLite tables directly.
 - **Extractor changes**: `cargo xtask test bucket extractors`
 - **Parser dependency changes**: `cargo xtask test bucket extractor-dep-integration`
 - **Bug fix**: fast_search > deep_dive > write failing test > fix
-- **Refactor**: fast_refs > deep_dive > rename_symbol (dry_run first)
+- **Refactor**: fast_refs > deep_dive
 
 ## CLI Dogfooding
 
@@ -89,5 +86,4 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
     - blast_radius(file_paths?, symbol_ids?, max_depth?, include_tests?) for likely impact and linked tests. Prefer file_paths for human-facing symbol or file work; symbol_ids are internal Julie IDs returned by search/navigation tools, not names like AuthService::validate
     - patterns(operation?, pattern_id?, query?, path?, language?, where?, facet?, group_by?, limit?) to query persisted structural_facts
     - edit_file(old_text, new_text, dry_run=true) to edit without reading first
-    - rewrite_symbol(symbol, operation, content, dry_run=true) to edit by name
     Do NOT fall back to Glob/Read/Grep chains. Julie tools return targeted context in 1-2 calls.

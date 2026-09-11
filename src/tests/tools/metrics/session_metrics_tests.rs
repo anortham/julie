@@ -9,12 +9,9 @@ fn test_tool_kind_ordinal_covers_all_tools() {
     assert_eq!(ToolKind::DeepDive as u8, 3);
     assert_eq!(ToolKind::GetContext as u8, 4);
     assert_eq!(ToolKind::BlastRadius as u8, 5);
-    assert_eq!(ToolKind::RenameSymbol as u8, 6);
-    assert_eq!(ToolKind::ManageWorkspace as u8, 7);
-    assert_eq!(ToolKind::QueryMetrics as u8, 8);
-    assert_eq!(ToolKind::CallPath as u8, 9);
-    assert_eq!(ToolKind::EditFile as u8, 10);
-    assert_eq!(ToolKind::RewriteSymbol as u8, 11);
+    assert_eq!(ToolKind::ManageWorkspace as u8, 6);
+    assert_eq!(ToolKind::CallPath as u8, 7);
+    assert_eq!(ToolKind::EditFile as u8, 8);
 }
 
 #[test]
@@ -39,10 +36,6 @@ fn test_tool_kind_from_name() {
         ToolKind::from_name("edit_file"),
         Some(ToolKind::EditFile)
     ));
-    assert!(matches!(
-        ToolKind::from_name("rewrite_symbol"),
-        Some(ToolKind::RewriteSymbol)
-    ));
     assert!(ToolKind::from_name("nonexistent").is_none());
 }
 
@@ -57,12 +50,9 @@ fn test_tool_kind_name_roundtrip() {
             3 => ToolKind::DeepDive,
             4 => ToolKind::GetContext,
             5 => ToolKind::BlastRadius,
-            6 => ToolKind::RenameSymbol,
-            7 => ToolKind::ManageWorkspace,
-            8 => ToolKind::QueryMetrics,
-            9 => ToolKind::CallPath,
-            10 => ToolKind::EditFile,
-            11 => ToolKind::RewriteSymbol,
+            6 => ToolKind::ManageWorkspace,
+            7 => ToolKind::CallPath,
+            8 => ToolKind::EditFile,
             _ => unreachable!(),
         };
         let name = kind.name();

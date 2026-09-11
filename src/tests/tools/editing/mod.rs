@@ -1,10 +1,8 @@
 //! Editing infrastructure tests
 //!
-//! This module contains tests for EditingTransaction plus rewrite_symbol coverage.
+//! This module contains tests for EditingTransaction.
 
 mod edit_file_tests;
-mod rewrite_symbol_cross_language_tests;
-mod rewrite_symbol_tests;
 // markdown_section_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
 // security_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
 // transactional_editing_tests relocated to crates/julie-tools/src/tests/ (T2b.6)

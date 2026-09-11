@@ -14,7 +14,7 @@ system = ["workspace-runtime", "workspace-init", "documentation-indexing", "inte
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
 # Full: Linux suite under 120s. Dogfood, extractor-dep, and Windows stay in their own tiers.
-full = ["cli", "xtask-runner", "xtask-eval", "core-database", "core-facts", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "service", "service-process", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
+full = ["cli", "xtask-runner", "xtask-eval", "core-database", "core-facts", "core-embeddings", "core-index", "core-pipeline", "core-runtime", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line-core", "tools-search-line-filters", "tools-search-line-primary", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace-discovery", "tools-workspace-indexing", "tools-workspace-management", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-metrics", "tools-format-filter", "core-fast", "core-handler-telemetry", "registry", "dashboard", "service", "service-process", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 
 [blocked_tiers]
 
@@ -324,21 +324,18 @@ commands = [
 
 [buckets.tools-editing]
 # security/transactional/validation/markdown_section relocated to julie-tools (T2b.6).
-# edit_file/rewrite_symbol_* STAY (JulieServerHandler); commit_creates_temp_file stays in editing/mod.rs (top-crate).
+# edit_file STAYS (JulieServerHandler); commit_creates_temp_file stays in editing/mod.rs (top-crate).
 expected_seconds = 200
 timeout_seconds = 300
 scope_label = "tooling"
 notes = "editing tools split by submodule; broad filter exceeds Windows bucket timeout"
 commands = [
   "cargo nextest run --lib tests::tools::editing::edit_file_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::editing::rewrite_symbol_cross_language_tests -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::editing::rewrite_symbol_tests -- --skip search_quality",
   "cargo nextest run --lib commit_creates_temp_file_in_same_directory_for_relative_paths -- --skip search_quality",
   "cargo nextest run -p julie-tools --lib tests::editing_markdown_section_tests",
   "cargo nextest run -p julie-tools --lib tests::editing_security_tests",
   "cargo nextest run -p julie-tools --lib tests::editing_transactional_editing_tests",
   "cargo nextest run -p julie-tools --lib tests::editing_validation_tests",
-  "cargo nextest run -p julie-tools --lib tests::extractor_migration_editing",
 ]
 
 [buckets.tools-deep-dive]
@@ -382,19 +379,6 @@ notes = "blast_radius coverage"
 commands = [
   "cargo nextest run --lib tests::tools::blast_radius -- --skip search_quality",
   "cargo nextest run -p julie-tools --lib tests::blast_radius_formatting_tests",
-]
-
-[buckets.tools-refactoring]
-# ast_aware/compute_line_changes/import_update relocated to julie-tools (T2b.6); rename_symbol/smart_refactor STAY.
-expected_seconds = 45
-timeout_seconds = 90
-scope_label = "tooling"
-notes = "refactoring tools"
-commands = [
-  "cargo nextest run --lib tests::tools::refactoring::rename_symbol tests::tools::refactoring::smart_refactor -- --skip search_quality",
-  "cargo nextest run -p julie-tools --lib tests::refactoring_ast_aware",
-  "cargo nextest run -p julie-tools --lib tests::refactoring_compute_line_changes_tests",
-  "cargo nextest run -p julie-tools --lib tests::refactoring_import_update_tests",
 ]
 
 [buckets.tools-metrics]

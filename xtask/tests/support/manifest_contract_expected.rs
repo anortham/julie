@@ -287,14 +287,11 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 300,
                 commands: &[
                     "cargo nextest run --lib tests::tools::editing::edit_file_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::editing::rewrite_symbol_cross_language_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::editing::rewrite_symbol_tests -- --skip search_quality",
                     "cargo nextest run --lib commit_creates_temp_file_in_same_directory_for_relative_paths -- --skip search_quality",
                     "cargo nextest run -p julie-tools --lib tests::editing_markdown_section_tests",
                     "cargo nextest run -p julie-tools --lib tests::editing_security_tests",
                     "cargo nextest run -p julie-tools --lib tests::editing_transactional_editing_tests",
                     "cargo nextest run -p julie-tools --lib tests::editing_validation_tests",
-                    "cargo nextest run -p julie-tools --lib tests::extractor_migration_editing",
                 ],
             },
         ),
@@ -379,19 +376,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 commands: &[
                     "cargo nextest run --lib tests::tools::blast_radius -- --skip search_quality",
                     "cargo nextest run -p julie-tools --lib tests::blast_radius_formatting_tests",
-                ],
-            },
-        ),
-        (
-            "tools-refactoring",
-            ExpectedBucket {
-                expected_seconds: 45,
-                timeout_seconds: 90,
-                commands: &[
-                    "cargo nextest run --lib tests::tools::refactoring::rename_symbol tests::tools::refactoring::smart_refactor -- --skip search_quality",
-                    "cargo nextest run -p julie-tools --lib tests::refactoring_ast_aware",
-                    "cargo nextest run -p julie-tools --lib tests::refactoring_compute_line_changes_tests",
-                    "cargo nextest run -p julie-tools --lib tests::refactoring_import_update_tests",
                 ],
             },
         ),
@@ -907,15 +891,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 notes: Some("blast_radius coverage"),
             },
         ),
-        (
-            "tools-refactoring",
-            ExpectedBucketMetadata {
-                scope_label: "tooling",
-                owner: "lead",
-                expensive: false,
-                notes: Some("refactoring tools"),
-            },
-        ),
+
         (
             "tools-search-context",
             ExpectedBucketMetadata {

@@ -147,8 +147,7 @@ impl FastRefsTool {
         )]))
     }
 
-    /// Definitions and references for callers that edit every site, such as
-    /// `rename_symbol`.
+    /// Definitions and references for callers that edit every site.
     pub async fn find_references_and_definitions(
         &self,
         handler: &dyn ToolContext,

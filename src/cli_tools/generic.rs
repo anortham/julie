@@ -1,8 +1,8 @@
 //! Generic tool dispatcher for the `julie-server tool <name>` subcommand.
 //!
 //! Maps tool names to their struct types, deserializes JSON params via serde,
-//! and calls the tool through the shared `.call_tool(&handler)` path. All 13
-//! public MCP tools are reachable through this dispatcher.
+//! and calls the tool through the shared `.call_tool(&handler)` path. All
+//! catalog tools are reachable through this dispatcher.
 
 use anyhow::Result;
 use serde_json::Value;
@@ -22,8 +22,6 @@ pub const AVAILABLE_TOOLS: &[&str] = &[
     "get_symbols",
     "manage_workspace",
     "patterns",
-    "rename_symbol",
-    "rewrite_symbol",
 ];
 
 /// Dispatch a tool call by name, deserializing JSON params into the correct
@@ -65,10 +63,6 @@ pub async fn dispatch_generic_tool(
             let tool: crate::tools::CallPathTool = deserialize_params(name, params)?;
             tool.call_tool(handler).await
         }
-        "rename_symbol" => {
-            let tool: crate::tools::RenameSymbolTool = deserialize_params(name, params)?;
-            tool.call_tool(handler).await
-        }
         "manage_workspace" => {
             let tool: crate::tools::ManageWorkspaceTool = deserialize_params(name, params)?;
             tool.call_tool(handler).await
@@ -79,11 +73,6 @@ pub async fn dispatch_generic_tool(
         }
         "edit_file" => {
             let tool: crate::tools::editing::edit_file::EditFileTool =
-                deserialize_params(name, params)?;
-            tool.call_tool(handler).await
-        }
-        "rewrite_symbol" => {
-            let tool: crate::tools::editing::rewrite_symbol::RewriteSymbolTool =
                 deserialize_params(name, params)?;
             tool.call_tool(handler).await
         }
@@ -112,7 +101,7 @@ mod tests {
 
     #[test]
     fn test_available_tools_count() {
-        assert_eq!(AVAILABLE_TOOLS.len(), 12, "All 12 MCP tools must be listed");
+        assert_eq!(AVAILABLE_TOOLS.len(), 10, "All 10 MCP tools must be listed");
     }
 
     #[test]
@@ -138,7 +127,6 @@ mod tests {
         assert!(err_msg.contains("fast_search"));
         assert!(err_msg.contains("deep_dive"));
         assert!(err_msg.contains("edit_file"));
-        assert!(err_msg.contains("rewrite_symbol"));
     }
 
     #[test]
@@ -252,22 +240,6 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialize_params_rename_symbol() {
-        use crate::tools::RenameSymbolTool;
-
-        let params = serde_json::json!({
-            "old_name": "foo",
-            "new_name": "bar",
-            "dry_run": true
-        });
-
-        let tool: RenameSymbolTool = deserialize_params("rename_symbol", params).unwrap();
-        assert_eq!(tool.old_name, "foo");
-        assert_eq!(tool.new_name, "bar");
-        assert!(tool.dry_run);
-    }
-
-    #[test]
     fn test_deserialize_params_manage_workspace() {
         use crate::tools::ManageWorkspaceTool;
 
@@ -295,23 +267,6 @@ mod tests {
         assert_eq!(tool.file_path, "src/main.rs");
         assert_eq!(tool.old_text, "fn old()");
         assert_eq!(tool.new_text, "fn new()");
-        assert!(tool.dry_run); // default is true
-    }
-
-    #[test]
-    fn test_deserialize_params_rewrite_symbol() {
-        use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
-
-        let params = serde_json::json!({
-            "symbol": "MyStruct::method",
-            "operation": "replace_body",
-            "content": "{ return 42; }"
-        });
-
-        let tool: RewriteSymbolTool = deserialize_params("rewrite_symbol", params).unwrap();
-        assert_eq!(tool.symbol, "MyStruct::method");
-        assert_eq!(tool.operation, "replace_body");
-        assert_eq!(tool.content, "{ return 42; }");
         assert!(tool.dry_run); // default is true
     }
 

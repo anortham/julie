@@ -7,7 +7,7 @@ use crate::cli_tools::subcommands::OutputFormat;
 use crate::request_engine::{RequestFailure, ToolCatalog, ToolInfo};
 use serde_json::Value;
 
-/// Returns all 13 tools with schemas and descriptions.
+/// Returns all tools with schemas and descriptions.
 pub fn list_tools() -> Vec<ToolInfo> {
     ToolCatalog::list()
 }
@@ -28,7 +28,10 @@ pub fn run_tools_list(format: OutputFormat) -> Result<(String, i32), RequestFail
         }
         OutputFormat::Text | OutputFormat::Markdown => {
             let tools = list_tools();
-            let mut out = String::from("Julie Code Intelligence Tools (13):\n\n");
+            let mut out = format!(
+                "Julie Code Intelligence Tools ({}):\n\n",
+                crate::request_engine::catalog::AVAILABLE_TOOLS.len()
+            );
             for tool in tools {
                 out.push_str(&format!("- {:<18} {}\n", tool.name, tool.description));
             }

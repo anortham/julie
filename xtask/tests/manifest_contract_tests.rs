@@ -245,7 +245,6 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "tools-call-path".to_string(),
                 "tools-fast-refs".to_string(),
                 "tools-blast-spillover".to_string(),
-                "tools-refactoring".to_string(),
                 "tools-metrics".to_string(),
                 "tools-format-filter".to_string(),
                 "core-fast".to_string(),

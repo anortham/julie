@@ -498,28 +498,6 @@ async fn follower_preview_is_allowed_but_stale_apply_preserves_external_edit() {
 }
 
 #[tokio::test]
-async fn ast_edit_new_syntax_error_leaves_all_files_unchanged() {
-    let fixture = AstEditFixture::two_files().await;
-    let before = fixture.source_snapshots();
-    let error = fixture
-        .execute(
-            "rewrite_symbol",
-            serde_json::json!({
-                "symbol": "first",
-                "file_path": "src/a.rs",
-                "operation": "replace_full",
-                "content": "pub fn first( {",
-                "dry_run": false
-            }),
-        )
-        .await
-        .unwrap_err();
-    assert_eq!(error.code, "SYNTAX_REGRESSION");
-    assert_eq!(fixture.source_snapshots(), before);
-    assert_eq!(fixture.commit_journal_count(), 0);
-}
-
-#[tokio::test]
 async fn edit_recovery_resume_is_idempotent_and_preserves_conflicts() {
     let fixture = EditRecoveryFixture::partially_applied().await;
     std::fs::write(fixture.pending_file(), "external_change").unwrap();
@@ -536,49 +514,6 @@ async fn edit_recovery_resume_is_idempotent_and_preserves_conflicts() {
     let repeated = fixture.recover("resume").await.unwrap();
     assert_eq!(repeated.result, completed.result);
     assert_eq!(fixture.source_snapshots(), before_retry);
-}
-
-#[tokio::test]
-async fn rewrite_preserves_unrelated_existing_diagnostic() {
-    let fixture = AstEditFixture::two_files().await;
-    // Introduce a pre-existing syntax error in an unrelated function in src/a.rs
-    let source_with_unrelated_error = "pub fn broken( {\npub fn first() -> i32 { 1 }\n";
-    std::fs::write(
-        fixture.workspace_root.join("src/a.rs"),
-        source_with_unrelated_error,
-    )
-    .unwrap();
-
-    // Re-index to ensure symbol resolution finds 'first'
-    let _ = fixture
-        .execute(
-            "get_symbols",
-            serde_json::json!({ "file_path": "src/a.rs" }),
-        )
-        .await;
-
-    // Rewrite valid symbol 'first'
-    let result = fixture
-        .execute(
-            "rewrite_symbol",
-            serde_json::json!({
-                "symbol": "first",
-                "file_path": "src/a.rs",
-                "operation": "replace_full",
-                "content": "pub fn first() -> i32 { 42 }",
-                "dry_run": false
-            }),
-        )
-        .await;
-
-    assert!(
-        result.is_ok(),
-        "rewrite must succeed when pre-existing diagnostic is unrelated and preserved: {:?}",
-        result.err()
-    );
-    let after_text = std::fs::read_to_string(fixture.workspace_root.join("src/a.rs")).unwrap();
-    assert!(after_text.contains("pub fn first() -> i32 { 42 }"));
-    assert!(after_text.contains("pub fn broken( {"));
 }
 
 #[tokio::test]
@@ -621,68 +556,6 @@ async fn cancelled_follower_preflight_never_commits_after_request_exit() {
     assert_eq!(std::fs::read(fixture.file()).unwrap(), initial_bytes);
     let journal_dir = fixture.workspace_root.join(".julie").join("edit-journals");
     assert!(!journal_dir.exists() || std::fs::read_dir(journal_dir).unwrap().count() == 0);
-}
-
-#[tokio::test]
-async fn rename_symbol_syntax_regression_leaves_all_files_unchanged() {
-    let fixture = AstEditFixture::two_files_shared().await;
-    let before = fixture.source_snapshots();
-
-    // Renaming to reserved keyword 'match' introduces syntax errors in both definitions and calls
-    let error = fixture
-        .execute(
-            "rename_symbol",
-            serde_json::json!({
-                "old_name": "shared_calc",
-                "new_name": "match",
-                "dry_run": false
-            }),
-        )
-        .await
-        .unwrap_err();
-
-    assert_eq!(error.code, "SYNTAX_REGRESSION");
-    assert_eq!(
-        fixture.source_snapshots(),
-        before,
-        "All files must remain byte-identical when rename introduces syntax regression"
-    );
-    assert_eq!(
-        fixture.commit_journal_count(),
-        0,
-        "No commit journal must be written when rename is rejected"
-    );
-}
-
-#[tokio::test]
-async fn rewrite_symbol_replace_body_syntax_regression_refused() {
-    let fixture = AstEditFixture::two_files().await;
-    let before = fixture.source_snapshots();
-
-    let error = fixture
-        .execute(
-            "rewrite_symbol",
-            serde_json::json!({
-                "symbol": "first",
-                "file_path": "src/a.rs",
-                "operation": "replace_body",
-                "content": "{\n    let invalid = ;\n}",
-                "dry_run": false
-            }),
-        )
-        .await
-        .unwrap_err();
-
-    assert_eq!(
-        error.code, "SYNTAX_REGRESSION",
-        "replace_body with malformed syntax must trigger SYNTAX_REGRESSION"
-    );
-    assert_eq!(
-        fixture.source_snapshots(),
-        before,
-        "File must remain untouched when replace_body introduces syntax regression"
-    );
-    assert_eq!(fixture.commit_journal_count(), 0);
 }
 
 #[tokio::test]
@@ -740,55 +613,6 @@ async fn source_edit_preserves_executable_file_permissions() {
 }
 
 #[tokio::test]
-async fn rename_symbol_creates_durable_atomic_journal() {
-    let fixture = AstEditFixture::two_files_shared().await;
-
-    let _reply = fixture
-        .execute(
-            "rename_symbol",
-            serde_json::json!({
-                "old_name": "shared_calc",
-                "new_name": "compute_total",
-                "dry_run": false
-            }),
-        )
-        .await
-        .expect("valid rename must succeed");
-
-    let content_a = std::fs::read_to_string(fixture.workspace_root.join("src/a.rs")).unwrap();
-    let content_b = std::fs::read_to_string(fixture.workspace_root.join("src/b.rs")).unwrap();
-    assert!(content_a.contains("compute_total"));
-    assert!(content_b.contains("compute_total"));
-    assert!(!content_a.contains("shared_calc"));
-    assert!(!content_b.contains("shared_calc"));
-
-    assert_eq!(
-        fixture.commit_journal_count(),
-        1,
-        "Multi-file rename must create exactly one durable journal"
-    );
-    let journal_file = std::fs::read_dir(&fixture.journal_dir)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .next()
-        .unwrap()
-        .path();
-    let journal_json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(journal_file).unwrap()).unwrap();
-
-    assert_eq!(journal_json["state"], "applied");
-    let files = journal_json["files"]
-        .as_array()
-        .expect("journal files array");
-    assert_eq!(files.len(), 2, "Journal must record both edited files");
-    for file_entry in files {
-        assert_eq!(file_entry["state"], "applied");
-        assert!(!file_entry["before_hash"].as_str().unwrap().is_empty());
-        assert!(!file_entry["after_hash"].as_str().unwrap().is_empty());
-    }
-}
-
-#[tokio::test]
 async fn coordinator_multi_file_second_file_invalid_syntax_leaves_all_untouched() {
     let fixture = AstEditFixture::two_files().await;
     let before = fixture.source_snapshots();
@@ -839,37 +663,6 @@ async fn coordinator_multi_file_second_file_invalid_syntax_leaves_all_untouched(
         fixture.source_snapshots(),
         before,
         "File A must remain untouched when File B in the same batch fails syntax validation"
-    );
-    assert_eq!(fixture.commit_journal_count(), 0);
-}
-
-#[tokio::test]
-async fn rewrite_symbol_replace_signature_syntax_regression_leaves_file_untouched() {
-    let fixture = AstEditFixture::two_files().await;
-    let before = fixture.source_snapshots();
-
-    let error = fixture
-        .execute(
-            "rewrite_symbol",
-            serde_json::json!({
-                "symbol": "first",
-                "file_path": "src/a.rs",
-                "operation": "replace_signature",
-                "content": "pub fn first( broken syntax",
-                "dry_run": false
-            }),
-        )
-        .await
-        .unwrap_err();
-
-    assert_eq!(
-        error.code, "SYNTAX_REGRESSION",
-        "replace_signature with malformed syntax must trigger SYNTAX_REGRESSION"
-    );
-    assert_eq!(
-        fixture.source_snapshots(),
-        before,
-        "File must remain untouched when replace_signature introduces syntax regression"
     );
     assert_eq!(fixture.commit_journal_count(), 0);
 }

@@ -264,11 +264,8 @@ impl JulieServerHandler {
 
         match tool_name {
             "fast_search" | "fast_refs" | "call_path" | "get_symbols" | "deep_dive"
-            | "get_context" | "blast_radius" | "rename_symbol" | "edit_file" => {
-                workspace_is_primary
-            }
+            | "get_context" | "blast_radius" | "edit_file" => workspace_is_primary,
             "manage_workspace" => Self::manage_workspace_request_targets_primary(arguments),
-            "rewrite_symbol" => workspace_is_primary,
             _ => false,
         }
     }
@@ -1462,11 +1459,9 @@ impl JulieServerHandler {
             + Self::tool_router_deep_dive()
             + Self::tool_router_get_context()
             + Self::tool_router_blast_radius()
-            + Self::tool_router_rename_symbol()
             + Self::tool_router_manage_workspace()
             + Self::tool_router_patterns()
             + Self::tool_router_edit_file()
-            + Self::tool_router_rewrite_symbol()
     }
 }
 
@@ -1500,8 +1495,7 @@ pub(crate) fn parse_request_timeout(raw: Option<String>) -> Option<Duration> {
 
 /// Returns `true` when a tool call must not be bounded by the per-request deadline.
 ///
-/// Pure editing writers (`edit_file`, `rename_symbol`, `rewrite_symbol`) are
-/// always exempt — aborting a canonical write mid-transaction would corrupt
+/// `edit_file` is always exempt — aborting a canonical write mid-transaction would corrupt
 /// workspace state.
 ///
 /// For `manage_workspace` the exemption is operation-aware:
@@ -1513,7 +1507,7 @@ pub(crate) fn is_write_exempt(
     tool_name: &str,
     arguments: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> bool {
-    if matches!(tool_name, "edit_file" | "rename_symbol" | "rewrite_symbol") {
+    if tool_name == "edit_file" {
         return true;
     }
     if tool_name == "manage_workspace" {

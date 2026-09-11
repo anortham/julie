@@ -38,7 +38,7 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 # Regex (used by refactoring rename tool)
 regex = "1.11"
 
-# Blake3 hashing (editing rewrite_symbol safety check)
+# Blake3 hashing (editing safety check)
 blake3 = "1.8"
 
 # Async runtime

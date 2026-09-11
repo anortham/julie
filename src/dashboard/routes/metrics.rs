@@ -116,7 +116,7 @@ fn tool_metric_view(tool: ToolCallSummary) -> ToolMetricView {
 }
 
 fn is_edit_tool(tool_name: &str) -> bool {
-    matches!(tool_name, "edit_file" | "rewrite_symbol" | "rename_symbol")
+    matches!(tool_name, "edit_file")
 }
 
 fn format_bytes(bytes: u64) -> String {

@@ -313,7 +313,7 @@
         <div class="tool-desc">Zero-read editing: understand and modify without reading files</div>
         <div class="terminal">
           <div><span class="prompt">$ </span><span class="command">/editing</span></div>
-          <div><span class="result">deep_dive → rewrite_symbol (dry_run)</span></div>
+          <div><span class="result">deep_dive → edit_file (dry_run)</span></div>
           <div><span class="highlight">@@ -42,5 +42,5 @@</span></div>
           <div><span class="result">-fn validate(t: &str) -> bool</span></div>
           <div><span class="highlight">+fn validate(t: &str) -> Result</span></div>
@@ -396,7 +396,7 @@
   <!-- Section 9: Tools -->
   <section id="tools" class="section">
     <h2 class="section-title">Tools</h2>
-    <p class="section-subtitle">12 focused tools. Each one replaces scattershot file reads.</p>
+    <p class="section-subtitle">10 focused tools. Each one replaces scattershot file reads.</p>
 
     <div class="card-grid">
       <div class="card tool-card animate-on-scroll" data-delay="0">
@@ -471,31 +471,6 @@
           <div><span class="comment">&nbsp; Fuzzy matched (trimmed-line)</span></div>
         </div>
         <span class="token-badge">~200 tokens</span>
-      </div>
-
-      <div class="card tool-card animate-on-scroll" data-delay="600">
-        <div class="tool-name">rewrite_symbol</div>
-        <div class="tool-desc">Rewrite one live symbol span without reading the file first</div>
-        <div class="terminal" aria-label="rewrite_symbol replacing a function body by symbol name">
-          <div><span class="prompt">$ </span><span class="command">rewrite_symbol("AuthService::validate", replace_body, "{ return validate_claims(token)?; }", dry_run)</span></div>
-          <div><span class="result">@@ -43,3 +43,5 @@</span></div>
-          <div><span class="comment">-    return false;</span></div>
-          <div><span class="highlight">+    return validate_claims(token)?;</span></div>
-          <div><span class="comment">&nbsp; Live symbol span from src/auth.rs:42</span></div>
-        </div>
-        <span class="token-badge">~250 tokens</span>
-      </div>
-
-      <div class="card tool-card animate-on-scroll" data-delay="700">
-        <div class="tool-name">rename_symbol</div>
-        <div class="tool-desc">Workspace-wide rename with dry-run preview</div>
-        <div class="terminal" aria-label="rename_symbol previewing rename of UserService to AccountService across 15 files">
-          <div><span class="prompt">$ </span><span class="command">rename_symbol("UserService", "AccountService", dry_run)</span></div>
-          <div><span class="highlight">Preview:</span> <span class="result">15 files, 23 replacements</span></div>
-          <div><span class="result">&nbsp; services.rs:42 &nbsp;UserService → AccountService</span></div>
-          <div><span class="result">&nbsp; handler.rs:15 &nbsp;&nbsp;UserService → AccountService</span></div>
-        </div>
-        <span class="token-badge">~500 tokens</span>
       </div>
 
       <div class="card tool-card animate-on-scroll" data-delay="800">

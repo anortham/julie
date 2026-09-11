@@ -7,7 +7,6 @@ use crate::handler::search_telemetry;
 use crate::handler::tool_targets;
 use crate::search::index::{FileMatchKind, FileSearchResult};
 use crate::tools::ManageWorkspaceTool;
-use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
 use crate::tools::navigation::CallPathTool;
 use crate::tools::navigation::FastRefsTool;
 use crate::tools::patterns::{PatternsFormat, PatternsGroupBy, PatternsOperation, PatternsTool};
@@ -826,26 +825,6 @@ fn test_call_path_metadata_carries_file_path_hints() {
     assert_eq!(metadata["from_file_path"], "src/a.rs");
     assert_eq!(metadata["to_file_path"], "src/b.rs");
     assert_eq!(metadata["target"]["target_file_path"], "src/b.rs");
-}
-
-#[test]
-fn test_rewrite_symbol_metadata_carries_disambiguation_and_dry_run() {
-    let params = RewriteSymbolTool {
-        symbol: "AuthService::validate".to_string(),
-        operation: "replace_body".to_string(),
-        content: "{ validate_claims(token)?; }".to_string(),
-        file_path: Some("src/auth.rs".to_string()),
-        workspace: Some("primary".to_string()),
-        dry_run: true,
-    };
-
-    let metadata = tool_targets::rewrite_symbol_metadata(&params);
-
-    assert_eq!(metadata["symbol"], "AuthService::validate");
-    assert_eq!(metadata["operation"], "replace_body");
-    assert_eq!(metadata["dry_run"], true);
-    assert_eq!(metadata["file_path"], "src/auth.rs");
-    assert_eq!(metadata["target"]["target_file_path"], "src/auth.rs");
 }
 
 #[test]

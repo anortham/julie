@@ -58,22 +58,6 @@ fn test_is_write_exempt_edit_file_is_exempt() {
 }
 
 #[test]
-fn test_is_write_exempt_rename_symbol_is_exempt() {
-    assert!(
-        is_write_exempt("rename_symbol", None),
-        "rename_symbol must always be exempt"
-    );
-}
-
-#[test]
-fn test_is_write_exempt_rewrite_symbol_is_exempt() {
-    assert!(
-        is_write_exempt("rewrite_symbol", None),
-        "rewrite_symbol must always be exempt"
-    );
-}
-
-#[test]
 fn test_is_write_exempt_fast_search_is_not_exempt() {
     assert!(
         !is_write_exempt("fast_search", None),

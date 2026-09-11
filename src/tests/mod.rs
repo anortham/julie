@@ -3,8 +3,7 @@
 // This module contains test utilities and infrastructure for testing extractors,
 // search functionality, editing tools, and other Julie components.
 //
-// Editing tools now center on edit_file and rewrite_symbol.
-// EditingTransaction remains shared with rename_symbol and other write paths.
+// Editing tools now center on edit_file.
 
 // ============================================================================
 // ANALYSIS TESTS - Post-indexing analysis (test quality, risk scoring)
@@ -59,7 +58,7 @@ pub mod tools {
     pub mod web_navigation; // derived web-edge navigation (trace web mode + impact web callers)
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)
 
-    pub mod editing; // EditingTransaction tests (used by rename_symbol)
+    pub mod editing; // EditingTransaction tests
 
     pub mod deep_dive_primary_rebind_tests; // DeepDiveTool current-primary rebound routing tests
     // deep_dive_regression_tests relocated to crates/julie-tools/src/tests/ (T2b.6)
@@ -68,8 +67,6 @@ pub mod tools {
     pub mod search_context_lines;
     pub mod search_quality; // Search quality dogfooding tests (regression suite)
     pub mod text_search_tantivy; // Tantivy-based text search implementation tests
-
-    pub mod refactoring; // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
 
     pub mod workspace {
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests

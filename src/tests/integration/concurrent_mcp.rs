@@ -62,7 +62,6 @@ mod tests {
     use crate::tools::deep_dive::{DeepDiveDepth, DeepDiveTool};
     use crate::tools::editing::edit_file::{EditFileTool, EditOccurrence};
     use crate::tools::navigation::FastRefsTool;
-    use crate::tools::refactoring::RenameSymbolTool;
     use crate::tools::search::FastSearchTool;
     use crate::tools::{BlastRadiusTool, GetContextTool, GetSymbolsTool, ManageWorkspaceTool};
     use crate::workspace::registry::generate_workspace_id;
@@ -391,8 +390,8 @@ mod tests {
             }
         });
 
-        // ── Barrier ensures all 8 tasks release simultaneously ──
-        let barrier = Arc::new(Barrier::new(8));
+        // ── Barrier ensures all 7 tasks release simultaneously ──
+        let barrier = Arc::new(Barrier::new(7));
         // Each task ships back its label + the CallToolResult so we can reject
         // is_error payloads in the completion loop (codex finding #3: an
         // Ok(CallToolResult::error(...)) would otherwise silently count as
@@ -518,26 +517,6 @@ mod tests {
             });
         }
         {
-            // Dry-run rename_symbol with old != new — actually runs the rename
-            // engine (validation rejects old_name == new_name).
-            let h = Arc::clone(&handler);
-            let b = Arc::clone(&barrier);
-            let ws = ws_filter.clone();
-            set.spawn(async move {
-                b.wait().await;
-                let r = RenameSymbolTool {
-                    old_name: "beta_func".to_string(),
-                    new_name: "beta_func_renamed".to_string(),
-                    scope: None,
-                    dry_run: true,
-                    workspace: Some(ws),
-                }
-                .call_tool(h.as_ref())
-                .await?;
-                Ok(("rename_symbol_dry_run", r))
-            });
-        }
-        {
             // REAL mutation against the disposable file. EditFileTool commits
             // via EditingTransaction which does NOT acquire the gate; the
             // gate is acquired downstream by the watcher event-processor when
@@ -567,7 +546,7 @@ mod tests {
         // healthy concurrent run completes well under it.
         type TaskOutcome = (&'static str, Option<CallToolResult>, Option<String>);
         let drive_result = timeout(Duration::from_secs(30), async {
-            let mut completed: Vec<TaskOutcome> = Vec::with_capacity(8);
+            let mut completed: Vec<TaskOutcome> = Vec::with_capacity(7);
             while let Some(handle) = set.join_next().await {
                 match handle {
                     Ok(Ok((label, result))) => completed.push((label, Some(result), None)),
@@ -587,7 +566,7 @@ mod tests {
         let _ = watcher_task.await;
 
         let completed = drive_result.expect(
-            "8 concurrent MCP requests must complete within 30s — if this \
+            "7 concurrent MCP requests must complete within 30s — if this \
              times out there's a lock-order regression between \
              connection_pool, mutation_gate, and the watcher event-processor.",
         );
@@ -615,8 +594,8 @@ mod tests {
         );
         assert_eq!(
             completed.len(),
-            8,
-            "all 8 tasks must complete: {:?}",
+            7,
+            "all 7 tasks must complete: {:?}",
             completed.iter().map(|(l, _, _)| l).collect::<Vec<_>>()
         );
 
