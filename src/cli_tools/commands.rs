@@ -88,6 +88,10 @@ fn build_blast_radius_tool_args(args: &BlastRadiusArgs) -> Result<Value> {
         tool_args["offset"] = Value::Number(args.offset.into());
     }
 
+    if args.git {
+        tool_args["git"] = Value::Bool(true);
+    }
+
     Ok(tool_args)
 }
 

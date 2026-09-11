@@ -820,6 +820,7 @@ fn test_blast_radius_metadata_carries_seed_modes() {
     assert_eq!(metadata["file_paths"][0], "src/api.rs");
     assert_eq!(metadata["limit"], 5);
     assert_eq!(metadata["format"], "readable");
+    assert_eq!(metadata["seed"], "files");
 }
 
 #[test]

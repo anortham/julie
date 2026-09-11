@@ -108,6 +108,13 @@ pub(crate) fn get_context_metadata(params: &GetContextTool) -> Value {
 }
 
 pub(crate) fn blast_radius_metadata(params: &BlastRadiusTool) -> Value {
+    let seed = if params.seeds_from_git() {
+        "git"
+    } else if !params.file_paths.is_empty() {
+        "files"
+    } else {
+        "symbols"
+    };
     json!({
         "symbol_ids": params.symbol_ids,
         "file_paths": params.file_paths,
@@ -116,6 +123,7 @@ pub(crate) fn blast_radius_metadata(params: &BlastRadiusTool) -> Value {
         "include_tests": params.include_tests,
         "format": params.format,
         "workspace": params.workspace,
+        "seed": seed,
         "target": target_metadata(None, None, None),
     })
 }

@@ -1,4 +1,5 @@
 pub mod formatting;
+pub mod git_seed;
 pub mod likely_tests;
 pub mod ranking;
 pub mod seed;
@@ -10,7 +11,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use tracing::debug;
 
-use julie_context::ToolContext;
+use julie_context::{ToolContext, WorkspaceTarget};
 use julie_index::snapshot::Snapshot;
 
 use self::formatting::{BlastRadiusFormat, BlastRadiusHeader, format_blast_radius};
@@ -88,6 +89,12 @@ pub struct BlastRadiusTool {
     /// radius of a route handler lists the frontend symbols that call it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
+    /// Seed from the working-tree git diff. Default when symbol_ids and file_paths are both empty.
+    #[serde(
+        default,
+        deserialize_with = "julie_core::serde_lenient::deserialize_bool_lenient"
+    )]
+    pub git: bool,
 }
 
 impl Default for BlastRadiusTool {
@@ -102,11 +109,16 @@ impl Default for BlastRadiusTool {
             format: None,
             workspace: default_workspace(),
             mode: None,
+            git: false,
         }
     }
 }
 
 impl BlastRadiusTool {
+    pub fn seeds_from_git(&self) -> bool {
+        self.git || (self.symbol_ids.is_empty() && self.file_paths.is_empty())
+    }
+
     pub async fn call_tool(&self, handler: &dyn ToolContext) -> Result<CallToolResult> {
         self.call_tool_counted(handler)
             .await
@@ -127,8 +139,20 @@ pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<(S
         .resolve_workspace_target(tool.workspace.as_deref())
         .await?;
     debug!("blast_radius: using workspace {:?}", target);
+    let mut seeded = tool.clone();
+    if seeded.seeds_from_git() {
+        let root = match &target {
+            WorkspaceTarget::Primary => handler.require_primary_workspace_root()?,
+            WorkspaceTarget::Target(id) => handler.get_workspace_root_for_target(id).await?,
+        };
+        seeded.file_paths = git_seed::changed_files(&root)?;
+        seeded.git = true;
+        if seeded.file_paths.is_empty() {
+            return Ok(("No changed files in the working tree.".to_string(), 0));
+        }
+    }
     let snapshot = handler.snapshot(&target).await?;
-    run_with_snapshot(tool, &snapshot)
+    run_with_snapshot(&seeded, &snapshot)
 }
 
 fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<(String, u32)> {
@@ -205,7 +229,9 @@ fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<(Str
 
     let file_paths = tool.file_paths.join(",");
     let symbol_ids = tool.symbol_ids.join(",");
-    let seed_args: Vec<(&str, &str)> = if !tool.file_paths.is_empty() {
+    let seed_args: Vec<(&str, &str)> = if tool.seeds_from_git() {
+        vec![("git", "true")]
+    } else if !tool.file_paths.is_empty() {
         vec![("file_paths", file_paths.as_str())]
     } else if !tool.symbol_ids.is_empty() {
         vec![("symbol_ids", symbol_ids.as_str())]

@@ -229,6 +229,9 @@ pub struct BlastRadiusArgs {
     /// Skip this many impact rows before keeping the default page
     #[arg(long, default_value = "0")]
     pub offset: u32,
+    /// Seed from the working-tree git diff
+    #[arg(long, default_value_t = false)]
+    pub git: bool,
 }
 
 // ---------------------------------------------------------------------------

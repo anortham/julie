@@ -141,6 +141,7 @@ fn test_blast_radius_args_tool_name() {
         offset: 0,
         symbols: None,
         report_format: None,
+        git: false,
     };
     assert_eq!(args.tool_name(), "blast_radius");
 }
@@ -304,6 +305,7 @@ fn test_blast_radius_to_tool_args_with_files() {
         offset: 0,
         symbols: Some(vec!["sym_1234abcd".into()]),
         report_format: Some("readable".into()),
+        git: false,
     };
     let json = args.to_tool_args().unwrap();
     assert!(
@@ -327,6 +329,7 @@ fn test_blast_radius_to_tool_args_rev_resolves_to_files() {
         offset: 0,
         symbols: None,
         report_format: None,
+        git: false,
     };
     let json = args.to_tool_args().unwrap();
     // The rev should be resolved to file_paths, not passed as "rev"
@@ -346,6 +349,7 @@ fn test_blast_radius_to_tool_args_rev_invalid() {
         offset: 0,
         symbols: None,
         report_format: None,
+        git: false,
     };
     let result = args.to_tool_args();
     assert!(result.is_err(), "Invalid rev should produce an error");
@@ -362,6 +366,7 @@ fn test_blast_radius_symbols_validation_catches_names() {
         offset: 0,
         symbols: Some(vec!["FastSearchTool".into()]),
         report_format: None,
+        git: false,
     };
     let result = args.to_tool_args();
     let err = result.expect_err("human-readable symbol names should be rejected");

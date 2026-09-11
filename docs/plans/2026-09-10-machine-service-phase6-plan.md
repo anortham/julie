@@ -570,7 +570,7 @@ Expected: PASS (2 tests).
 - `serial-worker-commit`: `git commit -m "feat(impact): seed blast_radius from the working-tree git diff when no seed is given"` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] The two tests pass; with one edited tracked file in the checkout, `julie-server blast-radius --json` lists impacted symbols and likely tests for that file; with a clean tree it returns the no-changes text.
+- [x] The two tests pass; with one edited tracked file in the checkout, `julie-server blast-radius --json` lists impacted symbols and likely tests for that file; with a clean tree it returns the no-changes text.
 - [ ] Tests pass and the change is committed by the worker per commit mode.
 
 ---
