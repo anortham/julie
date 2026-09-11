@@ -266,6 +266,7 @@ impl ProcessFixture {
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("--workspace").arg(&self.workspace_root);
         cmd.env("JULIE_HOME", self.temp_home.path());
+        cmd.env("JULIE_SERVICE_IDLE_SECS", "2");
         cmd.env("TMPDIR", self.temp_home.path());
         cmd.current_dir(&self.workspace_root);
         cmd.stdin(std::process::Stdio::piped());
@@ -478,6 +479,7 @@ impl ProcessFixture {
         let mut cmd = Command::new(&self.binary_path);
         cmd.args(args);
         cmd.env("JULIE_HOME", self.temp_home.path());
+        cmd.env("JULIE_SERVICE_IDLE_SECS", "2");
         cmd.env("TMPDIR", self.temp_home.path());
         cmd.current_dir(&self.workspace_root);
         cmd.stdout(std::process::Stdio::piped());
