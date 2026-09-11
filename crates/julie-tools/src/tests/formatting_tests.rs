@@ -614,7 +614,7 @@ fn compact_search_groups_repeated_files_and_appends_next_when_rows_remain() {
     let text = crate::search::formatting::render_compact("q", "lexical", &hits, 0, 3, true);
     assert_eq!(
         text,
-        "3 hits for \"q\" (lexical)\nsrc/a.rs:\n  :10 alpha function\n  :20 beta function\nsrc/b.rs:5 gamma struct\nnext: fast_search query=\"q\" offset=3"
+        "3 hits for \"q\" (lexical)\nsrc/a.rs:\n  src/a.rs:10 alpha function\n  src/a.rs:20 beta function\nsrc/b.rs:5 gamma struct\nnext: fast_search query=\"q\" offset=3"
     );
     assert!(
         !text

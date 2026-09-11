@@ -8,6 +8,37 @@ use julie_core::shared::OptimizedResponse;
 
 const COMPACT_LINE_CONTENT_CHARS: usize = 110;
 
+pub fn merge_line_hits(existing: Vec<SearchHit>, line_hits: Vec<SearchHit>) -> Vec<SearchHit> {
+    let mut covered: std::collections::HashSet<(String, u32)> = existing
+        .iter()
+        .filter_map(|hit| hit.line.map(|line| (hit.file.clone(), line)))
+        .collect();
+    let file_score: std::collections::HashMap<String, f32> = {
+        let mut best = std::collections::HashMap::new();
+        for hit in &existing {
+            let entry = best.entry(hit.file.clone()).or_insert(hit.score);
+            if hit.score > *entry {
+                *entry = hit.score;
+            }
+        }
+        best
+    };
+    let mut merged = existing;
+    for mut hit in line_hits {
+        let Some(line) = hit.line else {
+            continue;
+        };
+        if !covered.insert((hit.file.clone(), line)) {
+            continue;
+        }
+        if let Some(score) = file_score.get(&hit.file) {
+            hit.score = *score;
+        }
+        merged.push(hit);
+    }
+    merged
+}
+
 pub fn collapse_covered_file_hits(hits: Vec<SearchHit>) -> Vec<SearchHit> {
     let covered: std::collections::HashSet<String> = hits
         .iter()
@@ -81,25 +112,18 @@ fn group_is_file_only(group: &[&SearchHit]) -> bool {
 }
 
 fn compact_hit_line(hit: &SearchHit, grouped: bool) -> String {
-    match &hit.backing {
+    let row = match &hit.backing {
         SearchHitBacking::File(_) => hit.file.clone(),
         SearchHitBacking::LineMatch(line_match) => {
             let content = trim_compact_line(&line_match.line_content);
-            if grouped {
-                format!("  :{} {content}", line_match.line_number)
-            } else {
-                format!("{}:{} {content}", hit.file, line_match.line_number)
-            }
+            format!("{}:{} {content}", hit.file, line_match.line_number)
         }
         SearchHitBacking::Symbol(_) => {
             let line = hit.line.unwrap_or(0);
-            if grouped {
-                format!("  :{line} {} {}", hit.name, hit.kind)
-            } else {
-                format!("{}:{line} {} {}", hit.file, hit.name, hit.kind)
-            }
+            format!("{}:{line} {} {}", hit.file, hit.name, hit.kind)
         }
-    }
+    };
+    if grouped { format!("  {row}") } else { row }
 }
 
 fn trim_compact_line(content: &str) -> String {

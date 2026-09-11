@@ -72,7 +72,7 @@ pub(crate) async fn try_line_mode_locations(
         .collect::<std::collections::HashMap<_, _>>();
     let requested_language = tool.language.clone();
 
-    let hits: Vec<SearchHit> = line_result
+    let line_hits: Vec<SearchHit> = line_result
         .matches
         .into_iter()
         .map(|line_match| {
@@ -91,16 +91,16 @@ pub(crate) async fn try_line_mode_locations(
         })
         .collect();
 
-    let total_results = hits.len();
-    let optimized = OptimizedResponse::with_total(hits.clone(), total_results);
+    let match_count = line_hits.len();
+    let optimized = OptimizedResponse::with_total(line_hits.clone(), match_count);
     let output = formatting::format_content_locations_only(&tool.query, &optimized);
 
-    execution.hits = hits;
-    execution.total_results = total_results;
+    execution.hits = formatting::merge_line_hits(std::mem::take(&mut execution.hits), line_hits);
+    execution.total_results = execution.hits.len();
     execution.trace.refresh_hits(&execution.hits);
     execution
         .trace
-        .record_line_enrichment_applied(line_match_strategy, total_results);
+        .record_line_enrichment_applied(line_match_strategy, match_count);
     if line_result.scope_relaxed {
         execution.trace.scope_relaxed = true;
         execution.trace.original_file_pattern = line_result.original_file_pattern.clone();
