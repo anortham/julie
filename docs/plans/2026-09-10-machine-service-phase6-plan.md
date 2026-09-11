@@ -768,10 +768,10 @@ Expected: `46 rows valid`
 - `serial-worker-commit`: `git commit -m "docs(eval): head-to-head retrieval matrix against Miller on the fresh public corpus"` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] `--self-check` and `--validate` pass; both result files exist and the finding cites them by path.
-- [ ] Every Julie row calls one of the ten tools; no row calls a Miller `edit`, `content`, or `tests` tool.
-- [ ] The finding reports both products' numbers per task class and per tool, names disagreement rows with reasons, and states the scope limits.
-- [ ] Tests pass and the change is committed by the worker per commit mode.
+- [x] `--self-check` and `--validate` pass; both result files exist and the finding cites them by path.
+- [x] Every Julie row calls one of the ten tools; no row calls a Miller `edit`, `content`, or `tests` tool.
+- [x] The finding reports both products' numbers per task class and per tool, names disagreement rows with reasons, and states the scope limits.
+- [x] Tests pass and the change is committed by the worker per commit mode.
 
 ---
 

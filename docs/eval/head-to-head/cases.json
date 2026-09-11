@@ -1,0 +1,1358 @@
+{
+  "schema_version": 1,
+  "repos": {
+    "express": {
+      "path": "/home/murphy/source/express",
+      "commit": "bed501c695a61886399ee622875f3be933c716d8"
+    },
+    "flask": {
+      "path": "/home/murphy/source/flask",
+      "commit": "d73fa1cdcbd8b1465c151db8924ba58b1dd14e35"
+    },
+    "gson": {
+      "path": "/home/murphy/source/gson",
+      "commit": "8b4b55051489132190cb8d1c61eb9dc7f5381295"
+    },
+    "moshi": {
+      "path": "/home/murphy/source/moshi",
+      "commit": "889013ec2edb8d8034902662a1dc8c4f3b3f8111"
+    },
+    "alamofire": {
+      "path": "/home/murphy/source/Alamofire",
+      "commit": "bda9ed57d72988a3a2ada33d824583541f86eac6"
+    },
+    "cobra": {
+      "path": "/home/murphy/source/cobra",
+      "commit": "adbc8813901bba65827259daa8e22ff94ec1f30e"
+    },
+    "sinatra": {
+      "path": "/home/murphy/source/sinatra",
+      "commit": "cb22afd7902b566b6eaba6c4ea89739494a65d12"
+    },
+    "nlohmann-json": {
+      "path": "/home/murphy/source/nlohmann-json",
+      "commit": "bfb07786cd7eb841a6d9030bcd822d3b1c4d3b56"
+    },
+    "newtonsoft-json": {
+      "path": "/home/murphy/source/Newtonsoft.Json",
+      "commit": "09bb545d72969ad7fb4ea07db0d5c34f4fc07877"
+    },
+    "jq": {
+      "path": "/home/murphy/source/jq",
+      "commit": "9d241e277204b83c4a7ddc7d733e5c72f99ef500"
+    }
+  },
+  "rows": [
+    {
+      "id": "express-lazy-router.search",
+      "repo": "express",
+      "task_class": "retrieval.concept",
+      "intent": "Find application router setup.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does the app lazily create the router for middleware",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does the app lazily create the router for middleware",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "lib/application.js",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "express-mount-middleware.search",
+      "repo": "express",
+      "task_class": "retrieval.concept",
+      "intent": "Find mounted app middleware wrapper.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "how does a mounted express app restore request and response prototypes",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "how does a mounted express app restore request and response prototypes",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "lib/application.js",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "flask-view-dispatch.search",
+      "repo": "flask",
+      "task_class": "retrieval.implementation",
+      "intent": "Find MethodView/View dispatch.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where do class based views dispatch a request to methods",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where do class based views dispatch a request to methods",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "src/flask/views.py",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "flask-blueprint-registration.search",
+      "repo": "flask",
+      "task_class": "retrieval.concept",
+      "intent": "Find blueprint registration logic.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "how are nested blueprints registered on an application",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "how are nested blueprints registered on an application",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "src/flask/sansio/blueprints.py",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "flask-request-context-session.search",
+      "repo": "flask",
+      "task_class": "retrieval.concept",
+      "intent": "Find request context session setup.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does request context open the session",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does request context open the session",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "src/flask/ctx.py",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "gson-strictness.search",
+      "repo": "gson",
+      "task_class": "retrieval.concept",
+      "intent": "Find strictness or reader code.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where is JSON parser strictness and lenient behavior configured",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where is JSON parser strictness and lenient behavior configured",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "gson/src/main/java/com/google/gson/Strictness.java",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "gson-reflective-fields.search",
+      "repo": "gson",
+      "task_class": "retrieval.implementation",
+      "intent": "Find reflective adapter factory.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where are object fields reflected into type adapters",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where are object fields reflected into type adapters",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "gson-type-adapter.search",
+      "repo": "gson",
+      "task_class": "retrieval.concept",
+      "intent": "Find TypeAdapter abstraction.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does a custom type adapter read and write json values",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does a custom type adapter read and write json values",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "gson/src/main/java/com/google/gson/TypeAdapter.java",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "moshi-polymorphic-labels.search",
+      "repo": "moshi",
+      "task_class": "retrieval.concept",
+      "intent": "Find polymorphic adapter factory.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does polymorphic json choose subtype by label",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does polymorphic json choose subtype by label",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "moshi-record-adapter.search",
+      "repo": "moshi",
+      "task_class": "retrieval.implementation",
+      "intent": "Find record adapter.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where are java records converted into json adapters",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where are java records converted into json adapters",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "moshi-json-adapter-null-wrapper.search",
+      "repo": "moshi",
+      "task_class": "retrieval.concept",
+      "intent": "Find JsonAdapter null wrappers.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does a json adapter wrap null serialization behavior",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does a json adapter wrap null serialization behavior",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "alamofire-interceptor-selection.search",
+      "repo": "alamofire",
+      "task_class": "retrieval.concept",
+      "intent": "Find Session adapter/retrier selection.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does a request combine session and request interceptors for retry and adaptation",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does a request combine session and request interceptors for retry and adaptation",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "Source/Core/Session.swift",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "alamofire-multipart-boundary.search",
+      "repo": "alamofire",
+      "task_class": "retrieval.implementation",
+      "intent": "Find MultipartFormData boundary generator.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where is multipart form data boundary and content type generated",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where is multipart form data boundary and content type generated",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "Source/Features/MultipartFormData.swift",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "alamofire-auth-refresh-window.search",
+      "repo": "alamofire",
+      "task_class": "retrieval.concept",
+      "intent": "Find AuthenticationInterceptor refresh window.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does authentication interceptor prevent excessive credential refresh attempts",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does authentication interceptor prevent excessive credential refresh attempts",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "Source/Features/AuthenticationInterceptor.swift",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "cobra-command-execute.search",
+      "repo": "cobra",
+      "task_class": "retrieval.implementation",
+      "intent": "Find command execution entry points.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does a command execute with context and traverse subcommands",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does a command execute with context and traverse subcommands",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "command.go",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "cobra-flag-completion.search",
+      "repo": "cobra",
+      "task_class": "retrieval.implementation",
+      "intent": "Find flag completion registration.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where are custom flag completion functions registered",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where are custom flag completion functions registered",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "completions.go",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "sinatra-route-dispatch.search",
+      "repo": "sinatra",
+      "task_class": "retrieval.concept",
+      "intent": "Find Sinatra route dispatch.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where are matching routes processed and dispatched with filters",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where are matching routes processed and dispatched with filters",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "lib/sinatra/base.rb",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "sinatra-route-compile.search",
+      "repo": "sinatra",
+      "task_class": "retrieval.implementation",
+      "intent": "Find route compile logic.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where are route patterns compiled into regular expressions",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where are route patterns compiled into regular expressions",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "lib/sinatra/base.rb",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "nlohmann-json-pointer.search",
+      "repo": "nlohmann-json",
+      "task_class": "retrieval.concept",
+      "intent": "Find json_pointer implementation.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where are json pointer tokens parsed and resolved",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where are json pointer tokens parsed and resolved",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "include/nlohmann/detail/json_pointer.hpp",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "nlohmann-binary-reader.search",
+      "repo": "nlohmann-json",
+      "task_class": "retrieval.implementation",
+      "intent": "Find binary reader.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where are cbor msgpack and ubjson binary formats read",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where are cbor msgpack and ubjson binary formats read",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "include/nlohmann/detail/input/binary_reader.hpp",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "nlohmann-sax-parser.search",
+      "repo": "nlohmann-json",
+      "task_class": "retrieval.concept",
+      "intent": "Find parser/SAX implementation.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does the parser emit sax events while reading json",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does the parser emit sax events while reading json",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "include/nlohmann/detail/input/parser.hpp",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "newtonsoft-serializer-internal-reader.search",
+      "repo": "newtonsoft-json",
+      "task_class": "retrieval.implementation",
+      "intent": "Find Json.NET serializer deserialization internals.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does json serializer deserialize through an internal reader",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does json serializer deserialize through an internal reader",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "Src/Newtonsoft.Json/JsonSerializer.cs",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "jq-compile-bytecode.search",
+      "repo": "jq",
+      "task_class": "retrieval.implementation",
+      "intent": "Find jq program compilation path.",
+      "julie": {
+        "tool": "fast_search",
+        "args": {
+          "query": "where does jq compile a program string into bytecode",
+          "limit": 5
+        }
+      },
+      "miller": {
+        "tool": "search",
+        "args": {
+          "query": "where does jq compile a program string into bytecode",
+          "limit": 5,
+          "format": "json",
+          "mode": "auto"
+        }
+      },
+      "expected": {
+        "path": "src/execute.c",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top5"
+      }
+    },
+    {
+      "id": "express-lazy-router.inspect",
+      "repo": "express",
+      "task_class": "inspect.symbol",
+      "intent": "finalhandler",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "finalhandler",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "finalhandler",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "lib/application.js",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "express-mount-middleware.inspect",
+      "repo": "express",
+      "task_class": "inspect.symbol",
+      "intent": "finalhandler",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "finalhandler",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "finalhandler",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "lib/application.js",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "flask-view-dispatch.inspect",
+      "repo": "flask",
+      "task_class": "inspect.symbol",
+      "intent": "typing",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "typing",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "typing",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "src/flask/views.py",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "flask-blueprint-registration.inspect",
+      "repo": "flask",
+      "task_class": "inspect.symbol",
+      "intent": "os",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "os",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "os",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "src/flask/sansio/blueprints.py",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "flask-request-context-session.inspect",
+      "repo": "flask",
+      "task_class": "inspect.symbol",
+      "intent": "contextvars",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "contextvars",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "contextvars",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "src/flask/ctx.py",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "gson-strictness.inspect",
+      "repo": "gson",
+      "task_class": "inspect.symbol",
+      "intent": "com.google.gson",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "com.google.gson",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "com.google.gson",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "gson/src/main/java/com/google/gson/Strictness.java",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "gson-reflective-fields.inspect",
+      "repo": "gson",
+      "task_class": "inspect.symbol",
+      "intent": "com.google.gson.internal.bind",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "com.google.gson.internal.bind",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "com.google.gson.internal.bind",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "gson-type-adapter.inspect",
+      "repo": "gson",
+      "task_class": "inspect.symbol",
+      "intent": "com.google.gson",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "com.google.gson",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "com.google.gson",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "gson/src/main/java/com/google/gson/TypeAdapter.java",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "moshi-polymorphic-labels.inspect",
+      "repo": "moshi",
+      "task_class": "inspect.symbol",
+      "intent": "com.squareup.moshi.adapters",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "com.squareup.moshi.adapters",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "com.squareup.moshi.adapters",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "moshi-record-adapter.inspect",
+      "repo": "moshi",
+      "task_class": "inspect.symbol",
+      "intent": "com.squareup.moshi.internal",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "com.squareup.moshi.internal",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "com.squareup.moshi.internal",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "moshi-json-adapter-null-wrapper.inspect",
+      "repo": "moshi",
+      "task_class": "inspect.symbol",
+      "intent": "com.squareup.moshi",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "com.squareup.moshi",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "com.squareup.moshi",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "alamofire-interceptor-selection.inspect",
+      "repo": "alamofire",
+      "task_class": "inspect.symbol",
+      "intent": "Foundation",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "Foundation",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "Foundation",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "Source/Core/Session.swift",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "alamofire-multipart-boundary.inspect",
+      "repo": "alamofire",
+      "task_class": "inspect.symbol",
+      "intent": "Foundation",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "Foundation",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "Foundation",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "Source/Features/MultipartFormData.swift",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "alamofire-auth-refresh-window.inspect",
+      "repo": "alamofire",
+      "task_class": "inspect.symbol",
+      "intent": "Foundation",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "Foundation",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "Foundation",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "Source/Features/AuthenticationInterceptor.swift",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "cobra-command-execute.inspect",
+      "repo": "cobra",
+      "task_class": "inspect.symbol",
+      "intent": "cobra",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "cobra",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "cobra",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "command.go",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "cobra-flag-completion.inspect",
+      "repo": "cobra",
+      "task_class": "inspect.symbol",
+      "intent": "cobra",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "cobra",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "cobra",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "completions.go",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "sinatra-route-dispatch.inspect",
+      "repo": "sinatra",
+      "task_class": "inspect.symbol",
+      "intent": "rack",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "rack",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "rack",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "lib/sinatra/base.rb",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "sinatra-route-compile.inspect",
+      "repo": "sinatra",
+      "task_class": "inspect.symbol",
+      "intent": "rack",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "rack",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "rack",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "lib/sinatra/base.rb",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "nlohmann-json-pointer.inspect",
+      "repo": "nlohmann-json",
+      "task_class": "inspect.symbol",
+      "intent": "string_t_helper",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "string_t_helper",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "string_t_helper",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "include/nlohmann/detail/json_pointer.hpp",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "nlohmann-binary-reader.inspect",
+      "repo": "nlohmann-json",
+      "task_class": "inspect.symbol",
+      "intent": "cbor_tag_handler_t",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "cbor_tag_handler_t",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "cbor_tag_handler_t",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "include/nlohmann/detail/input/binary_reader.hpp",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "nlohmann-sax-parser.inspect",
+      "repo": "nlohmann-json",
+      "task_class": "inspect.symbol",
+      "intent": "parse_event_t",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "parse_event_t",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "parse_event_t",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "include/nlohmann/detail/input/parser.hpp",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "newtonsoft-serializer-internal-reader.inspect",
+      "repo": "newtonsoft-json",
+      "task_class": "inspect.symbol",
+      "intent": "System",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "System",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "System",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "Src/Newtonsoft.Json/JsonSerializer.cs",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    },
+    {
+      "id": "jq-compile-bytecode.inspect",
+      "repo": "jq",
+      "task_class": "inspect.symbol",
+      "intent": "assert",
+      "julie": {
+        "tool": "deep_dive",
+        "args": {
+          "symbol": "assert",
+          "depth": "overview"
+        }
+      },
+      "miller": {
+        "tool": "inspect",
+        "args": {
+          "target": "assert",
+          "depth": "summary",
+          "format": "json"
+        }
+      },
+      "expected": {
+        "path": "src/execute.c",
+        "anchor": ""
+      },
+      "scoring": {
+        "mode": "path_top"
+      }
+    }
+  ]
+}
