@@ -16,7 +16,7 @@ use crate::tools::search::FastSearchParams;
 impl JulieServerHandler {
     #[tool(
         name = "fast_search",
-        description = "Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional `regions` restricts lexical line matches to stored comment, doc_comment/docstring, string_literal, or embedded spans. Optional `backend`: omitted/default lexical returns mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit `lexical` stays pure lexical; `semantic` and `hybrid` are symbol-only concept search. Use lexical for file/path or region queries.",
+        description = "Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional `regions` restricts lexical line matches to stored comment, doc_comment/docstring, string_literal, or embedded spans. Optional `backend`: omitted backend runs semantic symbol search for natural-language queries when embeddings are ready, else lexical mixed file+symbol hits (with labeled semantic fallback candidates on identifier-like zero-hit queries); explicit `lexical` stays pure lexical; `semantic` and `hybrid` are symbol-only concept search. Use lexical for file/path or region queries.",
         annotations(
             title = "Fast Code Search",
             read_only_hint = true,

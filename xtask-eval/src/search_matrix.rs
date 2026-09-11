@@ -226,7 +226,7 @@ async fn execute_baseline_case(
             limit: 10,
             context_lines: None,
             exclude_tests: case.exclude_tests,
-            backend: SearchBackend::resolve(None),
+            backend: SearchBackend::resolve(None, &case.query),
             semantic_mode: None,
             budget: None,
         },

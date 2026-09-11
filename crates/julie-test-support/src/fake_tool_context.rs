@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
@@ -59,6 +60,9 @@ pub struct FakeToolContext {
 
     // ── Embeddings ──────────────────────────────────────────────────────────
     pub embedding_provider_val: Option<Arc<dyn EmbeddingProvider>>,
+    /// Counts `ensure_embedding_provider` calls so tests can assert that a
+    /// code path stayed on the non-blocking `embedding_provider` accessor.
+    pub ensure_embedding_provider_calls: Arc<AtomicUsize>,
 
     // ── Purpose-method config ────────────────────────────────────────────────
     /// Value returned by `resolve_workspace_target` for any workspace_param.
@@ -79,6 +83,7 @@ impl Default for FakeToolContext {
             primary_search_index: None,
             snapshot_fixture: None,
             embedding_provider_val: None,
+            ensure_embedding_provider_calls: Arc::new(AtomicUsize::new(0)),
             resolved_target: WorkspaceTarget::Primary,
             system_status: SystemStatus::FullyReady { symbol_count: 0 },
         }
@@ -144,6 +149,11 @@ impl FakeToolContext {
     pub fn with_embedding_provider(mut self, provider: Arc<dyn EmbeddingProvider>) -> Self {
         self.embedding_provider_val = Some(provider);
         self
+    }
+
+    /// Number of `ensure_embedding_provider` calls seen so far.
+    pub fn ensure_embedding_provider_call_count(&self) -> usize {
+        self.ensure_embedding_provider_calls.load(Ordering::SeqCst)
     }
 
     pub fn with_resolved_target(mut self, target: WorkspaceTarget) -> Self {
@@ -215,6 +225,8 @@ impl ToolContext for FakeToolContext {
         &self,
         _timeout: Duration,
     ) -> Option<Arc<dyn EmbeddingProvider>> {
+        self.ensure_embedding_provider_calls
+            .fetch_add(1, Ordering::SeqCst);
         self.embedding_provider_val.clone()
     }
 

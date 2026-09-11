@@ -158,7 +158,7 @@ impl FastSearchTool {
                 limit: MAX_LIMIT,
                 context_lines: self.context_lines,
                 exclude_tests: self.exclude_tests,
-                backend: SearchBackend::resolve(self.backend),
+                backend: SearchBackend::resolve(self.backend, &self.query),
                 semantic_mode: self.semantics,
                 budget,
             },
@@ -270,7 +270,13 @@ impl FastSearchTool {
         let kept = execution.hits.len();
 
         let mut output = if format == "compact" {
-            let backend = self.backend.map(SearchBackend::as_str).unwrap_or("auto");
+            let backend = self.backend.map(SearchBackend::as_str).unwrap_or(
+                if execution.trace.strategy_id == "fast_search_semantic" {
+                    "semantic"
+                } else {
+                    "auto"
+                },
+            );
             formatting::render_compact(&self.query, backend, &execution.hits, offset, kept, more)
         } else {
             let mut lean = formatting::format_unified_search_results(

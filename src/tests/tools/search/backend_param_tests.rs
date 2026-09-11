@@ -413,11 +413,11 @@ async fn explicit_lexical_zero_hits_do_not_use_semantic_fallback() -> Result<()>
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn lexical_zero_hits_skip_semantic_fallback_for_plain_language_noise() -> Result<()> {
+async fn lexical_zero_hits_skip_semantic_fallback_for_a_single_plain_word() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
 
     let run = FastSearchTool {
-        query: "obscure zeppelin quasar".to_string(),
+        query: "zeppelin".to_string(),
         return_format: "compact".to_string(),
         offset: 0,
         limit: 1,
@@ -510,6 +510,217 @@ async fn hybrid_backend_returns_symbol_hits_without_fallback() -> Result<()> {
     let top = execution.hits.first().expect("hybrid backend should hit");
     assert_eq!(top.name, "semantic_backend_target");
     assert_eq!(top.kind, "function");
+
+    Ok(())
+}
+
+#[test]
+fn auto_prefers_semantic_for_nl_queries() {
+    assert!(SearchBackend::auto_prefers_semantic(
+        "where does the app create the router"
+    ));
+    for query in [
+        "SearchBackend",
+        "parse_query score_candidate",
+        "src/search/backend.rs",
+        "find backend.rs",
+        "",
+    ] {
+        assert!(
+            !SearchBackend::auto_prefers_semantic(query),
+            "auto must stay lexical for {query:?}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_nl_query_runs_semantic_when_vectors_are_ready() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
+
+    let run = FastSearchTool {
+        query: "semantic backend target function".to_string(),
+        return_format: "compact".to_string(),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let execution = run
+        .execution
+        .as_ref()
+        .expect("auto backend should return execution");
+    let text = extract_text(&run.result);
+
+    assert_eq!(execution.trace.strategy_id, "fast_search_semantic");
+    assert!(!execution.trace.backend_fallback);
+    assert!(
+        text.contains("(semantic)"),
+        "auto-semantic output should be labeled semantic, got:\n{text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_nl_query_stays_lexical_without_vectors() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_without_vectors().await?;
+
+    let run = FastSearchTool {
+        query: "semantic backend target function".to_string(),
+        return_format: "compact".to_string(),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let execution = run
+        .execution
+        .as_ref()
+        .expect("auto backend should return execution");
+    let text = extract_text(&run.result);
+
+    assert_eq!(execution.trace.strategy_id, "search_unified");
+    assert!(!execution.trace.backend_fallback);
+    assert!(
+        !text.contains("NOTE: backend="),
+        "a silent auto fallback must not add a note, got:\n{text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_nl_query_falls_through_to_lexical_on_zero_semantic_hits() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
+
+    let execution = FastSearchTool {
+        query: "unrelated prose that matches nothing embedded".to_string(),
+        language: Some("python".to_string()),
+        return_format: "compact".to_string(),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("auto backend should return execution");
+
+    assert_eq!(execution.trace.strategy_id, "search_unified");
+    assert!(!execution.trace.backend_fallback);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_identifier_query_stays_lexical_with_vectors() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
+
+    let execution = FastSearchTool {
+        query: "semantic_backend_target".to_string(),
+        return_format: "compact".to_string(),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("auto backend should return execution");
+
+    assert_ne!(execution.trace.strategy_id, "fast_search_semantic");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn explicit_lexical_never_runs_hybrid() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
+
+    let execution = FastSearchTool {
+        query: "semantic backend target function".to_string(),
+        backend: Some(SearchBackend::Lexical),
+        return_format: "compact".to_string(),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("explicit lexical should return execution");
+
+    assert_eq!(execution.trace.strategy_id, "search_unified");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn required_semantics_on_auto_nl_query_without_vectors_reports_not_ready() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_without_vectors().await?;
+
+    let run = FastSearchTool {
+        query: "semantic backend target function".to_string(),
+        semantics: Some(julie_core::embeddings_contract::SemanticMode::Required),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await;
+
+    let error = match run {
+        Ok(_) => panic!("required semantics must fail closed without vectors"),
+        Err(error) => error,
+    };
+    assert!(
+        error.to_string().contains("SEMANTICS_NOT_READY"),
+        "expected SEMANTICS_NOT_READY, got: {error}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_nl_query_never_waits_for_embedding_provider_init() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
+
+    let auto = FastSearchTool {
+        query: "semantic backend target function".to_string(),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let auto_execution = auto
+        .execution
+        .as_ref()
+        .expect("auto backend should return execution");
+    assert_eq!(auto_execution.trace.strategy_id, "fast_search_semantic");
+    assert_eq!(handler.ensure_embedding_provider_call_count(), 0);
+
+    let explicit = FastSearchTool {
+        query: "semantic backend target function".to_string(),
+        backend: Some(SearchBackend::Hybrid),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let explicit_execution = explicit
+        .execution
+        .as_ref()
+        .expect("explicit backend should return execution");
+    assert_eq!(explicit_execution.trace.strategy_id, "fast_search_hybrid");
+    assert_eq!(handler.ensure_embedding_provider_call_count(), 1);
 
     Ok(())
 }
