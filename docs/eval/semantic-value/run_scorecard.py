@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import sqlite3
 import subprocess
+import urllib.request
 import sys
 import time
 import tomllib
@@ -53,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", action="append", default=[])
     parser.add_argument("--limit-cases", type=int)
     parser.add_argument("--timeout", type=int, default=90)
+    parser.add_argument(
+        "--service",
+        action="store_true",
+        help="Call the running machine service JSON API instead of the standalone CLI (standalone never writes vectors)",
+    )
     parser.add_argument("--no-write", action="store_true")
     return parser.parse_args()
 
@@ -145,6 +153,35 @@ def first_expected_rank(hits: list[str], expected: list[str]) -> int | None:
     return None
 
 
+def service_endpoint() -> tuple[str, str, Path]:
+    home = Path(os.environ.get("JULIE_HOME", Path.home() / ".julie"))
+    info = json.loads((home / "service.json").read_text())
+    return f"http://127.0.0.1:{info['port']}/api/fast_search", info["token"], home
+
+
+def service_workspace_id(home: Path, repo_path: Path) -> str:
+    with sqlite3.connect(home / "registry.db") as connection:
+        row = connection.execute(
+            "select workspace_id from workspaces where path = ?", (str(repo_path.resolve()),)
+        ).fetchone()
+    if row is None:
+        raise ValueError(f"{repo_path} is not registered with the service; open it first")
+    return row[0]
+
+
+def call_service(service: tuple[str, str, Path], repo_path: Path, params: dict[str, Any], timeout: int) -> dict[str, Any]:
+    url, token, home = service
+    body = dict(params, workspace=service_workspace_id(home, repo_path))
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read())
+
+
 def run_backend(
     binary: Path,
     repo_path: Path,
@@ -152,6 +189,7 @@ def run_backend(
     backend: str,
     settings: dict[str, Any],
     timeout: int,
+    service: tuple[str, str, Path] | None = None,
 ) -> BackendResult:
     params: dict[str, Any] = {
         "query": case["query"],
@@ -179,24 +217,29 @@ def run_backend(
 
     started = time.perf_counter()
     try:
-        completed = subprocess.run(
-            command,
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
+        if service is not None:
+            payload = call_service(service, repo_path, params, timeout)
+            returncode, stderr = 0, ""
+        else:
+            completed = subprocess.run(
+                command,
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+            payload = parse_json_payload(completed.stdout)
+            returncode, stderr = completed.returncode, completed.stderr
         latency_ms = int((time.perf_counter() - started) * 1000)
-        payload = parse_json_payload(completed.stdout)
         text = result_text(payload)
         hits = extract_hits(text)
         rank = first_expected_rank(hits, case.get("expected_any", []))
         lower_text = text.lower()
         fallback = any(pattern in lower_text for pattern in FALLBACK_PATTERNS)
         result_payload = payload.get("reply", payload).get("result", payload)
-        if completed.returncode != 0 or payload.get("ok") is False or result_payload.get("isError"):
-            message = text or (completed.stderr or completed.stdout).strip()
+        if returncode != 0 or payload.get("ok") is False or result_payload.get("isError"):
+            message = text or stderr.strip()
             return BackendResult(backend, False, rank, hits, latency_ms, fallback, message, text)
         return BackendResult(backend, True, rank, hits, latency_ms, fallback, None, text)
     except Exception as error:
@@ -353,6 +396,7 @@ def run_scorecard(scorecard: dict[str, Any], args: argparse.Namespace) -> dict[s
     cases = selected_cases(scorecard, args)
     backends = selected_backends(scorecard, args)
     warnings = validate(scorecard, repos, cases)
+    service = service_endpoint() if args.service else None
 
     rows = []
     for case in cases:
@@ -369,7 +413,7 @@ def run_scorecard(scorecard: dict[str, Any], args: argparse.Namespace) -> dict[s
             "results": {},
         }
         for backend in backends:
-            result = run_backend(binary, Path(repo["path"]), case, backend, settings, args.timeout)
+            result = run_backend(binary, Path(repo["path"]), case, backend, settings, args.timeout, service)
             row["results"][backend] = as_dict(result)
             print(
                 f"{case['id']} {backend}: "
