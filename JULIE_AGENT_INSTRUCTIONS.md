@@ -2,88 +2,25 @@
 
 ## Rules
 
-1. **Search before coding**: Always `fast_search` before writing new code.
-2. **Structure before reading**: Always `get_symbols` before Read (70-90% token savings).
-3. **References before changes**: Always `fast_refs` before modifying any symbol.
-4. **Deep dive before modifying**: Use `deep_dive` before changing a symbol. One call replaces chaining fast_search + get_symbols + fast_refs + Read.
-5. **Trust results**: Pre-indexed and accurate. Never verify with grep/find/Read.
+1. Search before coding: `fast_search` before writing new code.
+2. Structure before reading: `get_symbols` before Read.
+3. References before changes: `fast_refs` before modifying a symbol.
+4. `deep_dive` before modifying a symbol; one call replaces the search, symbols, refs, Read chain.
+5. Trust results. Pre-indexed and accurate; never verify with grep, find, or Read.
 
 ## Tools
 
-- `fast_search`: Find code by text. Returns mixed-kind results; each hit carries `kind`. `file_pattern` scopes searches to matching paths, such as `src/**/*.rs`, `tests/**`, or a specific file. Optional `backend`: omit for normal search; if lexical returns zero hits on an identifier-like unscoped query and embeddings are ready, Julie may show labeled semantic fallback candidates. Use explicit `backend="lexical"` for pure lexical/file/path searches and bakeoffs. Use `backend="semantic"` or `backend="hybrid"` for concept-to-symbol discovery. Semantic/hybrid backends return symbol-backed hits only and fall back to lexical with a note if embeddings are unavailable. For content-only searches, `regions="comment,doc_comment"` filters to persisted `source_regions`; accepted kinds are `comment`, `doc_comment` (alias `docstring`), `string_literal`, and `embedded`. For symbol structure within a specific file, prefer `get_symbols(file_path=...)` over `file_pattern`.
-- `get_symbols`: File structure without reading full content. Use `target` + `mode="minimal"` to extract one symbol.
-- `deep_dive`: Investigate a symbol: definition, callers, callees, children, types, and persisted extractor complexity counts when available. Always use before modifying.
-- `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
-- `call_path`: One shortest call-graph path between two symbols. Use it for "how does A reach B?" or "what caller chain connects these symbols?" questions. Traverses calls, instantiations, and overrides only. Use `from_file_path` / `to_file_path` when names are ambiguous.
-- `get_context`: Token-budgeted area orientation (pivots + neighbors). Supports task inputs like `edited_files`, `entry_symbols`, `stack_trace`, `failing_test`, `max_hops`, and `prefer_tests`.
-- `blast_radius`: Deterministic impact analysis for changed files or internal symbol IDs. Returns impacts ranked by centrality and hops plus linked tests. Use before refactoring or after a change. Prefer `file_paths` when you know a symbol name or file path; `symbol_ids` are internal Julie IDs, not names like `AuthService::validate`.
-- `patterns`: Query persisted `structural_facts` without writing raw grammar-specific tree-sitter queries. Use `operation="list"` to discover observed pattern IDs, `operation="search"` with `pattern_id` or `query`, and `operation="summary"` with `group_by` or `facet`. Optional filters are `path`, `language`, `where`, and `limit`.
-- `manage_workspace`: Operations `index`, `list`, `open`, `remove`, `refresh`, `health`, `rebuild` (delete a checkout's index and index it again from scratch), `status` (every known checkout: root, watcher, file/symbol/vector counts, database size, Tantivy state and age, last write), `recover_edit`, and `dashboard`. For cross-workspace work, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
-- `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
+- `fast_search`: find code by text, symbol name, path fragment, or concept. `file_pattern` and `language` scope it. `backend` lexical, semantic, or hybrid. `regions` filters to `source_regions` kinds.
+- `get_symbols`: file structure without reading it. `target` plus `mode="minimal"` extracts one symbol.
+- `deep_dive`: one symbol: definition, callers, callees, children, types, `complexity_metrics`.
+- `fast_refs`: every reference to a symbol; `reference_kind` filters.
+- `call_path`: one shortest call path between two symbols.
+- `get_context`: token-budgeted area orientation for a task; give `entry_symbols`, `edited_files`, `stack_trace`, or `failing_test`.
+- `blast_radius`: impact of changed files or symbols plus likely tests. With no arguments it reads the working-tree git diff.
+- `patterns`: query persisted `structural_facts` (routes, config keys, SQL, document structure). No arguments lists pattern ids.
+- `edit_file`: edit without reading first; `old_text` is fuzzy matched. Always `dry_run=true` first.
+- `manage_workspace`: index, list, open, remove, refresh, rebuild, health, status, dashboard.
 
-The persisted extractor-enrichment domains are `source_regions`,
-`structural_facts`, and `complexity_metrics`. Use their public tool surfaces
-instead of reading those SQLite tables directly.
+Output is compact by default. A result with more rows ends with a `next:` line holding the exact call for the next page. `return_format="full"` adds code context.
 
-## Editing Workflow
-
-`edit_file` is the DEFAULT for file modifications. It edits without reading the file first.
-- Any text: `edit_file(old_text=..., new_text=..., dry_run=true)`
-- Read + Edit is the FALLBACK, not the default. Use only when Julie tools genuinely cannot handle the edit.
-
-## Other Workflows
-
-- **New task**: get_context > deep_dive key symbols > fast_refs > implement
-- **Flow tracing**: call_path > deep_dive the hops you need to understand in detail
-- **Change impact**: blast_radius > inspect likely callers/tests > implement > rerun blast_radius if needed
-- **Extractor changes**: `cargo xtask test bucket extractors`
-- **Parser dependency changes**: `cargo xtask test bucket extractor-dep-integration`
-- **Bug fix**: fast_search > deep_dive > write failing test > fix
-- **Refactor**: fast_refs > deep_dive
-
-## CLI Dogfooding
-
-Use named CLI wrappers for quick tool behavior checks before live MCP tests:
-
-- Flow tracing: `julie-server call-path "LoginButton::onClick" "insert_session" --standalone`
-- Ambiguous symbols: `julie-server call-path handle_request write_response --from-file src/server.rs --to-file src/response.rs --standalone`
-- Impact checks: `julie-server blast-radius --files src/auth/login_flow.rs --standalone`
-- Structural facts: `julie-server patterns --operation search --query route --workspace . --standalone --json`
-- Comments and docs only: `julie-server search "TODO" --regions comment,doc_comment --workspace . --standalone --json`
-- Generic fallback remains available for raw MCP parameters: `julie-server tool call_path --params '{"from":"handle_request","to":"write_response"}' --standalone`
-
-Standalone CLI mode does not prove machine-service MCP serving or handler binding. Use MCP integration tests for those.
-When you need execution-path evidence, capture stderr mode output (`julie: mode=...`) in your verification notes.
-
-Do not use grep/find when Julie tools are available. Do not read files without get_symbols first. Do not chain multiple tools when deep_dive does it in one call.
-
-## External Extract CLI (Non-MCP)
-
-`julie-server extract` is a separate, process-facing CLI for hosts that want Julie's parser data in a caller-owned SQLite DB. It does NOT use the MCP server, Tantivy, or embeddings. It is not an MCP tool — do not try to call it through `tool` or `manage_workspace`.
-
-Use it when the user is integrating Julie into a Go/C#/other-runtime host, writing a watcher driver, or asking for a SQLite extraction without the MCP server. Reference: `docs/EXTERNAL_EXTRACT.md`. Commands:
-
-- `julie-server extract scan --root <dir> --db <file.sqlite> --json` (incremental; add `--force` for full rebuild)
-- `julie-server extract update --root <dir> --db <file.sqlite> --file <path> --json`
-- `julie-server extract delete --root <dir> --db <file.sqlite> --file <path> --json`
-- `julie-server extract analyze --db <file.sqlite> --json` (DB-derived reference scores and test linkage)
-- `julie-server extract info --db <file.sqlite> --json` (read-only metadata + counts + schema state)
-
-For all MCP-facing work (search, navigation, editing, refactoring) keep using the MCP tools above. Extract is the integration path, not the dogfood path.
-
-## Subagent Dispatching
-
-Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching subagents that will explore or modify code, paste this block into the prompt:
-
-    ## Code Intelligence Tools (use instead of Grep/Glob/Read)
-    You have Julie MCP tools. Use them instead of basic Glob/Grep/Read chains:
-    - fast_search(query, backend?, regions?) returns mixed-kind results by default. Omit backend for normal search with labeled semantic fallback on identifier-like zero-hit queries when embeddings are ready. Use explicit backend="lexical" for pure lexical/file/path search and bakeoffs; backend="semantic" or "hybrid" for concept-to-symbol discovery (symbol-backed hits only). `regions` filters content lines to `comment`, `doc_comment`, `string_literal`, or `embedded`. file_pattern scopes searches; for symbol structure in one file, use get_symbols(file_path=...)
-    - get_symbols(file_path) to see file structure before reading
-    - deep_dive(symbol) to understand a symbol before modifying it
-    - fast_refs(symbol) to find all references (REQUIRED before any change)
-    - call_path(from, to, from_file_path?, to_file_path?, max_hops?) to trace one shortest caller chain between symbols
-    - get_context(query, edited_files?, entry_symbols?, stack_trace?, failing_test?, max_hops?, prefer_tests?) for task-shaped context
-    - blast_radius(file_paths?, symbol_ids?, max_depth?, include_tests?) for likely impact and linked tests. Prefer file_paths for human-facing symbol or file work; symbol_ids are internal Julie IDs returned by search/navigation tools, not names like AuthService::validate
-    - patterns(operation?, pattern_id?, query?, path?, language?, where?, facet?, group_by?, limit?) to query persisted structural_facts
-    - edit_file(old_text, new_text, dry_run=true) to edit without reading first
-    Do NOT fall back to Glob/Read/Grep chains. Julie tools return targeted context in 1-2 calls.
+Every call takes `workspace`: omit it for the checkout this session started in, or pass the id `manage_workspace(operation="list")` returns.

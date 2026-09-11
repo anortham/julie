@@ -700,9 +700,9 @@ Expected: PASS
 - `serial-worker-commit`: `git commit -m "docs(guidance): server instructions under the host budget, full guidance in a session-start routing hook"` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] The two new docs contract tests pass; `JULIE_AGENT_INSTRUCTIONS.md` is at most 1,900 characters.
-- [ ] `node .claude/hooks/session-start.cjs session-start < /dev/null` prints a JSON envelope whose `additionalContext` starts with the routing block; with `JULIE_SESSION_HOOKS=0` it prints nothing and exits 0.
-- [ ] Nothing that was in the old instructions is absent from the union of the new instructions and the routing block, except the two deleted tools (the worker lists every old section and where it went in the commit body).
+- [x] The two new docs contract tests pass; `JULIE_AGENT_INSTRUCTIONS.md` is at most 1,900 characters.
+- [x] `node .claude/hooks/session-start.cjs session-start < /dev/null` prints a JSON envelope whose `additionalContext` starts with the routing block; with `JULIE_SESSION_HOOKS=0` it prints nothing and exits 0.
+- [x] Nothing that was in the old instructions is absent from the union of the new instructions and the routing block, except the two deleted tools (the worker lists every old section and where it went in the commit body).
 - [ ] Tests pass and the change is committed by the worker per commit mode.
 
 ---

@@ -248,6 +248,69 @@ fn docs_contract_tests_extractor_enrichment_surfaces_are_documented() {
     assert!(extraction.contains("Schema version 29"));
 }
 
+#[test]
+fn docs_contract_tests_agent_instructions_fit_the_server_instruction_budget() {
+    let instructions = read_repo_file("JULIE_AGENT_INSTRUCTIONS.md");
+    let count = instructions.chars().count();
+    assert!(
+        count <= 1900,
+        "JULIE_AGENT_INSTRUCTIONS.md is {count} characters; the ceiling is 1900"
+    );
+    for name in [
+        "fast_search",
+        "get_symbols",
+        "deep_dive",
+        "fast_refs",
+        "call_path",
+        "get_context",
+        "blast_radius",
+        "patterns",
+        "edit_file",
+        "manage_workspace",
+        "regions",
+        "source_regions",
+        "structural_facts",
+        "complexity_metrics",
+    ] {
+        assert!(
+            instructions.contains(&format!("`{name}`")),
+            "instructions must name {name}"
+        );
+    }
+}
+
+#[test]
+fn docs_contract_tests_routing_block_carries_the_full_guidance() {
+    let block = read_repo_file(".claude/hooks/julie-routing-block.md");
+    assert!(
+        block.len() <= 4000,
+        "routing block is {} bytes; the ceiling is 4000",
+        block.len()
+    );
+    for name in [
+        "fast_search",
+        "get_symbols",
+        "deep_dive",
+        "fast_refs",
+        "call_path",
+        "get_context",
+        "blast_radius",
+        "patterns",
+        "edit_file",
+        "manage_workspace",
+        "offset",
+        "dry_run",
+    ] {
+        assert!(block.contains(name), "routing block must mention {name}");
+    }
+    let hooks: serde_json::Value =
+        serde_json::from_str(&read_repo_file(".claude/hooks/hooks.json")).unwrap();
+    assert!(
+        hooks["hooks"]["SessionStart"].is_array(),
+        "hooks.json registers SessionStart"
+    );
+}
+
 fn extract_tool_names(section: &str) -> BTreeSet<String> {
     let marker = "class=\"tool-name\">";
     let mut names = BTreeSet::new();

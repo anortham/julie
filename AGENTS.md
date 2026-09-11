@@ -307,7 +307,7 @@ builds after `cargo clean`.
    - Run `cargo build` for a debug binary
    - Direct named subcommands:
      - Navigation & Search: `fast-search` (alias `search`), `fast-refs` (alias `refs`), `get-symbols` (alias `symbols`), `get-context` (alias `context`), `call-path`, `blast-radius`, `deep-dive`, `patterns`
-     - Safe Editing: `edit-file` (alias `edit`), `rewrite-symbol` (alias `rewrite`), `rename-symbol` (alias `rename`)
+     - Safe Editing: `edit-file` (alias `edit`)
      - Workspace: `manage-workspace` (alias `workspace`), `dashboard --foreground`
    - Generic tool runner: `./target/debug/julie-server tool <name> --params '{"key":"value"}' --json` (supports `--params`, `--params-file`, and `--params-stdin` with 16 MiB ceiling)
    - Zero-warmup discovery: `./target/debug/julie-server tools list --json` and `./target/debug/julie-server tools schema <name> --json` (instant <15ms)
@@ -366,7 +366,7 @@ ls -lh .julie/logs/
 
 **For detailed architecture info**, use Julie's code intelligence tools:
 ```
-fast_search(query="workspace routing", search_target="definitions", file_pattern="docs/**")
+fast_search(query="workspace routing", file_pattern="docs/**")
 ```
 
 See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
