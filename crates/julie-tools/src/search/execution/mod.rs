@@ -96,10 +96,17 @@ pub async fn execute_search_unified(
     );
     let mut auto_symbol_pass_was_empty = false;
     let backend_fallback = if params.backend.value != SearchBackend::Lexical {
-        if let Some(provider) = handler
-            .ensure_embedding_provider(Duration::from_secs(3))
-            .await
-        {
+        // Only an explicit semantic/hybrid request may pay the provider
+        // lazy-init wait; an auto-selected hybrid run must not block a plain
+        // query on a degraded or starting provider.
+        let provider = if params.backend.explicit {
+            handler
+                .ensure_embedding_provider(Duration::from_secs(3))
+                .await
+        } else {
+            handler.embedding_provider().await
+        };
+        if let Some(provider) = provider {
             if snapshot_has_embeddings(snapshot) {
                 let mode = params
                     .semantic_mode

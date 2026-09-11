@@ -4,7 +4,7 @@
 
 **Goal:** When `fast_search` gets no `backend`, run hybrid for natural-language-shaped queries whenever the workspace has ready vectors, and lexical otherwise, with no visible change for every other query shape.
 
-**Architecture:** The decision lives in `SearchBackend::resolve`, which gains the query and returns `Hybrid` with `explicit: false` for NL-shaped, non-path queries. `execute_search_unified` already handles provider timeout, missing vectors, and `Required` for non-lexical backends; it gains one fall-through so a zero-hit auto-hybrid pass runs lexical instead of returning empty. Telemetry gains a `backend_auto` field so phase 6b can count how often auto picked hybrid.
+**Architecture:** The decision lives in `SearchBackend::resolve`, which gains the query and returns `Hybrid` with `explicit: false` for NL-shaped, non-path queries. `execute_search_unified` already handles missing vectors and `Required` for non-lexical backends; it gains one fall-through so a zero-hit auto-hybrid pass runs lexical instead of returning empty. The auto path reads the already-live provider (`embedding_provider`) and never waits for lazy init, because the production `ensure_embedding_provider` ignores its timeout and can block up to 30s; only an explicit `semantic`/`hybrid` request pays that wait. Telemetry gains a `backend_auto` field so phase 6b can count how often auto picked hybrid.
 
 **Tech Stack:** Rust (`julie-tools`, `julie-index`), Python 3 harnesses under `docs/eval/`.
 

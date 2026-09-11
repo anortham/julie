@@ -684,3 +684,43 @@ async fn required_semantics_on_auto_nl_query_without_vectors_reports_not_ready()
 
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_nl_query_never_waits_for_embedding_provider_init() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
+
+    let auto = FastSearchTool {
+        query: "semantic backend target function".to_string(),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let auto_execution = auto
+        .execution
+        .as_ref()
+        .expect("auto backend should return execution");
+    assert_eq!(auto_execution.trace.strategy_id, "fast_search_hybrid");
+    assert_eq!(handler.ensure_embedding_provider_call_count(), 0);
+
+    let explicit = FastSearchTool {
+        query: "semantic backend target function".to_string(),
+        backend: Some(SearchBackend::Hybrid),
+        limit: 1,
+        offset: 0,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let explicit_execution = explicit
+        .execution
+        .as_ref()
+        .expect("explicit backend should return execution");
+    assert_eq!(explicit_execution.trace.strategy_id, "fast_search_hybrid");
+    assert_eq!(handler.ensure_embedding_provider_call_count(), 1);
+
+    Ok(())
+}
