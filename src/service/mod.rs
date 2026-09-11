@@ -50,6 +50,11 @@ pub struct ServiceApp {
 impl ServiceApp {
     pub fn new(config: ServiceConfig) -> anyhow::Result<Self> {
         let paths = config.registry_paths.clone();
+        crate::logging::install_file_tracing(
+            &paths.logs_dir(),
+            crate::registry::project_log::SERVICE_LOG_PREFIX,
+            "info",
+        )?;
         let resolver = BindingResolver::new(None, false, paths.clone());
         let runtimes = Arc::new(RuntimeFactory::new(paths.clone()));
         let engine = Arc::new(RequestEngine::new(resolver, runtimes));

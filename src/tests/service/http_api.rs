@@ -278,7 +278,22 @@ async fn status_reports_a_service_log_under_the_julie_home() {
         .to_string_lossy()
         .into_owned();
     assert!(log.starts_with(&expected_prefix), "{log}");
-    assert!(std::fs::metadata(log).unwrap().len() > 0);
+    let mut contents = String::new();
+    for _ in 0..100 {
+        contents = std::fs::read_to_string(log).unwrap_or_default();
+        if contents.contains("Cleanup sweep finished at service start") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        contents.contains("tool_call: manage_workspace"),
+        "{contents}"
+    );
+    assert!(
+        contents.contains("Cleanup sweep finished at service start"),
+        "{contents}"
+    );
 }
 
 fn registry_store_at(paths: &RegistryPaths) -> WorkspaceRegistryStore {
