@@ -72,16 +72,15 @@ Julie `fast_search` auto p50 37 ms / 589 bytes. Miller `search` p50 250 ms / 1,5
 Read-only query on 2026-09-11 against `~/.julie/registry.db`. Phase 6b compares against this table after two weeks of real sessions.
 
 ```
-select julie_version, client, tool_name, count(*) calls, sum(success=0) errors, sum(success=1 and result_count=0) empty, round(avg(duration_ms)) ms, round(avg(output_bytes)) bytes from tool_calls where workspace_id not like 'ws__tmp%' and workspace_id not like 'tmp_%' and workspace_id not like 'target_%' group by 1,2,3 order by 4 desc
+select julie_version, client, tool_name, count(*) calls, sum(success=0) errors, sum(success=1 and result_count=0) empty, round(avg(duration_ms)) ms, round(avg(output_bytes)) bytes from tool_calls where workspace_id not like 'ws__tmp%' and workspace_id not like 'tmp_%' and workspace_id not like 'target_%' and (client is null or client not like '%bench%') and (client is null or client not like 'lead-check%') group by 1,2,3 order by 4 desc
 ```
+
+Harness clients (`%bench%`) and `lead-check%` clients are excluded; phase 6b must exclude them the same way.
 
 | julie_version | client | tool_name | calls | errors | empty | ms | bytes |
 |---|---|---|---|---|---|---|---|
-| 7.18.1 | miller-julie-bench/0 | fast_search | 208 | 0 | 7 | 114.0 | 571.0 |
 |  |  | edit_file | 171 | 3 | 0 | 2566.0 | 716.0 |
-| 7.18.1 | miller-julie-bench/0 | deep_dive | 161 | 0 | 24 | 1.0 | 1053.0 |
 |  |  | get_symbols | 72 | 3 | 0 | 2.0 | 2290.0 |
-| 7.18.1 | miller-julie-bench/0 | manage_workspace | 71 | 0 |  | 0.0 | 81.0 |
 |  |  | fast_search | 29 | 0 | 1 | 144.0 | 1910.0 |
 | 7.18.1 |  | manage_workspace | 13 | 0 |  | 0.0 | 81.0 |
 |  |  | fast_refs | 10 | 0 |  | 3.0 | 1150.0 |
@@ -90,12 +89,10 @@ select julie_version, client, tool_name, count(*) calls, sum(success=0) errors, 
 |  |  | patterns | 3 | 0 |  | 35.0 | 893.0 |
 |  |  | get_context | 2 | 0 |  | 9.0 | 5333.0 |
 | 7.18.1 |  | fast_refs | 2 | 0 | 0 | 1.0 | 634.0 |
-| 7.18.1 | lead-check/2 | fast_refs | 1 | 0 | 0 | 0.0 | 634.0 |
-
-`miller-julie-bench/0` is the Task 6 harness client. Empty `client` / `julie_version` rows are older calls from before Task 2.
 
 ## Follow-ups
 
 - Plugin repo: skill list and hooks after 6a merges (`cargo xtask sync-plugin` reports hook divergence and does not copy hooks).
 - Phase 7: continuous testing (design section 14 item 7), as its own design review first.
 - Rust `xtask-eval revival` harness: out of Task 6 scope; still deferred.
+- Default search backend: auto is lexical; hybrid and semantic scored far higher on the head-to-head natural-language rows. Owner decision whether auto should use hybrid when the semantic index is ready, gated by dogfood and the semantic-value scorecard.
