@@ -148,9 +148,9 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 4 to 6 use `serial-worke
 **Approach:** Diagnose before editing. Do not add `--standalone` blindly; the scenario's step 4 says "apply edit in a fresh workspace" so the intended path matters. Keep the dry-run assertions at lines 226-228.
 
 **Acceptance criteria:**
-- [ ] `cargo nextest run --lib -p julie test_scenario_2_refactoring_pipeline` passes, or the test is deleted and the report states the reason.
-- [ ] `cargo nextest run --lib -p julie tests::request_scenarios` passes.
-- [ ] Worker-scope verification passes and the change is handed to the lead per commit mode.
+- [x] `cargo nextest run --lib -p julie test_scenario_2_refactoring_pipeline` passes (outcome a: the apply call lacked `--standalone`, so the CLI opened the index store the fixture's MCP child was still creating).
+- [x] `cargo nextest run --lib -p julie tests::request_scenarios` passes (3 tests).
+- [x] Worker-scope verification passes and the change is handed to the lead per commit mode.
 
 ### Task 4: Replace the bucket runner
 
