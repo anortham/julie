@@ -377,6 +377,52 @@ def first_definition_symbol(text: str) -> str | None:
     return None
 
 
+def parse_coverage_string(value: Any) -> tuple[int, int] | None:
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"(\d+)/(\d+)", value.strip())
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def coverage_from_readiness(readiness: Any) -> dict[str, Any] | None:
+    if not isinstance(readiness, dict):
+        return None
+    raw = readiness.get("coverage")
+    parsed = parse_coverage_string(raw)
+    row: dict[str, Any] = {
+        "coverage": raw,
+        "status": readiness.get("status"),
+        "mode": readiness.get("mode"),
+        "source": "readiness",
+    }
+    if parsed:
+        row["vectors"], row["symbols"] = parsed
+    return row
+
+
+def apply_readiness_coverage(
+    coverage: dict[str, dict[str, Any]],
+    repo: str,
+    workspace_id: str,
+    readiness: Any,
+) -> None:
+    parsed = coverage_from_readiness(readiness)
+    if parsed is None:
+        return
+    current = coverage.setdefault(repo, {"workspace_id": workspace_id})
+    current["workspace_id"] = workspace_id
+    current["source"] = "readiness"
+    if parsed.get("coverage") is not None:
+        current["coverage"] = parsed["coverage"]
+    if parsed.get("status") is not None:
+        current["status"] = parsed["status"]
+    if "vectors" in parsed:
+        current["vectors"] = parsed["vectors"]
+        current["symbols"] = parsed["symbols"]
+
+
 def coverage_errors(coverage: dict[str, dict[str, Any]]) -> list[str]:
     errors: list[str] = []
     for repo, row in coverage.items():
@@ -506,6 +552,7 @@ def skipped(row: dict[str, Any], product: str, reason: str) -> dict[str, Any]:
         "error": reason,
         "text": "",
         "readiness": None,
+        "readiness_coverage": None,
     }
 
 
@@ -536,6 +583,7 @@ def execute_call(
                 "error": error,
                 "text": text[:8000],
                 "readiness": readiness,
+                "readiness_coverage": readiness.get("coverage") if isinstance(readiness, dict) else None,
             }
         )
         return scored
@@ -551,6 +599,7 @@ def execute_call(
             "error": "",
             "text": text[:8000],
             "readiness": readiness,
+            "readiness_coverage": readiness.get("coverage") if isinstance(readiness, dict) else None,
         }
     )
     return scored
@@ -596,16 +645,24 @@ def render_coverage_table(coverage: dict[str, dict[str, Any]]) -> list[str]:
     lines = [
         "## Julie semantic coverage",
         "",
-        "| repo | workspace_id | symbols | vectors |",
-        "| --- | --- | ---: | ---: |",
+        "| repo | workspace_id | coverage | symbols | vectors | source |",
+        "| --- | --- | --- | ---: | ---: | --- |",
     ]
     if not coverage:
-        lines.append("| — | — | 0 | 0 |")
+        lines.append("| — | — | — | 0 | 0 | — |")
         lines.append("")
         return lines
     for repo, row in coverage.items():
+        ratio = row.get("coverage") or f"{row.get('vectors', 0)}/{row.get('symbols', 0)}"
         lines.append(
-            f"| {repo} | {row.get('workspace_id', '')} | {row.get('symbols', 0)} | {row.get('vectors', 0)} |"
+            "| {repo} | {wid} | {cov} | {symbols} | {vectors} | {source} |".format(
+                repo=repo,
+                wid=row.get("workspace_id", ""),
+                cov=ratio,
+                symbols=row.get("symbols", 0),
+                vectors=row.get("vectors", 0),
+                source=row.get("source", "sqlite"),
+            )
         )
     lines.append("")
     return lines
@@ -712,10 +769,12 @@ def run_matrix(
                 print(f"== julie open {repo} ==", file=sys.stderr)
                 proc, workspace_id, row = open_julie_repo(julie_bin, path)
                 julie_procs[repo] = proc
+                row["source"] = "sqlite"
+                row["coverage"] = f"{row.get('vectors', 0)}/{row.get('symbols', 0)}"
                 coverage[repo] = row
                 print(
                     f"julie coverage {repo} workspace_id={workspace_id} "
-                    f"symbols={row.get('symbols')} vectors={row.get('vectors')}",
+                    f"symbols={row.get('symbols')} vectors={row.get('vectors')} source=sqlite",
                     file=sys.stderr,
                 )
             semantics_errors = coverage_errors(coverage)
@@ -749,7 +808,14 @@ def run_matrix(
             if row["julie"]["tool"] not in SUPPORTED_JULIE_TOOLS:
                 results.append(skipped(row, "julie", f"runner does not call {row['julie']['tool']}"))
                 continue
-            results.append(execute_call(row, "julie", julie_procs[repo], dict(row["julie"]["args"])))
+            scored = execute_call(row, "julie", julie_procs[repo], dict(row["julie"]["args"]))
+            apply_readiness_coverage(
+                coverage,
+                repo,
+                str(coverage.get(repo, {}).get("workspace_id") or ""),
+                scored.get("readiness"),
+            )
+            results.append(scored)
         return results, coverage, []
     finally:
         if miller is not None:
@@ -882,8 +948,14 @@ if __name__ == "__main__" and "--self-check" in sys.argv:
     zero = coverage_errors({"express": {"vectors": 0, "symbols": 10}, "flask": {"vectors": 3, "symbols": 9}})
     assert any("zero vectors" in e for e in zero), zero
     assert coverage_errors({"express": {"vectors": 4, "symbols": 10}}) == []
-    reply = {"result": {"content": [{"type": "text", "text": "ok"}], "readiness": {"mode": "auto", "status": "disabled"}}}
-    assert extract_readiness(reply) == {"mode": "auto", "status": "disabled"}
+    reply = {"result": {"content": [{"type": "text", "text": "ok"}], "readiness": {"mode": "auto", "status": "disabled", "coverage": "428/4095"}}}
+    assert extract_readiness(reply) == {"mode": "auto", "status": "disabled", "coverage": "428/4095"}
+    assert parse_coverage_string("428/4095") == (428, 4095)
+    assert parse_coverage_string("full") is None
+    merged: dict[str, dict[str, Any]] = {"cobra": {"workspace_id": "cobra_011de3e1", "vectors": 0, "symbols": 4095, "source": "sqlite"}}
+    apply_readiness_coverage(merged, "cobra", "cobra_011de3e1", {"mode": "auto", "status": "ready", "coverage": "428/4095"})
+    assert merged["cobra"]["vectors"] == 428, merged
+    assert merged["cobra"]["source"] == "readiness", merged
     print("self-check ok")
     sys.exit(0)
 

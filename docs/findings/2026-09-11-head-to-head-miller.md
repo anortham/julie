@@ -12,7 +12,7 @@ Inspect targets are the first top-level symbol on the expected file whose kind i
 
 Search scoring uses only the first `expected_any` path.
 
-The next kept run must record Julie vector coverage (`select count(*) from vectors` and `from symbols` on `$JULIE_HOME/indexes/<workspace_id>/facts.sqlite`) and each Julie row's `readiness` field. Use `--require-semantics` so the run aborts if any repo has zero vectors.
+The semantic run records Julie vector coverage and each Julie row's `readiness` field. `--require-semantics` aborts if any repo has zero vectors.
 
 ## Lexical-only run
 
@@ -81,10 +81,69 @@ Inspect:
 
 ## Semantic run
 
-Not run yet. Fill this section after vectors are complete and the matrix is rerun with `--require-semantics`.
+Pair: `docs/eval/head-to-head/results/20260911T045558Z.json` and `docs/eval/head-to-head/results/20260911T045558Z.md`.
 
-- Results pair:
-- Julie semantic coverage table:
-- Per task class:
-- Per tool:
-- Disagreements:
+Ran twice with `--require-semantics`. The first pair (`20260911T045513Z`) warmed indexes and is discarded. This pair is the second run.
+
+Vectors are present on all ten repos. Coverage is definition-kind vectors over all symbols (sqlite `count(*)` on `vectors` and `symbols`). MCP stdio replies in this binary did not include a `readiness` object, so every Julie row has `readiness` and `readiness_coverage` unset. No Julie row reported a readiness status other than missing. The coverage table uses the sqlite fallback.
+
+Inspect targets in this pair skip import/package/namespace/module/using. Search rows are unchanged from the lexical pair.
+
+Search top-5 is the same as the lexical-only pair. Default `fast_search` still ranked changelog and docs hits first on the same rows. Inspect top-1 rose because the targets are now definitions, not because search ranking changed.
+
+### Julie semantic coverage
+
+| repo | workspace_id | coverage | symbols | vectors | source |
+| --- | --- | --- | ---: | ---: | --- |
+| alamofire | alamofire_fc100108 | 3438/59278 | 59278 | 3438 | sqlite |
+| cobra | cobra_011de3e1 | 428/4095 | 4095 | 428 | sqlite |
+| express | express_d48d16da | 499/5997 | 5997 | 499 | sqlite |
+| flask | flask_d0f003c5 | 771/6463 | 6463 | 771 | sqlite |
+| gson | gson_1e35f048 | 1967/16375 | 16375 | 1967 | sqlite |
+| jq | jq_8a91e32c | 2530/13922 | 13922 | 2530 | sqlite |
+| moshi | moshi_8aa968c1 | 1409/9340 | 9340 | 1409 | sqlite |
+| newtonsoft-json | newtonsoft_json_fbef4a5c | 4554/40075 | 40075 | 4554 | sqlite |
+| nlohmann-json | nlohmann-json_d3e504cd | 2630/32697 | 32697 | 2630 | sqlite |
+| sinatra | sinatra_5bdf5e98 | 1331/6977 | 6977 | 1331 | sqlite |
+
+### Per task class
+
+| class | n | Julie top-1 | Julie top-5 | Miller top-1 | Miller top-5 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| retrieval.concept | 13 | 5/13 (38%) | 6/13 (46%) | 6/13 (46%) | 7/13 (54%) |
+| retrieval.implementation | 10 | 1/10 (10%) | 2/10 (20%) | 5/10 (50%) | 7/10 (70%) |
+| inspect.symbol | 23 | 20/23 (87%) | 23/23 (100%) | 19/23 (83%) | 23/23 (100%) |
+
+### Per tool
+
+| tool | n | p50 ms | p95 ms | p50 bytes | p95 bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| julie.fast_search | 23 | 37 | 72 | 589 | 780 |
+| miller.search | 23 | 250 | 423 | 1552 | 2045 |
+| julie.deep_dive | 23 | 5 | 13 | 733 | 1629 |
+| miller.inspect | 23 | 104 | 204 | 1734 | 8486 |
+
+### Disagreements (scoring_pass differs)
+
+Read from the kept JSON texts.
+
+Search:
+
+- `alamofire-auth-refresh-window.search`: Julie ranked `Source/Features/AuthenticationInterceptor.swift`. Miller ranked generated `docs/Classes/AuthenticationInterceptor/RefreshWindow.html`.
+- `cobra-command-execute.search`: Julie returned zero content matches (tokens must share a line). Miller ranked `command.go` `ExecuteContext`.
+- `flask-blueprint-registration.search`: Julie ranked `CHANGES.rst`. Miller ranked `src/flask/sansio/blueprints.py`.
+- `flask-request-context-session.search`: Julie ranked `docs/design.rst`. Miller ranked `src/flask/sessions.py` first and still passed top-5 for `src/flask/ctx.py`.
+- `flask-view-dispatch.search`: Julie ranked `docs/views.rst`. Miller ranked `src/flask/views.py` `dispatch_request`.
+- `gson-reflective-fields.search`: Julie ranked `Troubleshooting.md`. Miller ranked `TypeAdapters.java` first and still had the expected factory in top-5.
+- `jq-compile-bytecode.search`: Julie ranked `src/jq.h` and still passed top-5 with `src/execute.c`. Miller ranked `src/compile.h` and missed `src/execute.c` in top-5.
+- `moshi-json-adapter-null-wrapper.search`: Julie ranked `NullSafeJsonAdapter.kt` and still passed top-5. Miller ranked `Moshi.kt` and missed `JsonAdapter.kt` in top-5.
+- `newtonsoft-serializer-internal-reader.search`: Julie ranked `JsonSerializerInternalReader.cs` (the other `expected_any` file). Miller ranked `JsonSerializer.cs`. Scoring uses only the first expected path.
+- `nlohmann-binary-reader.search`: Julie ranked `README.md`. Miller ranked `docs/mkdocs/mkdocs.yml` first and still passed top-5.
+- `nlohmann-json-pointer.search`: Julie ranked `docs/mkdocs/docs/home/exceptions.md`. Miller ranked `include/nlohmann/detail/json_pointer.hpp`.
+- `sinatra-route-compile.search`: Julie ranked `CHANGELOG.md`. Miller ranked `lib/sinatra/base.rb`.
+
+Inspect:
+
+- `jq-compile-bytecode.inspect`: Julie listed `jq_state` first in `src/jq.h`. Miller ranked `src/execute.c`.
+- `nlohmann-binary-reader.inspect`: Julie ranked `binary_reader.hpp` for `cbor_tag_handler_t`. Miller ranked `docs/mkdocs/mkdocs.yml` first.
+- `nlohmann-sax-parser.inspect`: Julie ranked `parser.hpp` for `parse_event_t`. Miller ranked `docs/mkdocs/mkdocs.yml` first.
