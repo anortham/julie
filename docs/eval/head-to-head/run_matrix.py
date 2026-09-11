@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import time
@@ -51,6 +52,42 @@ SUPPORTED_SCORING = {"path_top", "path_top5"}
 REQUIRED_ROW_KEYS = {"id", "repo", "task_class", "intent", "julie", "miller", "expected", "scoring"}
 PATH_LINE_RE = re.compile(r"(?P<path>[A-Za-z0-9_@./+\-]+\.[A-Za-z0-9_+\-]+):(?P<line>\d+)")
 FILE_HEADER_RE = re.compile(r"^(?P<path>\S[^\n]*\.[A-Za-z0-9_+-]+):\s*$")
+SKIP_SYMBOL_KINDS = {"import", "package", "namespace", "module", "using"}
+VAR_NAME_RE = re.compile(r"\b(?:var|let|const)\s+([A-Za-z_][A-Za-z0-9_]*)")
+NAME_SKIP = {
+    "var",
+    "let",
+    "const",
+    "public",
+    "private",
+    "internal",
+    "protected",
+    "open",
+    "final",
+    "static",
+    "abstract",
+    "sealed",
+    "override",
+    "async",
+    "export",
+    "default",
+    "from",
+    "class",
+    "struct",
+    "enum",
+    "interface",
+    "protocol",
+    "func",
+    "fn",
+    "def",
+    "function",
+    "package",
+    "namespace",
+    "module",
+    "explicit",
+    "inline",
+    "template",
+}
 
 
 def split_filter(value: str) -> set[str]:
@@ -311,7 +348,100 @@ def _first_workspace_id(value: Any) -> str | None:
     return None
 
 
+def first_definition_symbol(text: str) -> str | None:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("next:"):
+            continue
+        if "—" in stripped and "symbol" in stripped.lower():
+            continue
+        if re.fullmatch(r"\([^)]*\)", stripped):
+            continue
+        parts = stripped.split(None, 1)
+        if len(parts) < 2:
+            continue
+        kind = parts[0].lower()
+        if kind in SKIP_SYMBOL_KINDS:
+            continue
+        rest = re.sub(r"\s*\([^)]*\)\s*$", "", parts[1]).strip()
+        rest = re.sub(r"\[[^\]]*\]", " ", rest)
+        match = VAR_NAME_RE.search(rest)
+        if match:
+            return match.group(1)
+        for tok in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", rest):
+            if tok.lower() in NAME_SKIP:
+                continue
+            if tok.isupper() and "_" in tok:
+                continue
+            return tok
+    return None
+
+
+def coverage_errors(coverage: dict[str, dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    for repo, row in coverage.items():
+        try:
+            vectors = int(row.get("vectors") or 0)
+        except (TypeError, ValueError):
+            vectors = 0
+        if vectors == 0:
+            errors.append(f"{repo}: zero vectors")
+    return errors
+
+
+def extract_readiness(message: dict[str, Any]) -> Any:
+    def walk(value: Any) -> Any:
+        if isinstance(value, dict):
+            if "readiness" in value and isinstance(value["readiness"], dict):
+                return value["readiness"]
+            for nested in value.values():
+                found = walk(nested)
+                if found is not None:
+                    return found
+        elif isinstance(value, list):
+            for nested in value:
+                found = walk(nested)
+                if found is not None:
+                    return found
+        return None
+
+    return walk(message)
+
+
+def julie_home() -> Path:
+    raw = os.environ.get("JULIE_HOME")
+    if raw:
+        return Path(raw)
+    return Path.home() / ".julie"
+
+
+def read_vector_coverage(workspace_id: str) -> dict[str, Any]:
+    db = julie_home() / "indexes" / workspace_id / "facts.sqlite"
+    row: dict[str, Any] = {
+        "workspace_id": workspace_id,
+        "facts_sqlite": str(db),
+        "symbols": 0,
+        "vectors": 0,
+    }
+    if not db.is_file():
+        row["error"] = "facts.sqlite missing"
+        return row
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            row["symbols"] = int(conn.execute("select count(*) from symbols").fetchone()[0])
+            row["vectors"] = int(conn.execute("select count(*) from vectors").fetchone()[0])
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        row["error"] = str(exc)
+    return row
+
+
 def parse_workspace_id(text: str, fallback: str) -> str:
+    opened = re.search(r"^Workspace ID:\s*(\S+)", text, re.MULTILINE)
+    if opened:
+        return opened.group(1)
     compact = re.search(r"^workspace_id:\s*(\S+)", text, re.MULTILINE)
     if compact:
         return compact.group(1)
@@ -375,6 +505,7 @@ def skipped(row: dict[str, Any], product: str, reason: str) -> dict[str, Any]:
         "ranked_paths": [],
         "error": reason,
         "text": "",
+        "readiness": None,
     }
 
 
@@ -390,6 +521,7 @@ def execute_call(
     except Exception as exc:  # noqa: BLE001 — harness must record product failures
         return skipped(row, product, str(exc))
     text = content_text(response)
+    readiness = extract_readiness(response) if product == "julie" else None
     if "error" in response:
         error = json.dumps(response["error"])
         scored = score_row(text, row["expected"]["path"], row["scoring"]["mode"])
@@ -403,6 +535,7 @@ def execute_call(
                 "ms": ms,
                 "error": error,
                 "text": text[:8000],
+                "readiness": readiness,
             }
         )
         return scored
@@ -417,6 +550,7 @@ def execute_call(
             "ms": ms,
             "error": "",
             "text": text[:8000],
+            "readiness": readiness,
         }
     )
     return scored
@@ -458,17 +592,46 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
     return {"task_class": classes, "tools": tools}
 
 
-def render_markdown(stamp: str, summary: dict[str, Any], results: list[dict[str, Any]]) -> str:
+def render_coverage_table(coverage: dict[str, dict[str, Any]]) -> list[str]:
+    lines = [
+        "## Julie semantic coverage",
+        "",
+        "| repo | workspace_id | symbols | vectors |",
+        "| --- | --- | ---: | ---: |",
+    ]
+    if not coverage:
+        lines.append("| — | — | 0 | 0 |")
+        lines.append("")
+        return lines
+    for repo, row in coverage.items():
+        lines.append(
+            f"| {repo} | {row.get('workspace_id', '')} | {row.get('symbols', 0)} | {row.get('vectors', 0)} |"
+        )
+    lines.append("")
+    return lines
+
+
+def render_markdown(
+    stamp: str,
+    summary: dict[str, Any],
+    results: list[dict[str, Any]],
+    coverage: dict[str, dict[str, Any]],
+) -> str:
     lines = [
         f"# Head-to-head retrieval matrix ({stamp})",
         "",
         "Retrieval matrix only.",
         "",
-        "## Per task class",
-        "",
-        "| class | julie top-1 | julie top-5 | miller top-1 | miller top-5 | n |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
+    lines.extend(render_coverage_table(coverage))
+    lines.extend(
+        [
+            "## Per task class",
+            "",
+            "| class | julie top-1 | julie top-5 | miller top-1 | miller top-5 | n |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
     for task_class, entry in summary["task_class"].items():
         julie = entry.get("julie", {})
         miller = entry.get("miller", {})
@@ -518,6 +681,15 @@ def _disagree(results: list[dict[str, Any]], row_id: str) -> bool:
     return bool(pair["julie"].get("scoring_pass")) != bool(pair["miller"].get("scoring_pass"))
 
 
+def open_julie_repo(julie_bin: Path, path: str) -> tuple[McpProcess, str, dict[str, Any]]:
+    proc = McpProcess([str(julie_bin)], timeout=60, cwd=path)
+    _, response = proc.call_tool("manage_workspace", {"operation": "open", "path": path}, timeout=300)
+    workspace_id = parse_workspace_id(content_text(response), Path(path).name)
+    coverage = read_vector_coverage(workspace_id)
+    coverage["path"] = path
+    return proc, workspace_id, coverage
+
+
 def run_matrix(
     document: dict[str, Any],
     selected: list[dict[str, Any]],
@@ -525,13 +697,30 @@ def run_matrix(
     miller_bin: Path,
     skip_julie: bool,
     skip_miller: bool,
-) -> list[dict[str, Any]]:
+    require_semantics: bool,
+) -> tuple[list[dict[str, Any]] | None, dict[str, dict[str, Any]], list[str]]:
     repos: dict[str, dict[str, str]] = document["repos"]
     results: list[dict[str, Any]] = []
     miller: McpProcess | None = None
     miller_ids: dict[str, str] = {}
     julie_procs: dict[str, McpProcess] = {}
+    coverage: dict[str, dict[str, Any]] = {}
     try:
+        if not skip_julie:
+            for repo in sorted({row["repo"] for row in selected}):
+                path = repos[repo]["path"]
+                print(f"== julie open {repo} ==", file=sys.stderr)
+                proc, workspace_id, row = open_julie_repo(julie_bin, path)
+                julie_procs[repo] = proc
+                coverage[repo] = row
+                print(
+                    f"julie coverage {repo} workspace_id={workspace_id} "
+                    f"symbols={row.get('symbols')} vectors={row.get('vectors')}",
+                    file=sys.stderr,
+                )
+            semantics_errors = coverage_errors(coverage)
+            if require_semantics and semantics_errors:
+                return None, coverage, semantics_errors
         if not skip_miller:
             miller = McpProcess([str(miller_bin), "serve"], timeout=60)
         for row in selected:
@@ -560,12 +749,8 @@ def run_matrix(
             if row["julie"]["tool"] not in SUPPORTED_JULIE_TOOLS:
                 results.append(skipped(row, "julie", f"runner does not call {row['julie']['tool']}"))
                 continue
-            if repo not in julie_procs:
-                proc = McpProcess([str(julie_bin)], timeout=60, cwd=path)
-                proc.call_tool("manage_workspace", {"operation": "open", "path": path}, timeout=300)
-                julie_procs[repo] = proc
             results.append(execute_call(row, "julie", julie_procs[repo], dict(row["julie"]["args"])))
-        return results
+        return results, coverage, []
     finally:
         if miller is not None:
             miller.close()
@@ -593,6 +778,11 @@ def main() -> int:
     parser.add_argument("--validate", action="store_true")
     parser.add_argument("--skip-miller", action="store_true")
     parser.add_argument("--skip-julie", action="store_true")
+    parser.add_argument(
+        "--require-semantics",
+        action="store_true",
+        help="abort when any opened Julie repo has zero rows in facts.sqlite vectors",
+    )
     parser.add_argument("--repos", default="all")
     parser.add_argument("--tasks", default="all")
     parser.add_argument("--out-dir", default=str(DEFAULT_RESULTS))
@@ -630,7 +820,21 @@ def main() -> int:
         print(f"Miller binary not found: {miller_bin}", file=sys.stderr)
         return 2
 
-    results = run_matrix(document, selected, julie_bin, miller_bin, args.skip_julie, args.skip_miller)
+    results, coverage, semantics_errors = run_matrix(
+        document,
+        selected,
+        julie_bin,
+        miller_bin,
+        args.skip_julie,
+        args.skip_miller,
+        args.require_semantics,
+    )
+    if semantics_errors:
+        print("Julie semantic coverage failed --require-semantics:", file=sys.stderr)
+        for error in semantics_errors:
+            print(f"- {error}", file=sys.stderr)
+        return 2
+    assert results is not None
     summary = summarize(results)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_dir = Path(args.out_dir)
@@ -640,13 +844,14 @@ def main() -> int:
         "julie_bin": str(julie_bin),
         "miller_bin": str(miller_bin),
         "pid": os.getpid(),
+        "julie_semantic_coverage": coverage,
         "summary": summary,
         "results": results,
     }
     json_path = out_dir / f"{stamp}.json"
     md_path = out_dir / f"{stamp}.md"
     json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    md_path.write_text(render_markdown(stamp, summary, results), encoding="utf-8")
+    md_path.write_text(render_markdown(stamp, summary, results, coverage), encoding="utf-8")
     print(json_path)
     print(md_path)
     return 0
@@ -659,6 +864,26 @@ if __name__ == "__main__" and "--self-check" in sys.argv:
     errors = validate_manifest(bad)
     assert any("unknown repo" in e for e in errors), errors
     assert any("julie tool" in e for e in errors), errors
+    compact = (
+        "lib/application.js — 3 symbols\n"
+        "  import var finalhandler = require('finalhandler') (16-16)\n"
+        "  variable var debug = require('debug')('express:application') (17-17)\n"
+        "  import var View = require('./view') (18-18)\n"
+    )
+    assert first_definition_symbol(compact) == "debug", first_definition_symbol(compact)
+    flask = (
+        "src/flask/views.py — 3 symbols\n"
+        "  import import typing as t (3-3)\n"
+        "  import from . import typing as ft (5-5)\n"
+        "  class View (16-80)\n"
+    )
+    assert first_definition_symbol(flask) == "View", first_definition_symbol(flask)
+    assert parse_workspace_id("Workspace Opened\nWorkspace ID: express_abcd1234\nPath: /tmp/express", "fallback") == "express_abcd1234"
+    zero = coverage_errors({"express": {"vectors": 0, "symbols": 10}, "flask": {"vectors": 3, "symbols": 9}})
+    assert any("zero vectors" in e for e in zero), zero
+    assert coverage_errors({"express": {"vectors": 4, "symbols": 10}}) == []
+    reply = {"result": {"content": [{"type": "text", "text": "ok"}], "readiness": {"mode": "auto", "status": "disabled"}}}
+    assert extract_readiness(reply) == {"mode": "auto", "status": "disabled"}
     print("self-check ok")
     sys.exit(0)
 

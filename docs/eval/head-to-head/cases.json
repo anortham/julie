@@ -714,18 +714,18 @@
       "id": "express-lazy-router.inspect",
       "repo": "express",
       "task_class": "inspect.symbol",
-      "intent": "finalhandler",
+      "intent": "debug",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "finalhandler",
+          "symbol": "debug",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "finalhandler",
+          "target": "debug",
           "depth": "summary",
           "format": "json"
         }
@@ -742,18 +742,18 @@
       "id": "express-mount-middleware.inspect",
       "repo": "express",
       "task_class": "inspect.symbol",
-      "intent": "finalhandler",
+      "intent": "debug",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "finalhandler",
+          "symbol": "debug",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "finalhandler",
+          "target": "debug",
           "depth": "summary",
           "format": "json"
         }
@@ -770,18 +770,18 @@
       "id": "flask-view-dispatch.inspect",
       "repo": "flask",
       "task_class": "inspect.symbol",
-      "intent": "typing",
+      "intent": "F",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "typing",
+          "symbol": "F",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "typing",
+          "target": "F",
           "depth": "summary",
           "format": "json"
         }
@@ -798,18 +798,18 @@
       "id": "flask-blueprint-registration.inspect",
       "repo": "flask",
       "task_class": "inspect.symbol",
-      "intent": "os",
+      "intent": "DeferredSetupFunction",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "os",
+          "symbol": "DeferredSetupFunction",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "os",
+          "target": "DeferredSetupFunction",
           "depth": "summary",
           "format": "json"
         }
@@ -826,18 +826,18 @@
       "id": "flask-request-context-session.inspect",
       "repo": "flask",
       "task_class": "inspect.symbol",
-      "intent": "contextvars",
+      "intent": "_sentinel",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "contextvars",
+          "symbol": "_sentinel",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "contextvars",
+          "target": "_sentinel",
           "depth": "summary",
           "format": "json"
         }
@@ -854,18 +854,18 @@
       "id": "gson-strictness.inspect",
       "repo": "gson",
       "task_class": "inspect.symbol",
-      "intent": "com.google.gson",
+      "intent": "Strictness",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "com.google.gson",
+          "symbol": "Strictness",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "com.google.gson",
+          "target": "Strictness",
           "depth": "summary",
           "format": "json"
         }
@@ -882,18 +882,18 @@
       "id": "gson-reflective-fields.inspect",
       "repo": "gson",
       "task_class": "inspect.symbol",
-      "intent": "com.google.gson.internal.bind",
+      "intent": "ReflectiveTypeAdapterFactory",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "com.google.gson.internal.bind",
+          "symbol": "ReflectiveTypeAdapterFactory",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "com.google.gson.internal.bind",
+          "target": "ReflectiveTypeAdapterFactory",
           "depth": "summary",
           "format": "json"
         }
@@ -910,18 +910,18 @@
       "id": "gson-type-adapter.inspect",
       "repo": "gson",
       "task_class": "inspect.symbol",
-      "intent": "com.google.gson",
+      "intent": "TypeAdapter",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "com.google.gson",
+          "symbol": "TypeAdapter",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "com.google.gson",
+          "target": "TypeAdapter",
           "depth": "summary",
           "format": "json"
         }
@@ -938,18 +938,18 @@
       "id": "moshi-polymorphic-labels.inspect",
       "repo": "moshi",
       "task_class": "inspect.symbol",
-      "intent": "com.squareup.moshi.adapters",
+      "intent": "PolymorphicJsonAdapterFactory",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "com.squareup.moshi.adapters",
+          "symbol": "PolymorphicJsonAdapterFactory",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "com.squareup.moshi.adapters",
+          "target": "PolymorphicJsonAdapterFactory",
           "depth": "summary",
           "format": "json"
         }
@@ -966,18 +966,18 @@
       "id": "moshi-record-adapter.inspect",
       "repo": "moshi",
       "task_class": "inspect.symbol",
-      "intent": "com.squareup.moshi.internal",
+      "intent": "RecordJsonAdapter",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "com.squareup.moshi.internal",
+          "symbol": "RecordJsonAdapter",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "com.squareup.moshi.internal",
+          "target": "RecordJsonAdapter",
           "depth": "summary",
           "format": "json"
         }
@@ -994,18 +994,18 @@
       "id": "moshi-json-adapter-null-wrapper.inspect",
       "repo": "moshi",
       "task_class": "inspect.symbol",
-      "intent": "com.squareup.moshi",
+      "intent": "JsonAdapter",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "com.squareup.moshi",
+          "symbol": "JsonAdapter",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "com.squareup.moshi",
+          "target": "JsonAdapter",
           "depth": "summary",
           "format": "json"
         }
@@ -1022,18 +1022,18 @@
       "id": "alamofire-interceptor-selection.inspect",
       "repo": "alamofire",
       "task_class": "inspect.symbol",
-      "intent": "Foundation",
+      "intent": "Session",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "Foundation",
+          "symbol": "Session",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "Foundation",
+          "target": "Session",
           "depth": "summary",
           "format": "json"
         }
@@ -1050,18 +1050,18 @@
       "id": "alamofire-multipart-boundary.inspect",
       "repo": "alamofire",
       "task_class": "inspect.symbol",
-      "intent": "Foundation",
+      "intent": "MultipartFormData",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "Foundation",
+          "symbol": "MultipartFormData",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "Foundation",
+          "target": "MultipartFormData",
           "depth": "summary",
           "format": "json"
         }
@@ -1078,18 +1078,18 @@
       "id": "alamofire-auth-refresh-window.inspect",
       "repo": "alamofire",
       "task_class": "inspect.symbol",
-      "intent": "Foundation",
+      "intent": "AuthenticationCredential",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "Foundation",
+          "symbol": "AuthenticationCredential",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "Foundation",
+          "target": "AuthenticationCredential",
           "depth": "summary",
           "format": "json"
         }
@@ -1106,18 +1106,18 @@
       "id": "cobra-command-execute.inspect",
       "repo": "cobra",
       "task_class": "inspect.symbol",
-      "intent": "cobra",
+      "intent": "FlagSetByCobraAnnotation",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "cobra",
+          "symbol": "FlagSetByCobraAnnotation",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "cobra",
+          "target": "FlagSetByCobraAnnotation",
           "depth": "summary",
           "format": "json"
         }
@@ -1134,18 +1134,18 @@
       "id": "cobra-flag-completion.inspect",
       "repo": "cobra",
       "task_class": "inspect.symbol",
-      "intent": "cobra",
+      "intent": "ShellCompRequestCmd",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "cobra",
+          "symbol": "ShellCompRequestCmd",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "cobra",
+          "target": "ShellCompRequestCmd",
           "depth": "summary",
           "format": "json"
         }
@@ -1162,18 +1162,18 @@
       "id": "sinatra-route-dispatch.inspect",
       "repo": "sinatra",
       "task_class": "inspect.symbol",
-      "intent": "rack",
+      "intent": "LoadError",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "rack",
+          "symbol": "LoadError",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "rack",
+          "target": "LoadError",
           "depth": "summary",
           "format": "json"
         }
@@ -1190,18 +1190,18 @@
       "id": "sinatra-route-compile.inspect",
       "repo": "sinatra",
       "task_class": "inspect.symbol",
-      "intent": "rack",
+      "intent": "LoadError",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "rack",
+          "symbol": "LoadError",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "rack",
+          "target": "LoadError",
           "depth": "summary",
           "format": "json"
         }
@@ -1302,18 +1302,18 @@
       "id": "newtonsoft-serializer-internal-reader.inspect",
       "repo": "newtonsoft-json",
       "task_class": "inspect.symbol",
-      "intent": "System",
+      "intent": "JsonSerializer",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "System",
+          "symbol": "JsonSerializer",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "System",
+          "target": "JsonSerializer",
           "depth": "summary",
           "format": "json"
         }
@@ -1330,18 +1330,18 @@
       "id": "jq-compile-bytecode.inspect",
       "repo": "jq",
       "task_class": "inspect.symbol",
-      "intent": "assert",
+      "intent": "jq_state",
       "julie": {
         "tool": "deep_dive",
         "args": {
-          "symbol": "assert",
+          "symbol": "jq_state",
           "depth": "overview"
         }
       },
       "miller": {
         "tool": "inspect",
         "args": {
-          "target": "assert",
+          "target": "jq_state",
           "depth": "summary",
           "format": "json"
         }

@@ -1,22 +1,30 @@
 # Head-to-head retrieval matrix: Julie vs Miller
 
-Kept pair: `docs/eval/head-to-head/results/20260911T040446Z.json` and `docs/eval/head-to-head/results/20260911T040446Z.md`.
-
-The first run after Miller `workspace open` queued background indexes. That run is discarded. This pair is the second run on warm indexes.
-
 ## Scope
 
 - Retrieval matrix only: 23 search rows and 23 inspect rows.
 - One machine. Corpus roots are the ten public repos pinned in `cases.json`.
 - Manifest and results live under `docs/eval/`. Neither product indexes that tree as a corpus.
 - No agent episodes. No Rust `xtask-eval revival` harness.
-- No winner by construction. Numbers and trade-offs only.
+- No winner by construction.
 
-Inspect targets are the first top-level name `julie-server symbols <expected path> --json` listed on that file. Search output was not used to pick a target. For many languages that name is an import, package, or `using` (for example `finalhandler`, `typing`, `Foundation`, `System`, `rack`). That is why inspect top-1 is low for both products.
+Inspect targets are the first top-level symbol on the expected file whose kind is not `import`, `package`, `namespace`, `module`, or `using`. Search output is never used to pick a target.
 
 Search scoring uses only the first `expected_any` path.
 
-## Per task class (second run)
+The next kept run must record Julie vector coverage (`select count(*) from vectors` and `from symbols` on `$JULIE_HOME/indexes/<workspace_id>/facts.sqlite`) and each Julie row's `readiness` field. Use `--require-semantics` so the run aborts if any repo has zero vectors.
+
+## Lexical-only run
+
+Pair: `docs/eval/head-to-head/results/20260911T040446Z.json` and `docs/eval/head-to-head/results/20260911T040446Z.md`.
+
+This pair is a lexical-only Julie run. Every one of the ten corpus indexes had zero rows in `vectors` during both runs. The service had no `julie-semantic-sidecar` binary next to `target/release/julie-server`, so `embedding_child` was `PROVIDER_UNAVAILABLE`. Julie ran lexical search. Miller ran its normal pipeline. The numbers below are not a fair semantic comparison.
+
+The first run after Miller `workspace open` queued background indexes. That run is discarded. This pair is the second run on warm indexes.
+
+Inspect targets in that pair were the first listed top-level name, often an import or package (`finalhandler`, `typing`, `Foundation`, `rack`). That is why inspect top-1 is low for both products in this pair.
+
+### Per task class
 
 | class | n | Julie top-1 | Julie top-5 | Miller top-1 | Miller top-5 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -24,7 +32,7 @@ Search scoring uses only the first `expected_any` path.
 | retrieval.implementation | 10 | 1/10 (10%) | 2/10 (20%) | 5/10 (50%) | 7/10 (70%) |
 | inspect.symbol | 23 | 3/23 (13%) | 6/23 (26%) | 4/23 (17%) | 8/23 (35%) |
 
-## Per tool (second run)
+### Per tool
 
 | tool | n | p50 ms | p95 ms | p50 bytes | p95 bytes |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -33,13 +41,13 @@ Search scoring uses only the first `expected_any` path.
 | julie.deep_dive | 23 | 2 | 4 | 291 | 5931 |
 | miller.inspect | 23 | 106 | 182 | 398 | 10186 |
 
-## Trade-offs
+### Trade-offs (lexical Julie only)
 
 - Miller ranked the expected source file more often on natural-language search. Julie compact search is smaller and faster, and more often ranked changelog or docs hits first.
 - Julie `deep_dive` is much faster. Miller `inspect` JSON is larger.
 - Compact Julie search groups hits under one file path. Miller search JSON is a symbol list with `file` fields.
 
-## Disagreements (scoring_pass differs)
+### Disagreements (scoring_pass differs)
 
 Read from the kept JSON texts.
 
@@ -65,8 +73,18 @@ Inspect:
 - `nlohmann-sax-parser.inspect`: Julie ranked `parser.hpp` for `parse_event_t`. Miller ranked `docs/mkdocs/mkdocs.yml`.
 - `sinatra-route-dispatch.inspect` and `sinatra-route-compile.inspect`: Julie ranked `.github/workflows/test.yml` for `rack`. Miller ranked `require 'rack'` in `lib/sinatra/base.rb`.
 
-## Binaries and corpus
+### Binaries and corpus
 
-- Julie: `target/release/julie-server` built in this worktree before the run.
+- Julie: `target/release/julie-server` built in this worktree before the run. No sidecar beside that binary.
 - Miller: existing `~/source/miller/src/Miller.Server/bin/Release/net10.0/miller` (not rebuilt; that repo was not edited).
 - Repo commits: see `docs/eval/head-to-head/cases.json` `repos`.
+
+## Semantic run
+
+Not run yet. Fill this section after vectors are complete and the matrix is rerun with `--require-semantics`.
+
+- Results pair:
+- Julie semantic coverage table:
+- Per task class:
+- Per tool:
+- Disagreements:
