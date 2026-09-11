@@ -89,10 +89,10 @@ Commit mode for every task: `serial-worker-commit`.
 - `initialize_recovering_store_returns_error_without_deleting`: a handler bound to a temp index root whose `facts.sqlite` is locked exclusively; assert the initialize error and the file's survival. If the private function cannot be reached from `src/tests`, expose it `pub(crate)`.
 
 **Acceptance criteria:**
-- [ ] Three tests pass by exact name.
-- [ ] `grep -n delete_store_dir src crates` shows the two openers, `handler.rs` force path, `refresh.rs` rebuild, and `cleanup.rs` only.
-- [ ] `cargo check --workspace --all-targets` passes.
-- [ ] Commit: `fix(index): delete a checkout store only on a version mismatch`.
+- [x] Three tests pass by exact name.
+- [x] `grep -n delete_store_dir src crates` shows only `store_open.rs` (the force, rebuild and sweep paths call `remove_dir_all` directly and are untouched).
+- [x] `cargo check --workspace --all-targets` passes.
+- [x] Commit: `fix(index): delete a checkout store only on a version mismatch` (bca54911).
 
 ---
 
@@ -113,9 +113,9 @@ Commit mode for every task: `serial-worker-commit`.
 **What to build:** One call-site swap. Then one test: `status_over_a_locked_checkout_reports_not_loaded_and_deletes_nothing`: a handler with a temp registry (model on `src/tests/tools/workspace/global_targeting/list.rs:39` for the temp `daemon.db` setup) holding one row for a temp workspace whose `facts.sqlite` is locked exclusively; run `manage_workspace` `status` with no `workspace_id`; assert the row's status has `store_status: None` (or the field the `CheckoutStatus` struct uses; read it with `get_symbols CheckoutStatus`), and `facts.sqlite` survives.
 
 **Acceptance criteria:**
-- [ ] Test passes by exact name.
-- [ ] `grep -n store_for_workspace src/tools/workspace/commands/registry/status.rs` is empty.
-- [ ] Commit: `fix(status): read checkouts through the non-destructive opener`.
+- [x] Test passes by exact name.
+- [x] `grep -n '\bstore_for_workspace' src/tools/workspace/commands/registry/status.rs` is empty (the bare grep matches `checkout_store_for_workspace`).
+- [x] Commit: `fix(status): read checkouts through the non-destructive opener` (27bf69ee).
 
 ---
 
@@ -140,9 +140,9 @@ Commit mode for every task: `serial-worker-commit`.
 - `shutdown_removes_only_a_record_it_owns` (`src/tests/service/control.rs`, model on `:6`): start the in-process service, overwrite the record with a different pid, shut down, assert the foreign record survives.
 
 **Acceptance criteria:**
-- [ ] Three tests pass by exact name; `tests::service::process` still passes when the lead runs the `service-process` bucket.
-- [ ] No new dependency unless `libc` or `nix` is already in the tree.
-- [ ] Commit: `fix(service): restart waits for the previous pid and only the owner removes the record`.
+- [x] Three tests pass by exact name; `service` and `service-process` buckets pass.
+- [x] No new dependency (`libc` and `windows-sys` were already present).
+- [x] Commit: `fix(service): restart waits for the previous pid and only the owner removes the record` (d1c39d99).
 
 ---
 
@@ -164,9 +164,9 @@ Commit mode for every task: `serial-worker-commit`.
 **Test:** `status_reports_a_service_log_under_the_julie_home` (`src/tests/service/http_api.rs`, model on the existing status test there): start the in-process service on a temp `JULIE_HOME`, make one `manage_workspace` `list` call, `GET /status`, assert `log` starts with `<home>/logs/julie-service.log.` and the file exists and is non-empty.
 
 **Acceptance criteria:**
-- [ ] Test passes by exact name.
-- [ ] Per-project `.julie/logs/julie.log.<date>` behavior for bound runtimes is unchanged (existing tests under `tests::registry` stay green when the lead runs the bucket).
-- [ ] Commit: `feat(service): write the service log under the Julie home and report it in status`.
+- [x] Test passes by exact name.
+- [x] Per-project `.julie/logs/julie.log.<date>` behavior for bound runtimes is unchanged (`registry` bucket green).
+- [x] Commit: `feat(service): write the service log under the Julie home and report it in status` (a490baaa).
 
 ---
 
@@ -191,9 +191,9 @@ Commit mode for every task: `serial-worker-commit`.
 - `tests_never_see_the_real_julie_home` (`src/tests/registry/paths.rs`): assert `RegistryPaths::try_new()` resolves under `target/test-julie-home` when the var is untouched, and never under `dirs::home_dir()`. Skip with a clear message if `JULIE_HOME` was exported by the caller to something else.
 
 **Acceptance criteria:**
-- [ ] Three tests pass by exact name; the two existing `~/.julie` default tests in `src/tests/registry/paths.rs` still pass.
-- [ ] `grep -rn 'RegistryPaths::try_new' src/tools/workspace/commands/registry/mod.rs` is empty.
-- [ ] Commit: `fix(tests): isolate the Julie home for every test and derive the indexes dir from the registry database`.
+- [x] Three tests pass by exact name; the two existing `~/.julie` default tests in `src/tests/registry/paths.rs` still pass.
+- [x] `grep -rn 'RegistryPaths::try_new' src/tools/workspace/commands/registry/mod.rs` is empty.
+- [x] Commit: `fix(tests): isolate the Julie home for every test and derive the indexes dir from the registry database` (2dd45611).
 
 ---
 
@@ -214,16 +214,16 @@ Commit mode for every task: `serial-worker-commit`.
 **Test:** `service_start_prunes_dead_registry_rows_in_the_background`: on a temp `JULIE_HOME`, insert a workspace row whose path is `<tmp>/gone` (never created) and one live row for a real temp dir, plus an orphan directory `<home>/indexes/orphan_00000000/`; start the in-process service; poll up to 5 s until the dead row is gone; assert the live row and its index dir survive and the orphan dir is gone.
 
 **Acceptance criteria:**
-- [ ] Test passes by exact name.
-- [ ] Sweep runs once per service start, off the request path, and never blocks bind or the first request.
-- [ ] Commit: `feat(service): prune dead registry rows and orphan index dirs at start`.
+- [x] Test passes by exact name.
+- [x] Sweep runs once per service start, off the request path, and never blocks bind or the first request.
+- [x] Commit: `feat(service): prune dead registry rows and orphan index dirs at start` (964d14dc).
 
 ---
 
 ## Task 7: Gates, live restart check, finding, ledger
 
 **Files:**
-- Create: `docs/findings/2026-09-1X-index-hygiene.md`, `docs/plans/2026-09-11-index-hygiene-ledger.md`.
+- Create: `docs/findings/2026-09-11-index-hygiene.md`, `docs/plans/2026-09-11-index-hygiene-ledger.md`.
 
 **Contract inputs:** design "Verification".
 **File ownership:** as listed.
@@ -237,6 +237,6 @@ Commit mode for every task: `serial-worker-commit`.
 4. Ledger with every row.
 
 **Acceptance criteria:**
-- [ ] All gates pass; registry and index evidence unchanged across `dev` and `full`.
-- [ ] Two restarts change nothing on disk.
-- [ ] Commit: `docs(service): index hygiene gate finding and ledger`.
+- [x] All gates pass; registry and index evidence unchanged across `dev` and `full`.
+- [x] Two restarts change nothing on disk (restarts 2 and 3 on 84c75ba5; restart 1 rebuilt the indexes the pre-Task-5 test pollution had deleted).
+- [x] Commit: `docs(service): index hygiene gate finding and ledger`.
