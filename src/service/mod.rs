@@ -112,7 +112,11 @@ impl ServiceApp {
             async move { shutdown.cancelled().await }
         });
         let result = tokio::select! { r = server => r.map_err(anyhow::Error::from), _ = idle_watch => Ok(()) };
-        discovery::remove_record(&self.config.registry_paths)?;
+        let owned = discovery::read_record(&self.config.registry_paths)?
+            .is_some_and(|r| r.pid == std::process::id());
+        if owned {
+            discovery::remove_record(&self.config.registry_paths)?;
+        }
         result
     }
 }

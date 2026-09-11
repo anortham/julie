@@ -113,11 +113,11 @@ async fn run_service_command(args: &julie::cli::ServiceArgs) -> anyhow::Result<(
             if let Ok(Some(record)) = julie::service::discovery::read_record(&paths) {
                 let client = julie::service::client::ServiceClient::from_record(&record);
                 let _ = client.post_shutdown().await;
-                for _ in 0..50 {
-                    if julie::service::discovery::read_record(&paths)?.is_none() {
+                for _ in 0..300 {
+                    if !julie::service::discovery::pid_alive(record.pid) {
                         break;
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
             }
             let client = julie::service::client::connect_or_start(
