@@ -83,47 +83,51 @@ Julie uses embeddings for semantic search, related symbol discovery, and intelli
 
 ## Installation
 
-### Claude Code Plugin (Recommended)
+Every install path runs the same launcher and the same machine service. The [`julie-plugin`](https://github.com/anortham/julie-plugin) repo carries the release archives, the skills, and one manifest per harness. `hooks/run.cjs` extracts the archive on first use and starts `julie-server`, which is the stdio shim that auto-starts the machine service. No Rust toolchain is required.
 
-The [`julie-plugin`](https://github.com/anortham/julie-plugin) bundles pre-built binaries, Julie skills, and the MCP server registration. No Rust toolchain required.
+| Harness | Install |
+|---------|---------|
+| **Claude Code** | `/plugin marketplace add anortham/julie-plugin` then `/plugin install julie@julie-plugin` |
+| **Codex** | `codex plugin marketplace add anortham/julie-plugin` then `codex plugin add julie@julie-plugin` |
+| **Antigravity** | `agy plugin install https://github.com/anortham/julie-plugin` |
+| **OpenCode** | Clone the plugin repo, run `node bin/install-opencode.cjs`, paste the printed `opencode.json` block |
+| **Hermes** | Clone the plugin repo, add the `mcp_servers.julie` block to `~/.hermes/config.yaml` |
+| **Cursor** | Clone the plugin repo, add the `mcpServers.julie` block to `~/.cursor/mcp.json` |
+
+### Claude Code
 
 ```bash
-# Add the plugin marketplace
 /plugin marketplace add anortham/julie-plugin
-
-# Install (user scope, available across all projects)
 /plugin install julie@julie-plugin
 ```
 
-The Claude Code plugin starts Julie automatically. Do not also run `claude mcp add` unless you are doing a manual binary install.
+The plugin registers the MCP server and the skills. Do not also run `claude mcp add`.
 
-### Codex CLI / Codex Desktop Helper
-
-Clone the plugin repo, then run the installer:
+### Codex
 
 ```bash
-git clone https://github.com/anortham/julie-plugin.git
-node julie-plugin/bin/install-codex.cjs
+codex plugin marketplace add anortham/julie-plugin
+codex plugin add julie@julie-plugin
 ```
 
-The installer adds Julie skills, hooks, and AGENTS.md guidance. It prints the exact MCP command for your checkout. The normal user-level shape is:
+The plugin carries `mcp.json`, the skills, and the hooks. Codex does not send MCP roots, so Julie uses the process cwd. If Codex Desktop starts Julie from the wrong directory, set `JULIE_WORKSPACE` in the plugin's MCP env or launch from the repo root.
+
+### Antigravity
 
 ```bash
-codex mcp add julie -- node /absolute/path/to/julie-plugin/hooks/run.cjs
+agy plugin install https://github.com/anortham/julie-plugin
 ```
 
-Codex CLI and Codex Desktop do not send MCP roots, so Julie uses the process cwd/startup hint. In normal CLI use this is the repo you launched from. If a desktop app starts Julie from the wrong directory, set `JULIE_WORKSPACE` in that app's MCP config or launch from the repo root.
+The plugin carries `plugin.json`, `mcp_config.json`, and the skills.
 
-### OpenCode Helper
-
-Clone the plugin repo, then run the installer:
+### OpenCode
 
 ```bash
 git clone https://github.com/anortham/julie-plugin.git
 node julie-plugin/bin/install-opencode.cjs
 ```
 
-The installer adds Julie skills, a precedence plugin, and AGENTS.md guidance. It prints an `opencode.json` MCP block using the plugin launcher:
+The installer adds the skills and prints this block for `~/.config/opencode/opencode.json` (global) or `<repo>/opencode.json` (project):
 
 ```json
 {
@@ -138,14 +142,32 @@ The installer adds Julie skills, a precedence plugin, and AGENTS.md guidance. It
 }
 ```
 
-Both helper installers are idempotent and support `--uninstall` for clean removal.
+OpenCode expects `command` as an array. The env key is `environment`, not `env`.
 
-### Build from Source
+### Hermes
 
-```bash
-git clone https://github.com/anortham/julie.git
-cd julie
-cargo build --release
+Clone the plugin repo, then add this block to `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  julie:
+    command: node
+    args: ["/absolute/path/to/julie-plugin/hooks/run.cjs"]
+```
+
+### Cursor
+
+Clone the plugin repo, then add this block to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project):
+
+```json
+{
+  "mcpServers": {
+    "julie": {
+      "command": "node",
+      "args": ["/absolute/path/to/julie-plugin/hooks/run.cjs"]
+    }
+  }
+}
 ```
 
 ### Optional: Web Research
@@ -155,37 +177,43 @@ To enable the `/web-research` skill for fetching and indexing web content, downl
 This is optional. All other Julie features work without it.
 
 <a id="manual-install"></a>
-### Manual MCP Install
+### Manual
 
-Use this path when you are not using the Claude Code plugin or the Codex/OpenCode helper installers.
+Use this path for any other MCP client, or when you do not want the plugin.
 
-Download a release archive for your platform from [GitHub releases](https://github.com/anortham/julie/releases), extract `julie-server`. Supported release targets are macOS Apple Silicon, macOS Intel, Linux x86_64, and Windows x86_64.
+1. Download the archive for your platform from [GitHub releases](https://github.com/anortham/julie/releases). Targets are macOS Apple Silicon, macOS Intel, Linux x86_64, and Windows x86_64.
+2. Extract it. Each archive holds `julie-server` and `julie-semantic-sidecar` side by side. Keep them together so semantic search works.
+3. Register `julie-server` with no arguments as a stdio MCP server:
 
-#### Streamable HTTP Registration (Recommended)
-
-Start the service or run any command to initialize it (`julie-server service status`). Read the port and bearer token from `~/.julie/service.json`:
-
-```bash
-# Claude Code:
-claude mcp add --transport http julie "http://127.0.0.1:<port>/mcp?token=<token>"
-
-# Codex CLI:
-codex mcp add julie --url "http://127.0.0.1:<port>/mcp?token=<token>"
-
-# Cursor (~/.cursor/mcp.json):
-# "julie": { "url": "http://127.0.0.1:<port>/mcp?token=<token>" }
+```json
+{
+  "mcpServers": {
+    "julie": {
+      "type": "stdio",
+      "command": "/absolute/path/to/julie-server",
+      "args": [],
+      "env": {
+        "JULIE_WORKSPACE": "/absolute/path/to/your/project"
+      }
+    }
+  }
+}
 ```
 
-#### Stdio Shim Fallback
-
-For MCP clients that launch servers as subprocesses via stdio, configure `julie-server` with no arguments. It acts as a lightweight byte-forwarding shim that automatically starts the machine service if not already running:
+4. Check the service:
 
 ```bash
-# Claude Code:
-claude mcp add julie /absolute/path/to/julie-server
+julie-server service status
+```
 
-# Codex CLI:
-codex mcp add julie -- /absolute/path/to/julie-server
+`julie-server` with no arguments is a byte-forwarding shim. It starts the machine service if it is not running. On Windows, use backslashes in the command path: `"command": "C:\\path\\to\\julie-server.exe"`.
+
+To build from source instead of downloading:
+
+```bash
+git clone https://github.com/anortham/julie.git
+cd julie
+cargo build --release
 ```
 
 **Client workspace-resolution support:**
@@ -200,96 +228,6 @@ codex mcp add julie -- /absolute/path/to/julie-server
 | Cursor / Windsurf / others | Varies | Safe default: set it |
 
 Julie prefers client roots when the startup hint is weak (`cwd`). Explicit CLI `--workspace` or `JULIE_WORKSPACE` always wins regardless of client support.
-
-**Claude Code** (user-level, available in all projects):
-
-```bash
-claude mcp add --scope user julie -- /path/to/julie-server
-```
-
-Or edit `~/.claude.json` directly for more control (e.g., env vars, model override):
-
-```json
-{
-  "mcpServers": {
-    "julie": {
-      "type": "stdio",
-      "command": "/path/to/julie-server",
-      "args": [],
-      "env": {
-        "JULIE_WORKSPACE": "/path/to/your/project"
-      }
-    }
-  }
-}
-```
-
-For project-level only, use `--scope project` or omit the scope flag. When using `claude mcp add`, Julie uses the current directory as the workspace root — `JULIE_WORKSPACE` is only needed if you want to override that.
-
-**VS Code with GitHub Copilot** (`.vscode/mcp.json`):
-
-```json
-{
-  "servers": {
-    "julie": {
-      "type": "stdio",
-      "command": "/path/to/julie/target/release/julie-server"
-    }
-  }
-}
-```
-
-> VS Code's MCP client sends workspace folders as [MCP roots](https://modelcontextprotocol.io/specification/server/utilities/roots), so Julie resolves the project root automatically on the first tool call. No `JULIE_WORKSPACE` env is needed — set one only to override VS Code's open folder.
->
-> **Windows?** Use backslashes in the command path: `"command": "C:\\path\\to\\julie-server.exe"`
->
-> All `env` values are optional — see the [env options table](#available-env-options) below for defaults.
-
-**Codex CLI / Codex Desktop** (`~/.codex/config.toml`):
-
-```toml
-[mcp_servers.julie]
-command = "/path/to/julie-server"
-```
-
-> Prefer `codex mcp add julie -- /path/to/julie-server` for manual registration. When using the plugin launcher, use `codex mcp add julie -- node /absolute/path/to/julie-plugin/hooks/run.cjs`.
-
-**OpenCode** (`~/.config/opencode/opencode.json` for global, or `<repo>/opencode.json` for project):
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "julie": {
-      "type": "local",
-      "command": ["/path/to/julie-server"],
-      "enabled": true,
-      "environment": {
-        "JULIE_WORKSPACE": "/absolute/path/to/your/project"
-      }
-    }
-  }
-}
-```
-
-> OpenCode expects `command` as an **array** and the env key is `environment` (not `env`). `JULIE_WORKSPACE` is optional when OpenCode starts from the repo root; set it when OpenCode launches Julie from an unreliable cwd. The [`julie-plugin`](https://github.com/anortham/julie-plugin) installer (`node bin/install-opencode.cjs`) wires up skills, the precedence plugin, and AGENTS.md but leaves this MCP block to you.
-
-**Cursor / Windsurf / Other MCP Clients:**
-
-```json
-{
-  "mcpServers": {
-    "julie": {
-      "command": "/path/to/julie-server",
-      "env": {
-        "JULIE_WORKSPACE": "/path/to/your/project"
-      }
-    }
-  }
-}
-```
-
-All `env` values are optional — see the table below for defaults.
 
 <a id="available-env-options"></a>
 **Available env options:**
@@ -476,22 +414,21 @@ Web research applies Julie's token-efficiency model to web content. Instead of d
 
 ### Installing Skills
 
-Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harnesses now support the same skill format — just copy the skill directories to the right location:
+Skills ship as `SKILL.md` files in `.claude/skills/`. Claude Code, Codex, and Antigravity get the skills from the plugin install. OpenCode gets them from `node bin/install-opencode.cjs` in the plugin clone. Other harnesses read the same `SKILL.md` format from their own directory:
 
 | Harness | Skills Directory | Notes |
 |---------|-----------------|-------|
-| **Claude Code** | `.claude/skills/` | Works automatically — skills are already here |
-| **VS Code / GitHub Copilot** | `.claude/skills/` or `.github/skills/` | Reads `.claude/skills/` natively — no copying needed |
-| **Gemini CLI** | `.gemini/skills/` or `.agents/skills/` | Copy skill directories; same `SKILL.md` format |
-| **Windsurf** | `.windsurf/skills/` | Copy skill directories to `.windsurf/skills/` |
+| **Claude Code** | `.claude/skills/` | Installed by the plugin |
+| **Codex** | `~/.codex/skills/` or `.agents/skills/` | Installed by the plugin |
+| **Antigravity** | `~/.gemini/antigravity-cli/plugins/julie/skills/` | Installed by the plugin |
+| **OpenCode** | `~/.config/opencode/skills/` or `.opencode/skills/` | Run `node bin/install-opencode.cjs` from the plugin clone |
+| **VS Code / GitHub Copilot** | `.claude/skills/` or `.github/skills/` | Reads `.claude/skills/` natively when the julie repo is cloned |
+| **Gemini CLI** | `.gemini/skills/` or `.agents/skills/` | Copy skill directories |
+| **Windsurf** | `.windsurf/skills/` | Copy skill directories |
 | **Cursor** | `.cursor/rules/` | Copy `SKILL.md` content into `.mdc` files in the rules directory |
-| **Codex CLI** | `~/.codex/skills/` or `.agents/skills/` | Copy skill directories, or use `node bin/install-codex.cjs` from `julie-plugin` |
-| **OpenCode** | `~/.config/opencode/skills/` or `.opencode/skills/` | Auto-discovered (also reads `~/.claude/skills/` natively); use `node bin/install-opencode.cjs` from `julie-plugin` for symlinks + precedence plugin |
-
-**For harnesses that read `.claude/skills/` natively** (Claude Code, VS Code/Copilot): skills work out of the box when Julie's repo is cloned.
+| **Hermes** | `~/.hermes/skills/` | Copy skill directories |
 
 **For other harnesses:** copy `.claude/skills/*/` directories to the harness-specific skills directory listed above. Each skill is a self-contained directory with a `SKILL.md` file.
-
 ## Architecture
 
 - **Tree-sitter parsers** for accurate symbol extraction across all languages
@@ -547,6 +484,7 @@ Every tool is directly accessible as a named subcommand (with ergonomic aliases)
 ```bash
 # Search & Navigation
 julie-server fast-search "query" --workspace . --standalone --json       # alias: search
+julie-server search "TODO" --regions comment,doc_comment --json                   # content hits in comments only
 julie-server fast-refs "SymbolName" --workspace . --standalone --json     # alias: refs
 julie-server get-symbols --file src/lib.rs --workspace . --json          # alias: symbols
 julie-server get-context --concept "authentication" --workspace . --json   # alias: context
@@ -573,6 +511,9 @@ Invoke any tool dynamically with structured JSON parameters. Parameter sources (
 # Inline JSON params
 julie-server tool fast_search --params '{"query":"UserSession","limit":5}' --workspace . --json
 
+# Trace one call path with JSON params
+julie-server tool call_path --params '{"from":"...","to":"..."}' --json
+
 # File-based params (ideal for multi-line edits or complex AST payloads)
 julie-server tool edit_file --params-file edit_req.json --json
 
@@ -580,6 +521,7 @@ julie-server tool edit_file --params-file edit_req.json --json
 cat edit_req.json | julie-server tool edit_file --params-stdin --json
 ```
 
+The `julie-server extract` subcommand is documented in [External Extract](#external-extract-host-integration).
 ### Zero-Warmup Discovery (`tools list` & `tools schema`)
 
 Instant catalog inspection answering in <15ms without starting file watchers, compiling indexes, or warming embedding models:

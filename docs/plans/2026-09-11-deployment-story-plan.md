@@ -182,10 +182,10 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 6, 7, 8 run under `seria
 **Approach:** Web-verify each harness block before writing it (design doc lists what was verified; re-check the commands: `codex plugin marketplace add`, `codex plugin add`, `agy plugin install`, OpenCode `mcp.<name>` local shape, Hermes `mcp_servers.<name>`, Cursor `mcpServers.<name>`), and put the URLs in the worker report. Config blocks use `/absolute/path/to/julie-plugin/hooks/run.cjs`. Keep the README's `## Retired` section and everything outside the three ranges untouched.
 
 **Acceptance criteria:**
-- [ ] README Installation lists exactly the six harnesses plus Manual, with no `http://127.0.0.1` text and no `install-codex`.
-- [ ] `cargo nextest run -p xtask docs_contract_tests_agent_docs_and_readme_list_the_three_tiers` and `cargo nextest run -p xtask docs_contract_tests_extractor_enrichment_surfaces_are_documented` pass.
-- [ ] The worker report lists one doc URL per harness block.
-- [ ] Worker-scope verification passes and the change is handed to the lead per commit mode.
+- [x] README Installation lists exactly the six harnesses plus Manual, with no `http://127.0.0.1` text and no `install-codex`.
+- [x] `cargo nextest run -p xtask docs_contract_tests_agent_docs_and_readme_list_the_three_tiers` and `cargo nextest run -p xtask docs_contract_tests_extractor_enrichment_surfaces_are_documented` pass.
+- [x] The worker report lists one doc URL per harness block.
+- [x] Worker-scope verification passes and the change is handed to the lead per commit mode.
 
 ### Task 5: Plugin repo, one manifest per harness
 
