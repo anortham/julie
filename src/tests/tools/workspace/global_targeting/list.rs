@@ -239,3 +239,53 @@ async fn test_manage_workspace_list_uses_session_primary_binding_for_current_lab
         "legacy workspace_id should no longer drive CURRENT labeling: {text}"
     );
 }
+
+#[tokio::test]
+#[serial_test::serial(julie_home_env, home_env)]
+async fn list_sweep_with_a_temp_registry_deletes_nothing_outside_its_home() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+
+    let other_home = temp_dir.path().join("other-julie-home");
+    let decoy_dir = other_home.join("indexes").join("decoy_deadbeef");
+    fs::create_dir_all(&decoy_dir).unwrap();
+    let decoy_facts = decoy_dir.join("facts.sqlite");
+    fs::write(&decoy_facts, b"decoy").unwrap();
+
+    let _home_guard =
+        crate::tests::registry::paths::with_env("JULIE_HOME", other_home.to_str().unwrap());
+
+    let primary_root = temp_dir.path().join("primary");
+    fs::create_dir_all(&primary_root).unwrap();
+    fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+
+    let handler = JulieServerHandler::new_deferred_daemon_startup_hint_without_project_log(
+        crate::workspace::startup_hint::WorkspaceStartupHint {
+            path: primary_root.canonicalize().unwrap(),
+            source: Some(crate::workspace::startup_hint::WorkspaceStartupSource::Cli),
+        },
+        Some(Arc::clone(&daemon_db)),
+        None,
+    )
+    .await
+    .expect("handler should initialize");
+
+    ManageWorkspaceTool {
+        operation: "list".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .expect("list should succeed");
+
+    assert!(
+        decoy_facts.exists(),
+        "a temp registry must not sweep {}",
+        decoy_facts.display()
+    );
+}

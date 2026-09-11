@@ -5,21 +5,6 @@ use serial_test::serial;
 #[serial(home_env)]
 async fn test_remove_workspace_uses_global_index_dir_shape() {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let fake_home = tempfile::TempDir::new().unwrap();
-
-    let original_home = std::env::var("HOME").ok();
-    #[cfg(windows)]
-    let original_userprofile = std::env::var("USERPROFILE").ok();
-
-    unsafe {
-        std::env::set_var("HOME", fake_home.path());
-        #[cfg(windows)]
-        std::env::set_var("USERPROFILE", fake_home.path());
-    }
-
-    let daemon_paths = RegistryPaths::new();
-    let indexes_dir = daemon_paths.indexes_dir();
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
     let target_root = temp_dir.path().join("target");
@@ -29,6 +14,7 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    fs::create_dir_all(daemon_db.indexes_dir()).unwrap();
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
@@ -59,7 +45,7 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
         .upsert_workspace(&target_id, &target_path_str, "ready")
         .unwrap();
 
-    let global_index_dir = daemon_paths.workspace_index_dir(&target_id);
+    let global_index_dir = daemon_db.indexes_dir().join(&target_id);
     fs::create_dir_all(global_index_dir.join("db")).unwrap();
     fs::write(global_index_dir.join("db").join("symbols.db"), "target-db").unwrap();
 
@@ -86,7 +72,7 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
     );
     assert!(
         !global_index_dir.exists(),
-        "remove should delete the global daemon index directory shape"
+        "remove should delete the index directory that belongs to its registry database"
     );
     let cleanup_events = daemon_db.list_cleanup_events(10).unwrap();
     assert!(
@@ -99,49 +85,19 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
         legacy_nested_dir.exists(),
         "remove should no longer target the old nested-under-primary layout"
     );
-
-    unsafe {
-        if let Some(val) = original_home {
-            std::env::set_var("HOME", val);
-        } else {
-            std::env::remove_var("HOME");
-        }
-        #[cfg(windows)]
-        {
-            if let Some(val) = original_userprofile {
-                std::env::set_var("USERPROFILE", val);
-            } else {
-                std::env::remove_var("USERPROFILE");
-            }
-        }
-    }
 }
 
 #[tokio::test]
 #[serial(home_env)]
 async fn test_remove_current_primary_workspace_is_blocked_in_process() {
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let fake_home = tempfile::TempDir::new().unwrap();
-
-    let original_home = std::env::var("HOME").ok();
-    #[cfg(windows)]
-    let original_userprofile = std::env::var("USERPROFILE").ok();
-
-    unsafe {
-        std::env::set_var("HOME", fake_home.path());
-        #[cfg(windows)]
-        std::env::set_var("USERPROFILE", fake_home.path());
-    }
-
-    let daemon_paths = RegistryPaths::new();
-    let indexes_dir = daemon_paths.indexes_dir();
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
     fs::create_dir_all(&primary_root).unwrap();
     fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    fs::create_dir_all(daemon_db.indexes_dir()).unwrap();
 
     let primary_path = primary_root.canonicalize().unwrap();
     let primary_path_str = primary_path.to_string_lossy().to_string();
@@ -165,7 +121,7 @@ async fn test_remove_current_primary_workspace_is_blocked_in_process() {
     .await
     .expect("handler should initialize");
 
-    let global_index_dir = daemon_paths.workspace_index_dir(&primary_id);
+    let global_index_dir = daemon_db.indexes_dir().join(&primary_id);
     fs::create_dir_all(global_index_dir.join("db")).unwrap();
     fs::write(global_index_dir.join("db").join("symbols.db"), "primary-db").unwrap();
 
@@ -198,20 +154,4 @@ async fn test_remove_current_primary_workspace_is_blocked_in_process() {
         global_index_dir.exists(),
         "blocked remove must leave the live primary index intact"
     );
-
-    unsafe {
-        if let Some(val) = original_home {
-            std::env::set_var("HOME", val);
-        } else {
-            std::env::remove_var("HOME");
-        }
-        #[cfg(windows)]
-        {
-            if let Some(val) = original_userprofile {
-                std::env::set_var("USERPROFILE", val);
-            } else {
-                std::env::remove_var("USERPROFILE");
-            }
-        }
-    }
 }

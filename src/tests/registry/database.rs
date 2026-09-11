@@ -930,5 +930,16 @@ mod tests {
         assert_eq!(version, env!("CARGO_PKG_VERSION"));
     }
 
+    #[test]
+    fn registry_store_indexes_dir_sits_beside_its_database() {
+        let tmp = TempDir::new().unwrap();
+        let db_path = tmp.path().join("registry.db");
+        let db = std::sync::Arc::new(DaemonDatabase::open(&db_path).unwrap());
+
+        let store = crate::tools::workspace::commands::registry::registry_store_for(&db).unwrap();
+
+        assert_eq!(store.indexes_dir(), tmp.path().join("indexes"));
+    }
+
     mod workspace_status;
 }

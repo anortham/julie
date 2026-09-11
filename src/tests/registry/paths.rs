@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 /// Helper that sets the env var and returns a guard that restores the previous
 /// value on drop. Mirrors the pattern in `src/tests/registry/drain_timeout.rs`.
-fn with_env(key: &str, value: &str) -> EnvGuard {
+pub(crate) fn with_env(key: &str, value: &str) -> EnvGuard {
     let previous = std::env::var(key).ok();
     // SAFETY: single-threaded by serial attribute; no other threads read this var.
     unsafe { std::env::set_var(key, value) };
@@ -24,7 +24,7 @@ fn without_env(key: &str) -> EnvGuard {
     }
 }
 
-struct EnvGuard {
+pub(crate) struct EnvGuard {
     key: String,
     previous: Option<String>,
 }
@@ -398,5 +398,36 @@ fn test_is_any_known_julie_home_rejects_unrelated_path() {
     assert!(
         !RegistryPaths::is_any_known_julie_home(&unrelated),
         "unrelated paths must not be misidentified as Julie home",
+    );
+}
+
+#[test]
+#[serial(julie_home_env, home_env)]
+fn tests_never_see_the_real_julie_home() {
+    const HERMETIC_SUFFIX: &str = "target/test-julie-home";
+
+    let configured = std::env::var(JULIE_HOME_ENV).ok();
+    match configured.as_deref() {
+        Some(value) if !value.replace('\\', "/").ends_with(HERMETIC_SUFFIX) => {
+            eprintln!(
+                "skipped: JULIE_HOME is exported as {value}, not the hermetic {HERMETIC_SUFFIX}"
+            );
+            return;
+        }
+        _ => {}
+    }
+
+    let paths = RegistryPaths::try_new().expect("JULIE_HOME should come from .cargo/config.toml");
+    let julie_home = paths.julie_home();
+
+    assert!(
+        julie_home.ends_with(HERMETIC_SUFFIX),
+        "tests must run against {HERMETIC_SUFFIX}, got {}",
+        julie_home.display()
+    );
+    assert_ne!(
+        julie_home,
+        dirs::home_dir().unwrap().join(".julie"),
+        "tests must never resolve to the developer's real Julie home"
     );
 }

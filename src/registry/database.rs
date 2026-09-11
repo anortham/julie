@@ -24,6 +24,7 @@ pub use workspaces::{WorkspaceCleanupEventRow, WorkspaceRow};
 /// mutex themselves. The mutex is only held for the duration of each method.
 pub struct DaemonDatabase {
     conn: std::sync::Mutex<Connection>,
+    path: PathBuf,
 }
 
 impl DaemonDatabase {
@@ -56,6 +57,7 @@ impl DaemonDatabase {
 
         let db = Self {
             conn: std::sync::Mutex::new(conn),
+            path: path.to_path_buf(),
         };
 
         {
@@ -64,6 +66,19 @@ impl DaemonDatabase {
         }
 
         Ok(db)
+    }
+
+    /// Path of the SQLite file this database was opened from.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Indexes directory that belongs to this database: `<db parent>/indexes`.
+    pub fn indexes_dir(&self) -> PathBuf {
+        self.path
+            .parent()
+            .map(|p| p.join("indexes"))
+            .unwrap_or_else(|| PathBuf::from("indexes"))
     }
 
     /// Returns true if a table with the given name exists in the database.

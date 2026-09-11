@@ -15,7 +15,7 @@ use self::cleanup::WorkspaceCleanupActivity;
 pub(crate) fn registry_store_for(
     daemon_db: &Arc<DaemonDatabase>,
 ) -> Result<WorkspaceRegistryStore> {
-    let indexes_dir = crate::paths::RegistryPaths::try_new()?.indexes_dir();
+    let indexes_dir = daemon_db.indexes_dir();
 
     Ok(WorkspaceRegistryStore::new(
         Arc::clone(daemon_db),
