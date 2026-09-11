@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROUTING_BLOCK_FILE = 'julie-routing-block.md';
+const INSTRUCTIONS_FILE = 'JULIE_AGENT_INSTRUCTIONS.md';
 const MAX_STDIN_BYTES = 65536;
 
 const EVENT_CONFIG = {
@@ -17,10 +17,10 @@ function sessionHooksDisabled() {
   return flag === '0' || flag === 'false';
 }
 
-function readRoutingBlock() {
-  const blockPath = path.join(__dirname, ROUTING_BLOCK_FILE);
-  if (!fs.existsSync(blockPath)) return null;
-  const content = fs.readFileSync(blockPath, 'utf8').replaceAll('\r\n', '\n').trim();
+function readInstructions() {
+  const instructionsPath = path.join(__dirname, '..', '..', INSTRUCTIONS_FILE);
+  if (!fs.existsSync(instructionsPath)) return null;
+  const content = fs.readFileSync(instructionsPath, 'utf8').replaceAll('\r\n', '\n').trim();
   return content.length > 0 ? content : null;
 }
 
@@ -48,8 +48,8 @@ function main() {
   const config = EVENT_CONFIG[eventArg];
   if (!config) return;
 
-  const routingBlock = readRoutingBlock();
-  if (!routingBlock) return;
+  const instructions = readInstructions();
+  if (!instructions) return;
 
   readBoundedStdin();
 
@@ -57,7 +57,7 @@ function main() {
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: config.hookEventName,
-        additionalContext: routingBlock,
+        additionalContext: instructions,
       },
     }),
   );

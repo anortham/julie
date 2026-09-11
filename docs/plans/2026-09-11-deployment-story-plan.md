@@ -153,12 +153,12 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 6, 7, 8 run under `seria
 **Approach:** CLAUDE.md edits (mirror to AGENTS.md with `cp CLAUDE.md AGENTS.md`): in Dogfooding item 2 add "Standalone CLI does not prove MCP serving or handler binding. Use named wrappers such as `julie-server call-path FROM TO` for quick checks before live MCP; capture stderr `julie: mode=...` for execution-path evidence." In Plugin Distribution: the Hooks row says julie's `.claude/hooks/hooks.json` and the plugin's `hooks/hooks.json` both run a session-start hook that prints `JULIE_AGENT_INSTRUCTIONS.md`; the Agent instructions row says `JULIE_AGENT_INSTRUCTIONS.md` (mirrored by `cargo xtask sync-plugin`); "How distribution works" step 3 says skills and the instructions file; delete the sentence "cargo xtask sync-plugin reports hook divergence but does NOT auto-sync hooks (...)" and replace with "`cargo xtask sync-plugin` mirrors skills and `JULIE_AGENT_INSTRUCTIONS.md`; hooks stay separate and it reports their divergence." Check `git grep -n 'routing-block\|pretool-\|\.agents/skills'` returns only release notes, plans, memories, and findings afterwards.
 
 **Acceptance criteria:**
-- [ ] `wc -c JULIE_AGENT_INSTRUCTIONS.md` is under 2000 and the file has the `## Workflows` section.
-- [ ] `node .claude/hooks/session-start.cjs session-start < /dev/null` prints JSON whose `additionalContext` equals the trimmed instructions file.
-- [ ] `cargo nextest run --lib test_agent_instructions_recommend_standalone_for_quick_dogfood_checks` passes; `cargo nextest run -p xtask docs_contract_tests_instructions_carry_the_full_guidance` passes; the new sync-plugin tests pass.
-- [ ] `cargo xtask sync-plugin --dry-run` lists `JULIE_AGENT_INSTRUCTIONS.md`.
-- [ ] `.claude/hooks/julie-routing-block.md`, `pretool-edit.cjs`, `pretool-agent.cjs`, and `.agents/` do not exist; `cmp CLAUDE.md AGENTS.md` is silent.
-- [ ] Worker-scope verification passes and the change is handed to the lead per commit mode.
+- [x] `wc -c JULIE_AGENT_INSTRUCTIONS.md` is under 2000 and the file has the `## Workflows` section.
+- [x] `node .claude/hooks/session-start.cjs session-start < /dev/null` prints JSON whose `additionalContext` equals the trimmed instructions file.
+- [x] `cargo nextest run --lib test_agent_instructions_recommend_standalone_for_quick_dogfood_checks` passes; `cargo nextest run -p xtask docs_contract_tests_instructions_carry_the_full_guidance` passes; the new sync-plugin tests pass.
+- [x] `cargo xtask sync-plugin --dry-run` lists `JULIE_AGENT_INSTRUCTIONS.md`.
+- [x] `.claude/hooks/julie-routing-block.md`, `pretool-edit.cjs`, `pretool-agent.cjs`, and `.agents/` do not exist; `cmp CLAUDE.md AGENTS.md` is silent.
+- [x] Worker-scope verification passes and the change is handed to the lead per commit mode.
 
 ### Task 4: README install paths
 
@@ -212,11 +212,11 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 6, 7, 8 run under `seria
 **Approach:** Web-verify each manifest shape before writing it and cite the URLs in the report: Agent Plugins standard (agent-plugins.org), Codex plugin docs, Antigravity plugin docs, Claude Code plugin reference for `hooks` in `plugin.json`. Do not touch `run.cjs`. Do not commit; the lead commits in this repo too (`parallel-lead-commit`), so leave the working tree with the edits and the deletion staged with `git rm`.
 
 **Acceptance criteria:**
-- [ ] `node --test hooks/session-start.test.cjs` and `node --test hooks/installers-no-hooks.test.cjs` and `node --test hooks/run.test.cjs` pass.
-- [ ] Every JSON file in the list parses (`node -e 'JSON.parse(require("fs").readFileSync(f))'` per file) and `hooks/hooks.json` has `SessionStart` and `SubagentStart`.
-- [ ] `bin/install-codex.cjs` is deleted; README has no `uv`, no `Python`, and lists the six harnesses; CLAUDE.md records the hook reason.
-- [ ] The worker report lists one doc URL per manifest.
-- [ ] Worker-scope verification passes and the change is handed to the lead per commit mode.
+- [x] `node --test hooks/session-start.test.cjs` and `node --test hooks/installers-no-hooks.test.cjs` and `node --test hooks/run.test.cjs` pass.
+- [x] Every JSON file in the list parses (`node -e 'JSON.parse(require("fs").readFileSync(f))'` per file) and `hooks/hooks.json` has `SessionStart` and `SubagentStart`.
+- [x] `bin/install-codex.cjs` is deleted; README has no `uv`, no `Python`, and lists the six harnesses; CLAUDE.md records the hook reason.
+- [x] The worker report lists one doc URL per manifest.
+- [x] Worker-scope verification passes and the change is handed to the lead per commit mode.
 
 ### Task 6: Local end-to-end through run.cjs
 

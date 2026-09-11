@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
+const INSTRUCTIONS_FILE: &str = "JULIE_AGENT_INSTRUCTIONS.md";
+
 pub fn default_plugin_root(workspace_root: &Path) -> PathBuf {
     workspace_root
         .parent()
@@ -22,6 +24,8 @@ pub fn run_sync_plugin(
     let plugin_skills = plugin_root.join("skills");
     let source_hooks = workspace_root.join(".claude").join("hooks");
     let plugin_hooks = plugin_root.join("hooks");
+    let source_instructions = workspace_root.join(INSTRUCTIONS_FILE);
+    let plugin_instructions = plugin_root.join(INSTRUCTIONS_FILE);
 
     for (label, path) in [
         ("source skills", &source_skills),
@@ -32,6 +36,12 @@ pub fn run_sync_plugin(
         if !path.is_dir() {
             bail!("{label} dir not found: {}", path.display());
         }
+    }
+    if !source_instructions.is_file() {
+        bail!(
+            "source instructions not found: {}",
+            source_instructions.display()
+        );
     }
 
     writeln!(
@@ -48,14 +58,26 @@ pub fn run_sync_plugin(
     };
 
     sync_skills(&source_skills, &plugin_skills, dry_run, out, &mut report)?;
+    sync_instructions(
+        &source_instructions,
+        &plugin_instructions,
+        dry_run,
+        out,
+        &mut report,
+    )?;
     diff_hooks(&source_hooks, &plugin_hooks, out, &mut report)?;
 
     writeln!(
         out,
-        "\nsummary: skills {} updated, {} unchanged, {} removed; hooks divergent (report-only): {} differ, {} source-only, {} plugin-only",
+        "\nsummary: skills {} updated, {} unchanged, {} removed; instructions {}; hooks divergent (report-only): {} differ, {} source-only, {} plugin-only",
         report.skills_updated.len(),
         report.skills_unchanged.len(),
         report.skills_removed.len(),
+        if report.instructions_updated {
+            "updated"
+        } else {
+            "unchanged"
+        },
         report.hooks_differ.len(),
         report.hooks_source_only.len(),
         report.hooks_plugin_only.len(),
@@ -70,10 +92,32 @@ pub struct SyncReport {
     pub skills_updated: Vec<PathBuf>,
     pub skills_unchanged: Vec<PathBuf>,
     pub skills_removed: Vec<PathBuf>,
+    pub instructions_updated: bool,
     pub hooks_differ: Vec<PathBuf>,
     pub hooks_identical: Vec<PathBuf>,
     pub hooks_source_only: Vec<PathBuf>,
     pub hooks_plugin_only: Vec<PathBuf>,
+}
+
+fn sync_instructions(
+    src: &Path,
+    dst: &Path,
+    dry_run: bool,
+    out: &mut impl Write,
+    report: &mut SyncReport,
+) -> Result<()> {
+    writeln!(out, "\n[instructions] source → plugin")?;
+    if files_equal(src, dst)? {
+        writeln!(out, "  = {INSTRUCTIONS_FILE}")?;
+        return Ok(());
+    }
+    if !dry_run {
+        fs::copy(src, dst)
+            .with_context(|| format!("copy {} → {}", src.display(), dst.display()))?;
+    }
+    writeln!(out, "  → {INSTRUCTIONS_FILE}")?;
+    report.instructions_updated = true;
+    Ok(())
 }
 
 fn sync_skills(
@@ -278,6 +322,15 @@ mod tests {
             "source-explore",
         );
 
+        write(
+            &workspace.join("JULIE_AGENT_INSTRUCTIONS.md"),
+            "source-instructions-v2",
+        );
+        write(
+            &plugin.join("JULIE_AGENT_INSTRUCTIONS.md"),
+            "plugin-instructions-v1-old",
+        );
+
         // Source hooks
         write(
             &workspace.join(".claude/hooks/hooks.json"),
@@ -355,6 +408,33 @@ mod tests {
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .collect();
         assert_eq!(removed_paths, vec!["editing/stale.md".to_string()]);
+    }
+
+    #[test]
+    fn sync_plugin_tests_instructions_mirror_source_to_plugin() {
+        let (_tmp, workspace, plugin) = make_layout();
+        let mut buf = Vec::new();
+        let report = run_sync_plugin(&workspace, &plugin, false, &mut buf).unwrap();
+
+        let mirrored = fs::read_to_string(plugin.join("JULIE_AGENT_INSTRUCTIONS.md")).unwrap();
+        assert_eq!(mirrored, "source-instructions-v2");
+        assert!(report.instructions_updated);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(output.contains("JULIE_AGENT_INSTRUCTIONS.md"));
+        assert!(output.contains("instructions updated"));
+    }
+
+    #[test]
+    fn sync_plugin_tests_instructions_dry_run_leaves_plugin_unchanged() {
+        let (_tmp, workspace, plugin) = make_layout();
+        let mut buf = Vec::new();
+        let report = run_sync_plugin(&workspace, &plugin, true, &mut buf).unwrap();
+
+        let untouched = fs::read_to_string(plugin.join("JULIE_AGENT_INSTRUCTIONS.md")).unwrap();
+        assert_eq!(untouched, "plugin-instructions-v1-old");
+        assert!(report.instructions_updated);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(output.contains("JULIE_AGENT_INSTRUCTIONS.md"));
     }
 
     #[test]

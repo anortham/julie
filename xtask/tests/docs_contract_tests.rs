@@ -171,8 +171,8 @@ fn docs_contract_tests_agent_instructions_fit_the_server_instruction_budget() {
     let instructions = read_repo_file("JULIE_AGENT_INSTRUCTIONS.md");
     let count = instructions.chars().count();
     assert!(
-        count <= 1900,
-        "JULIE_AGENT_INSTRUCTIONS.md is {count} characters; the ceiling is 1900"
+        count <= 2000,
+        "JULIE_AGENT_INSTRUCTIONS.md is {count} characters; the ceiling is 2000"
     );
     for name in [
         "fast_search",
@@ -198,13 +198,14 @@ fn docs_contract_tests_agent_instructions_fit_the_server_instruction_budget() {
 }
 
 #[test]
-fn docs_contract_tests_routing_block_carries_the_full_guidance() {
-    let block = read_repo_file(".claude/hooks/julie-routing-block.md");
+fn docs_contract_tests_instructions_carry_the_full_guidance() {
+    let instructions = read_repo_file("JULIE_AGENT_INSTRUCTIONS.md");
     assert!(
-        block.len() <= 4000,
-        "routing block is {} bytes; the ceiling is 4000",
-        block.len()
+        instructions.len() < 2000,
+        "instructions are {} bytes; the ceiling is 2000",
+        instructions.len()
     );
+    assert!(instructions.contains("## Workflows"));
     for name in [
         "fast_search",
         "get_symbols",
@@ -219,7 +220,10 @@ fn docs_contract_tests_routing_block_carries_the_full_guidance() {
         "offset",
         "dry_run",
     ] {
-        assert!(block.contains(name), "routing block must mention {name}");
+        assert!(
+            instructions.contains(name),
+            "instructions must mention {name}"
+        );
     }
     let hooks: serde_json::Value =
         serde_json::from_str(&read_repo_file(".claude/hooks/hooks.json")).unwrap();

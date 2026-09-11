@@ -234,6 +234,7 @@ builds after `cargo clean`.
    - Strict semantic verification: add `--semantics required` to verify vector health (fails with exit code 4 if vectors are missing, stale, or incompatible)
    - Predictable exit codes: 0 = ok, 2 = arg error, 3 = tool error, 4 = semantics not ready, 124 = timeout, 130 = cancel
    - Clean stdout discipline: stdout is strictly JSON envelopes when `--json` is passed; all diagnostics and tracing go to stderr
+   - Standalone CLI does not prove MCP serving or handler binding. Use named wrappers such as `julie-server call-path FROM TO` for quick checks before live MCP; capture stderr `julie: mode=...` for execution-path evidence.
 3. **Live MCP Testing**: When ready to test the full MCP integration:
    - Agent asks user to exit Claude Code
    - User runs: `cargo build --release`
@@ -399,17 +400,17 @@ Julie is distributed as a Claude Code plugin via a separate repo: `~/source/juli
 | Content | Source (julie) | Distribution (julie-plugin) |
 |---------|---------------|---------------------------|
 | Skills | `.claude/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` |
-| Hooks | `.claude/hooks/hooks.json` (dev-only) | `hooks/hooks.json` (distributed) |
+| Hooks | `.claude/hooks/hooks.json` (dev-only); its session-start hook prints `JULIE_AGENT_INSTRUCTIONS.md` | `hooks/hooks.json` (distributed); its session-start hook prints the same file |
 | Binaries | `cargo build --release` | `bin/archives/*.tar.gz\|*.zip` |
 | MCP server | `src/` (Rust source) | `hooks/run.cjs` (launch script) |
-| Agent instructions | `JULIE_AGENT_INSTRUCTIONS.md` | `hooks/session-start.cjs` (injected at startup) |
+| Agent instructions | `JULIE_AGENT_INSTRUCTIONS.md` | `JULIE_AGENT_INSTRUCTIONS.md` (mirrored by `cargo xtask sync-plugin`) |
 
 ### How distribution works
 
 On release, a GitHub Actions workflow in julie-plugin (`update-binaries.yml`):
 1. Downloads release binaries from `anortham/julie` 
 2. Clones the julie repo at the release tag
-3. Copies skills from `.claude/skills/` (hardcoded list in the workflow)
+3. Copies skills from `.claude/skills/` (hardcoded list in the workflow) and `JULIE_AGENT_INSTRUCTIONS.md`
 4. Updates version in `plugin.json`, `package.json`, `marketplace.json`
 5. Commits and tags
 
@@ -417,7 +418,7 @@ On release, a GitHub Actions workflow in julie-plugin (`update-binaries.yml`):
 
 **Adding a new skill:**
 1. Create `.claude/skills/<name>/SKILL.md` here in julie
-2. Run `cargo xtask sync-plugin` to mirror skills source → plugin (full mirror; removes plugin-only skill files). `--dry-run` previews changes.
+2. Run `cargo xtask sync-plugin` to mirror skills and `JULIE_AGENT_INSTRUCTIONS.md` source → plugin (full skill mirror; removes plugin-only skill files). `--dry-run` previews changes.
 3. Add `<name>` to the `for skill in ...` list in `julie-plugin/.github/workflows/update-binaries.yml`
 4. Update the skill count check in the same workflow
 
@@ -425,11 +426,11 @@ On release, a GitHub Actions workflow in julie-plugin (`update-binaries.yml`):
 - `.claude/hooks/hooks.json` in julie is dev-only (applies when working IN the julie repo)
 - `hooks/hooks.json` in julie-plugin is what gets distributed to users
 - These are intentionally separate; edit the plugin repo's copy for distribution changes
-- `cargo xtask sync-plugin` reports hook divergence but does NOT auto-sync hooks (plugin uses `${CLAUDE_PLUGIN_ROOT}` paths and a plugin-only `lib/` that don't apply in source dev mode)
+- `cargo xtask sync-plugin` mirrors skills and `JULIE_AGENT_INSTRUCTIONS.md`; hooks stay separate and it reports their divergence.
 
 **Modifying agent instructions:**
 - Edit `JULIE_AGENT_INSTRUCTIONS.md` here in julie (source of truth)
-- The plugin's `hooks/session-start.cjs` reads and injects this content at session startup
+- `cargo xtask sync-plugin` mirrors it to the plugin; both session-start hooks print it at session startup
 
 **Adding a new MCP tool:**
 1. Implement in `src/tools/` and register in `src/handler.rs`
