@@ -1,25 +1,20 @@
 #[cfg(windows)]
 use std::ffi::OsString;
 use std::io;
-use std::process::{Command, ExitStatus};
+use std::process::Command;
 
 #[cfg(windows)]
 use std::path::{Path, PathBuf};
 
-pub fn cargo_status(args: &[&str]) -> io::Result<ExitStatus> {
-    let mut command = program_command("cargo");
-    command.args(args).status()
-}
-
 #[cfg(not(windows))]
-pub fn manifest_command(command: &str) -> io::Result<Command> {
+pub fn shell_command(command: &str) -> io::Result<Command> {
     let mut shell = Command::new("sh");
     shell.arg("-c").arg(command);
     Ok(shell)
 }
 
 #[cfg(windows)]
-pub fn manifest_command(command: &str) -> io::Result<Command> {
+pub fn shell_command(command: &str) -> io::Result<Command> {
     let parts = split_command(command)?;
     let Some((program, args)) = parts.split_first() else {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty command"));
@@ -76,11 +71,6 @@ fn split_command(command: &str) -> io::Result<Vec<String>> {
     }
 
     Ok(parts)
-}
-
-#[cfg(not(windows))]
-fn program_command(program: &str) -> Command {
-    Command::new(program)
 }
 
 #[cfg(windows)]
@@ -140,11 +130,11 @@ fn executable_extensions(program: &str) -> Vec<String> {
 
 #[cfg(all(test, windows))]
 mod tests {
-    use super::manifest_command;
+    use super::shell_command;
 
     #[test]
-    fn process_tests_manifest_command_preserves_quoted_filter_expression() {
-        let command = manifest_command(
+    fn process_tests_shell_command_preserves_quoted_filter_expression() {
+        let command = shell_command(
             "cargo nextest run -p julie-extractors -E 'test(golden) | test(capability_matrix)'",
         )
         .expect("parse command");
