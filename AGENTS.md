@@ -531,4 +531,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-09-10 | **Status:** Phase 2 machine service (one writer per checkout)
+**Last Updated:** 2026-09-11 | **Status:** Phase 6a (compact output, paging, guidance hook)

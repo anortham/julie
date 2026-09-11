@@ -412,6 +412,8 @@ Each phase becomes one implementation plan after this design is approved.
 5. **Edit and content.** `edit` and `content` on the new engine, per-path in-process mutex.
 6. **Contract and guidance.** Miller tool names, compact output, hooks, skills, merged benchmark
    harness. Head-to-head run against Miller.
+   *Landed (6a):* commits `d5c82b14..3d218f4c` plus the Task 7 docs commit on branch `contract`: compact output and offset paging, instructions under 1,900 characters plus session hook, `rewrite_symbol` and `rename_symbol` deleted, `blast_radius` git-diff seeding, head-to-head retrieval matrix.
+   *Deferred (6b):* Miller names, inspect and trace folds, telemetry rename; decision after two weeks of `tool_calls` data.
 7. **Continuous testing.** Section 11, as its own design review first.
 
 ## 15. Risks

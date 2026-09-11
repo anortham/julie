@@ -818,11 +818,11 @@ Expected: PASS.
 - `serial-worker-commit`: `git commit -m "docs(contract): phase 6a gate finding and verification ledger"` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] The finding and ledger exist; every ledger row names a command, scope label, SHA, result, and timestamp.
-- [ ] Net lines are negative against `5eafea53`.
-- [ ] `JULIE_AGENT_INSTRUCTIONS.md` is at most 1,900 characters and `fast` median is under 10 s.
-- [ ] The telemetry baseline table is in the finding with its date.
-- [ ] Tests pass and the change is committed by the worker per commit mode.
+- [x] The finding and ledger exist; every ledger row names a command, scope label, SHA, result, and timestamp.
+- [x] Net lines are negative against `5eafea53`.
+- [x] `JULIE_AGENT_INSTRUCTIONS.md` is at most 1,900 characters and `fast` median is under 10 s.
+- [x] The telemetry baseline table is in the finding with its date.
+- [x] Tests pass and the change is committed by the worker per commit mode.
 
 ---
 
