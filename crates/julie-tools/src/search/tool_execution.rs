@@ -207,7 +207,40 @@ impl FastSearchTool {
             });
         }
 
-        if !has_exact_name_match && !symbol_backend_active {
+        let has_definition_exact_match = execution.hits.iter().any(|hit| {
+            let Some(symbol) = hit.as_symbol() else {
+                return false;
+            };
+            formatting::is_definition_name_match(&symbol.name, &query_lower)
+                && !matches!(
+                    hit.kind.as_str(),
+                    "variable" | "constant" | "field" | "property" | "parameter"
+                )
+        });
+        if format == "compact"
+            && line_enrichment::should_try_line_mode_locations(
+                self,
+                &execution,
+                has_definition_exact_match,
+                symbol_backend_active,
+            )
+        {
+            match line_enrichment::try_line_mode_locations(
+                self,
+                handler,
+                &workspace_target,
+                &snapshot,
+                &mut execution,
+            )
+            .await
+            {
+                Ok(Some(_)) => {}
+                Ok(None) => {}
+                Err(err) => execution
+                    .trace
+                    .record_line_enrichment_failed(err.to_string()),
+            }
+        } else if !has_exact_name_match && !symbol_backend_active {
             if let Err(err) =
                 line_enrichment::try_enrich_with_line_mode_snippets(self, &snapshot, &mut execution)
                     .await

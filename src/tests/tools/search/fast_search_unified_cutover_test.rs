@@ -73,12 +73,24 @@ async fn mixed_kinds() -> Result<()> {
         kinds
     );
 
-    // At least one file-kind hit must be present (browser_client.rs basename match).
+    // File rows that share a path with symbols are collapsed.
     let has_file_hit = execution.hits.iter().any(|h| h.kind == "file");
     assert!(
-        has_file_hit,
-        "expected at least one file-kind hit for browser_client.rs, got kinds: {:?}",
+        !has_file_hit,
+        "covered file-kind hits should be collapsed when symbols exist, got kinds: {:?}",
         kinds
+    );
+    assert!(
+        execution
+            .hits
+            .iter()
+            .any(|h| h.file.contains("browser_client.rs")),
+        "expected a hit in browser_client.rs, got: {:?}",
+        execution
+            .hits
+            .iter()
+            .map(|h| h.file.as_str())
+            .collect::<Vec<_>>(),
     );
 
     Ok(())
