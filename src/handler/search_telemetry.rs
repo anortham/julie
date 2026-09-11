@@ -49,6 +49,7 @@ pub(crate) fn fast_search_metadata_with_regions(
             "scope_rescue_count": result.trace.scope_rescue_count,
             "or_disjunction_detected": result.trace.or_disjunction_detected,
             "backend_fallback": result.trace.backend_fallback,
+            "backend_auto": params.backend.is_none(),
             "region_filtered": result.trace.zero_hit_reason
                 == Some(crate::tools::search::ZeroHitReason::RegionFiltered),
             "kind_distribution": kind_distribution,

@@ -10,7 +10,7 @@
 
 ## Tools
 
-- `fast_search`: find code by text, symbol name, path fragment, or concept. `file_pattern` and `language` scope it. `backend` lexical, semantic, or hybrid. `regions` filters to `source_regions` kinds.
+- `fast_search`: find code by text, symbol name, path fragment, or concept. `file_pattern` and `language` scope it. `backend` lexical, semantic, hybrid; omitted is hybrid for prose queries. `regions` filters to `source_regions` kinds.
 - `get_symbols`: file structure without reading it. `target` plus `mode="minimal"` extracts one symbol.
 - `deep_dive`: one symbol: definition, callers, callees, children, types, `complexity_metrics`.
 - `fast_refs`: every reference to a symbol; `reference_kind` filters.

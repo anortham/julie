@@ -160,7 +160,7 @@ async fn run_search(
             limit: limit as u32,
             context_lines: None,
             exclude_tests: None,
-            backend: crate::tools::search::SearchBackend::resolve(None),
+            backend: crate::tools::search::SearchBackend::resolve(None, query),
             semantic_mode: None,
             budget: None,
         },

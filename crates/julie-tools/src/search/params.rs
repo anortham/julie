@@ -10,7 +10,7 @@ pub(crate) const MIN_LIMIT: u32 = 1;
 pub const MAX_LIMIT: u32 = 500;
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
-/// Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional backend: omitted/default lexical returns mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit "lexical" stays pure lexical; "semantic" and "hybrid" are symbol-only concept search. Use lexical for file/path queries.
+/// Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional backend: omitted backend runs hybrid symbol search for natural-language queries when embeddings are ready, else lexical mixed file+symbol hits (with labeled semantic fallback candidates on identifier-like zero-hit queries); explicit "lexical" stays pure lexical; "semantic" and "hybrid" are symbol-only concept search. Use lexical for file/path queries.
 pub struct FastSearchTool {
     /// Search query. Exact symbol names, file path fragments, and natural-language descriptions all work. Too many results? Add file_pattern or language filter. Zero lexical results may show labeled semantic fallback candidates for identifier-like queries when backend is omitted and embeddings are ready. Still zero? Run manage_workspace(operation="index")
     pub query: String,
@@ -40,7 +40,7 @@ pub struct FastSearchTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_option_bool_lenient"
     )]
     pub exclude_tests: Option<bool>,
-    /// Search backend: omitted/default lexical uses BM25/full-text mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit "lexical" stays pure lexical; "semantic" uses KNN symbol search; "hybrid" uses BM25+KNN symbol search. Semantic and hybrid are symbol-only; use lexical for file/path queries.
+    /// Search backend: omitted backend runs hybrid symbol search for natural-language queries when embeddings are ready, else lexical mixed file+symbol hits (with labeled semantic fallback candidates on identifier-like zero-hit queries); explicit "lexical" stays pure lexical; "semantic" uses KNN symbol search; "hybrid" uses BM25+KNN symbol search. Semantic and hybrid are symbol-only; use lexical for file/path queries.
     #[serde(default)]
     pub backend: Option<SearchBackend>,
     /// Workspace filter: "primary" (default) or a workspace ID

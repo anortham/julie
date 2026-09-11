@@ -16,9 +16,21 @@ pub struct ResolvedSearchBackend {
 }
 
 impl SearchBackend {
-    pub fn resolve(requested: Option<Self>) -> ResolvedSearchBackend {
+    /// True when an omitted `backend` should run hybrid symbol search: the
+    /// query reads as natural language and does not name a file or path.
+    pub fn auto_prefers_hybrid(query: &str) -> bool {
+        julie_index::search::scoring::is_nl_like_query(query)
+            && !crate::search::query::looks_like_file_or_path_query(query)
+    }
+
+    pub fn resolve(requested: Option<Self>, query: &str) -> ResolvedSearchBackend {
+        let value = match requested {
+            Some(value) => value,
+            None if Self::auto_prefers_hybrid(query) => Self::Hybrid,
+            None => Self::Lexical,
+        };
         ResolvedSearchBackend {
-            value: requested.unwrap_or(Self::Lexical),
+            value,
             explicit: requested.is_some(),
         }
     }
