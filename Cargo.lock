@@ -1694,7 +1694,7 @@ dependencies = [
 
 [[package]]
 name = "julie"
-version = "7.18.1"
+version = "8.0.0"
 dependencies = [
  "anyhow",
  "async-recursion",

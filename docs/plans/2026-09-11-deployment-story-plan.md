@@ -124,10 +124,10 @@ Commit mode: Batch A uses `parallel-lead-commit`. Tasks 6, 7, 8 run under `seria
 **Approach:** Sections: Summary; Machine service (one service per machine, stdio shim, `julie-server service status|stop|restart`, idle exit, dashboard, `$JULIE_HOME`); Semantic search by default (bundled sidecar, backfill runs in the background at about 10 vectors per second, `JULIE_EMBEDDING_PROVIDER`); Removed (the daemon, HTTP-URL registration in docs, the two edit tools deleted in phase 6a, `install-codex.cjs`); Index and registry hygiene (from `docs/findings/2026-09-11-index-hygiene*.md` if present, else the brief); Test tiers (`dev`, `dogfood`, `full`); Install (six harnesses, link to README); Upgrade notes (old `~/.julie` daemon state is ignored, first start reindexes each workspace, remove any old HTTP-URL MCP registration); Known caveats (Windows binary lock, first backfill time). Get the facts from the findings and git log, not from memory; cite the finding file per section in the worker report, not in the notes. `cargo check` after the version bump updates `Cargo.lock`; commit the lock change.
 
 **Acceptance criteria:**
-- [ ] `Cargo.toml` says `version = "8.0.0"`, `Cargo.lock` has `julie-server` at 8.0.0, `docs/site/index.html` footer says `v8.0.0`, and `/usr/bin/grep -rn '7\.18\.1' Cargo.toml docs/site` prints nothing.
-- [ ] `docs/release-notes/v8.0.0.md` exists with the sections above and names the sidecar version 0.1.0.
-- [ ] `cargo check` passes.
-- [ ] Worker-scope verification passes and the change is handed to the lead per commit mode.
+- [x] `Cargo.toml` says `version = "8.0.0"`, `Cargo.lock` has `julie-server` at 8.0.0, `docs/site/index.html` footer says `v8.0.0`, and `/usr/bin/grep -rn '7\.18\.1' Cargo.toml docs/site` prints nothing.
+- [x] `docs/release-notes/v8.0.0.md` exists with the sections above and names the sidecar version 0.1.0.
+- [x] `cargo check` passes.
+- [x] Worker-scope verification passes and the change is handed to the lead per commit mode.
 
 ### Task 3: One instructions file in julie
 
