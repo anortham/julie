@@ -5,11 +5,18 @@ pub mod mcp;
 pub mod shim;
 pub mod status;
 
+use crate::registry::database::DaemonDatabase;
 use crate::request_engine::{BindingResolver, RequestEngine, RuntimeFactory};
+use crate::tools::workspace::commands::registry::cleanup::{
+    CleanupSweepSummary, WorkspaceCleanupActivity, run_cleanup_sweep,
+};
+use crate::tools::workspace::commands::registry::registry_store_for;
 use anyhow::Context;
 use julie_core::paths::RegistryPaths;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{info, warn};
 
 pub struct ServiceConfig {
     pub idle: Option<Duration>,
@@ -88,6 +95,8 @@ impl ServiceApp {
         };
         discovery::write_record(&self.config.registry_paths, &record)?;
 
+        tokio::spawn(sweep_registry(self.config.registry_paths.clone()));
+
         let shutdown = self.state.shutdown.clone();
         let idle_watch = {
             let status = Arc::clone(&self.state.status);
@@ -119,6 +128,30 @@ impl ServiceApp {
         }
         result
     }
+}
+
+async fn sweep_registry(paths: RegistryPaths) {
+    match cleanup_sweep(&paths).await {
+        Ok(summary) => info!(
+            pruned_workspaces = summary.pruned_workspaces.len(),
+            pruned_orphan_dirs = summary.pruned_orphan_dirs.len(),
+            blocked_workspaces = summary.blocked_workspaces.len(),
+            "Cleanup sweep finished at service start"
+        ),
+        Err(error) => warn!("Cleanup sweep at service start failed: {error}"),
+    }
+}
+
+async fn cleanup_sweep(paths: &RegistryPaths) -> anyhow::Result<CleanupSweepSummary> {
+    let daemon_db = Arc::new(
+        DaemonDatabase::open(&paths.registry_db()).context("open registry database for sweep")?,
+    );
+    let registry_store = registry_store_for(&daemon_db)?;
+    run_cleanup_sweep(
+        &registry_store,
+        &WorkspaceCleanupActivity::new(HashSet::new()),
+    )
+    .await
 }
 
 pub async fn run_service(config: ServiceConfig) -> anyhow::Result<()> {
