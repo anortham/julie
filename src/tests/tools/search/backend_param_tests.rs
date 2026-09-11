@@ -515,8 +515,8 @@ async fn hybrid_backend_returns_symbol_hits_without_fallback() -> Result<()> {
 }
 
 #[test]
-fn auto_prefers_hybrid_for_nl_queries() {
-    assert!(SearchBackend::auto_prefers_hybrid(
+fn auto_prefers_semantic_for_nl_queries() {
+    assert!(SearchBackend::auto_prefers_semantic(
         "where does the app create the router"
     ));
     for query in [
@@ -527,14 +527,14 @@ fn auto_prefers_hybrid_for_nl_queries() {
         "",
     ] {
         assert!(
-            !SearchBackend::auto_prefers_hybrid(query),
+            !SearchBackend::auto_prefers_semantic(query),
             "auto must stay lexical for {query:?}"
         );
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn auto_nl_query_runs_hybrid_when_vectors_are_ready() -> Result<()> {
+async fn auto_nl_query_runs_semantic_when_vectors_are_ready() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
 
     let run = FastSearchTool {
@@ -553,11 +553,11 @@ async fn auto_nl_query_runs_hybrid_when_vectors_are_ready() -> Result<()> {
         .expect("auto backend should return execution");
     let text = extract_text(&run.result);
 
-    assert_eq!(execution.trace.strategy_id, "fast_search_hybrid");
+    assert_eq!(execution.trace.strategy_id, "fast_search_semantic");
     assert!(!execution.trace.backend_fallback);
     assert!(
-        text.contains("(hybrid)"),
-        "auto-hybrid output should be labeled hybrid, got:\n{text}"
+        text.contains("(semantic)"),
+        "auto-semantic output should be labeled semantic, got:\n{text}"
     );
 
     Ok(())
@@ -594,7 +594,7 @@ async fn auto_nl_query_stays_lexical_without_vectors() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn auto_nl_query_falls_through_to_lexical_on_zero_hybrid_hits() -> Result<()> {
+async fn auto_nl_query_falls_through_to_lexical_on_zero_semantic_hits() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
 
     let execution = FastSearchTool {
@@ -632,7 +632,7 @@ async fn auto_identifier_query_stays_lexical_with_vectors() -> Result<()> {
     .execution
     .expect("auto backend should return execution");
 
-    assert_ne!(execution.trace.strategy_id, "fast_search_hybrid");
+    assert_ne!(execution.trace.strategy_id, "fast_search_semantic");
 
     Ok(())
 }
@@ -702,7 +702,7 @@ async fn auto_nl_query_never_waits_for_embedding_provider_init() -> Result<()> {
         .execution
         .as_ref()
         .expect("auto backend should return execution");
-    assert_eq!(auto_execution.trace.strategy_id, "fast_search_hybrid");
+    assert_eq!(auto_execution.trace.strategy_id, "fast_search_semantic");
     assert_eq!(handler.ensure_embedding_provider_call_count(), 0);
 
     let explicit = FastSearchTool {

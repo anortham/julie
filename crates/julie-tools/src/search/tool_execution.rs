@@ -271,8 +271,8 @@ impl FastSearchTool {
 
         let mut output = if format == "compact" {
             let backend = self.backend.map(SearchBackend::as_str).unwrap_or(
-                if execution.trace.strategy_id == "fast_search_hybrid" {
-                    "hybrid"
+                if execution.trace.strategy_id == "fast_search_semantic" {
+                    "semantic"
                 } else {
                     "auto"
                 },
