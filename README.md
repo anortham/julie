@@ -88,8 +88,8 @@ Every install path runs the same launcher and the same machine service. The [`ju
 | Harness | Install |
 |---------|---------|
 | **Claude Code** | `/plugin marketplace add anortham/julie-plugin` then `/plugin install julie@julie-plugin` |
-| **Codex** | `codex plugin marketplace add anortham/julie-plugin` then `codex plugin add julie@julie-plugin` |
-| **Antigravity** | `agy plugin install https://github.com/anortham/julie-plugin` |
+| **Codex** | `codex plugin marketplace add anortham/julie-plugin` then `codex plugin add julie@julie-plugin` for the skills and hooks; add the `mcp_servers.julie` block to `~/.codex/config.toml` |
+| **Antigravity** | `agy plugin install https://github.com/anortham/julie-plugin` for the skills; add the `mcpServers.julie` block to `~/.gemini/config/mcp_config.json` |
 | **OpenCode** | Clone the plugin repo, run `node bin/install-opencode.cjs`, paste the printed `opencode.json` block |
 | **Hermes** | Clone the plugin repo, add the `mcp_servers.julie` block to `~/.hermes/config.yaml` |
 | **Cursor** | Clone the plugin repo, add the `mcpServers.julie` block to `~/.cursor/mcp.json` |
@@ -110,7 +110,15 @@ codex plugin marketplace add anortham/julie-plugin
 codex plugin add julie@julie-plugin
 ```
 
-The plugin carries `mcp.json`, the skills, and the hooks. Codex does not send MCP roots, so Julie uses the process cwd. If Codex Desktop starts Julie from the wrong directory, set `JULIE_WORKSPACE` in the plugin's MCP env or launch from the repo root.
+The plugin adds the skills and the session hooks. Then register the server in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.julie]
+command = "node"
+args = ["/absolute/path/to/julie-plugin/hooks/run.cjs"]
+```
+
+Use a clone of the plugin repo, or the plugin root that `codex plugin list` prints. Codex starts a plugin's MCP servers inside the plugin directory. It sends no MCP roots. A server declared by the plugin would index the plugin, not your project. A server in `config.toml` starts in the project directory.
 
 ### Antigravity
 
@@ -118,7 +126,20 @@ The plugin carries `mcp.json`, the skills, and the hooks. Codex does not send MC
 agy plugin install https://github.com/anortham/julie-plugin
 ```
 
-The plugin carries `plugin.json`, `mcp_config.json`, and the skills.
+The plugin adds the skills. Then register the server in `~/.gemini/config/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "julie": {
+      "command": "node",
+      "args": ["/absolute/path/to/julie-plugin/hooks/run.cjs"]
+    }
+  }
+}
+```
+
+Antigravity starts a plugin's MCP servers inside the plugin directory. It sends no MCP roots. A server in `mcp_config.json` starts in the project directory.
 
 ### OpenCode
 
@@ -216,25 +237,14 @@ cd julie
 cargo build --release
 ```
 
-**Client workspace-resolution support:**
-
-| Client | Sends MCP roots? | Needs `JULIE_WORKSPACE`? |
-|--------|------------------|--------------------------|
-| Claude Code | Yes (on first request) | No (uses cwd / roots) |
-| VS Code + GitHub Copilot | Yes | No |
-| Codex CLI | No — uses cwd | Only if cwd is wrong |
-| Codex Desktop | No — uses cwd/startup hint | Only if cwd is wrong |
-| OpenCode | No — uses cwd | Optional; useful for project configs |
-| Cursor / Windsurf / others | Varies | Safe default: set it |
-
-Julie prefers client roots when the startup hint is weak (`cwd`). Explicit CLI `--workspace` or `JULIE_WORKSPACE` always wins regardless of client support.
+**Workspace resolution:** the shim binds every tool call to `JULIE_WORKSPACE` when it is set, else to the directory the client started it in. Every harness above starts a server from its own config in the project directory. Set `JULIE_WORKSPACE` when a client starts Julie somewhere else. A call can also name a checkout with its `workspace` argument.
 
 <a id="available-env-options"></a>
 **Available env options:**
 
 | Variable | Values | Default | Notes |
 |----------|--------|---------|-------|
-| `JULIE_WORKSPACE` | Absolute path to project root | Client roots (if supported), else `cwd` | Overrides workspace detection. Set this when a no-roots client launches Julie from the wrong directory. |
+| `JULIE_WORKSPACE` | Absolute path to project root | The directory the client started Julie in | Overrides workspace detection. Set this when a client starts Julie from the wrong directory. |
 | `JULIE_EMBEDDING_PROVIDER` | `auto`, `native`, `none` | `auto` | Selects embedding backend. `auto` resolves to `native` when the `julie-semantic-sidecar` binary is found, else no embeddings. |
 | `JULIE_NATIVE_SIDECAR_PROGRAM` | Path to `julie-semantic-sidecar` | next to `julie-server`, then `PATH` | Explicit native sidecar binary. |
 | `JULIE_NATIVE_SIDECAR_MODEL` | Native sidecar model id | sidecar default | Native sidecar model. |

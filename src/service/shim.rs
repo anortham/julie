@@ -1,13 +1,13 @@
 use crate::service::client::{ServiceClient, connect_or_start, spawn_detached_service};
 use anyhow::Context;
 use julie_core::paths::RegistryPaths;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
-/// Fill in the `workspace` argument of a `tools/call` with the shim's working
-/// directory when the caller omitted it or asked for the primary workspace.
-/// The service is stateless, so the shim is the only place that knows which
-/// checkout the agent session runs in.
+/// Fill in the `workspace` argument of a `tools/call` with the shim's checkout
+/// (see [`shim_workspace_root`]) when the caller omitted it or asked for the
+/// primary workspace. The service is stateless, so the shim is the only place
+/// that knows which checkout the agent session runs in.
 pub struct ClientStamp {
     session: String,
     client: Option<String>,
@@ -156,12 +156,18 @@ fn last_json_event(sse: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// The checkout every unbound tool call is stamped with: `JULIE_WORKSPACE`
+/// when set, else the shim's working directory.
+pub fn shim_workspace_root() -> PathBuf {
+    crate::cli::resolve_workspace_startup_hint(None).path
+}
+
 pub async fn run_stdio_shim() -> anyhow::Result<()> {
     let paths = RegistryPaths::try_new().context("resolve Julie home")?;
     let client = connect_or_start(&paths, spawn_detached_service).await?;
     let stdin = tokio::io::BufReader::new(tokio::io::stdin());
     let stdout = tokio::io::stdout();
-    let workspace_root = std::env::current_dir().context("resolve working directory")?;
+    let workspace_root = shim_workspace_root();
     forward(
         &paths,
         &spawn_detached_service,

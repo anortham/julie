@@ -148,6 +148,15 @@ fn shim_binds_tool_calls_to_its_working_directory_unless_a_workspace_is_named() 
 }
 
 #[test]
+fn shim_workspace_root_honors_julie_workspace_env() {
+    let temp = tempfile::tempdir().unwrap();
+    unsafe { std::env::set_var("JULIE_WORKSPACE", temp.path()) };
+    let root = crate::service::shim::shim_workspace_root();
+    unsafe { std::env::remove_var("JULIE_WORKSPACE") };
+    assert_eq!(root, temp.path().canonicalize().unwrap());
+}
+
+#[test]
 fn shim_stamps_client_and_session_meta_on_tool_calls() {
     let mut stamp = crate::service::shim::ClientStamp::new("shim-1");
     let mut init = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize",
