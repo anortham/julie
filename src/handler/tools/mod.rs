@@ -3,9 +3,8 @@
 //! Each tool's `#[tool]` method lives in its own file with a dedicated
 //! `#[tool_router(router = tool_router_<name>, vis = "pub(crate)")]` impl
 //! block. The composer in `crate::handler` builds the final `ToolRouter` by
-//! adding all per-tool routers together. This split lets `xtask test changed`
-//! map a tool-only edit to a single test bucket instead of falling back to
-//! the whole dev tier.
+//! adding all per-tool routers together. The split keeps each per-tool
+//! router small and separately reviewable.
 
 pub(crate) mod blast_radius;
 pub(crate) mod call_path;

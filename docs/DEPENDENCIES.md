@@ -20,7 +20,7 @@ Required parser-change workflow:
 2. Re-pin the `julie-extractors` git-dep in julie's `Cargo.toml` to the new tag.
 3. Sync `SEMANTIC_INDEX_ENGINE_VERSION` in `src/tools/workspace/indexing/engine_version.rs` to match the tag's `EXTRACTION_CONTRACT_VERSION`.
 4. Update `docs/TREE_SITTER_UPGRADES.md` with the decision and evidence (summary of what changed upstream).
-5. Run `cargo xtask test bucket extractor-dep-integration` in this repo.
+5. Run `cargo xtask test dev` in this repo. It contains the three extractor contract tests.
 
 Git parser dependencies must be pinned with `rev`. Floating branch dependencies are not acceptable for parser infrastructure.
 

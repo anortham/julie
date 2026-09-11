@@ -650,34 +650,25 @@ Julie is built on `rmcp` 3.0.1:
 
 ### Testing
 
-Julie has a tiered xtask runner so the documented commands stay aligned with the checked-in manifest:
+Julie has three fixed test tiers. Each tier runs one `cargo nextest run --workspace` pass:
 
 ```bash
-# Default local loop from the current diff
-cargo xtask test changed
+# One exact test during the edit loop
+cargo nextest run --lib <name>
 
-# Tiny smoke pass
-cargo xtask test smoke
-
-# Batch-level regression gate
+# Batch gate: the whole workspace except the dogfood set (about 20 s warm)
 cargo xtask test dev
 
-# System / startup coverage
-cargo xtask test system
-
-# Search-quality / dogfood tier
+# Search-quality gate after search, scoring, ranking, or graph changes
 cargo xtask test dogfood
 
-# Broad branch-level pass
+# Dev, then dogfood, before merge
 cargo xtask test full
-
-# Inspect available tiers and buckets
-cargo xtask test list
 ```
 
-Use `cargo xtask test changed` for the local loop. It maps the current git diff to the smallest matching bucket set, then falls back to `dev` if shared infrastructure moved. Run `cargo xtask test dev` once per completed batch, not after every edit.
+Run `cargo nextest run --lib <name>` during the edit loop. Run `cargo xtask test dev` once per completed batch, not after every edit.
 
-Use raw `cargo test --lib <filter>` only when narrowing a failure after `changed` or an xtask tier points you at the right area. The dogfood tier is intentionally heavier because it loads the large search-quality fixture and runs real searches.
+Use raw `cargo nextest run --lib <filter>` only to narrow a failure that a tier reported. The dogfood tier is heavier because it loads the large search-quality fixture and runs real searches.
 
 All tiers are currently green. If a test fails, it is a real regression — investigate it.
 
