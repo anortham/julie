@@ -55,12 +55,11 @@ pub struct RuntimeFactory {
 
 impl RuntimeFactory {
     pub fn new(registry_paths: RegistryPaths) -> Self {
-        let semantic_runtime: Arc<dyn crate::request_engine::semantic::SemanticRuntime> =
-            Arc::new(
-                crate::request_engine::semantic::DefaultSemanticRuntime::from_registry_paths(
-                    registry_paths.clone(),
-                ),
-            );
+        let semantic_runtime: Arc<dyn crate::request_engine::semantic::SemanticRuntime> = Arc::new(
+            crate::request_engine::semantic::DefaultSemanticRuntime::from_registry_paths(
+                registry_paths.clone(),
+            ),
+        );
         Self {
             registry_paths,
             runtimes: Arc::new(RwLock::new(HashMap::new())),

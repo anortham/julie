@@ -18,7 +18,9 @@ use crate::request_engine::{
 };
 use crate::tests::helpers::env::EnvVarGuard;
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
-use julie_core::embeddings_contract::{DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity};
+use julie_core::embeddings_contract::{
+    DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
+};
 use julie_facts::{FactsStore, Opened};
 
 fn open_facts(path: &std::path::Path) -> FactsStore {
@@ -38,7 +40,8 @@ fn setup_facts_db(db_path: &std::path::Path) -> rusqlite::Connection {
     conn.execute(
         "INSERT INTO paths (path, blob_hash, language) VALUES ('src/lib.rs', 'feedbeef', 'rust')",
         [],
-    ).expect("insert path");
+    )
+    .expect("insert path");
     conn.execute(
         "INSERT INTO symbols (blob_hash, ordinal, name, kind, start_line, start_col, end_line, end_col, start_byte, end_byte, annotations)
          VALUES ('feedbeef', 0, 'probe', 'function', 1, 0, 1, 10, 0, 10, '[]')",
@@ -48,7 +51,8 @@ fn setup_facts_db(db_path: &std::path::Path) -> rusqlite::Connection {
 }
 
 fn set_facts_encoder(conn: &rusqlite::Connection, id: &str, dims: u32) {
-    conn.execute("DELETE FROM encoder", []).expect("delete encoder");
+    conn.execute("DELETE FROM encoder", [])
+        .expect("delete encoder");
     conn.execute(
         "INSERT INTO encoder (id, model_checksum, dimensions, pooling, normalization, instruction_policy)
          VALUES (?1, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', ?2, 'cls', 'l2', 'v1')",
@@ -57,7 +61,10 @@ fn set_facts_encoder(conn: &rusqlite::Connection, id: &str, dims: u32) {
 }
 
 fn insert_facts_vector(conn: &rusqlite::Connection, encoder_id: &str, dims: usize) {
-    let vec_bytes: Vec<u8> = vec![0.1_f32; dims].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let vec_bytes: Vec<u8> = vec![0.1_f32; dims]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
     conn.execute(
         "INSERT OR REPLACE INTO vectors (blob_hash, symbol_ordinal, encoder_id, vector) VALUES ('feedbeef', 0, ?1, ?2)",
         rusqlite::params![encoder_id, vec_bytes],
@@ -99,8 +106,13 @@ impl MockReadyProvider {
 }
 
 impl EmbeddingProvider for MockReadyProvider {
-    fn embed_query(&self, _text: &str, _budget: &EmbeddingRequestBudget) -> anyhow::Result<Vec<f32>> {
-        self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    fn embed_query(
+        &self,
+        _text: &str,
+        _budget: &EmbeddingRequestBudget,
+    ) -> anyhow::Result<Vec<f32>> {
+        self.call_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(vec![0.1_f32; self.dimensions])
     }
 
@@ -109,7 +121,8 @@ impl EmbeddingProvider for MockReadyProvider {
         texts: &[String],
         _budget: &EmbeddingRequestBudget,
     ) -> anyhow::Result<Vec<Vec<f32>>> {
-        self.call_count.fetch_add(texts.len(), std::sync::atomic::Ordering::SeqCst);
+        self.call_count
+            .fetch_add(texts.len(), std::sync::atomic::Ordering::SeqCst);
         Ok(vec![vec![0.1_f32; self.dimensions]; texts.len()])
     }
 
@@ -130,8 +143,6 @@ impl EmbeddingProvider for MockReadyProvider {
         }
     }
 }
-
-
 
 #[cfg(unix)]
 fn compile_mock_sidecar(dir: &std::path::Path) -> std::path::PathBuf {
@@ -321,11 +332,14 @@ async fn native_semantics_becomes_ready_without_client_restart() {
         .resolve(None, None, false)
         .unwrap()
         .expect("workspace binding resolved");
-    let db_path = binding.index_root.join(julie_index::checkout_store::FACTS_FILE);
+    let db_path = binding
+        .index_root
+        .join(julie_index::checkout_store::FACTS_FILE);
     let expected_identity = EncoderIdentity {
         schema: 1,
         model_id: "bge-small-en-v1.5-f32".to_string(),
-        weights_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+        weights_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            .to_string(),
         dimensions: 384,
         pooling: "cls".to_string(),
         normalization: "l2".to_string(),
@@ -339,7 +353,10 @@ async fn native_semantics_becomes_ready_without_client_restart() {
     let blob_hash: String = conn
         .query_row("SELECT blob_hash FROM paths LIMIT 1", [], |r| r.get(0))
         .expect("get indexed blob hash");
-    let vec_bytes: Vec<u8> = vec![0.1_f32; 384].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let vec_bytes: Vec<u8> = vec![0.1_f32; 384]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
     conn.execute(
         "INSERT OR REPLACE INTO vectors (blob_hash, symbol_ordinal, encoder_id, vector) VALUES (?1, 0, ?2, ?3)",
         rusqlite::params![blob_hash, expected_key, vec_bytes],
@@ -405,7 +422,8 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
         let expected_identity = EncoderIdentity {
             schema: 1,
             model_id: "bge-small-en-v1.5-f32".to_string(),
-            weights_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+            weights_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_string(),
             dimensions: 384,
             pooling: "cls".to_string(),
             normalization: "l2".to_string(),

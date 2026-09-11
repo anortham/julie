@@ -63,7 +63,11 @@ async fn test_tool_list_matches_public_surface() -> Result<()> {
             .all(|tool| tool.name.as_ref() != "edit_symbol"),
         "edit_symbol should not appear in the public tool list"
     );
-    assert_eq!(tools.tools.len(), 10, "public tool list must have ten tools");
+    assert_eq!(
+        tools.tools.len(),
+        10,
+        "public tool list must have ten tools"
+    );
     assert!(
         tools
             .tools

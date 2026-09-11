@@ -5,8 +5,8 @@ mod tests {
     use crate::embeddings::sidecar_protocol::{
         DeviceBackendCapabilities, DeviceBackendCapability, DeviceLoadPolicy, EmbedBatchResult,
         EmbedQueryResult, HealthResult, ProtocolError, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA,
-        SIDECAR_PROTOCOL_VERSION, validate_batch_response,
-        validate_health_response, validate_query_response, validate_response_envelope,
+        SIDECAR_PROTOCOL_VERSION, validate_batch_response, validate_health_response,
+        validate_query_response, validate_response_envelope,
     };
     use serde_json::json;
 

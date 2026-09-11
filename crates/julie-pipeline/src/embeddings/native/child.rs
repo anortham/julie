@@ -71,16 +71,32 @@ impl SidecarChild {
 
     /// Generates an embedding vector for a single query string.
     pub fn embed_query(&mut self, text: &str, budget: &EmbeddingRequestBudget) -> Result<Vec<f32>> {
-        let result: EmbedQueryResult =
-            self.round_trip("embed_query", EmbedQueryRequest { text: text.to_string(), remaining_budget_ms: Some(budget.remaining_time().as_millis() as u64) }, budget)?;
+        let result: EmbedQueryResult = self.round_trip(
+            "embed_query",
+            EmbedQueryRequest {
+                text: text.to_string(),
+                remaining_budget_ms: Some(budget.remaining_time().as_millis() as u64),
+            },
+            budget,
+        )?;
         validate_query_response(&result, result.dims)?;
         Ok(result.vector)
     }
 
     /// Generates embedding vectors for a batch of strings.
-    pub fn embed_batch(&mut self, texts: &[String], budget: &EmbeddingRequestBudget) -> Result<Vec<Vec<f32>>> {
-        let result: EmbedBatchResult =
-            self.round_trip("embed_batch", EmbedBatchRequest { texts: texts.to_vec(), remaining_budget_ms: Some(budget.remaining_time().as_millis() as u64) }, budget)?;
+    pub fn embed_batch(
+        &mut self,
+        texts: &[String],
+        budget: &EmbeddingRequestBudget,
+    ) -> Result<Vec<Vec<f32>>> {
+        let result: EmbedBatchResult = self.round_trip(
+            "embed_batch",
+            EmbedBatchRequest {
+                texts: texts.to_vec(),
+                remaining_budget_ms: Some(budget.remaining_time().as_millis() as u64),
+            },
+            budget,
+        )?;
         validate_batch_response(&result, texts.len(), result.dims)?;
         Ok(result.vectors)
     }
@@ -119,10 +135,13 @@ impl SidecarChild {
         let raw = match self.lines.recv_timeout(budget.remaining_time()) {
             Ok(Ok(bytes)) => bytes,
             Ok(Err(err)) => bail!("sidecar stdout: {err}"),
-            Err(mpsc::RecvTimeoutError::Timeout) => bail!("sidecar {method} exceeded the request deadline"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                bail!("sidecar {method} exceeded the request deadline")
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => bail!("sidecar exited"),
         };
-        let envelope: ResponseEnvelope<R> = serde_json::from_slice(&raw).context("sidecar reply")?;
+        let envelope: ResponseEnvelope<R> =
+            serde_json::from_slice(&raw).context("sidecar reply")?;
         validate_response_envelope(&envelope, &id)?;
         match (envelope.result, envelope.error) {
             (Some(result), _) => Ok(result),

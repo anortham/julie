@@ -67,7 +67,10 @@ where
                 let retried = match connect_or_start(paths, spawn).await {
                     Ok(fresh) => {
                         client = fresh;
-                        client.post_mcp(&body, &method).await.map_err(|e| e.to_string())
+                        client
+                            .post_mcp(&body, &method)
+                            .await
+                            .map_err(|e| e.to_string())
                     }
                     Err(e) => Err(e.to_string()),
                 };
@@ -124,5 +127,13 @@ pub async fn run_stdio_shim() -> anyhow::Result<()> {
     let stdin = tokio::io::BufReader::new(tokio::io::stdin());
     let stdout = tokio::io::stdout();
     let workspace_root = std::env::current_dir().context("resolve working directory")?;
-    forward(&paths, &spawn_detached_service, &workspace_root, client, stdin, stdout).await
+    forward(
+        &paths,
+        &spawn_detached_service,
+        &workspace_root,
+        client,
+        stdin,
+        stdout,
+    )
+    .await
 }

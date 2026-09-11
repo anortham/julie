@@ -216,7 +216,6 @@ pub enum EmbeddingChildStatus {
     },
 }
 
-
 /// Default no-op semantic runtime used for testing or disabled configurations.
 #[derive(Debug, Clone, Default)]
 pub struct NoopSemanticRuntime;
@@ -334,7 +333,6 @@ impl DefaultSemanticRuntime {
             _ => EmbeddingChildStatus::Absent,
         }
     }
-
 
     pub async fn runtime_state(&self) -> RuntimeProviderState {
         self.state.read().await.clone()
@@ -579,4 +577,3 @@ impl SemanticRuntime for DefaultSemanticRuntime {
         self.child_status()
     }
 }
-

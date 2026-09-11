@@ -178,14 +178,25 @@ fn catalog_lists_exactly_the_ten_tools() {
     use crate::request_engine::catalog::{AVAILABLE_TOOLS, ToolCatalog};
 
     let expected = [
-        "blast_radius", "call_path", "deep_dive", "edit_file", "fast_refs", "fast_search",
-        "get_context", "get_symbols", "manage_workspace", "patterns",
+        "blast_radius",
+        "call_path",
+        "deep_dive",
+        "edit_file",
+        "fast_refs",
+        "fast_search",
+        "get_context",
+        "get_symbols",
+        "manage_workspace",
+        "patterns",
     ];
     assert_eq!(AVAILABLE_TOOLS, &expected);
     let listed: Vec<&str> = ToolCatalog::list().iter().map(|t| t.name).collect();
     assert_eq!(listed, expected);
     for old in ["rewrite_symbol", "rename_symbol"] {
-        assert!(ToolCatalog::schema(old).is_err(), "{old} still has a schema");
+        assert!(
+            ToolCatalog::schema(old).is_err(),
+            "{old} still has a schema"
+        );
     }
 }
 

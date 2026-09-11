@@ -93,4 +93,3 @@ fn provider_rejects_child_serving_different_model() {
     );
     assert!(result.is_err());
 }
-

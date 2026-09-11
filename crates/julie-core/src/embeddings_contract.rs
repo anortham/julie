@@ -311,4 +311,3 @@ pub trait EmbeddingProvider: Send + Sync {
         None
     }
 }
-

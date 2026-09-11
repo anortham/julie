@@ -35,10 +35,7 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
         "embedding_initializing",
         &health.runtime_plane.embedding_initializing,
     );
-    context.insert(
-        "embedding_child",
-        &health.runtime_plane.embedding_child,
-    );
+    context.insert("embedding_child", &health.runtime_plane.embedding_child);
     context.insert("health", &health);
     context.insert("errors", &errors);
 

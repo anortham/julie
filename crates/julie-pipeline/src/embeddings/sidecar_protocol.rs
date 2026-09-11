@@ -280,4 +280,3 @@ pub fn validate_batch_response(
 
     Ok(())
 }
-

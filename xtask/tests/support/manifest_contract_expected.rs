@@ -891,7 +891,6 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 notes: Some("blast_radius coverage"),
             },
         ),
-
         (
             "tools-search-context",
             ExpectedBucketMetadata {

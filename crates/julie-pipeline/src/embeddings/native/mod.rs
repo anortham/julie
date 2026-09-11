@@ -93,7 +93,8 @@ impl NativeEmbeddingProvider {
         if guard.as_mut().is_none_or(|child| !child.is_alive()) {
             let (child, _, facts) =
                 Self::spawn_and_probe(&self.config, budget, Some(&self.identity))?;
-            self.active_pid.store(child.pid(), std::sync::atomic::Ordering::Release);
+            self.active_pid
+                .store(child.pid(), std::sync::atomic::Ordering::Release);
             *guard = Some(child);
             if let Ok(mut f) = self.runtime_facts.lock() {
                 *f = facts;
@@ -103,7 +104,8 @@ impl NativeEmbeddingProvider {
         match call(child) {
             Ok(value) => Ok(value),
             Err(err) => {
-                self.active_pid.store(0, std::sync::atomic::Ordering::Release);
+                self.active_pid
+                    .store(0, std::sync::atomic::Ordering::Release);
                 *guard = None;
                 Err(err)
             }
@@ -121,11 +123,13 @@ impl NativeEmbeddingProvider {
                 if child.is_alive() {
                     Some(child.pid())
                 } else {
-                    self.active_pid.store(0, std::sync::atomic::Ordering::Release);
+                    self.active_pid
+                        .store(0, std::sync::atomic::Ordering::Release);
                     None
                 }
             } else {
-                self.active_pid.store(0, std::sync::atomic::Ordering::Release);
+                self.active_pid
+                    .store(0, std::sync::atomic::Ordering::Release);
                 None
             }
         } else {
@@ -135,7 +139,8 @@ impl NativeEmbeddingProvider {
 
     /// Kills or drops the active sidecar child to test recovery (test only).
     pub fn kill_child_for_test(&self) {
-        self.active_pid.store(0, std::sync::atomic::Ordering::Release);
+        self.active_pid
+            .store(0, std::sync::atomic::Ordering::Release);
         if let Ok(mut guard) = self.child.lock() {
             *guard = None;
         }
@@ -201,7 +206,8 @@ impl EmbeddingProvider for NativeEmbeddingProvider {
     }
 
     fn shutdown(&self) {
-        self.active_pid.store(0, std::sync::atomic::Ordering::Release);
+        self.active_pid
+            .store(0, std::sync::atomic::Ordering::Release);
         let child = self.child.lock().ok().and_then(|mut g| g.take());
         if let Some(c) = child {
             c.shutdown();
@@ -212,4 +218,3 @@ impl EmbeddingProvider for NativeEmbeddingProvider {
         self.child_pid()
     }
 }
-
