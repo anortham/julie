@@ -5,6 +5,7 @@ xtask-eval = "run -q -p xtask-eval --"
 [env]
 MACOSX_DEPLOYMENT_TARGET = "11.0"
 JULIE_EMBEDDING_PROVIDER = "none"
+JULIE_HOME = { value = "target/test-julie-home", relative = true }
 
 [target.'cfg(target_os = "macos")']
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]

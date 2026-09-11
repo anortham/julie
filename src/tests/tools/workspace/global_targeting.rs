@@ -10,7 +10,6 @@ use rmcp::{
 
 use crate::handler::JulieServerHandler;
 use crate::handler::workspace_resolution::resolve_workspace_filter;
-use crate::paths::RegistryPaths;
 use crate::registry::database::DaemonDatabase;
 use crate::tests::helpers::mcp::call_tool_result_text as extract_text_from_result;
 use crate::tools::FastSearchTool;

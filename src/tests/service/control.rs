@@ -1,22 +1,65 @@
 use super::http_api::{Running, wait_for_record};
-use crate::service::client::connect_or_start;
+use crate::service::client::ServiceClient;
+use crate::service::discovery::{self, ServiceRecord};
+use crate::service::{ServiceApp, ServiceConfig};
+use julie_core::paths::RegistryPaths;
 use std::time::Duration;
+
+struct OwnedService {
+    paths: RegistryPaths,
+    record: ServiceRecord,
+    task: tokio::task::JoinHandle<anyhow::Result<()>>,
+    _home: tempfile::TempDir,
+}
+
+impl OwnedService {
+    async fn start() -> OwnedService {
+        let home = tempfile::tempdir().unwrap();
+        let paths = RegistryPaths::with_home(home.path().to_path_buf());
+        let app = ServiceApp::new(ServiceConfig {
+            idle: None,
+            registry_paths: paths.clone(),
+        })
+        .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let task = tokio::spawn(app.serve(listener));
+        let record = wait_for_record(&paths).await;
+        OwnedService {
+            paths,
+            record,
+            task,
+            _home: home,
+        }
+    }
+
+    async fn shutdown(&mut self) {
+        let client = ServiceClient::from_record(&self.record);
+        assert_eq!(client.post_shutdown().await.unwrap().status(), 202);
+        tokio::time::timeout(Duration::from_secs(5), &mut self.task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
+}
 
 #[tokio::test]
 async fn shutdown_stops_the_service_and_removes_the_record() {
-    let running = Running::start(None).await;
-    let client = connect_or_start(&running.paths, || Ok(())).await.unwrap();
-    let res = client.post_shutdown().await.unwrap();
-    assert_eq!(res.status(), 202);
-    let paths = running.paths.clone();
-    tokio::time::timeout(Duration::from_secs(5), running.finished())
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(
-        crate::service::discovery::read_record(&paths)
-            .unwrap()
-            .is_none()
+    let mut service = OwnedService::start().await;
+    service.shutdown().await;
+    assert!(discovery::read_record(&service.paths).unwrap().is_none());
+}
+
+#[tokio::test]
+async fn shutdown_removes_only_a_record_it_owns() {
+    let mut service = OwnedService::start().await;
+    let mut foreign = service.record.clone();
+    foreign.pid = std::process::id().wrapping_add(1);
+    discovery::write_record(&service.paths, &foreign).unwrap();
+    service.shutdown().await;
+    assert_eq!(
+        discovery::read_record(&service.paths).unwrap(),
+        Some(foreign)
     );
 }
 

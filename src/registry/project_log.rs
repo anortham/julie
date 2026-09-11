@@ -2,7 +2,8 @@
 //!
 //! This module writes user-facing highlights (tool calls, indexing, session lifecycle)
 //! to `{project}/.julie/logs/julie.log.{date}` so `tail -f .julie/logs/julie.log.*`
-//! works from the project directory.
+//! works from the project directory. The machine service uses the same writer
+//! through `in_dir` to write `$JULIE_HOME/logs/julie-service.log.{date}`.
 
 use chrono::Local;
 use std::fs::{self, File, OpenOptions};
@@ -18,11 +19,17 @@ struct LogState {
     date: String,
 }
 
-/// Writes formatted log lines to a project's `.julie/logs/` directory.
+/// File name prefix of the machine service log under `$JULIE_HOME/logs/`.
+pub const SERVICE_LOG_PREFIX: &str = "julie-service.log";
+
+const PROJECT_LOG_PREFIX: &str = "julie.log";
+
+/// Writes formatted log lines to a log directory, one dated file per day.
 /// Thread-safe via interior Mutex on the file handle.
 #[derive(Debug)]
 pub struct ProjectLog {
     log_dir: PathBuf,
+    file_prefix: String,
     state: Mutex<LogState>,
 }
 
@@ -30,16 +37,30 @@ impl ProjectLog {
     /// Create a project logger for the given workspace root.
     /// Creates the log directory if it doesn't exist.
     pub fn new(workspace_root: &Path) -> Self {
-        let log_dir = workspace_root.join(".julie").join("logs");
+        Self::in_dir(
+            workspace_root.join(".julie").join("logs"),
+            PROJECT_LOG_PREFIX,
+        )
+    }
+
+    /// Create a logger writing `<file_prefix>.<date>` files into `log_dir`.
+    /// Creates the directory if it doesn't exist.
+    pub fn in_dir(log_dir: PathBuf, file_prefix: &str) -> Self {
         let _ = fs::create_dir_all(&log_dir);
 
         let today = Self::today_date();
-        let file = Self::open_for_date(&log_dir, &today);
+        let file = Self::open_for_date(&log_dir, file_prefix, &today);
 
         Self {
             log_dir,
+            file_prefix: file_prefix.to_string(),
             state: Mutex::new(LogState { file, date: today }),
         }
+    }
+
+    /// Path of the file this logger writes to today.
+    pub fn current_path(log_dir: &Path, file_prefix: &str) -> PathBuf {
+        Self::path_for_date(log_dir, file_prefix, &Self::today_date())
     }
 
     /// Write a log line with timestamp, level, and message.
@@ -51,10 +72,10 @@ impl ProjectLog {
         if let Ok(mut state) = self.state.lock() {
             // Rotate at midnight: re-open when the date has changed.
             if state.date != today {
-                state.file = Self::open_for_date(&self.log_dir, &today);
+                state.file = Self::open_for_date(&self.log_dir, &self.file_prefix, &today);
                 state.date = today;
             } else if state.file.is_none() {
-                state.file = Self::open_for_date(&self.log_dir, &state.date);
+                state.file = Self::open_for_date(&self.log_dir, &self.file_prefix, &state.date);
             }
 
             if let Some(ref mut f) = state.file {
@@ -97,8 +118,12 @@ impl ProjectLog {
         Local::now().format("%Y-%m-%d").to_string()
     }
 
-    fn open_for_date(log_dir: &Path, date: &str) -> Option<File> {
-        let path = log_dir.join(format!("julie.log.{}", date));
+    fn path_for_date(log_dir: &Path, file_prefix: &str, date: &str) -> PathBuf {
+        log_dir.join(format!("{file_prefix}.{date}"))
+    }
+
+    fn open_for_date(log_dir: &Path, file_prefix: &str, date: &str) -> Option<File> {
+        let path = Self::path_for_date(log_dir, file_prefix, date);
         OpenOptions::new()
             .create(true)
             .append(true)

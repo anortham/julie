@@ -5,11 +5,18 @@ pub mod mcp;
 pub mod shim;
 pub mod status;
 
+use crate::registry::database::DaemonDatabase;
 use crate::request_engine::{BindingResolver, RequestEngine, RuntimeFactory};
+use crate::tools::workspace::commands::registry::cleanup::{
+    CleanupSweepSummary, WorkspaceCleanupActivity, run_cleanup_sweep,
+};
+use crate::tools::workspace::commands::registry::registry_store_for;
 use anyhow::Context;
 use julie_core::paths::RegistryPaths;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{info, warn};
 
 pub struct ServiceConfig {
     pub idle: Option<Duration>,
@@ -43,6 +50,11 @@ pub struct ServiceApp {
 impl ServiceApp {
     pub fn new(config: ServiceConfig) -> anyhow::Result<Self> {
         let paths = config.registry_paths.clone();
+        crate::logging::install_file_tracing(
+            &paths.logs_dir(),
+            crate::registry::project_log::SERVICE_LOG_PREFIX,
+            "info",
+        )?;
         let resolver = BindingResolver::new(None, false, paths.clone());
         let runtimes = Arc::new(RuntimeFactory::new(paths.clone()));
         let engine = Arc::new(RequestEngine::new(resolver, runtimes));
@@ -88,6 +100,8 @@ impl ServiceApp {
         };
         discovery::write_record(&self.config.registry_paths, &record)?;
 
+        tokio::spawn(sweep_registry(self.config.registry_paths.clone()));
+
         let shutdown = self.state.shutdown.clone();
         let idle_watch = {
             let status = Arc::clone(&self.state.status);
@@ -112,9 +126,37 @@ impl ServiceApp {
             async move { shutdown.cancelled().await }
         });
         let result = tokio::select! { r = server => r.map_err(anyhow::Error::from), _ = idle_watch => Ok(()) };
-        discovery::remove_record(&self.config.registry_paths)?;
+        let owned = discovery::read_record(&self.config.registry_paths)?
+            .is_some_and(|r| r.pid == std::process::id());
+        if owned {
+            discovery::remove_record(&self.config.registry_paths)?;
+        }
         result
     }
+}
+
+async fn sweep_registry(paths: RegistryPaths) {
+    match cleanup_sweep(&paths).await {
+        Ok(summary) => info!(
+            pruned_workspaces = summary.pruned_workspaces.len(),
+            pruned_orphan_dirs = summary.pruned_orphan_dirs.len(),
+            blocked_workspaces = summary.blocked_workspaces.len(),
+            "Cleanup sweep finished at service start"
+        ),
+        Err(error) => warn!("Cleanup sweep at service start failed: {error}"),
+    }
+}
+
+async fn cleanup_sweep(paths: &RegistryPaths) -> anyhow::Result<CleanupSweepSummary> {
+    let daemon_db = Arc::new(
+        DaemonDatabase::open(&paths.registry_db()).context("open registry database for sweep")?,
+    );
+    let registry_store = registry_store_for(&daemon_db)?;
+    run_cleanup_sweep(
+        &registry_store,
+        &WorkspaceCleanupActivity::new(HashSet::new()),
+    )
+    .await
 }
 
 pub async fn run_service(config: ServiceConfig) -> anyhow::Result<()> {

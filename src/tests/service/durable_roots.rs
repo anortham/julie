@@ -47,7 +47,7 @@ async fn durable_roots_hold_only_the_registry_service_record_and_indexes() {
     let home = running.paths.julie_home();
     assert_only(
         &home,
-        &["registry.db", "service.json", "indexes"],
+        &["registry.db", "service.json", "indexes", "logs"],
         &["registry.db-wal", "registry.db-shm"],
     );
     assert_only(&home.join("indexes"), &[id.as_str()], &[]);

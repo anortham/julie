@@ -98,6 +98,12 @@ async fn try_connect(paths: &RegistryPaths) -> Result<Option<ServiceClient>, Con
             Ok(Some(client))
         }
         Err(_) => {
+            if discovery::pid_alive(record.pid) {
+                return Err(ConnectError::Unavailable(format!(
+                    "service {} is shutting down",
+                    record.pid
+                )));
+            }
             discovery::remove_record(paths)
                 .map_err(|e| ConnectError::Unavailable(e.to_string()))?;
             Ok(None)
@@ -142,5 +148,12 @@ pub fn spawn_detached_service() -> std::io::Result<()> {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0000_0008 | 0x0000_0200);
     }
-    command.spawn().map(|_| ())
+    reap_in_background(command.spawn()?);
+    Ok(())
+}
+
+pub(crate) fn reap_in_background(mut child: std::process::Child) {
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
 }

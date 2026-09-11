@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use super::{ManageWorkspaceTool, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::tools::workspace::indexing::store_open::store_for_workspace;
 use crate::workspace::registry::generate_workspace_id;
 
 /// Facts about one checkout, computed on request from the registry row, the
@@ -108,7 +107,10 @@ async fn checkout_status(
     let facts_path = index_dir.join(FACTS_FILE);
     let facts_mtime = mtime(&facts_path);
     let (store_status, file_count, vector_scan_millis) = if facts_path.exists() {
-        match store_for_workspace(handler, &workspace_id, &root).await {
+        match handler
+            .checkout_store_for_workspace(&workspace_id, &root)
+            .await
+        {
             Ok(store) => {
                 let snapshot = store.current();
                 let file_count = snapshot.graph().paths().len() as i64;

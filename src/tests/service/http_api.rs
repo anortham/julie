@@ -1,4 +1,7 @@
+use crate::registry::database::DaemonDatabase;
+use crate::registry::workspace_registry_store::WorkspaceRegistryStore;
 use crate::service::{ServiceApp, ServiceConfig, discovery};
+use crate::tools::workspace::commands::registry::registry_store_for;
 use julie_core::paths::RegistryPaths;
 use std::time::Duration;
 
@@ -13,7 +16,10 @@ pub(crate) struct Running {
 
 impl Running {
     pub(crate) async fn start(idle: Option<Duration>) -> Running {
-        let home = tempfile::tempdir().unwrap();
+        Running::start_in(tempfile::tempdir().unwrap(), idle).await
+    }
+
+    pub(crate) async fn start_in(home: tempfile::TempDir, idle: Option<Duration>) -> Running {
         let paths = RegistryPaths::with_home(home.path().to_path_buf());
         let app = ServiceApp::new(ServiceConfig {
             idle,
@@ -255,4 +261,78 @@ async fn idle_exit_removes_service_json() {
         .expect("service did not exit when idle")
         .unwrap();
     assert!(discovery::read_record(&paths).unwrap().is_none());
+}
+
+#[tokio::test]
+async fn status_reports_a_service_log_under_the_julie_home() {
+    let running = Running::start(None).await;
+    running
+        .api("manage_workspace", serde_json::json!({"operation": "list"}))
+        .await;
+    let body = running.status().await;
+    let log = body["log"].as_str().expect("status has no log path");
+    let expected_prefix = running
+        .paths
+        .logs_dir()
+        .join("julie-service.log.")
+        .to_string_lossy()
+        .into_owned();
+    assert!(log.starts_with(&expected_prefix), "{log}");
+    let mut contents = String::new();
+    for _ in 0..100 {
+        contents = std::fs::read_to_string(log).unwrap_or_default();
+        if contents.contains("Cleanup sweep finished at service start") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        contents.contains("tool_call: manage_workspace"),
+        "{contents}"
+    );
+    assert!(
+        contents.contains("Cleanup sweep finished at service start"),
+        "{contents}"
+    );
+}
+
+fn registry_store_at(paths: &RegistryPaths) -> WorkspaceRegistryStore {
+    let db = std::sync::Arc::new(DaemonDatabase::open(&paths.registry_db()).unwrap());
+    registry_store_for(&db).unwrap()
+}
+
+#[tokio::test]
+async fn service_start_prunes_dead_registry_rows_in_the_background() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = RegistryPaths::with_home(home.path().to_path_buf());
+    let live_root = tempfile::tempdir().unwrap();
+    let dead_path = home.path().join("gone");
+
+    let store = registry_store_at(&paths);
+    store
+        .upsert_workspace("dead_00000000", dead_path.to_str().unwrap(), "ready")
+        .unwrap();
+    store
+        .upsert_workspace("live_00000000", live_root.path().to_str().unwrap(), "ready")
+        .unwrap();
+    std::fs::create_dir_all(store.index_dir_for("live_00000000")).unwrap();
+    std::fs::create_dir_all(paths.indexes_dir().join("orphan_00000000")).unwrap();
+    drop(store);
+
+    let running = Running::start_in(home, None).await;
+
+    let store = registry_store_at(&running.paths);
+    let orphan_dir = running.paths.indexes_dir().join("orphan_00000000");
+    let mut swept = false;
+    for _ in 0..100 {
+        if store.get_workspace("dead_00000000").unwrap().is_none() && !orphan_dir.exists() {
+            swept = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    assert!(swept, "the start sweep left the dead row or the orphan dir");
+    assert!(store.get_workspace("live_00000000").unwrap().is_some());
+    assert!(running.paths.indexes_dir().join("live_00000000").is_dir());
 }
