@@ -52,6 +52,14 @@ fn content_search(query: &str, file_pattern: Option<&str>) -> FastSearchTool {
     }
 }
 
+fn kind_counts(hits: &[crate::tools::search::SearchHit]) -> std::collections::HashMap<String, u32> {
+    let mut dist = std::collections::HashMap::new();
+    for hit in hits {
+        *dist.entry(hit.kind.clone()).or_insert(0) += 1;
+    }
+    dist
+}
+
 fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> String {
     result
         .content
@@ -264,14 +272,18 @@ async fn trace_scope_rescue_labels_out_of_scope_hits() {
         .expect("execute_with_trace populates execution for content search");
     let text = extract_text_from_result(&run.result);
 
-    // Unified path emits symbol rows and file rows per matching file.
-    // Both files match; with v2.41.0 extracting local variable symbols, each file
-    // yields 2 symbols (function + variable) plus 1 file row = 6 hits total.
+    // Both files match. Collapse drops file rows that share a path with
+    // symbols, so each file keeps 2 symbols (function + variable) = 4 hits.
     assert_eq!(
         execution.hits.len(),
-        6,
-        "scope rescue should return symbol+file rows for both matching files",
+        4,
+        "scope rescue should return collapsed symbol rows for both matching files",
     );
+    assert_eq!(execution.trace.result_count, 4);
+    let kind_distribution = kind_counts(&execution.hits);
+    assert_eq!(kind_distribution.get("file").copied().unwrap_or(0), 0);
+    assert_eq!(kind_distribution.get("function").copied().unwrap_or(0), 2);
+    assert_eq!(kind_distribution.get("variable").copied().unwrap_or(0), 2);
     let distinct_files: std::collections::HashSet<_> =
         execution.hits.iter().map(|hit| hit.file.clone()).collect();
     assert_eq!(
@@ -334,9 +346,14 @@ async fn trace_scope_rescue_single_file_hint_mentions_get_symbols() {
         .expect("execute_with_trace populates execution for content search");
     let text = extract_text_from_result(&run.result);
 
-    // Unified path returns symbol rows + file row for the single matching file
-    // (variable symbol + enclosing function symbol + file row = 3 hits).
-    assert_eq!(execution.hits.len(), 3);
+    // Collapse drops the file row that shares a path with symbols
+    // (variable + enclosing function = 2 hits).
+    assert_eq!(execution.hits.len(), 2);
+    assert_eq!(execution.trace.result_count, 2);
+    let kind_distribution = kind_counts(&execution.hits);
+    assert_eq!(kind_distribution.get("file").copied().unwrap_or(0), 0);
+    assert_eq!(kind_distribution.get("function").copied().unwrap_or(0), 1);
+    assert_eq!(kind_distribution.get("variable").copied().unwrap_or(0), 1);
     let distinct_files: std::collections::HashSet<_> =
         execution.hits.iter().map(|hit| hit.file.clone()).collect();
     assert_eq!(distinct_files.len(), 1, "exactly one source file matched");

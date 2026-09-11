@@ -233,6 +233,7 @@ impl FastSearchTool {
                 .take(page_limit)
                 .collect();
         }
+        execution.trace.refresh_hits(&execution.hits);
         let kept = execution.hits.len();
 
         let mut output = if format == "compact" {
