@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -49,6 +50,7 @@ SUPPORTED_JULIE_TOOLS = {
 }
 SUPPORTED_MILLER_TOOLS = {"search", "inspect", "context", "trace", "impact", "patterns"}
 SUPPORTED_SCORING = {"path_top", "path_top5"}
+SUPPORTED_JULIE_BACKENDS = {"auto", "hybrid", "semantic", "lexical"}
 REQUIRED_ROW_KEYS = {"id", "repo", "task_class", "intent", "julie", "miller", "expected", "scoring"}
 PATH_LINE_RE = re.compile(r"(?P<path>[A-Za-z0-9_@./+\-]+\.[A-Za-z0-9_+\-]+):(?P<line>\d+)")
 FILE_HEADER_RE = re.compile(r"^(?P<path>\S[^\n]*\.[A-Za-z0-9_+-]+):\s*$")
@@ -94,6 +96,43 @@ def split_filter(value: str) -> set[str]:
     if value.strip().lower() == "all":
         return set()
     return {item.strip() for item in value.split(",") if item.strip()}
+
+
+def parse_backends(value: str) -> list[str]:
+    backends = [item.strip() for item in value.split(",") if item.strip()]
+    if not backends:
+        return ["auto"]
+    unknown = [item for item in backends if item not in SUPPORTED_JULIE_BACKENDS]
+    if unknown:
+        raise ValueError(f"unsupported julie backend(s): {', '.join(unknown)}")
+    return backends
+
+
+def expand_search_backends(rows: list[dict[str, Any]], backends: list[str]) -> list[dict[str, Any]]:
+    expanded: list[dict[str, Any]] = []
+    for row in rows:
+        tool = row.get("julie", {}).get("tool") if isinstance(row.get("julie"), dict) else None
+        if tool != "fast_search":
+            clone = copy.deepcopy(row)
+            clone["_julie_backend"] = None
+            clone["_skip_miller"] = False
+            clone["_base_id"] = row.get("id")
+            expanded.append(clone)
+            continue
+        for index, backend in enumerate(backends):
+            clone = copy.deepcopy(row)
+            clone["id"] = f"{row['id']}.{backend}"
+            clone["_julie_backend"] = backend
+            clone["_skip_miller"] = index > 0
+            clone["_base_id"] = row["id"]
+            args = dict(clone.get("julie", {}).get("args") or {})
+            if backend == "auto":
+                args.pop("backend", None)
+            else:
+                args["backend"] = backend
+            clone["julie"] = {**clone.get("julie", {}), "args": args}
+            expanded.append(clone)
+    return expanded
 
 
 def git_head(path: Path) -> str | None:
@@ -605,11 +644,26 @@ def execute_call(
     return scored
 
 
-def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
+def _rate(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    n = len(rows)
+    return {
+        "n": n,
+        "top1": sum(1 for row in rows if row.get("expected_top")) / n if n else 0,
+        "top5": sum(1 for row in rows if row.get("expected_top5")) / n if n else 0,
+        "present": sum(1 for row in rows if row.get("expected_present")) / n if n else 0,
+        "pass": sum(1 for row in rows if row.get("scoring_pass")) / n if n else 0,
+    }
+
+
+def summarize(results: list[dict[str, Any]], primary_backend: str = "auto") -> dict[str, Any]:
     by_class: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
     by_tool: dict[str, list[int]] = defaultdict(list)
     by_tool_bytes: dict[str, list[int]] = defaultdict(list)
     for row in results:
+        if row["product"] == "julie" and row.get("julie_backend") not in (None, primary_backend):
+            continue
+        if row["product"] == "miller" and row.get("copied_miller"):
+            continue
         by_class[row["task_class"]][row["product"]].append(row)
         key = f"{row['product']}.{row['tool']}"
         by_tool[key].append(int(row["ms"]))
@@ -619,14 +673,7 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
     for task_class, products in sorted(by_class.items()):
         entry: dict[str, Any] = {}
         for product, rows in products.items():
-            n = len(rows)
-            entry[product] = {
-                "n": n,
-                "top1": sum(1 for row in rows if row.get("expected_top")) / n if n else 0,
-                "top5": sum(1 for row in rows if row.get("expected_top5")) / n if n else 0,
-                "present": sum(1 for row in rows if row.get("expected_present")) / n if n else 0,
-                "pass": sum(1 for row in rows if row.get("scoring_pass")) / n if n else 0,
-            }
+            entry[product] = _rate(rows)
         classes[task_class] = entry
 
     tools: dict[str, Any] = {}
@@ -639,6 +686,42 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
             "p95_bytes": percentile(by_tool_bytes[key], 95),
         }
     return {"task_class": classes, "tools": tools}
+
+
+def summarize_backends(results: list[dict[str, Any]], backends: list[str]) -> dict[str, Any]:
+    table: dict[str, Any] = {}
+    for task_class in sorted({row["task_class"] for row in results}):
+        if not any(
+            row["product"] == "julie" and row.get("julie_backend") for row in results if row["task_class"] == task_class
+        ):
+            continue
+        miller = [
+            row
+            for row in results
+            if row["product"] == "miller"
+            and row["task_class"] == task_class
+            and not row.get("copied_miller")
+        ]
+        entry: dict[str, Any] = {"miller": _rate(miller)}
+        for backend in backends:
+            julie = [
+                row
+                for row in results
+                if row["product"] == "julie"
+                and row["task_class"] == task_class
+                and row.get("julie_backend") == backend
+            ]
+            if not julie and backend == backends[0]:
+                julie = [
+                    row
+                    for row in results
+                    if row["product"] == "julie"
+                    and row["task_class"] == task_class
+                    and row.get("julie_backend") is None
+                ]
+            entry[backend] = _rate(julie)
+        table[task_class] = entry
+    return table
 
 
 def render_coverage_table(coverage: dict[str, dict[str, Any]]) -> list[str]:
@@ -668,11 +751,47 @@ def render_coverage_table(coverage: dict[str, dict[str, Any]]) -> list[str]:
     return lines
 
 
+def render_backend_table(backends: list[str], comparison: dict[str, Any]) -> list[str]:
+    if not comparison:
+        return []
+    headers = ["class", "miller top-1", "miller top-5", "miller n"]
+    for backend in backends:
+        headers.extend([f"{backend} top-1", f"{backend} top-5", f"{backend} n"])
+    lines = [
+        "## Julie backend comparison",
+        "",
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join(["---"] + ["---:"] * (len(headers) - 1)) + " |",
+    ]
+    for task_class, entry in comparison.items():
+        miller = entry.get("miller", {})
+        cells = [
+            task_class,
+            f"{miller.get('top1', 0):.0%}",
+            f"{miller.get('top5', 0):.0%}",
+            str(miller.get("n", 0)),
+        ]
+        for backend in backends:
+            julie = entry.get(backend, {})
+            cells.extend(
+                [
+                    f"{julie.get('top1', 0):.0%}",
+                    f"{julie.get('top5', 0):.0%}",
+                    str(julie.get("n", 0)),
+                ]
+            )
+        lines.append("| " + " | ".join(cells) + " |")
+    lines.append("")
+    return lines
+
+
 def render_markdown(
     stamp: str,
     summary: dict[str, Any],
     results: list[dict[str, Any]],
     coverage: dict[str, dict[str, Any]],
+    backends: list[str] | None = None,
+    backend_comparison: dict[str, Any] | None = None,
 ) -> str:
     lines = [
         f"# Head-to-head retrieval matrix ({stamp})",
@@ -681,6 +800,8 @@ def render_markdown(
         "",
     ]
     lines.extend(render_coverage_table(coverage))
+    if backends and backend_comparison:
+        lines.extend(render_backend_table(backends, backend_comparison))
     lines.extend(
         [
             "## Per task class",
@@ -760,6 +881,7 @@ def run_matrix(
     results: list[dict[str, Any]] = []
     miller: McpProcess | None = None
     miller_ids: dict[str, str] = {}
+    miller_cache: dict[str, dict[str, Any]] = {}
     julie_procs: dict[str, McpProcess] = {}
     coverage: dict[str, dict[str, Any]] = {}
     try:
@@ -788,6 +910,12 @@ def run_matrix(
             print(f"== {row['id']} ==", file=sys.stderr)
             if skip_miller:
                 results.append(skipped(row, "miller", "--skip-miller"))
+            elif row.get("_skip_miller") and row.get("_base_id") in miller_cache:
+                copied = dict(miller_cache[row["_base_id"]])
+                copied["id"] = row["id"]
+                copied["copied_miller"] = True
+                copied["julie_backend"] = row.get("_julie_backend")
+                results.append(copied)
             else:
                 assert miller is not None
                 if repo not in miller_ids:
@@ -801,7 +929,10 @@ def run_matrix(
                     miller_ids[repo] = workspace_id
                 args = dict(row["miller"]["args"])
                 args["workspace_id"] = miller_ids[repo]
-                results.append(execute_call(row, "miller", miller, args))
+                miller_row = execute_call(row, "miller", miller, args)
+                miller_row["julie_backend"] = row.get("_julie_backend")
+                miller_cache[row.get("_base_id") or row["id"]] = miller_row
+                results.append(miller_row)
             if skip_julie:
                 results.append(skipped(row, "julie", "--skip-julie"))
                 continue
@@ -809,6 +940,7 @@ def run_matrix(
                 results.append(skipped(row, "julie", f"runner does not call {row['julie']['tool']}"))
                 continue
             scored = execute_call(row, "julie", julie_procs[repo], dict(row["julie"]["args"]))
+            scored["julie_backend"] = row.get("_julie_backend")
             apply_readiness_coverage(
                 coverage,
                 repo,
@@ -849,6 +981,11 @@ def main() -> int:
         action="store_true",
         help="abort when any opened Julie repo has zero rows in facts.sqlite vectors",
     )
+    parser.add_argument(
+        "--julie-backends",
+        default="auto",
+        help="comma list of Julie search backends (auto,hybrid,semantic). auto omits backend=",
+    )
     parser.add_argument("--repos", default="all")
     parser.add_argument("--tasks", default="all")
     parser.add_argument("--out-dir", default=str(DEFAULT_RESULTS))
@@ -876,6 +1013,12 @@ def main() -> int:
     if not selected:
         print("filters selected 0 rows", file=sys.stderr)
         return 2
+    try:
+        backends = parse_backends(args.julie_backends)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    selected = expand_search_backends(selected, backends)
 
     julie_bin = Path(args.julie_bin)
     miller_bin = Path(args.miller_bin)
@@ -901,7 +1044,8 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 2
     assert results is not None
-    summary = summarize(results)
+    summary = summarize(results, backends[0])
+    backend_comparison = summarize_backends(results, backends)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -910,14 +1054,19 @@ def main() -> int:
         "julie_bin": str(julie_bin),
         "miller_bin": str(miller_bin),
         "pid": os.getpid(),
+        "julie_backends": backends,
         "julie_semantic_coverage": coverage,
         "summary": summary,
+        "backend_comparison": backend_comparison,
         "results": results,
     }
     json_path = out_dir / f"{stamp}.json"
     md_path = out_dir / f"{stamp}.md"
     json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    md_path.write_text(render_markdown(stamp, summary, results, coverage), encoding="utf-8")
+    md_path.write_text(
+        render_markdown(stamp, summary, results, coverage, backends, backend_comparison),
+        encoding="utf-8",
+    )
     print(json_path)
     print(md_path)
     return 0
@@ -956,6 +1105,27 @@ if __name__ == "__main__" and "--self-check" in sys.argv:
     apply_readiness_coverage(merged, "cobra", "cobra_011de3e1", {"mode": "auto", "status": "ready", "coverage": "428/4095"})
     assert merged["cobra"]["vectors"] == 428, merged
     assert merged["cobra"]["source"] == "readiness", merged
+    expanded = expand_search_backends(
+        [
+            {
+                "id": "x.search",
+                "julie": {"tool": "fast_search", "args": {"query": "q", "limit": 5}},
+                "miller": {"tool": "search", "args": {}},
+            },
+            {"id": "x.inspect", "julie": {"tool": "deep_dive", "args": {"symbol": "S"}}, "miller": {"tool": "inspect", "args": {}}},
+        ],
+        ["auto", "hybrid", "semantic"],
+    )
+    assert [row["id"] for row in expanded] == [
+        "x.search.auto",
+        "x.search.hybrid",
+        "x.search.semantic",
+        "x.inspect",
+    ], [row["id"] for row in expanded]
+    assert "backend" not in expanded[0]["julie"]["args"]
+    assert expanded[1]["julie"]["args"]["backend"] == "hybrid"
+    assert expanded[2]["julie"]["args"]["backend"] == "semantic"
+    assert expanded[0]["_skip_miller"] is False and expanded[1]["_skip_miller"] is True
     print("self-check ok")
     sys.exit(0)
 

@@ -147,3 +147,20 @@ Inspect:
 - `jq-compile-bytecode.inspect`: Julie listed `jq_state` first in `src/jq.h`. Miller ranked `src/execute.c`.
 - `nlohmann-binary-reader.inspect`: Julie ranked `binary_reader.hpp` for `cbor_tag_handler_t`. Miller ranked `docs/mkdocs/mkdocs.yml` first.
 - `nlohmann-sax-parser.inspect`: Julie ranked `parser.hpp` for `parse_event_t`. Miller ranked `docs/mkdocs/mkdocs.yml` first.
+
+## Julie backend comparison
+
+Pair: `docs/eval/head-to-head/results/20260911T050543Z.json` and `docs/eval/head-to-head/results/20260911T050543Z.md`.
+
+Ran once with `--julie-backends auto,hybrid,semantic --require-semantics` on warm indexes. Search rows are labeled `<id>.<backend>`. Miller ran once per search row. Inspect rows are not backend-split.
+
+Julie's default `auto` backend is lexical. Hybrid and semantic close or reverse the gap on natural-language rows. Changing the default is a product decision recorded for the owner, not made here.
+
+Stdio MCP replies still carry no `readiness` object (the JSON API does). Coverage stays sqlite-based.
+
+| class | n | Miller top-1 | Miller top-5 | auto top-1 | auto top-5 | hybrid top-1 | hybrid top-5 | semantic top-1 | semantic top-5 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| retrieval.concept | 13 | 6/13 (46%) | 7/13 (54%) | 5/13 (38%) | 6/13 (46%) | 7/13 (54%) | 10/13 (77%) | 9/13 (69%) | 10/13 (77%) |
+| retrieval.implementation | 10 | 5/10 (50%) | 7/10 (70%) | 1/10 (10%) | 2/10 (20%) | 6/10 (60%) | 9/10 (90%) | 9/10 (90%) | 10/10 (100%) |
+
+Example: `flask-blueprint-registration.search` ranks `CHANGES.rst` under auto and `src/flask/sansio/blueprints.py` first under hybrid and semantic.

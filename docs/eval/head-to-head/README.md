@@ -10,11 +10,12 @@ From the Julie repo root:
 python3 docs/eval/head-to-head/run_matrix.py --self-check
 python3 docs/eval/head-to-head/run_matrix.py --validate
 python3 docs/eval/head-to-head/run_matrix.py --require-semantics
+python3 docs/eval/head-to-head/run_matrix.py --julie-backends auto,hybrid,semantic --require-semantics
 ```
 
-Binaries default to `target/release/julie-server` and `~/source/miller/src/Miller.Server/bin/Release/net10.0/miller`. Override with `--julie-bin` and `--miller-bin`. Filter with `--repos` and `--tasks`. Skip a product with `--skip-julie` or `--skip-miller`. `--require-semantics` aborts when any opened Julie repo has zero rows in `vectors`.
+Binaries default to `target/release/julie-server` and `~/source/miller/src/Miller.Server/bin/Release/net10.0/miller`. Override with `--julie-bin` and `--miller-bin`. Filter with `--repos` and `--tasks`. Skip a product with `--skip-julie` or `--skip-miller`. `--require-semantics` aborts when any opened Julie repo has zero rows in `vectors`. `--julie-backends` is a comma list (`auto`, `hybrid`, `semantic`). `auto` omits `backend=`; the others add `backend=<name>` on Julie search rows and label them `<id>.<backend>`.
 
-The runner writes `results/<UTC timestamp>.json` and `results/<UTC timestamp>.md`. Before the kept run it records Julie vector coverage from `$JULIE_HOME/indexes/<workspace_id>/facts.sqlite` (read-only `count(*)` on `vectors` and `symbols`) and each Julie row's `readiness` field. Run twice. Keep the second pair; the first run warms both indexes.
+The runner writes `results/<UTC timestamp>.json` and `results/<UTC timestamp>.md`. Stdio MCP replies carry no `readiness` object (the JSON API does), so Julie semantic coverage stays sqlite-based: read-only `count(*)` on `vectors` and `symbols` in `$JULIE_HOME/indexes/<workspace_id>/facts.sqlite`. Run twice when indexes are cold. Keep the second pair.
 
 ## Scoring
 
