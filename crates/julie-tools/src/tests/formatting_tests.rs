@@ -5,9 +5,11 @@ use std::collections::HashMap;
 use crate::navigation::formatting::{format_lean_refs_results, format_semantic_fallback};
 use crate::navigation::resolution::parse_qualified_name;
 use crate::search::SearchHit;
+use crate::search::execution::types::sort_hits_by_score_desc;
 use crate::search::trace::SearchHitBacking;
 use julie_core::Symbol;
 use julie_extractors::{Relationship, RelationshipKind, SymbolKind};
+use julie_index::search::index::{FileMatchKind, FileSearchResult};
 use julie_index::search::similarity::SimilarEntry;
 
 fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
@@ -41,6 +43,10 @@ fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&s
 }
 
 fn hit(path: &str, line: u32, name: &str, kind: &str) -> SearchHit {
+    hit_with_score(path, line, name, kind, 1.0)
+}
+
+fn hit_with_score(path: &str, line: u32, name: &str, kind: &str, score: f32) -> SearchHit {
     let symbol_kind = match kind {
         "struct" => SymbolKind::Struct,
         _ => SymbolKind::Function,
@@ -52,12 +58,32 @@ fn hit(path: &str, line: u32, name: &str, kind: &str) -> SearchHit {
         line: Some(line),
         kind: kind.to_string(),
         language: "rust".to_string(),
-        score: 1.0,
+        score,
         snippet: None,
         workspace: "primary".to_string(),
         symbol_id: Some(symbol.id.clone()),
         backing: SearchHitBacking::Symbol(symbol),
     }
+}
+
+fn file_hit(path: &str) -> SearchHit {
+    SearchHit::from_file_result(
+        FileSearchResult {
+            file_path: path.to_string(),
+            language: "rust".to_string(),
+            score: 1.0,
+            match_kind: FileMatchKind::ExactPath,
+        },
+        "primary".to_string(),
+    )
+}
+
+fn compact_content_rows(text: &str) -> Vec<&str> {
+    text.lines()
+        .filter(|line| {
+            !line.is_empty() && !line.starts_with("next:") && !line.contains(" hits for ")
+        })
+        .collect()
 }
 
 fn make_test_relationship(file_path: &str, line: u32, kind: RelationshipKind) -> Relationship {
@@ -581,6 +607,7 @@ async fn test_fast_refs_semantic_fallback_offloaded_to_spawn_blocking() {
 fn compact_search_groups_repeated_files_and_appends_next_when_rows_remain() {
     let hits = vec![
         hit("src/a.rs", 10, "alpha", "function"),
+        file_hit("src/a.rs"),
         hit("src/a.rs", 20, "beta", "function"),
         hit("src/b.rs", 5, "gamma", "struct"),
     ];
@@ -589,6 +616,57 @@ fn compact_search_groups_repeated_files_and_appends_next_when_rows_remain() {
         text,
         "3 hits for \"q\" (lexical)\nsrc/a.rs:\n  :10 alpha function\n  :20 beta function\nsrc/b.rs:5 gamma struct\nnext: fast_search query=\"q\" offset=3"
     );
+    assert!(
+        !text
+            .lines()
+            .any(|line| line == "src/a.rs" || line == "  src/a.rs"),
+        "file-backed rows must not appear inside a group: {text}"
+    );
     let last_page = crate::search::formatting::render_compact("q", "lexical", &hits, 0, 3, false);
     assert!(!last_page.contains("next:"));
+}
+
+#[test]
+fn compact_search_pages_from_a_fixed_hit_list_do_not_overlap() {
+    let mut hits = vec![
+        hit_with_score("src/c.rs", 3, "gamma", "function", 1.0),
+        hit_with_score("src/a.rs", 2, "beta", "function", 1.0),
+        file_hit("src/a.rs"),
+        hit_with_score("src/a.rs", 1, "alpha", "function", 1.0),
+        hit_with_score("src/b.rs", 1, "delta", "function", 1.0),
+        hit_with_score("src/d.rs", 1, "eps", "function", 0.5),
+        hit_with_score("src/e.rs", 1, "zeta", "function", 0.5),
+    ];
+    sort_hits_by_score_desc(&mut hits);
+    hits = crate::search::formatting::collapse_covered_file_hits(hits);
+    assert!(
+        hits.iter()
+            .all(|hit| !matches!(hit.backing, SearchHitBacking::File(_)) || hit.file != "src/a.rs"),
+        "file-backed rows that share a path with symbols must drop before paging"
+    );
+    let page1 = &hits[..3];
+    let page2 = &hits[3..6];
+    let text1 = crate::search::formatting::render_compact("q", "lexical", page1, 0, 3, true);
+    let text2 = crate::search::formatting::render_compact("q", "lexical", page2, 3, 3, false);
+    let rows1 = compact_content_rows(&text1);
+    let rows2 = compact_content_rows(&text2);
+    for row in &rows1 {
+        assert!(
+            !rows2.contains(row),
+            "row {row:?} appeared on both pages:\n{text1}\n---\n{text2}"
+        );
+    }
+    assert_eq!(
+        hits.iter()
+            .map(|hit| (hit.file.as_str(), hit.line, hit.name.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("src/a.rs", Some(1), "alpha"),
+            ("src/a.rs", Some(2), "beta"),
+            ("src/b.rs", Some(1), "delta"),
+            ("src/c.rs", Some(3), "gamma"),
+            ("src/d.rs", Some(1), "eps"),
+            ("src/e.rs", Some(1), "zeta"),
+        ]
+    );
 }

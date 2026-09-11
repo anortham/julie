@@ -36,7 +36,9 @@ pub(crate) async fn run_unified_pass(
     // The index applies language/file/test filters after Tantivy
     // materialization, so scoped zero-hit cases get one wider scoped retry
     // before any unscoped rescue is considered.
-    let raw_fetch_limit = limit.saturating_mul(4).max(50);
+    let raw_fetch_limit = limit
+        .saturating_mul(4)
+        .max(crate::search::params::MAX_LIMIT);
 
     let (mut raw_hits, mut relaxed, mut total_results) =
         text_search::unified_search_hits(query, &filter, raw_fetch_limit, snapshot).await?;

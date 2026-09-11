@@ -56,5 +56,12 @@ pub(crate) struct UnifiedPassResult {
 }
 
 pub(crate) fn sort_hits_by_score_desc(hits: &mut [SearchHit]) {
-    hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+    hits.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.file.cmp(&b.file))
+            .then_with(|| a.line.cmp(&b.line))
+            .then_with(|| a.name.cmp(&b.name))
+    });
 }

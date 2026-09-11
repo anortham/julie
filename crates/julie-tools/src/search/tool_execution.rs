@@ -7,11 +7,12 @@ use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 
 use super::backend::SearchBackend;
 use super::execution;
+use super::execution::types::sort_hits_by_score_desc;
 use super::formatting;
 use super::hint_formatter;
 use super::input_diagnostics;
 use super::line_enrichment;
-use super::params::{FastSearchExecution, FastSearchTool, clamp_limit};
+use super::params::{FastSearchExecution, FastSearchTool, MAX_LIMIT, clamp_limit};
 use super::trace::SearchExecutionResult;
 use crate::navigation::resolution::WorkspaceTarget;
 
@@ -87,7 +88,6 @@ impl FastSearchTool {
         }
 
         let format = self.validated_format()?;
-        let fetch_limit = self.fetch_limit();
 
         if let WorkspaceTarget::Target(target_workspace_id) = &workspace_target {
             if let Some(index_error) = handler
@@ -155,7 +155,7 @@ impl FastSearchTool {
                 query: &self.query,
                 language: &self.language,
                 file_pattern: &self.file_pattern,
-                limit: fetch_limit,
+                limit: MAX_LIMIT,
                 context_lines: self.context_lines,
                 exclude_tests: self.exclude_tests,
                 backend: SearchBackend::resolve(self.backend),
@@ -220,6 +220,9 @@ impl FastSearchTool {
 
         let offset = self.offset as usize;
         let page_limit = self.effective_limit() as usize;
+        sort_hits_by_score_desc(&mut execution.hits);
+        execution.hits =
+            formatting::collapse_covered_file_hits(std::mem::take(&mut execution.hits));
         let more = execution.hits.len() > offset + page_limit
             || execution.total_results > offset + page_limit;
         if offset > 0 || execution.hits.len() > page_limit {

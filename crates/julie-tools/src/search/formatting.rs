@@ -8,6 +8,19 @@ use julie_core::shared::OptimizedResponse;
 
 const COMPACT_LINE_CONTENT_CHARS: usize = 110;
 
+pub fn collapse_covered_file_hits(hits: Vec<SearchHit>) -> Vec<SearchHit> {
+    let covered: std::collections::HashSet<String> = hits
+        .iter()
+        .filter(|hit| !matches!(hit.backing, SearchHitBacking::File(_)))
+        .map(|hit| hit.file.clone())
+        .collect();
+    hits.into_iter()
+        .filter(|hit| {
+            !matches!(hit.backing, SearchHitBacking::File(_)) || !covered.contains(&hit.file)
+        })
+        .collect()
+}
+
 pub fn render_compact(
     query: &str,
     backend: &str,
@@ -18,14 +31,23 @@ pub fn render_compact(
 ) -> String {
     let mut output = format!("{kept} hits for \"{query}\" ({backend})\n");
     for group in group_hits_by_file(hits) {
-        if group.len() == 1 {
-            output.push_str(&compact_hit_line(group[0], false));
+        let rows: Vec<&SearchHit> = if group_is_file_only(&group) {
+            vec![group[0]]
+        } else {
+            group
+                .iter()
+                .copied()
+                .filter(|hit| !matches!(hit.backing, SearchHitBacking::File(_)))
+                .collect()
+        };
+        if rows.len() == 1 {
+            output.push_str(&compact_hit_line(rows[0], false));
             output.push('\n');
             continue;
         }
-        output.push_str(&group[0].file);
+        output.push_str(&rows[0].file);
         output.push_str(":\n");
-        for hit in group {
+        for hit in rows {
             output.push_str(&compact_hit_line(hit, true));
             output.push('\n');
         }
@@ -50,6 +72,12 @@ fn group_hits_by_file(hits: &[SearchHit]) -> Vec<Vec<&SearchHit>> {
         }
     }
     groups
+}
+
+fn group_is_file_only(group: &[&SearchHit]) -> bool {
+    group
+        .iter()
+        .all(|hit| matches!(hit.backing, SearchHitBacking::File(_)))
 }
 
 fn compact_hit_line(hit: &SearchHit, grouped: bool) -> String {

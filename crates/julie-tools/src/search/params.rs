@@ -7,7 +7,7 @@ use super::backend::SearchBackend;
 use super::trace::SearchExecutionResult;
 
 pub(crate) const MIN_LIMIT: u32 = 1;
-pub(crate) const MAX_LIMIT: u32 = 500;
+pub const MAX_LIMIT: u32 = 500;
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 /// Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional backend: omitted/default lexical returns mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit "lexical" stays pure lexical; "semantic" and "hybrid" are symbol-only concept search. Use lexical for file/path queries.
@@ -219,14 +219,6 @@ impl FastSearchTool {
             "compact" | "full" => Ok(self.return_format.as_str()),
             other => anyhow::bail!("Invalid return_format: '{other}'. Expected compact or full"),
         }
-    }
-
-    pub fn fetch_limit(&self) -> u32 {
-        let needed = self
-            .effective_limit()
-            .saturating_add(self.offset)
-            .saturating_add(1);
-        clamp_limit(needed)
     }
 }
 

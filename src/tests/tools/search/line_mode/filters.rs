@@ -54,11 +54,11 @@ fn user_preferences_dashboard() {}
         "should report the file containing user_* symbols: {}",
         response_text,
     );
-    // Three symbols share the `user` token; the lean header reports
+    // Three symbols share the `user` token; compact output reports
     // a count >= 3 (the unified path may also emit a file-row hit).
     assert!(
-        response_text.contains("matches for \"user\""),
-        "should render the standard match-count header: {}",
+        response_text.contains("hits for \"user\""),
+        "should render the compact hit-count header: {}",
         response_text,
     );
 

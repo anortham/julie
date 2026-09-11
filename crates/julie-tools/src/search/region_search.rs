@@ -66,7 +66,7 @@ impl FastSearchParams {
             &self.search.query,
             &self.search.language,
             &self.search.file_pattern,
-            self.search.fetch_limit(),
+            crate::search::params::MAX_LIMIT,
             self.search.exclude_tests,
             snapshot,
             Some(region_filter),
@@ -119,6 +119,7 @@ impl FastSearchParams {
 
         let offset = self.search.offset as usize;
         let page_limit = self.search.effective_limit() as usize;
+        crate::search::execution::types::sort_hits_by_score_desc(&mut execution.hits);
         let more =
             execution.hits.len() > offset + page_limit || total_results > offset + page_limit;
         if offset > 0 || execution.hits.len() > page_limit {
