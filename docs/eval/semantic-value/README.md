@@ -15,7 +15,7 @@ Each case is a human-style query against a real repository under `~/source`. The
 - `backend = "semantic"`
 - `backend = "hybrid"`
 
-Every run uses `return_format = "locations"` and checks whether an expected source file appears in the top 8 hits.
+Every run uses `return_format = "compact"` and checks whether an expected source file appears in the top 8 hits.
 
 Metrics:
 

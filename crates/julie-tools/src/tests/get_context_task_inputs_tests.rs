@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_pipeline_with_task_signals_ends_with_truncation_line_for_overflow_neighbors() {
+    fn test_run_pipeline_with_task_signals_does_not_append_a_paging_trailer() {
         let calls: String = (0..24)
             .map(|idx| format!("    validate_{idx}();\n"))
             .collect();
@@ -326,15 +326,10 @@ mod tests {
         .unwrap();
 
         assert!(
-            output
-                .trim_end()
-                .ends_with("; narrow the query or pass a smaller limit."),
-            "neighbor overflow should end with the truncation line: {output}"
+            !output.contains("Output truncated"),
+            "get_context is budgeted, not paged: {output}"
         );
-        assert!(
-            output.contains("Output truncated at "),
-            "truncation line must report the kept count: {output}"
-        );
+        assert!(!output.contains("next:"), "{output}");
     }
 
     #[test]

@@ -99,6 +99,7 @@ async fn unified_pass_overfetch_surfaces_valid_hit_when_limit_hits_all_filtered(
     let run = FastSearchTool {
         query: "ovftest_probe_u7k9".to_string(),
         limit: 5,
+        offset: 0,
         file_pattern: Some("src/scope/**".to_string()),
         exclude_tests: Some(false),
         workspace: Some("primary".to_string()),
@@ -160,6 +161,7 @@ async fn unified_pass_scoped_source_beats_more_than_fifty_out_of_scope_hits() ->
     let run = FastSearchTool {
         query: "scoped_starvation_marker".to_string(),
         limit: 10,
+        offset: 0,
         file_pattern: Some("src/scope/**".to_string()),
         exclude_tests: Some(false),
         workspace: Some("primary".to_string()),
@@ -239,6 +241,7 @@ fn inline_test_u7k9_hidden_in_production() {
     let run = FastSearchTool {
         query: "inline_test_u7k9_hidden_in_production".to_string(),
         limit: 10,
+        offset: 0,
         exclude_tests: Some(true),
         workspace: Some("primary".to_string()),
         ..Default::default()

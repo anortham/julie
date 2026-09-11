@@ -84,6 +84,10 @@ fn build_blast_radius_tool_args(args: &BlastRadiusArgs) -> Result<Value> {
         tool_args["format"] = Value::String(fmt.clone());
     }
 
+    if args.offset > 0 {
+        tool_args["offset"] = Value::Number(args.offset.into());
+    }
+
     Ok(tool_args)
 }
 
@@ -98,6 +102,11 @@ impl CliToolCommand for SearchArgs {
         let mut map = Map::new();
         map.insert("query".into(), Value::String(self.query.clone()));
         map.insert("limit".into(), Value::Number(self.limit.into()));
+        map.insert("offset".into(), Value::Number(self.offset.into()));
+        map.insert(
+            "return_format".into(),
+            Value::String(self.return_format.clone()),
+        );
         if let Some(ref lang) = self.language {
             map.insert("language".into(), Value::String(lang.clone()));
         }
@@ -166,6 +175,7 @@ impl CliToolCommand for RefsArgs {
             Value::Bool(self.include_definition),
         );
         map.insert("limit".into(), Value::Number(self.limit.into()));
+        map.insert("offset".into(), Value::Number(self.offset.into()));
         if let Some(ref ws) = self.workspace {
             map.insert("workspace".into(), Value::String(ws.clone()));
         }
@@ -191,6 +201,7 @@ impl CliToolCommand for SymbolsArgs {
             map.insert("target".into(), Value::String(t.clone()));
         }
         map.insert("limit".into(), Value::Number(self.limit.into()));
+        map.insert("offset".into(), Value::Number(self.offset.into()));
         map.insert("max_depth".into(), Value::Number(self.max_depth.into()));
         Ok(map)
     }

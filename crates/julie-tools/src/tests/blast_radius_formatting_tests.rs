@@ -65,6 +65,7 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
         BlastRadiusFormat::Readable,
         BlastRadiusHeader {
             impact_overflow: true,
+            next: Some("next: blast_radius file_paths=src/worker.rs offset=1".to_string()),
             ..BlastRadiusHeader::default()
         },
     );
@@ -76,9 +77,7 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
     assert!(text.contains("tests/request_tests.rs"));
     assert!(text.contains("Related test symbols"));
     assert!(text.contains("test_handle_request"));
-    assert!(
-        text.ends_with("Output truncated at 1 results; narrow the query or pass a smaller limit.")
-    );
+    assert!(text.ends_with("next: blast_radius file_paths=src/worker.rs offset=1"));
 }
 
 #[test]
@@ -243,7 +242,7 @@ fn test_blast_radius_format_parse_strict_rejects_unknown_value() {
 }
 
 #[test]
-fn test_format_blast_radius_ends_with_truncation_line_when_impacts_overflow() {
+fn test_format_blast_radius_ends_with_next_line_when_impacts_overflow() {
     let seed_context = SeedContext {
         seed_symbols: vec![SymbolId(0)],
         changed_files: vec![],
@@ -262,13 +261,14 @@ fn test_format_blast_radius_ends_with_truncation_line_when_impacts_overflow() {
         BlastRadiusFormat::Compact,
         BlastRadiusHeader {
             impact_overflow: true,
+            next: Some("next: blast_radius symbol_ids=sym_a offset=1".to_string()),
             ..BlastRadiusHeader::default()
         },
     );
 
     assert!(
-        text.ends_with("Output truncated at 1 results; narrow the query or pass a smaller limit."),
-        "truncated output must end with the truncation line: {text}"
+        text.ends_with("next: blast_radius symbol_ids=sym_a offset=1"),
+        "overflow output must end with the next line: {text}"
     );
     assert!(
         !text.contains("handle="),

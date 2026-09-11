@@ -13,7 +13,7 @@ use julie_core::Symbol;
 /// Returns code bodies separated by blank lines with a minimal file header.
 const FORMAT_CODE_CHAR_LIMIT: usize = 50_000;
 
-fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
+fn format_code_output(file_path: &str, symbols: &[Symbol], next: Option<String>) -> CallToolResult {
     let mut output = String::new();
 
     // Minimal file header
@@ -42,11 +42,17 @@ fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
     }
 
     // Trim trailing whitespace but ensure single newline at end
-    let output = if truncated {
+    let mut output = if truncated {
         output + "\n"
     } else {
         output.trim_end().to_string() + "\n"
     };
+    if let Some(next) = next {
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+        output.push_str(&next);
+    }
 
     CallToolResult::text_content(vec![Content::text(output)])
 }
@@ -81,7 +87,11 @@ fn kind_keyword(kind: &julie_extractors::SymbolKind) -> Option<&'static str> {
 ///     fn process(&self, data: &[u8]) (17-24, public)
 ///   fn helper(x: i32) -> bool (30-45, private)
 /// ```
-fn format_lean_symbols(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
+fn format_lean_symbols(
+    file_path: &str,
+    symbols: &[Symbol],
+    next: Option<String>,
+) -> CallToolResult {
     let mut output = String::new();
 
     output.push_str(&format!("{} — {} symbols\n", file_path, symbols.len()));
@@ -133,7 +143,12 @@ fn format_lean_symbols(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
         }
     }
 
-    CallToolResult::text_content(vec![Content::text(output.trim_end().to_string())])
+    let mut output = output.trim_end().to_string();
+    if let Some(next) = next {
+        output.push('\n');
+        output.push_str(&next);
+    }
+    CallToolResult::text_content(vec![Content::text(output)])
 }
 
 /// Format symbol query response with structured content
@@ -141,6 +156,7 @@ pub fn format_symbol_response(
     file_path: &str,
     symbols: Vec<Symbol>,
     target: Option<&str>,
+    next: Option<String>,
 ) -> anyhow::Result<CallToolResult> {
     // Auto-select format: "code" when code bodies are available, "lean" otherwise
     let has_code_bodies = symbols.iter().any(|s| s.code_context.is_some());
@@ -153,7 +169,7 @@ pub fn format_symbol_response(
             symbols.len(),
             target
         );
-        return Ok(format_code_output(file_path, &symbols));
+        return Ok(format_code_output(file_path, &symbols, next));
     }
 
     // Everything else (including "lean", unknown formats) → lean text overview
@@ -162,5 +178,5 @@ pub fn format_symbol_response(
         symbols.len(),
         target
     );
-    Ok(format_lean_symbols(file_path, &symbols))
+    Ok(format_lean_symbols(file_path, &symbols, next))
 }

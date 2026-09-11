@@ -58,12 +58,18 @@ pub struct BlastRadiusTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
     )]
     pub max_depth: u32,
-    /// Maximum visible impact rows. Extra rows are dropped and reported by the truncation line.
+    /// Maximum visible impact rows. Extra rows are dropped and reported by a next: line.
     #[serde(
         default = "default_limit",
         deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
     )]
     pub limit: u32,
+    /// Skip this many impact rows before keeping `limit` rows (default: 0)
+    #[serde(
+        default,
+        deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
+    )]
+    pub offset: u32,
     /// Include likely tests and related test symbols when Julie can infer them.
     #[serde(
         default = "default_include_tests",
@@ -91,6 +97,7 @@ impl Default for BlastRadiusTool {
             file_paths: Vec::new(),
             max_depth: default_max_depth(),
             limit: default_limit(),
+            offset: 0,
             include_tests: default_include_tests(),
             format: None,
             workspace: default_workspace(),
@@ -134,8 +141,9 @@ fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<(Str
     let graph = snapshot.graph();
     let seed_context = seed::resolve_seed_context(tool, graph)?;
     let page_limit = tool.limit.max(1) as usize;
+    let offset = tool.offset as usize;
     let walk_budget = WalkBudget {
-        max_frontier_per_depth: (page_limit * 10).clamp(100, 500),
+        max_frontier_per_depth: ((page_limit + offset) * 10).clamp(100, 500),
     };
     let traversal_policy = if tool.mode.as_deref() == Some("web") {
         ImpactTraversalPolicy::Web
@@ -161,14 +169,18 @@ fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<(Str
         LikelyTests::default()
     };
 
-    let visible_impacts: Vec<RankedImpact> =
-        ranked_impacts.iter().take(page_limit).cloned().collect();
+    let visible_impacts: Vec<RankedImpact> = ranked_impacts
+        .iter()
+        .skip(offset)
+        .take(page_limit)
+        .cloned()
+        .collect();
     // Unknown format values error instead of silently coercing, so typos fail loudly.
     let format = match tool.format.as_deref() {
         Some(value) => BlastRadiusFormat::parse_strict(value).map_err(|msg| anyhow!(msg))?,
         None => BlastRadiusFormat::Compact,
     };
-    let impact_overflow = ranked_impacts.len() > page_limit;
+    let impact_overflow = ranked_impacts.len() > offset + page_limit;
     let visible_likely_tests = likely_tests.visible(LIKELY_TESTS_LIMIT);
 
     let mut web_caller_rows: Vec<String> = web_callers
@@ -185,12 +197,30 @@ fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<(Str
         })
         .collect();
     let web_callers_total = web_caller_rows.len();
-    web_caller_rows.truncate(page_limit);
+    web_caller_rows = web_caller_rows
+        .into_iter()
+        .skip(offset)
+        .take(page_limit)
+        .collect();
+
+    let file_paths = tool.file_paths.join(",");
+    let symbol_ids = tool.symbol_ids.join(",");
+    let seed_args: Vec<(&str, &str)> = if !tool.file_paths.is_empty() {
+        vec![("file_paths", file_paths.as_str())]
+    } else if !tool.symbol_ids.is_empty() {
+        vec![("symbol_ids", symbol_ids.as_str())]
+    } else {
+        vec![]
+    };
+    let next = impact_overflow.then(|| {
+        crate::shared::next_line("blast_radius", &seed_args, offset + visible_impacts.len())
+    });
 
     let header = BlastRadiusHeader {
         impact_overflow,
         web_callers: web_caller_rows,
         web_callers_total,
+        next,
     };
 
     let count = visible_impacts.len() as u32;

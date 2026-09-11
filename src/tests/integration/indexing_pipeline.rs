@@ -48,6 +48,7 @@ async fn fast_search_text(
     let tool = FastSearchTool {
         query: query.to_string(),
         limit: 10,
+        offset: 0,
         context_lines: Some(3),
         workspace: Some("primary".to_string()),
         exclude_tests,

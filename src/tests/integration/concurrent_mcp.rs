@@ -211,6 +211,7 @@ mod tests {
                     max_depth: 2,
                     target: None,
                     limit: Some(50),
+                    offset: 0,
                     mode: Some("structure".to_string()),
                     workspace: None,
                 }
@@ -288,11 +289,12 @@ mod tests {
                     language: Some("rust".to_string()),
                     file_pattern: None,
                     limit: 5,
+                    offset: 0,
                     context_lines: Some(0),
                     exclude_tests: None,
                     backend: None,
                     workspace: None,
-                    return_format: "locations".to_string(),
+                    return_format: "compact".to_string(),
                     semantics: None,
                 }
                 .call_tool(h.as_ref())
@@ -408,6 +410,7 @@ mod tests {
                 let r = FastSearchTool {
                     query: "alpha".to_string(),
                     limit: 10,
+                    offset: 0,
                     workspace: Some(ws),
                     ..Default::default()
                 }
@@ -427,6 +430,7 @@ mod tests {
                     max_depth: 2,
                     target: None,
                     limit: Some(50),
+                    offset: 0,
                     mode: Some("structure".to_string()),
                     workspace: Some(ws),
                 }
@@ -463,6 +467,7 @@ mod tests {
                     symbol: "alpha_helper".to_string(),
                     include_definition: true,
                     limit: 10,
+                    offset: 0,
                     workspace: Some(ws),
                     reference_kind: None,
                     semantics: None,

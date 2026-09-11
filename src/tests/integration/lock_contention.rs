@@ -62,6 +62,7 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
                 language: None,
                 file_pattern: Some("docs/archive/*.md".to_string()), // File pattern filter
                 limit: 10,
+                offset: 0,
                 workspace: Some("primary".to_string()),
                 context_lines: Some(1),
                 exclude_tests: None,
@@ -157,6 +158,7 @@ async fn test_force_reindex_no_lock_busy_errors() -> Result<()> {
         language: None,
         file_pattern: None,
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: None,
         exclude_tests: None,

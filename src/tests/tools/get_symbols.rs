@@ -41,6 +41,7 @@ pub const MAX_USERS: usize = 100;
         max_depth: 2,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: None,
     };
@@ -89,6 +90,7 @@ pub fn process_data(input: &str) -> String {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: None,
     };
@@ -121,6 +123,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
             max_depth: 1,
             target: None,
             limit: None,
+            offset: 0,
             mode: None,
             workspace: None,
         };
@@ -160,6 +163,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: None,
     };
@@ -182,6 +186,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: Some(5),
+        offset: 0,
         mode: None,
         workspace: None,
     };
@@ -215,6 +220,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: None,
     };
@@ -240,6 +246,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: None,
     };
@@ -264,6 +271,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: None,
     };
@@ -310,6 +318,7 @@ pub fn get_user(id: &str) -> User {
         max_depth: 2,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -423,7 +432,7 @@ fn test_lean_format_skips_redundant_kind_prefix() {
         code_context: None,
     };
 
-    let result = format_symbol_response("src/foo.rs", vec![struct_sym, fn_sym], None)
+    let result = format_symbol_response("src/foo.rs", vec![struct_sym, fn_sym], None, None)
         .expect("format_symbol_response should not fail");
     let text = call_tool_result_text(&result);
 

@@ -19,7 +19,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SCORECARD = ROOT / "docs/eval/semantic-value/scorecard.toml"
 DEFAULT_RESULTS_DIR = ROOT / "docs/eval/semantic-value/results"
-HIT_RE = re.compile(r"^\s{2}([^:\n]+):")
+HIT_HEADER_RE = re.compile(r"^\d+ hits for ")
+GROUP_HEADER_RE = re.compile(r"^([^:\n]+):\s*$")
+SINGLETON_RE = re.compile(r"^([^:\n]+):\d+\b")
+GROUP_ROW_RE = re.compile(r"^\s+:\d+\b")
 FALLBACK_PATTERNS = (
     "falling back",
     "fell back",
@@ -114,9 +117,24 @@ def result_text(payload: dict[str, Any]) -> str:
 def extract_hits(text: str) -> list[str]:
     hits = []
     for line in text.splitlines():
-        match = HIT_RE.match(line)
-        if match:
-            hits.append(match.group(1))
+        stripped = line.strip()
+        if not stripped or stripped.startswith("next:") or HIT_HEADER_RE.match(line):
+            continue
+        if stripped.startswith("NOTE:"):
+            continue
+        if GROUP_ROW_RE.match(line):
+            continue
+        group = GROUP_HEADER_RE.match(line)
+        if group:
+            hits.append(group.group(1))
+            continue
+        singleton = SINGLETON_RE.match(line)
+        if singleton:
+            hits.append(singleton.group(1))
+            continue
+        if line.startswith(" "):
+            continue
+        hits.append(stripped)
     return hits
 
 
@@ -138,7 +156,7 @@ def run_backend(
     params: dict[str, Any] = {
         "query": case["query"],
         "backend": backend,
-        "return_format": settings.get("return_format", "locations"),
+        "return_format": settings.get("return_format", "compact"),
         "limit": case.get("limit", settings.get("limit", 8)),
     }
 

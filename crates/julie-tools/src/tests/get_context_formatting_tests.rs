@@ -997,7 +997,7 @@ mod formatting_tests {
     }
 
     #[test]
-    fn test_truncated_context_ends_with_truncation_line() {
+    fn test_truncated_context_has_no_paging_trailer() {
         let data = ContextData {
             query: "payment".to_string(),
             pivots: vec![make_pivot("a", "src/a.rs", 1, 1.0, "fn a() {}")],
@@ -1012,11 +1012,10 @@ mod formatting_tests {
         for mode in [OutputFormat::Readable, OutputFormat::Compact] {
             let output = format_context_with_mode(&data, mode);
             assert!(
-                output.trim_end().ends_with(
-                    "Output truncated at 3 results; narrow the query or pass a smaller limit."
-                ),
-                "{mode:?} output must end with the truncation line: {output}"
+                !output.contains("Output truncated"),
+                "{mode:?} context is budgeted, not paged: {output}"
             );
+            assert!(!output.contains("next:"), "{mode:?} output: {output}");
             assert!(!output.contains("handle="), "{output}");
         }
     }

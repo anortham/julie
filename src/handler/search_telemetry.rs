@@ -61,6 +61,8 @@ pub(crate) fn fast_search_metadata_with_regions(
         "language": params.language,
         "file_pattern": params.file_pattern,
         "limit": params.effective_limit(),
+        "offset": params.offset,
+        "return_format": params.return_format,
         "exclude_tests": params.exclude_tests,
         "workspace": params.workspace,
         "regions": regions,

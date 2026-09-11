@@ -19,6 +19,7 @@ pub async fn get_symbols_from_target_workspace(
     max_depth: u32,
     target: Option<&str>,
     limit: Option<u32>,
+    offset: u32,
     mode: &str,
     target_workspace_id: String,
 ) -> Result<(CallToolResult, u32)> {
@@ -92,8 +93,21 @@ pub async fn get_symbols_from_target_workspace(
         ));
     }
 
-    let (symbols_to_return, _was_truncated, _total_symbols) =
-        apply_all_filters(symbols, max_depth, target, limit);
+    let offset = offset as usize;
+    let page_limit = limit.map(|n| n.max(1) as usize);
+    let fetch_limit = page_limit.map(|n| (n + offset + 1) as u32);
+    let (symbols_to_return, was_truncated, _total_symbols) =
+        apply_all_filters(symbols, max_depth, target, fetch_limit);
+    let more = match page_limit {
+        Some(n) => symbols_to_return.len() > offset + n || was_truncated,
+        None => false,
+    };
+    let take = page_limit.unwrap_or(usize::MAX);
+    let symbols_to_return: Vec<_> = symbols_to_return
+        .into_iter()
+        .skip(offset)
+        .take(take)
+        .collect();
 
     if symbols_to_return.is_empty() {
         let message = format!("No symbols found after filtering in: {}", file_path);
@@ -110,8 +124,12 @@ pub async fn get_symbols_from_target_workspace(
     } else {
         mode
     };
+    let kept = symbols_to_return.len();
     let symbols_to_return = extract_code_bodies(symbols_to_return, &absolute_path, body_mode)?;
     let count = symbols_to_return.len() as u32;
-    let result = format_symbol_response(file_path, symbols_to_return, target)?;
+    let next = more.then(|| {
+        crate::shared::next_line("get_symbols", &[("file_path", file_path)], offset + kept)
+    });
+    let result = format_symbol_response(file_path, symbols_to_return, target, next)?;
     Ok((result, count))
 }

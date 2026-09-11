@@ -449,8 +449,8 @@ Expected: PASS
 - `serial-worker-commit`: `git commit -m "feat(search): compact output by default with offset paging on search, refs, symbols, and impact"` and record the SHA.
 
 **Acceptance criteria:**
-- [ ] The four new tests pass; `julie-server search "bind_default_workspace" --json` returns the compact shape; `--offset 6` returns the next page; `--return-format full` returns today's full output; `--return-format locations` returns the invalid-format error.
-- [ ] `grep -rn "truncation_line\|\"locations\"" src crates docs/eval` returns nothing.
+- [x] The four new tests pass; `julie-server search "bind_default_workspace" --json` returns the compact shape; `--offset 6` returns the next page; `--return-format full` returns today's full output; `--return-format locations` returns the invalid-format error.
+- [x] `grep -rn "truncation_line\|\"locations\"" src crates docs/eval` returns nothing except the required reject test `fast_search_rejects_the_removed_locations_format`.
 - [ ] `cargo xtask test dogfood` passes at this commit (lead runs it; worker reports ready).
 - [ ] Tests pass and the change is committed by the worker per commit mode.
 

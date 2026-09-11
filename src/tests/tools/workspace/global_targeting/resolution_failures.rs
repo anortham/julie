@@ -8,6 +8,7 @@ async fn test_unknown_workspace_suggests_closest_match() {
     let result = FastSearchTool {
         query: "target_search_marker".to_string(),
         limit: 10,
+        offset: 0,
         workspace: Some(typo_workspace_id.clone()),
         ..Default::default()
     }

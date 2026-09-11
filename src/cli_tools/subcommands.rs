@@ -73,6 +73,12 @@ pub struct SearchArgs {
     /// Maximum results (default: 10)
     #[arg(short = 'n', long, default_value = "10")]
     pub limit: u32,
+    /// Skip this many hits before keeping --limit rows
+    #[arg(long, default_value = "0")]
+    pub offset: u32,
+    /// Return format: compact|full
+    #[arg(long = "return-format", default_value = "compact")]
+    pub return_format: String,
     /// Language filter (e.g. rust, typescript, python)
     #[arg(short = 'l', long)]
     pub language: Option<String>,
@@ -108,6 +114,9 @@ pub struct RefsArgs {
     /// Maximum references (default: 10)
     #[arg(short = 'n', long, default_value = "10")]
     pub limit: u32,
+    /// Skip this many references before keeping --limit rows
+    #[arg(long, default_value = "0")]
+    pub offset: u32,
     /// Tool workspace target: primary or a workspace id
     #[arg(id = "target_workspace", long = "target-workspace")]
     pub workspace: Option<String>,
@@ -134,6 +143,9 @@ pub struct SymbolsArgs {
     /// Maximum symbols to return (default: 50)
     #[arg(short = 'n', long, default_value = "50")]
     pub limit: u32,
+    /// Skip this many symbols before keeping --limit rows
+    #[arg(long, default_value = "0")]
+    pub offset: u32,
     /// Maximum nesting depth (0=top-level, 1=include methods, 2+=deeper)
     #[arg(short = 'd', long, default_value = "1")]
     pub max_depth: u32,
@@ -214,6 +226,9 @@ pub struct BlastRadiusArgs {
     /// Blast-radius text layout: readable or compact
     #[arg(long = "report-format", value_parser = ["readable", "compact"])]
     pub report_format: Option<String>,
+    /// Skip this many impact rows before keeping the default page
+    #[arg(long, default_value = "0")]
+    pub offset: u32,
 }
 
 // ---------------------------------------------------------------------------

@@ -47,6 +47,7 @@ fn content_search(query: &str, file_pattern: Option<&str>) -> FastSearchTool {
         backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
+        offset: 0,
         semantics: None,
     }
 }

@@ -54,6 +54,12 @@ pub struct FastRefsTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
     )]
     pub limit: u32,
+    /// Skip this many references before keeping `limit` rows (default: 0)
+    #[serde(
+        default,
+        deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
+    )]
+    pub offset: u32,
     /// Workspace filter: "primary" (default) or a workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
@@ -115,10 +121,11 @@ impl FastRefsTool {
         debug!("Finding references for: {}", self.symbol);
 
         let snapshot = handler.snapshot(workspace_target).await?;
-        let found = find_references(
+        let fetch_limit = self.limit.saturating_add(self.offset).saturating_add(1);
+        let mut found = find_references(
             &snapshot,
             &self.symbol,
-            self.limit,
+            fetch_limit,
             self.reference_kind.as_deref(),
         );
 
@@ -148,13 +155,33 @@ impl FastRefsTool {
         } else {
             Vec::new()
         };
-        let count = found.references.len() as u32;
-        let lean_output = format_lean_refs_results(
+        let offset = self.offset as usize;
+        let page_limit = self.limit.max(1) as usize;
+        let more = found.references.len() > offset + page_limit;
+        found.references = found
+            .references
+            .into_iter()
+            .skip(offset)
+            .take(page_limit)
+            .collect();
+        let kept = found.references.len();
+        let count = kept as u32;
+        let mut lean_output = format_lean_refs_results(
             &self.symbol,
             &definitions,
             &found.references,
             &found.source_names,
         );
+        if more {
+            if !lean_output.ends_with('\n') {
+                lean_output.push('\n');
+            }
+            lean_output.push_str(&crate::shared::next_line(
+                "fast_refs",
+                &[("symbol", &self.symbol)],
+                offset + kept,
+            ));
+        }
         Ok((
             CallToolResult::text_content(vec![Content::text(lean_output)]),
             count,

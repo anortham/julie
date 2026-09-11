@@ -128,6 +128,7 @@ mod search_quality_tests {
             language: None,
             file_pattern: None,
             limit: 10,
+            offset: 0,
             workspace: Some("primary".to_string()),
             context_lines: None,
             exclude_tests: None,

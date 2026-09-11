@@ -40,6 +40,7 @@ async fn test_get_symbols_target_workspace() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
@@ -89,6 +90,7 @@ pub struct Another { pub field: String }
         max_depth: 999,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
@@ -115,6 +117,7 @@ pub struct Another { pub field: String }
         max_depth: 0,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
@@ -130,6 +133,7 @@ pub struct Another { pub field: String }
         max_depth: 999,
         target: Some("Outer".to_string()),
         limit: None,
+        offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
@@ -151,6 +155,7 @@ pub struct Another { pub field: String }
         max_depth: 999,
         target: None,
         limit: Some(2),
+        offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
@@ -180,6 +185,7 @@ async fn test_get_symbols_target_workspace_relative_paths_after_primary_rebind()
             max_depth: 1,
             target: None,
             limit: None,
+            offset: 0,
             mode: Some("full".to_string()),
             workspace: Some(target_workspace_id.clone()),
         };

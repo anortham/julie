@@ -34,6 +34,7 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
         max_depth: 1,
         mode: None,
         limit: None,
+        offset: 0,
         target: None,
         workspace: None,
     };
@@ -73,6 +74,7 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
         max_depth: 1,
         mode: None,
         limit: None,
+        offset: 0,
         target: None,
         workspace: None,
     };
@@ -117,6 +119,7 @@ async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> R
         max_depth: 1,
         mode: None,
         limit: None,
+        offset: 0,
         target: None,
         workspace: Some(rebound_id),
     };
@@ -142,6 +145,7 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
         max_depth: 1,
         mode: None,
         limit: None,
+        offset: 0,
         target: None,
         workspace: Some("primary".to_string()),
     };

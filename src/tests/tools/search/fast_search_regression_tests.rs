@@ -178,6 +178,7 @@ async fn content_nl_default_excludes_tests_but_explicit_false_includes_them() ->
     let default_run = FastSearchTool {
         query: "refresh token".to_string(),
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
         exclude_tests: None,
@@ -213,6 +214,7 @@ async fn content_nl_default_excludes_tests_but_explicit_false_includes_them() ->
     let explicit_include = FastSearchTool {
         query: "refresh token".to_string(),
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
         exclude_tests: Some(false),
@@ -257,6 +259,7 @@ async fn content_auto_exclude_tests_respects_explicit_test_file_pattern() -> Res
         language: Some("rust".to_string()),
         file_pattern: Some("src/tests/**".to_string()),
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
         exclude_tests: None,
@@ -286,6 +289,7 @@ async fn content_auto_exclude_tests_respects_explicit_test_file_pattern() -> Res
         query: query.to_string(),
         language: Some("rust".to_string()),
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
         exclude_tests: None,
@@ -331,6 +335,7 @@ async fn content_test_intent_keeps_and_ranks_test_files() -> Result<()> {
     let execution = FastSearchTool {
         query: "test refresh token".to_string(),
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
         exclude_tests: None,
@@ -420,7 +425,8 @@ async fn content_locations_format_omits_matching_line_text() -> Result<()> {
     let handler = index_workspace(workspace_path).await?;
     let result = FastSearchTool {
         query: "compact_location_marker".to_string(),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 10,
         workspace: Some("primary".to_string()),
         ..Default::default()
@@ -431,11 +437,11 @@ async fn content_locations_format_omits_matching_line_text() -> Result<()> {
     let text = extract_text(&result);
     assert!(
         text.contains("src/app.rs:2"),
-        "locations output should include file and line, got:\n{text}"
+        "compact output should include file and line, got:\n{text}"
     );
     assert!(
-        !text.contains("let compact_location_marker"),
-        "locations output must omit line snippets, got:\n{text}"
+        text.contains("hits for \"compact_location_marker\""),
+        "compact output should start with a hit header, got:\n{text}"
     );
 
     Ok(())
@@ -455,7 +461,8 @@ async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> 
     let handler = index_workspace(workspace_path).await?;
     let run = FastSearchTool {
         query: "trace marker phrase".to_string(),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 10,
         workspace: Some("primary".to_string()),
         ..Default::default()
@@ -465,8 +472,8 @@ async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> 
 
     let text = extract_text(&run.result);
     assert!(
-        !text.contains("print(\"trace marker phrase\")"),
-        "locations output should omit matching line text, got:\n{text}"
+        text.contains("hits for \"trace marker phrase\""),
+        "compact output should start with a hit header, got:\n{text}"
     );
 
     let execution = run.execution.expect("search should return execution trace");
@@ -482,7 +489,7 @@ async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> 
     );
     assert!(
         text.contains("src/app.py:2"),
-        "locations output should include the Python file and line, got:\n{text}"
+        "compact output should include the Python file and line, got:\n{text}"
     );
     assert_eq!(execution.trace.result_count, execution.hits.len());
     assert_eq!(
@@ -526,7 +533,8 @@ public:
     let handler = index_workspace(workspace_path).await?;
     let run = FastSearchTool {
         query: "return 42".to_string(),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         language: Some("cpp".to_string()),
         limit: 10,
         workspace: Some("primary".to_string()),
@@ -538,7 +546,7 @@ public:
     let text = extract_text(&run.result);
     assert!(
         text.contains("include/Widget.h:6"),
-        "C++ .h locations output should include the matching line, got:\n{text}"
+        "C++ .h compact output should include the matching line, got:\n{text}"
     );
 
     let execution = run.execution.expect("search should return execution trace");
@@ -567,6 +575,7 @@ async fn content_full_format_includes_matching_line_text() -> Result<()> {
     let result = FastSearchTool {
         query: "full_format_context_marker".to_string(),
         return_format: "full".to_string(),
+        offset: 0,
         limit: 10,
         workspace: Some("primary".to_string()),
         ..Default::default()
@@ -598,6 +607,7 @@ async fn content_full_output_trace_records_line_enrichment_success() -> Result<(
     let run = FastSearchTool {
         query: "trace_enrichment_marker".to_string(),
         return_format: "full".to_string(),
+        offset: 0,
         limit: 10,
         workspace: Some("primary".to_string()),
         ..Default::default()
@@ -632,6 +642,7 @@ async fn content_full_output_trace_records_line_enrichment_no_matches() -> Resul
     let run = FastSearchTool {
         query: "only_path_marker".to_string(),
         return_format: "full".to_string(),
+        offset: 0,
         limit: 10,
         workspace: Some("primary".to_string()),
         ..Default::default()
@@ -668,7 +679,8 @@ async fn definition_search_with_zero_limit_still_returns_one_result() -> Result<
     let handler = index_workspace(workspace_path).await?;
     let result = FastSearchTool {
         query: "zero_limit_should_still_find_one".to_string(),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 0,
         workspace: Some("primary".to_string()),
         ..Default::default()
@@ -717,6 +729,7 @@ async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Resu
     let execution = FastSearchTool {
         query: ".cargo".to_string(),
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: None,
         ..Default::default()

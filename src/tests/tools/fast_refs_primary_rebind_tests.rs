@@ -48,6 +48,7 @@ fn fast_refs(symbol: &str, limit: u32, reference_kind: Option<&str>) -> FastRefs
         symbol: symbol.to_string(),
         include_definition: true,
         limit,
+        offset: 0,
         workspace: Some("primary".to_string()),
         reference_kind: reference_kind.map(str::to_string),
         semantics: None,

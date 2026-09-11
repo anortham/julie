@@ -63,6 +63,7 @@ mod tests {
         let search_tool = FastSearchTool {
             query: "handle_validate_syntax".to_string(),
             limit: 15,
+            offset: 0,
             file_pattern: None,
             language: None,
             workspace: None,
@@ -130,6 +131,7 @@ mod tests {
                 let search_tool = FastSearchTool {
                     query: format!("test_function_{}", i),
                     limit: 15,
+                    offset: 0,
                     file_pattern: None,
                     language: None,
                     workspace: None,
@@ -184,6 +186,7 @@ mod tests {
         let search_tool = FastSearchTool {
             query: "target_function".to_string(),
             limit: 15,
+            offset: 0,
             file_pattern: None,
             language: None,
             workspace: None,
@@ -258,6 +261,7 @@ pub fn helper_function() {}
             let fast_search_query_a = FastSearchTool {
                 query: "diff-match-patch dmp".to_string(),
                 limit: 15,
+                offset: 0,
                 file_pattern: None,
                 language: None,
                 workspace: None,
@@ -269,6 +273,7 @@ pub fn helper_function() {}
             let fast_search_query_b = FastSearchTool {
                 query: "embedding vector semantic".to_string(),
                 limit: 15,
+                offset: 0,
                 file_pattern: None,
                 language: None,
                 workspace: None,
@@ -282,6 +287,7 @@ pub fn helper_function() {}
                 max_depth: 2,
                 target: None,
                 limit: None,
+                offset: 0,
                 mode: None,
                 workspace: None,
             };
@@ -291,6 +297,7 @@ pub fn helper_function() {}
                 max_depth: 2,
                 target: None,
                 limit: None,
+                offset: 0,
                 mode: None,
                 workspace: None,
             };
@@ -378,6 +385,7 @@ pub fn embedding_vector_semantic() {}
         let fast_search_tool = FastSearchTool {
             query: "diff-match-patch dmp".to_string(),
             limit: 15,
+            offset: 0,
             file_pattern: None,
             language: None,
             workspace: None,
@@ -489,6 +497,7 @@ pub fn embedding_vector_semantic() {}
         let fast_search_tool = FastSearchTool {
             query: "semantic_diff_tool".to_string(),
             limit: 15,
+            offset: 0,
             file_pattern: None,
             language: None,
             workspace: Some(workspace_id.clone()),

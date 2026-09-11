@@ -18,6 +18,7 @@ async fn targeted_text(file_path: &str, target: &str) -> Result<String> {
         max_depth: 2,
         target: Some(target.to_string()),
         limit: None,
+        offset: 0,
         mode: None,
         workspace: None,
     };

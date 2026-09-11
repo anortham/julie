@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use crate::navigation::formatting::{format_lean_refs_results, format_semantic_fallback};
 use crate::navigation::resolution::parse_qualified_name;
+use crate::search::SearchHit;
+use crate::search::trace::SearchHitBacking;
 use julie_core::Symbol;
 use julie_extractors::{Relationship, RelationshipKind, SymbolKind};
 use julie_index::search::similarity::SimilarEntry;
@@ -35,6 +37,26 @@ fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&s
             annotations: Vec::new(),
         },
         code_context: None,
+    }
+}
+
+fn hit(path: &str, line: u32, name: &str, kind: &str) -> SearchHit {
+    let symbol_kind = match kind {
+        "struct" => SymbolKind::Struct,
+        _ => SymbolKind::Function,
+    };
+    let symbol = make_test_symbol(path, line, symbol_kind, None);
+    SearchHit {
+        name: name.to_string(),
+        file: path.to_string(),
+        line: Some(line),
+        kind: kind.to_string(),
+        language: "rust".to_string(),
+        score: 1.0,
+        snippet: None,
+        workspace: "primary".to_string(),
+        symbol_id: Some(symbol.id.clone()),
+        backing: SearchHitBacking::Symbol(symbol),
     }
 }
 
@@ -536,6 +558,7 @@ async fn test_fast_refs_semantic_fallback_offloaded_to_spawn_blocking() {
     let tool = crate::navigation::FastRefsTool {
         symbol: "nonexistent_symbol".to_string(),
         limit: 10,
+        offset: 0,
         reference_kind: None,
         include_definition: false,
         workspace: Some("primary".to_string()),
@@ -552,4 +575,20 @@ async fn test_fast_refs_semantic_fallback_offloaded_to_spawn_blocking() {
         caller_thread_id, embed_thread_id,
         "embed_query MUST execute on a separate blocking pool thread, not the Tokio async caller thread"
     );
+}
+
+#[test]
+fn compact_search_groups_repeated_files_and_appends_next_when_rows_remain() {
+    let hits = vec![
+        hit("src/a.rs", 10, "alpha", "function"),
+        hit("src/a.rs", 20, "beta", "function"),
+        hit("src/b.rs", 5, "gamma", "struct"),
+    ];
+    let text = crate::search::formatting::render_compact("q", "lexical", &hits, 0, 3, true);
+    assert_eq!(
+        text,
+        "3 hits for \"q\" (lexical)\nsrc/a.rs:\n  :10 alpha function\n  :20 beta function\nsrc/b.rs:5 gamma struct\nnext: fast_search query=\"q\" offset=3"
+    );
+    let last_page = crate::search::formatting::render_compact("q", "lexical", &hits, 0, 3, false);
+    assert!(!last_page.contains("next:"));
 }

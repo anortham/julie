@@ -78,6 +78,7 @@ pub fn process_user_data(input: &str) -> String {
         language: None,
         file_pattern: None,
         limit: 15,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: None, // Use default (1)
         exclude_tests: None,
@@ -138,6 +139,7 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
         language: None,
         file_pattern: None,
         limit: 15,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: Some(0), // 0 = just match line
         exclude_tests: None,
@@ -203,6 +205,7 @@ pub fn validate_input(data: &str) -> bool {
         language: None,
         file_pattern: None,
         limit: 15,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: Some(3), // 3 = grep default (7 total lines)
         exclude_tests: None,
@@ -257,6 +260,7 @@ pub fn short_func() -> i32 { 42 }
         language: None,
         file_pattern: None,
         limit: 15,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: None, // Default (1)
         exclude_tests: None,

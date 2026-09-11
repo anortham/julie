@@ -16,6 +16,7 @@ async fn test_target_minimal_mode_includes_body_for_child_symbols() -> Result<()
         max_depth: 2,
         target: Some("call_tool".to_string()),
         limit: None,
+        offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
     };

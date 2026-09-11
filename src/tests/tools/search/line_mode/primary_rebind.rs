@@ -90,6 +90,7 @@ async fn test_fast_search_line_mode_primary_uses_rebound_session_primary() -> Re
         language: None,
         file_pattern: None,
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: None,
         exclude_tests: None,
@@ -182,6 +183,7 @@ async fn test_fast_search_primary_cold_start_reports_index_first_instead_of_swap
         language: None,
         file_pattern: None,
         limit: 10,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: None,
         exclude_tests: None,
@@ -211,5 +213,5 @@ async fn test_fast_search_primary_cold_start_reports_index_first_instead_of_swap
 // symbol fields + file path-text, so a comment-only fixture with a
 // `-term` query has no path through FastSearchTool's default flow
 // anymore.  The exclusion syntax remains a property of the line_mode
-// utility (still reachable via `return_format=locations` once content
-// matches exist) and is covered by `line_match_strategy_tests`.
+// utility (still reachable via line-mode content matches) and is covered
+// by `line_match_strategy_tests`.

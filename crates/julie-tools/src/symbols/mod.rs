@@ -95,6 +95,12 @@ pub struct GetSymbolsTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_option_u32_lenient"
     )]
     pub limit: Option<u32>,
+    /// Skip this many symbols before keeping `limit` rows (default: 0)
+    #[serde(
+        default,
+        deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
+    )]
+    pub offset: u32,
     /// Reading mode: "structure" (names/signatures only, no code), "minimal" (default, code bodies for top-level symbols), "full" (code for all including nested). WARNING: "full" without target extracts the entire file
     #[serde(default = "default_mode")]
     pub mode: Option<String>,
@@ -129,6 +135,7 @@ impl GetSymbolsTool {
                     self.max_depth,
                     self.target.as_deref(),
                     self.limit,
+                    self.offset,
                     mode,
                     target_workspace_id,
                 )
@@ -141,6 +148,7 @@ impl GetSymbolsTool {
                     self.max_depth,
                     self.target.as_deref(),
                     self.limit,
+                    self.offset,
                     mode,
                 )
                 .await

@@ -43,6 +43,7 @@ async fn mixed_kinds() -> Result<()> {
     let execution = FastSearchTool {
         query: "BrowserClient".to_string(),
         limit: 20,
+        offset: 0,
         workspace: Some("primary".to_string()),
         context_lines: None,
         ..Default::default()

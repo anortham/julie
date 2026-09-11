@@ -1,7 +1,7 @@
 [settings]
 binary = "./target/release/julie-server"
 limit = 8
-return_format = "locations"
+return_format = "compact"
 exclude_tests = true
 backends = ["lexical", "semantic", "hybrid"]
 

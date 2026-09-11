@@ -225,6 +225,7 @@ async fn challenge_cancellation_bubbles_up_in_fast_refs() {
     let tool_auto = FastRefsTool {
         symbol: "nonexistent_symbol".to_string(),
         limit: 10,
+        offset: 0,
         reference_kind: None,
         include_definition: false,
         workspace: Some("primary".to_string()),
@@ -247,6 +248,7 @@ async fn challenge_cancellation_bubbles_up_in_fast_refs() {
     let tool_req = FastRefsTool {
         symbol: "nonexistent_symbol".to_string(),
         limit: 10,
+        offset: 0,
         reference_kind: None,
         include_definition: false,
         workspace: Some("primary".to_string()),
@@ -335,6 +337,7 @@ async fn challenge_search_execution_required_mode_fails_closed_when_provider_mis
         backend: Some(crate::search::SearchBackend::Semantic),
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
+        offset: 0,
         semantics: Some(SemanticMode::Required),
     };
 

@@ -33,6 +33,7 @@ async fn fast_search_regions_returns_only_matching_source_region_lines() -> Resu
         search: FastSearchTool {
             query: "region needle".into(),
             return_format: "full".into(),
+            offset: 0,
             ..Default::default()
         },
         regions: Some("comment".into()),
@@ -107,6 +108,7 @@ async fn fast_search_regions_respects_target_workspace() -> Result<()> {
             query: "workspace needle".into(),
             workspace: Some("target-workspace".into()),
             return_format: "full".into(),
+            offset: 0,
             ..Default::default()
         },
         regions: Some("comment".into()),

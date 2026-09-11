@@ -12,6 +12,7 @@ async fn test_known_ready_workspace_auto_activates_for_fast_search() {
     let result = FastSearchTool {
         query: "target_search_marker".to_string(),
         limit: 10,
+        offset: 0,
         workspace: Some(target_id.clone()),
         ..Default::default()
     }
@@ -45,6 +46,7 @@ async fn test_known_pending_workspace_requires_open_before_fast_search() {
     let result = FastSearchTool {
         query: "target_search_marker".to_string(),
         limit: 10,
+        offset: 0,
         workspace: Some(target_id.clone()),
         ..Default::default()
     }
@@ -102,6 +104,7 @@ async fn test_known_workspace_row_does_not_preactivate_on_new_session() {
     let result = FastSearchTool {
         query: "target_search_marker".to_string(),
         limit: 10,
+        offset: 0,
         workspace: Some(target_id.clone()),
         ..Default::default()
     }

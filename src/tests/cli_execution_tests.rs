@@ -70,6 +70,8 @@ fn test_search_args_tool_name() {
     let args = SearchArgs {
         query: "test".into(),
         limit: 10,
+        offset: 0,
+        return_format: "compact".to_string(),
         language: None,
         file_pattern: None,
         context_lines: None,
@@ -88,6 +90,7 @@ fn test_refs_args_tool_name() {
         workspace: None,
         kind: None,
         limit: 10,
+        offset: 0,
     };
     assert_eq!(args.tool_name(), "fast_refs");
 }
@@ -99,6 +102,7 @@ fn test_symbols_args_tool_name() {
         mode: "structure".into(),
         target: None,
         limit: 50,
+        offset: 0,
         max_depth: 1,
     };
     assert_eq!(args.tool_name(), "get_symbols");
@@ -134,6 +138,7 @@ fn test_blast_radius_args_tool_name() {
     let args = BlastRadiusArgs {
         rev: None,
         files: None,
+        offset: 0,
         symbols: None,
         report_format: None,
     };
@@ -168,6 +173,8 @@ fn test_search_to_tool_args_minimal() {
     let args = SearchArgs {
         query: "hello".into(),
         limit: 10,
+        offset: 0,
+        return_format: "compact".to_string(),
         language: None,
         file_pattern: None,
         context_lines: None,
@@ -191,6 +198,8 @@ fn test_search_to_tool_args_full() {
     let args = SearchArgs {
         query: "parse".into(),
         limit: 20,
+        offset: 0,
+        return_format: "compact".to_string(),
         language: Some("rust".into()),
         file_pattern: Some("src/**/*.rs".into()),
         context_lines: Some(3),
@@ -218,6 +227,7 @@ fn test_refs_to_tool_args_with_filters() {
         workspace: None,
         kind: Some("call".into()),
         limit: 25,
+        offset: 0,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["symbol"], "Command");
@@ -234,6 +244,7 @@ fn test_symbols_to_tool_args_with_target() {
         mode: "minimal".into(),
         target: Some("new".into()),
         limit: 5,
+        offset: 0,
         max_depth: 2,
     };
     let json = args.to_tool_args().unwrap();
@@ -290,6 +301,7 @@ fn test_blast_radius_to_tool_args_with_files() {
     let args = BlastRadiusArgs {
         rev: None,
         files: Some(vec!["src/cli.rs".into()]),
+        offset: 0,
         symbols: Some(vec!["sym_1234abcd".into()]),
         report_format: Some("readable".into()),
     };
@@ -312,6 +324,7 @@ fn test_blast_radius_to_tool_args_rev_resolves_to_files() {
     let args = BlastRadiusArgs {
         rev: Some("HEAD~1".into()),
         files: None,
+        offset: 0,
         symbols: None,
         report_format: None,
     };
@@ -330,6 +343,7 @@ fn test_blast_radius_to_tool_args_rev_invalid() {
     let args = BlastRadiusArgs {
         rev: Some("nonexistent_rev_abc123xyz".into()),
         files: None,
+        offset: 0,
         symbols: None,
         report_format: None,
     };
@@ -345,6 +359,7 @@ fn test_blast_radius_symbols_validation_catches_names() {
     let args = BlastRadiusArgs {
         rev: None,
         files: None,
+        offset: 0,
         symbols: Some(vec!["FastSearchTool".into()]),
         report_format: None,
     };
@@ -506,6 +521,8 @@ async fn test_run_cli_tool_standalone_definition_search_uses_bootstrapped_index(
     let args = SearchArgs {
         query: "cli_probe_marker".into(),
         limit: 10,
+        offset: 0,
+        return_format: "compact".to_string(),
         language: Some("rust".into()),
         file_pattern: None,
         context_lines: None,
@@ -550,6 +567,8 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
     let args = SearchArgs {
         query: "test".into(),
         limit: 10,
+        offset: 0,
+        return_format: "compact".to_string(),
         language: None,
         file_pattern: None,
         context_lines: None,
@@ -719,6 +738,7 @@ fn test_refs_to_tool_args_no_file_filters() {
         workspace: None,
         kind: None,
         limit: 10,
+        offset: 0,
     };
     let json = args.to_tool_args().unwrap();
     assert!(

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use julie_context::ToolContext;
 use julie_core::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use julie_core::shared::OptimizedResponse;
 
 use super::backend::SearchBackend;
 use super::formatting;
@@ -60,13 +59,14 @@ impl FastSearchParams {
             );
         }
 
+        let format = self.search.validated_format()?;
         let region_filter = regions::SourceRegionFilter::parse(regions)?;
         let snapshot = handler.snapshot(&workspace_target).await?;
         let line_result = line_mode::line_mode_matches_in_snapshot(
             &self.search.query,
             &self.search.language,
             &self.search.file_pattern,
-            self.search.effective_limit(),
+            self.search.fetch_limit(),
             self.search.exclude_tests,
             snapshot,
             Some(region_filter),
@@ -117,17 +117,54 @@ impl FastSearchParams {
             execution.trace.scope_rescue_count = 1;
         }
 
+        let offset = self.search.offset as usize;
+        let page_limit = self.search.effective_limit() as usize;
+        let more =
+            execution.hits.len() > offset + page_limit || total_results > offset + page_limit;
+        if offset > 0 || execution.hits.len() > page_limit {
+            execution.hits = execution
+                .hits
+                .drain(..)
+                .skip(offset)
+                .take(page_limit)
+                .collect();
+        }
+        let kept = execution.hits.len();
+
         let result = if execution.hits.is_empty() {
             CallToolResult::text_content(vec![Content::text(format!(
                 "No results found for '{}' inside source regions: {}",
                 self.search.query, regions
             ))])
         } else {
-            let output = if self.search.return_format == "locations" {
-                let response = OptimizedResponse::with_total(execution.hits.clone(), total_results);
-                formatting::format_content_locations_only(&self.search.query, &response)
+            let output = if format == "full" {
+                let mut lean = format_region_search_results(&self.search.query, &execution.hits);
+                if more {
+                    if !lean.ends_with('\n') {
+                        lean.push('\n');
+                    }
+                    let quoted = format!("\"{}\"", self.search.query);
+                    lean.push_str(&crate::shared::next_line(
+                        "fast_search",
+                        &[("query", quoted.as_str())],
+                        offset + kept,
+                    ));
+                }
+                lean
             } else {
-                format_region_search_results(&self.search.query, &execution.hits)
+                let backend = self
+                    .search
+                    .backend
+                    .map(super::backend::SearchBackend::as_str)
+                    .unwrap_or("auto");
+                formatting::render_compact(
+                    &self.search.query,
+                    backend,
+                    &execution.hits,
+                    offset,
+                    kept,
+                    more,
+                )
             };
             let output = if line_result.scope_relaxed
                 && let Some(pattern) = line_result.original_file_pattern.as_deref()

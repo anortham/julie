@@ -1,7 +1,6 @@
 use crate::impact::LikelyTests;
 use crate::impact::ranking::RankedImpact;
 use crate::impact::seed::SeedContext;
-use crate::shared::truncation_line;
 
 /// Output layout for blast-radius text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +37,8 @@ pub struct BlastRadiusHeader {
     pub web_callers: Vec<String>,
     /// Pre-truncate total count of web callers, driving the overflow marker.
     pub web_callers_total: usize,
+    /// Exact next-page call when more impact rows remain.
+    pub next: Option<String>,
 }
 
 pub fn format_blast_radius(
@@ -96,8 +97,8 @@ pub fn format_blast_radius(
         sections.push(web_block);
     }
 
-    if header.impact_overflow {
-        sections.push(truncation_line(impacts.len()));
+    if let Some(next) = &header.next {
+        sections.push(next.clone());
     }
 
     sections.join(newline)

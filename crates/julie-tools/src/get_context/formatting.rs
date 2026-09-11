@@ -4,7 +4,6 @@
 //! a file map, and centrality hints into a structured text response.
 
 use super::allocation::{Allocation, NeighborMode};
-use crate::shared::truncation_line;
 
 /// All data needed to format a get_context response.
 ///
@@ -186,12 +185,6 @@ fn format_context_readable(data: &ContextData) -> String {
         }
     }
 
-    if data.truncated {
-        out.push('\n');
-        out.push_str(&truncation_line(data.pivots.len() + data.neighbors.len()));
-        out.push('\n');
-    }
-
     out
 }
 
@@ -245,11 +238,6 @@ fn format_context_compact(data: &ContextData) -> String {
 
     for row in format_neighbor_rows_compact(&data.neighbors, &data.allocation.neighbor_mode) {
         out.push_str(&row);
-        out.push('\n');
-    }
-
-    if data.truncated {
-        out.push_str(&truncation_line(data.pivots.len() + data.neighbors.len()));
         out.push('\n');
     }
 

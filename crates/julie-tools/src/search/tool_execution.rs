@@ -86,7 +86,8 @@ impl FastSearchTool {
             return Ok(diagnostic);
         }
 
-        let effective_limit = self.effective_limit();
+        let format = self.validated_format()?;
+        let fetch_limit = self.fetch_limit();
 
         if let WorkspaceTarget::Target(target_workspace_id) = &workspace_target {
             if let Some(index_error) = handler
@@ -154,7 +155,7 @@ impl FastSearchTool {
                 query: &self.query,
                 language: &self.language,
                 file_pattern: &self.file_pattern,
-                limit: effective_limit,
+                limit: fetch_limit,
                 context_lines: self.context_lines,
                 exclude_tests: self.exclude_tests,
                 backend: SearchBackend::resolve(self.backend),
@@ -206,7 +207,7 @@ impl FastSearchTool {
             });
         }
 
-        if self.return_format != "locations" && !has_exact_name_match && !symbol_backend_active {
+        if !has_exact_name_match && !symbol_backend_active {
             if let Err(err) =
                 line_enrichment::try_enrich_with_line_mode_snippets(self, &snapshot, &mut execution)
                     .await
@@ -217,102 +218,61 @@ impl FastSearchTool {
             }
         }
 
-        if self.return_format == "locations" {
-            if line_enrichment::should_try_line_mode_locations(
-                self,
-                &execution,
-                has_exact_name_match,
-                symbol_backend_active,
-            ) {
-                match line_enrichment::try_line_mode_locations(
-                    self,
-                    handler,
-                    &workspace_target,
-                    &snapshot,
-                    &mut execution,
-                )
-                .await
-                {
-                    Ok(Some(locations_text)) => {
-                        let final_text = if execution.relaxed {
-                            format!(
-                                "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
-                                locations_text
-                            )
-                        } else {
-                            locations_text
-                        };
-                        let final_text = self.with_backend_fallback_note(final_text, &execution);
-                        return Ok(FastSearchExecution {
-                            result: CallToolResult::text_content(vec![Content::text(final_text)]),
-                            execution: Some(execution),
-                        });
-                    }
-                    Ok(None) => {}
-                    Err(err) => execution
-                        .trace
-                        .record_line_enrichment_failed(err.to_string()),
-                }
-            }
+        let offset = self.offset as usize;
+        let page_limit = self.effective_limit() as usize;
+        let more = execution.hits.len() > offset + page_limit
+            || execution.total_results > offset + page_limit;
+        if offset > 0 || execution.hits.len() > page_limit {
+            execution.hits = execution
+                .hits
+                .drain(..)
+                .skip(offset)
+                .take(page_limit)
+                .collect();
+        }
+        let kept = execution.hits.len();
 
-            let mut locations_output = formatting::format_unified_locations(
+        let mut output = if format == "compact" {
+            let backend = self.backend.map(SearchBackend::as_str).unwrap_or("auto");
+            formatting::render_compact(&self.query, backend, &execution.hits, offset, kept, more)
+        } else {
+            let mut lean = formatting::format_unified_search_results(
                 &self.query,
                 &execution.hits,
                 execution.total_results,
             );
-            if execution.relaxed {
-                locations_output = format!(
-                    "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
-                    locations_output
-                );
+            if more {
+                if !lean.ends_with('\n') {
+                    lean.push('\n');
+                }
+                let quoted = format!("\"{}\"", self.query);
+                lean.push_str(&crate::shared::next_line(
+                    "fast_search",
+                    &[("query", quoted.as_str())],
+                    offset + kept,
+                ));
             }
-            locations_output =
-                line_enrichment::with_scope_rescue_header(locations_output, &execution);
-            locations_output = self.with_backend_fallback_note(locations_output, &execution);
-            return Ok(FastSearchExecution {
-                result: CallToolResult::text_content(vec![Content::text(locations_output)]),
-                execution: Some(execution),
-            });
+            lean
+        };
+
+        if execution.relaxed {
+            output = format!(
+                "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
+                output
+            );
         }
 
-        let lean_output = formatting::format_unified_search_results(
-            &self.query,
-            &execution.hits,
-            execution.total_results,
-        );
-
-        let lean_output = if execution.relaxed {
-            format!(
-                "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
-                lean_output
-            )
-        } else {
-            lean_output
-        };
-
-        let lean_output = if execution.trace.scope_relaxed
-            && let Some(original_pattern) = execution.trace.original_file_pattern.as_deref()
-        {
-            let distinct_files: std::collections::HashSet<&str> =
-                execution.hits.iter().map(|hit| hit.file.as_str()).collect();
-            format!(
-                "{}\n\n{}",
-                hint_formatter::build_scope_rescue_header(original_pattern, distinct_files.len()),
-                lean_output,
-            )
-        } else {
-            lean_output
-        };
-        let lean_output = self.with_backend_fallback_note(lean_output, &execution);
+        output = line_enrichment::with_scope_rescue_header(output, &execution);
+        output = self.with_backend_fallback_note(output, &execution);
 
         debug!(
             "✅ Returning unified search results ({} chars, {} results, relaxed: {})",
-            lean_output.len(),
+            output.len(),
             execution.hits.len(),
             execution.relaxed,
         );
         Ok(FastSearchExecution {
-            result: CallToolResult::text_content(vec![Content::text(lean_output)]),
+            result: CallToolResult::text_content(vec![Content::text(output)]),
             execution: Some(execution),
         })
     }

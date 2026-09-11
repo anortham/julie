@@ -52,6 +52,7 @@ async fn fast_search_text(handler: &JulieServerHandler, query: &str) -> Result<S
     let result = FastSearchTool {
         query: query.to_string(),
         limit: 10,
+        offset: 0,
         ..Default::default()
     }
     .call_tool(handler)

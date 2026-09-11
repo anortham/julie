@@ -46,9 +46,15 @@ pub struct FastSearchTool {
     /// Workspace filter: "primary" (default) or a workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Return format: "full" (default, code context and rich summaries) or "locations" (file:line only)
+    /// Return format: "compact" (default, one line per hit grouped by file) or "full" (code context and rich summaries)
     #[serde(default = "default_return_format")]
     pub return_format: String,
+    /// Skip this many hits before keeping `limit` rows (default: 0)
+    #[serde(
+        default,
+        deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
+    )]
+    pub offset: u32,
     /// Optional semantic mode override (Auto, Off, Required)
     #[serde(default)]
     pub semantics: Option<julie_core::embeddings_contract::SemanticMode>,
@@ -97,6 +103,11 @@ struct FastSearchToolSerde {
     workspace: Option<String>,
     #[serde(default = "default_return_format")]
     return_format: String,
+    #[serde(
+        default,
+        deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
+    )]
+    offset: u32,
     #[serde(default)]
     semantics: Option<julie_core::embeddings_contract::SemanticMode>,
 }
@@ -122,6 +133,7 @@ impl<'de> Deserialize<'de> for FastSearchTool {
             backend: raw.backend,
             workspace: raw.workspace,
             return_format: raw.return_format,
+            offset: raw.offset,
             semantics: raw.semantics,
         })
     }
@@ -161,7 +173,7 @@ fn default_workspace() -> Option<String> {
 }
 
 fn default_return_format() -> String {
-    "full".to_string()
+    "compact".to_string()
 }
 
 fn deserialize_presence_tracked_option_u32<'de, D>(
@@ -195,8 +207,26 @@ impl Default for FastSearchTool {
             backend: None,
             workspace: default_workspace(),
             return_format: default_return_format(),
+            offset: 0,
             semantics: None,
         }
+    }
+}
+
+impl FastSearchTool {
+    pub fn validated_format(&self) -> anyhow::Result<&str> {
+        match self.return_format.as_str() {
+            "compact" | "full" => Ok(self.return_format.as_str()),
+            other => anyhow::bail!("Invalid return_format: '{other}'. Expected compact or full"),
+        }
+    }
+
+    pub fn fetch_limit(&self) -> u32 {
+        let needed = self
+            .effective_limit()
+            .saturating_add(self.offset)
+            .saturating_add(1);
+        clamp_limit(needed)
     }
 }
 

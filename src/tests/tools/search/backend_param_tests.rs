@@ -123,6 +123,7 @@ async fn required_semantics_report_not_ready_without_an_encoder_row() -> Result<
         backend: Some(SearchBackend::Semantic),
         semantics: Some(julie_core::embeddings_contract::SemanticMode::Required),
         limit: 1,
+        offset: 0,
         ..Default::default()
     }
     .execute_with_trace(&handler)
@@ -148,6 +149,7 @@ async fn required_semantics_are_ready_with_an_encoder_row_and_vectors() -> Resul
         backend: Some(SearchBackend::Semantic),
         semantics: Some(julie_core::embeddings_contract::SemanticMode::Required),
         limit: 1,
+        offset: 0,
         ..Default::default()
     }
     .execute_with_trace(&handler)
@@ -201,7 +203,8 @@ async fn semantic_backend_falls_back_to_lexical_when_provider_is_unavailable() -
     let run = FastSearchTool {
         query: "lexical_backend_marker".to_string(),
         backend: Some(SearchBackend::Semantic),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         ..Default::default()
     }
     .execute_with_trace(&handler)
@@ -242,6 +245,7 @@ async fn semantic_backend_returns_symbol_hits_and_preserves_symbol_kind() -> Res
         query: "conceptual permissions handoff".to_string(),
         backend: Some(SearchBackend::Semantic),
         limit: 1,
+        offset: 0,
         ..Default::default()
     }
     .execute_with_trace(&handler)
@@ -272,7 +276,8 @@ async fn semantic_backend_locations_render_semantic_hits_not_lexical_line_mode()
     let run = FastSearchTool {
         query: "conceptual permissions handoff".to_string(),
         backend: Some(SearchBackend::Semantic),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 1,
         ..Default::default()
     }
@@ -308,7 +313,8 @@ async fn lexical_zero_hits_use_semantic_fallback_when_embeddings_are_ready() -> 
 
     let run = FastSearchTool {
         query: "ObscureProbe".to_string(),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 1,
         ..Default::default()
     }
@@ -344,7 +350,8 @@ async fn lexical_zero_hits_skip_semantic_fallback_for_path_queries() -> Result<(
 
     let run = FastSearchTool {
         query: "missing/quasar".to_string(),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 1,
         ..Default::default()
     }
@@ -373,7 +380,8 @@ async fn explicit_lexical_zero_hits_do_not_use_semantic_fallback() -> Result<()>
     let run = FastSearchTool {
         query: "ObscureProbe".to_string(),
         backend: Some(SearchBackend::Lexical),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 1,
         ..Default::default()
     }
@@ -410,7 +418,8 @@ async fn lexical_zero_hits_skip_semantic_fallback_for_plain_language_noise() -> 
 
     let run = FastSearchTool {
         query: "obscure zeppelin quasar".to_string(),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 1,
         ..Default::default()
     }
@@ -448,7 +457,8 @@ async fn lexical_zero_hits_skip_semantic_fallback_with_file_pattern() -> Result<
     let run = FastSearchTool {
         query: "ObscureProbe".to_string(),
         file_pattern: Some("docs/**".to_string()),
-        return_format: "locations".to_string(),
+        return_format: "compact".to_string(),
+        offset: 0,
         limit: 1,
         ..Default::default()
     }
@@ -487,6 +497,7 @@ async fn hybrid_backend_returns_symbol_hits_without_fallback() -> Result<()> {
         query: "conceptual permissions handoff".to_string(),
         backend: Some(SearchBackend::Hybrid),
         limit: 1,
+        offset: 0,
         ..Default::default()
     }
     .execute_with_trace(&handler)

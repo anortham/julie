@@ -38,6 +38,7 @@ pub mod editing_validation_tests;
 pub mod search_lean_format_tests;
 pub mod search_line_match_strategy_tests;
 pub mod search_nl_path_prior_pipeline_tests;
+pub mod search_paging_tests;
 pub mod search_pretokenized_emit_test;
 pub mod search_promotion_tests;
 pub mod search_zero_hit_reason_tests;

@@ -59,6 +59,7 @@ async fn test_default_behavior_strips_context() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: None,
         workspace: None,
     };
@@ -89,6 +90,7 @@ async fn test_invalid_mode_returns_error() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("minmal".to_string()),
         workspace: None,
     };
@@ -119,6 +121,7 @@ async fn test_structure_mode_strips_context() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("structure".to_string()),
         workspace: None,
     };
@@ -147,6 +150,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("structure".to_string()),
         workspace: None,
     };
@@ -175,6 +179,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -207,6 +212,7 @@ async fn test_mode_full_all_symbols() -> Result<()> {
         max_depth: 2,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("full".to_string()),
         workspace: None,
     };
@@ -246,6 +252,7 @@ async fn test_target_with_minimal_mode() -> Result<()> {
         max_depth: 1,
         target: Some("User".to_string()),
         limit: None,
+        offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -279,6 +286,7 @@ async fn test_file_read_error_handling() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -313,6 +321,7 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -384,6 +393,7 @@ async fn test_vue_target_minimal_extracts_code_body() -> Result<()> {
         max_depth: 1,
         target: Some("increment".to_string()),
         limit: None,
+        offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -407,6 +417,7 @@ async fn test_vue_target_minimal_extracts_code_body() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
+        offset: 0,
         mode: Some("structure".to_string()),
         workspace: None,
     };

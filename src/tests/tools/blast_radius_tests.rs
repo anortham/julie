@@ -42,8 +42,8 @@ async fn test_blast_radius_ranks_direct_callers_and_truncates() -> Result<()> {
     );
     assert!(
         text.trim_end()
-            .ends_with("Output truncated at 1 results; narrow the query or pass a smaller limit."),
-        "overflowing impacts must end with the truncation line: {text}"
+            .ends_with("next: blast_radius symbol_ids=run_pipeline offset=1"),
+        "overflowing impacts must end with the next line: {text}"
     );
     Ok(())
 }

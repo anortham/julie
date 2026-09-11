@@ -7,7 +7,15 @@ pub use julie_core::shared::{
     OptimizedResponse,
 };
 
-/// One-line trailer for a bounded tool result that had more rows than it kept.
-pub fn truncation_line(kept: usize) -> String {
-    format!("Output truncated at {kept} results; narrow the query or pass a smaller limit.")
+/// Trailer for a paged result: the exact call that returns the next page.
+pub fn next_line(tool: &str, args: &[(&str, &str)], next_offset: usize) -> String {
+    let mut line = format!("next: {tool}");
+    for (key, value) in args {
+        line.push(' ');
+        line.push_str(key);
+        line.push('=');
+        line.push_str(value);
+    }
+    line.push_str(&format!(" offset={next_offset}"));
+    line
 }

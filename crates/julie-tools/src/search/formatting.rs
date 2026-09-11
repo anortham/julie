@@ -3,7 +3,85 @@
 //! Provides formatting utilities for search tool responses.
 
 use crate::search::trace::{SearchHit, SearchHitBacking};
+use crate::shared::next_line;
 use julie_core::shared::OptimizedResponse;
+
+const COMPACT_LINE_CONTENT_CHARS: usize = 110;
+
+pub fn render_compact(
+    query: &str,
+    backend: &str,
+    hits: &[SearchHit],
+    offset: usize,
+    kept: usize,
+    more: bool,
+) -> String {
+    let mut output = format!("{kept} hits for \"{query}\" ({backend})\n");
+    for group in group_hits_by_file(hits) {
+        if group.len() == 1 {
+            output.push_str(&compact_hit_line(group[0], false));
+            output.push('\n');
+            continue;
+        }
+        output.push_str(&group[0].file);
+        output.push_str(":\n");
+        for hit in group {
+            output.push_str(&compact_hit_line(hit, true));
+            output.push('\n');
+        }
+    }
+    if more {
+        let quoted = format!("\"{query}\"");
+        output.push_str(&next_line(
+            "fast_search",
+            &[("query", quoted.as_str())],
+            offset + kept,
+        ));
+    }
+    output
+}
+
+fn group_hits_by_file(hits: &[SearchHit]) -> Vec<Vec<&SearchHit>> {
+    let mut groups: Vec<Vec<&SearchHit>> = Vec::new();
+    for hit in hits {
+        match groups.iter_mut().find(|group| group[0].file == hit.file) {
+            Some(group) => group.push(hit),
+            None => groups.push(vec![hit]),
+        }
+    }
+    groups
+}
+
+fn compact_hit_line(hit: &SearchHit, grouped: bool) -> String {
+    match &hit.backing {
+        SearchHitBacking::File(_) => hit.file.clone(),
+        SearchHitBacking::LineMatch(line_match) => {
+            let content = trim_compact_line(&line_match.line_content);
+            if grouped {
+                format!("  :{} {content}", line_match.line_number)
+            } else {
+                format!("{}:{} {content}", hit.file, line_match.line_number)
+            }
+        }
+        SearchHitBacking::Symbol(_) => {
+            let line = hit.line.unwrap_or(0);
+            if grouped {
+                format!("  :{line} {} {}", hit.name, hit.kind)
+            } else {
+                format!("{}:{line} {} {}", hit.file, hit.name, hit.kind)
+            }
+        }
+    }
+}
+
+fn trim_compact_line(content: &str) -> String {
+    let trimmed = content.trim();
+    let count = trimmed.chars().count();
+    if count <= COMPACT_LINE_CONTENT_CHARS {
+        return trimmed.to_string();
+    }
+    trimmed.chars().take(COMPACT_LINE_CONTENT_CHARS).collect()
+}
 
 fn write_definition_other_match_snippet(output: &mut String, hit: &SearchHit, indent: &str) {
     if let Some(snippet) = hit

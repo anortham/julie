@@ -113,6 +113,7 @@ fn search_tool(query: &str, _search_target: &str) -> FastSearchTool {
         backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
+        offset: 0,
         semantics: None,
     }
 }
@@ -124,6 +125,7 @@ fn test_fast_search_metadata_captures_trace_and_intent() {
         language: Some("rust".to_string()),
         file_pattern: Some("src/**/*.rs".to_string()),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let hit = SearchHit::from_symbol(sample_symbol(), "workspace-a".to_string());
@@ -253,6 +255,7 @@ fn test_fast_search_metadata_captures_workspace_param() {
         query: "search_handler".to_string(),
         workspace: Some("target-workspace".to_string()),
         limit: 0,
+        offset: 0,
         ..Default::default()
     };
 
@@ -268,6 +271,7 @@ fn test_fast_refs_metadata_captures_result_shaping_fields() {
         symbol: "Command".to_string(),
         include_definition: false,
         limit: 25,
+        offset: 0,
         workspace: Some("target-workspace".to_string()),
         reference_kind: Some("call".to_string()),
         semantics: None,
@@ -289,6 +293,7 @@ fn test_fast_search_metadata_serializes_zero_hit_reason() {
         query: "nonexistent".to_string(),
         file_pattern: Some("src/ui/**".to_string()),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -317,6 +322,7 @@ fn test_fast_search_metadata_serializes_file_pattern_diagnostic() {
         query: "calculate_total".to_string(),
         file_pattern: Some("src/** tests/**".to_string()),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -346,6 +352,7 @@ fn test_fast_search_metadata_serializes_scoped_file_pattern_diagnostic() {
         query: "calculate_total".to_string(),
         file_pattern: Some("src/ui/**".to_string()),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -374,6 +381,7 @@ fn test_fast_search_metadata_serializes_request_level_file_pattern_diagnostic() 
         query: "calculate_total".to_string(),
         file_pattern: Some("src/** docs/**".to_string()),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -407,6 +415,7 @@ fn test_fast_search_metadata_serializes_hint_kind() {
     let params = FastSearchTool {
         query: "retry backoff jitter".to_string(),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -465,6 +474,7 @@ fn task2_target_hints_serializes_trace_metadata() {
         let params = FastSearchTool {
             query: query.to_string(),
             limit: 10,
+            offset: 0,
             ..Default::default()
         };
         let mut execution = SearchExecutionResult::new(
@@ -491,6 +501,7 @@ fn test_fast_search_metadata_serializes_out_of_scope_hint_kind() {
         query: "marker scope".to_string(),
         file_pattern: Some("src/ui/**".to_string()),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -516,6 +527,7 @@ fn test_fast_search_metadata_serializes_scope_rescue_fields() {
         query: "marker_scope".to_string(),
         file_pattern: Some("src/ui/**".to_string()),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -549,6 +561,7 @@ fn test_fast_search_metadata_serializes_or_disjunction_detection() {
     let params = FastSearchTool {
         query: "logging.basicConfig OR datefmt".to_string(),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -573,6 +586,7 @@ fn test_fast_search_metadata_serializes_backend_fallback() {
     let params = FastSearchTool {
         query: "lexical_backend_marker".to_string(),
         limit: 10,
+        offset: 0,
         backend: Some(crate::tools::search::SearchBackend::Semantic),
         ..Default::default()
     };
@@ -595,6 +609,7 @@ fn test_fast_search_metadata_serializes_line_enrichment_fields() {
     let params = FastSearchTool {
         query: "line enrichment marker".to_string(),
         limit: 10,
+        offset: 0,
         ..Default::default()
     };
     let mut execution = SearchExecutionResult::new(
@@ -721,6 +736,7 @@ fn test_get_symbols_metadata_prefers_file_target_with_symbol_filter() {
         max_depth: 1,
         target: Some("run_search".to_string()),
         limit: Some(10),
+        offset: 0,
         mode: Some("minimal".to_string()),
         workspace: Some("primary".to_string()),
     };
