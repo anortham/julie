@@ -117,38 +117,32 @@ impl ServiceApp {
                 }
             })
         };
-        let idle_watch = {
+        let graceful_shutdown = {
             let status = Arc::clone(&self.state.status);
             let shutdown = shutdown.clone();
             let idle = self.config.idle;
             async move {
                 let Some(idle) = idle else {
-                    std::future::pending::<()>().await;
+                    shutdown.cancelled().await;
                     return;
                 };
                 loop {
-                    tokio::time::sleep(idle.min(Duration::from_millis(250))).await;
-                    if status.idle_for().is_some_and(|d| d >= idle) {
-                        shutdown.cancel();
-                        return;
+                    tokio::select! {
+                        _ = shutdown.cancelled() => return,
+                        _ = tokio::time::sleep(idle.min(Duration::from_millis(250))) => {
+                            if status.idle_for().is_some_and(|d| d >= idle) {
+                                shutdown.cancel();
+                                return;
+                            }
+                        }
                     }
                 }
             }
         };
-        let server = axum::serve(listener, self.router)
-            .with_graceful_shutdown({
-                let shutdown = shutdown.clone();
-                async move { shutdown.cancelled().await }
-            })
-            .into_future();
-        tokio::pin!(server);
-        let result = tokio::select! {
-            r = server.as_mut() => r.map_err(anyhow::Error::from),
-            _ = idle_watch => {
-                shutdown.cancel();
-                server.as_mut().await.map_err(anyhow::Error::from)
-            }
-        };
+        let result = axum::serve(listener, self.router)
+            .with_graceful_shutdown(graceful_shutdown)
+            .await
+            .map_err(anyhow::Error::from);
         shutdown.cancel();
         if let Err(error) = maintenance.await {
             warn!("Runtime maintenance task failed to join: {error}");
