@@ -8,6 +8,7 @@
 //! - Workspace registry for multi-project indexing
 
 pub mod mutation_gate;
+pub mod reconcile;
 pub mod registry;
 pub mod root_safety;
 pub mod startup_hint;

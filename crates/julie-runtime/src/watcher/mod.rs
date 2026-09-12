@@ -109,6 +109,9 @@ pub struct IncrementalIndexer {
     /// Shared indexing runtime snapshot for health and dashboard reporting.
     indexing_runtime: SharedIndexingRuntime,
     mutation_gate_registry: Arc<MutationGateRegistry>,
+    #[cfg(test)]
+    rescan_read_failures: Arc<StdMutex<HashSet<String>>>,
+    rescan_failed_at: Arc<StdMutex<Option<std::time::Instant>>>,
 
     /// Join handles for the event detector and queue processor tasks.
     /// Stored so stop() can join them for a clean, non-aborting shutdown (Fix D).
@@ -168,9 +171,30 @@ impl IncrementalIndexer {
             tantivy_dirty: Arc::new(StdMutex::new(std::collections::HashSet::new())),
             indexing_runtime,
             mutation_gate_registry,
+            #[cfg(test)]
+            rescan_read_failures: Arc::new(StdMutex::new(HashSet::new())),
+            rescan_failed_at: Arc::new(StdMutex::new(None)),
             event_task: None,
             queue_task: None,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_next_file_read_for_test(&self, path: &str) {
+        self.rescan_read_failures
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(path.to_string());
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn process_pending_changes_with_retry_age_for_test(
+        &self,
+        retry_age: std::time::Duration,
+    ) {
+        runtime::QueueRuntime::from_indexer(self)
+            .run_cycle_with_retry_age(retry_age)
+            .await;
     }
 
     /// Update the shared embedding provider after lazy initialization.

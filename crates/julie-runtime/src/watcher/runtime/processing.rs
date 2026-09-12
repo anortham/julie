@@ -59,7 +59,6 @@ impl QueueRuntime {
         };
 
         let mut processed_count = 0usize;
-        let mut dropped_duplicates = 0usize;
         let mut deletes = 0usize;
         let mut renames = 0usize;
         let mut affected_paths = HashSet::new();
@@ -76,46 +75,6 @@ impl QueueRuntime {
                 None => break,
             };
             iterations += 1;
-
-            let should_drop_duplicate = {
-                let mut last_processed = self.last_processed.lock().await;
-                let now = SystemTime::now();
-
-                match event.change_type {
-                    FileChangeType::Created | FileChangeType::Modified => {
-                        if let Some(last_time) = last_processed.get(&event.path) {
-                            if let Ok(elapsed) = now.duration_since(*last_time) {
-                                if elapsed < DUPLICATE_DEBOUNCE_WINDOW {
-                                    debug!(
-                                        "Dropping duplicate event for {:?} (processed {}ms ago)",
-                                        event.path,
-                                        elapsed.as_millis()
-                                    );
-                                    true
-                                } else {
-                                    last_processed.insert(event.path.clone(), now);
-                                    false
-                                }
-                            } else {
-                                last_processed.insert(event.path.clone(), now);
-                                false
-                            }
-                        } else {
-                            last_processed.insert(event.path.clone(), now);
-                            false
-                        }
-                    }
-                    FileChangeType::Deleted | FileChangeType::Renamed { .. } => {
-                        last_processed.insert(event.path.clone(), now);
-                        false
-                    }
-                }
-            };
-
-            if should_drop_duplicate {
-                dropped_duplicates += 1;
-                continue;
-            }
 
             match event.change_type {
                 FileChangeType::Deleted => deletes += 1,
@@ -144,15 +103,10 @@ impl QueueRuntime {
         }
 
         let remaining_queue_len = self.index_queue.lock().await.len();
-        if processed_count > 0
-            || dropped_duplicates > 0
-            || deletes > 0
-            || renames > 0
-            || remaining_queue_len > 0
-        {
+        if processed_count > 0 || deletes > 0 || renames > 0 || remaining_queue_len > 0 {
             info!(
                 processed = processed_count,
-                dropped_duplicates, deletes, renames, remaining_queue_len, "Watcher batch summary"
+                deletes, renames, remaining_queue_len, "Watcher batch summary"
             );
         }
 
@@ -179,7 +133,7 @@ impl QueueRuntime {
         };
         let upsert = |path: &Path| {
             let relative = relative(path)?;
-            let bytes = std::fs::read(path).ok()?;
+            let bytes = self.read_event_path(path)?;
             let language = detect_language_for_indexing_with_content(
                 Path::new(&relative),
                 &String::from_utf8_lossy(&bytes),
@@ -191,7 +145,7 @@ impl QueueRuntime {
             })
         };
         let remove = |path: &Path| {
-            (!path.exists())
+            self.path_is_confirmed_absent(path)
                 .then(|| relative(path))
                 .flatten()
                 .map(|path| PathChange::Remove { path })
@@ -207,10 +161,65 @@ impl QueueRuntime {
         }
     }
 
+    fn path_is_confirmed_absent(&self, path: &Path) -> bool {
+        #[cfg(test)]
+        {
+            let relative = julie_core::paths::to_relative_unix_style(path, &self.workspace_root)
+                .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+            if self
+                .rescan_read_failures
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(&relative)
+            {
+                self.set_rescan_pending(true);
+                return false;
+            }
+        }
+        match path.try_exists() {
+            Ok(exists) => !exists,
+            Err(err) => {
+                warn!(path = %path.display(), error = %err, "Watcher could not confirm path deletion; rescan scheduled");
+                self.set_rescan_pending(true);
+                false
+            }
+        }
+    }
+
+    fn read_event_path(&self, path: &Path) -> Option<Vec<u8>> {
+        #[cfg(test)]
+        {
+            let relative = julie_core::paths::to_relative_unix_style(path, &self.workspace_root)
+                .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+            if self
+                .rescan_read_failures
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(&relative)
+            {
+                self.set_rescan_pending(true);
+                return None;
+            }
+        }
+        match std::fs::read(path) {
+            Ok(bytes) => Some(bytes),
+            Err(err) => {
+                warn!(path = %path.display(), error = %err, "Watcher could not read queued path; rescan scheduled");
+                self.set_rescan_pending(true);
+                None
+            }
+        }
+    }
+
     /// Runs the store write on the blocking pool with the gate still held. The
     /// guard is consumed here because nothing else in the batch needs it.
     async fn apply_store_changes(&self, changes: Vec<PathChange>, guard: MutationGuard<'static>) {
         if changes.is_empty() {
+            return;
+        }
+        #[cfg(test)]
+        if self.fail_commit_for_test {
+            self.set_rescan_pending(true);
             return;
         }
         let store = Arc::clone(&self.store);
@@ -229,11 +238,75 @@ impl QueueRuntime {
             ),
             Ok(Err(err)) => {
                 warn!("Checkout store apply failed for watcher batch: {err:#}");
-                self.needs_rescan.store(true, Ordering::Release);
+                self.set_rescan_pending(true);
             }
             Err(join) => {
                 warn!("Checkout store apply task panicked: {join}");
-                self.needs_rescan.store(true, Ordering::Release);
+                self.set_rescan_pending(true);
+            }
+        }
+    }
+
+    pub(super) async fn reconcile_workspace(&self) {
+        let Some(guard) = self.acquire_gate_or_mark_rescan("watcher rescan").await else {
+            return;
+        };
+        let store = Arc::clone(&self.store);
+        let root = self.workspace_root.clone();
+        #[cfg(test)]
+        let read_failures = Arc::clone(&self.rescan_read_failures);
+        let outcome = tokio::task::spawn_blocking(move || {
+            #[cfg(not(test))]
+            let reconciliation = crate::workspace::reconcile::reconcile_workspace(&store, &root)?;
+            #[cfg(test)]
+            let reconciliation =
+                crate::workspace::reconcile::reconcile_workspace_with(&store, &root, |path| {
+                    let relative = julie_core::paths::to_relative_unix_style(path, &root)
+                        .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+                    if read_failures
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .remove(&relative)
+                    {
+                        return Err(std::io::Error::other("injected rescan read failure"));
+                    }
+                    std::fs::read(path)
+                })?;
+            let unreadable_paths = reconciliation.unreadable_paths;
+            let applied = store.apply(&reconciliation.changes, &guard)?;
+            drop(guard);
+            anyhow::Ok((applied, unreadable_paths))
+        })
+        .await;
+
+        match outcome {
+            Ok(Ok((applied, unreadable_paths))) if unreadable_paths.is_empty() => {
+                debug!(
+                    new_blobs = applied.new_blobs,
+                    reused_blobs = applied.reused_blobs,
+                    removed_paths = applied.removed_paths,
+                    "Watcher rescan reconciled checkout store"
+                );
+                *self
+                    .rescan_failed_at
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+                self.set_rescan_status(self.needs_rescan.load(Ordering::Acquire));
+            }
+            Ok(Ok((_, unreadable_paths))) => {
+                warn!(
+                    unreadable_paths = unreadable_paths.len(),
+                    "Watcher rescan retained unreadable paths; rescan remains pending"
+                );
+                self.mark_rescan_failed();
+            }
+            Ok(Err(err)) => {
+                warn!("Watcher rescan failed: {err:#}");
+                self.mark_rescan_failed();
+            }
+            Err(join) => {
+                warn!("Watcher rescan task panicked: {join}");
+                self.mark_rescan_failed();
             }
         }
     }

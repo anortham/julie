@@ -42,12 +42,12 @@ The fact schema/reader are evidence inputs, not owners of eligibility policy. `p
 
 **Acceptance:**
 
-- [ ] Rapid distinct saves, duplicate notifications, deletes, renames, and delete/recreate finish at the latest filesystem state.
-- [ ] Overflow and transient apply failure recover without user refresh or service restart.
-- [ ] Ignored files stay ignored; deleted stored files are removed; unrelated workspaces are untouched.
-- [ ] Rescan pending/error status reflects the remaining obligation and clears only after success.
-- [ ] Cancellation preserves recoverable work; no retry busy loop or second writer is introduced.
-- [ ] Facts, graph/snapshot publication, and Tantivy results agree after the cycle.
+- [x] Rapid distinct saves, duplicate notifications, deletes, renames, and delete/recreate finish at the latest filesystem state.
+- [x] Overflow and transient apply failure recover without user refresh or service restart.
+- [x] Ignored files stay ignored; deleted stored files are removed; unrelated workspaces are untouched.
+- [x] Rescan pending/error status reflects the remaining obligation and clears only after success.
+- [x] Cancellation preserves recoverable work; no retry busy loop or second writer is introduced.
+- [x] Facts, graph/snapshot publication, and Tantivy results agree after the cycle.
 
 ## 1B. Keep semantic policy per request
 
@@ -112,3 +112,7 @@ Record source deltas, the root causes proven by RED, and the minimal architectur
 ### Task 1B worker evidence
 
 Both enabled exact regressions selected one test, failed for the intended defect, then passed: `concurrent_off_request_cannot_disable_required_request_provider` and `off_semantics_with_explicit_backends_never_waits_for_provider`. `cargo check -p julie` passed at 2026-09-12T02:06:56Z. Tests ran on the task-1B working diff over `9c9a68f5`; this is not reusable clean-HEAD integration evidence. Lead inline source review accepted stable provider ownership and per-tool request-mode propagation. Final integration gates remain pending.
+
+### Task 1A worker evidence and reviewed extensions
+
+Nine exact regressions passed across julie-runtime and julie-core: rapid saves, overflow, failed apply, unreadable rescan paths, queued read failures, strict scan errors, retry pacing, facts-ahead projection recovery, and deletion metadata errors. Original behavior and targeted mutation checks supplied negative evidence as recorded in the worker report; no zero-test run counts as proof. Lead review required strict walker errors, preserving metadata/read failures, and a 30-second retry cadence while ordinary queue work continues. Runtime cargo check passed; root integration waits for task1C API completion. Task1A owns the small core scanner change and its test.

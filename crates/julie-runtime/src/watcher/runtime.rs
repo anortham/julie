@@ -1,8 +1,7 @@
 use super::{FileChangeEvent, FileChangeType, IncrementalIndexer, SharedEmbeddingProvider};
 use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 use anyhow::Result;
-use ignore::gitignore::Gitignore;
-use julie_core::indexing_state::{IndexingOperation, IndexingRepairReason, SharedIndexingRuntime};
+use julie_core::indexing_state::SharedIndexingRuntime;
 use julie_core::workspace::mutation_gate::MutationGuard;
 use julie_index::checkout_store::CheckoutStore;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -11,12 +10,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::Mutex as TokioMutex;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 mod processing;
 
 const EXTRACTOR_REPAIR_RETRY_INTERVAL: Duration = Duration::from_secs(30);
-const DUPLICATE_DEBOUNCE_WINDOW: Duration = Duration::from_secs(1);
 /// Maximum number of times a single file's Tantivy projection retry can fail
 /// before we abandon retrying it. With a 1-second retry tick this means we
 /// stop after ~10 seconds, which is long enough to ride out transient
@@ -47,6 +45,9 @@ pub(super) struct QueueRuntime {
     mutation_gate_registry: Arc<MutationGateRegistry>,
     #[cfg(test)]
     fail_commit_for_test: bool,
+    #[cfg(test)]
+    rescan_read_failures: Arc<StdMutex<HashSet<String>>>,
+    rescan_failed_at: Arc<StdMutex<Option<Instant>>>,
 }
 
 impl QueueRuntime {
@@ -68,6 +69,9 @@ impl QueueRuntime {
             mutation_gate_registry: Arc::clone(&indexer.mutation_gate_registry),
             #[cfg(test)]
             fail_commit_for_test: false,
+            #[cfg(test)]
+            rescan_read_failures: Arc::clone(&indexer.rescan_read_failures),
+            rescan_failed_at: Arc::clone(&indexer.rescan_failed_at),
         }
     }
 
@@ -103,6 +107,9 @@ impl QueueRuntime {
             mutation_gate_registry,
             #[cfg(test)]
             fail_commit_for_test: false,
+            #[cfg(test)]
+            rescan_read_failures: Arc::new(StdMutex::new(HashSet::new())),
+            rescan_failed_at: Arc::new(StdMutex::new(None)),
         }
     }
 
@@ -119,13 +126,7 @@ impl QueueRuntime {
     }
 
     fn mark_rescan_pending_due_to_cancelled_gate(&self, context: &str) {
-        self.needs_rescan.store(true, Ordering::Release);
-        let mut runtime = self
-            .indexing_runtime
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        runtime.set_watcher_rescan_pending(true);
-        runtime.record_repair_reason(IndexingRepairReason::WatcherOverflow);
+        self.set_rescan_pending(true);
         warn!(
             workspace_id = %self.workspace_id,
             context,
@@ -133,13 +134,56 @@ impl QueueRuntime {
         );
     }
 
+    fn set_rescan_pending(&self, pending: bool) {
+        self.needs_rescan.store(pending, Ordering::Release);
+        self.set_rescan_status(pending);
+    }
+
+    fn set_rescan_status(&self, pending: bool) {
+        let mut runtime = self
+            .indexing_runtime
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        runtime.set_watcher_rescan_pending(pending);
+    }
+
+    fn mark_rescan_failed(&self) {
+        *self
+            .rescan_failed_at
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Instant::now());
+        self.set_rescan_pending(true);
+    }
+
+    fn claim_rescan(&self, min_retry_age: Duration) -> bool {
+        if !self.needs_rescan.load(Ordering::Acquire) {
+            return false;
+        }
+        let retry_ready = self
+            .rescan_failed_at
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_none_or(|failed_at| failed_at.elapsed() >= min_retry_age);
+        retry_ready && self.needs_rescan.swap(false, Ordering::AcqRel)
+    }
+
     pub(super) async fn run_cycle(&self) {
         self.run_cycle_with_retry_age(EXTRACTOR_REPAIR_RETRY_INTERVAL)
             .await;
     }
 
-    async fn run_cycle_with_retry_age(&self, _min_repair_age: Duration) {
+    pub(super) async fn run_cycle_with_retry_age(&self, min_repair_age: Duration) {
+        let reconcile = self.claim_rescan(min_repair_age);
+        if reconcile {
+            self.indexing_runtime
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .set_watcher_rescan_pending(true);
+        }
         self.process_queue_batch().await;
+        if reconcile {
+            self.reconcile_workspace().await;
+        }
     }
 
     pub(super) async fn process_pending_changes(&self) -> Result<()> {

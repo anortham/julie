@@ -14,10 +14,7 @@ pub fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<String>> {
     let mut files = HashSet::new();
 
     for result in build_walker(workspace_root, &WalkConfig::stale_scan()) {
-        let entry = match result {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        let entry = result?;
 
         if !entry.file_type().map_or(false, |ft| ft.is_file()) {
             continue;
