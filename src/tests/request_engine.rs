@@ -308,18 +308,36 @@ async fn runtime_reacquire_waits_for_teardown_without_duplicate_writer() {
         .await;
     let probe = fixture.runtimes.pause_retirement();
     let retiring_factory = Arc::clone(&fixture.runtimes);
-    let retiring = tokio::spawn(async move {
+    let mut retiring = tokio::spawn(async move {
         retiring_factory.retire_idle_runtimes(now).await;
     });
-    probe.entered().await;
+    if tokio::time::timeout(Duration::from_secs(5), probe.entered())
+        .await
+        .is_err()
+    {
+        probe.release();
+        if tokio::time::timeout(Duration::from_secs(5), &mut retiring)
+            .await
+            .is_err()
+        {
+            retiring.abort();
+            let _ = retiring.await;
+        }
+        panic!("retirement must block same-key admission");
+    }
     let target_factory = Arc::clone(&fixture.runtimes);
     let (target_tx, mut target_rx) = tokio::sync::oneshot::channel();
-    let target_task = tokio::spawn(async move {
+    let mut target_task = tokio::spawn(async move {
         let runtime = acquire_runtime(&target_factory, &target).await;
         let _ = target_tx.send(());
         runtime
     });
-    let other_runtime = acquire_runtime(&fixture.runtimes, &other).await;
+    let other_runtime = tokio::time::timeout(
+        Duration::from_secs(5),
+        acquire_runtime(&fixture.runtimes, &other),
+    )
+    .await
+    .expect("unrelated workspace must acquire while retirement is blocked");
 
     assert!(matches!(
         target_rx.try_recv(),
@@ -328,8 +346,22 @@ async fn runtime_reacquire_waits_for_teardown_without_duplicate_writer() {
     assert!(fixture.runtimes.slot_is_loaded(&other).await);
     assert_eq!(fixture.runtimes.loaded_watcher_count().await, 3);
     probe.release();
-    retiring.await.expect("retirement join");
-    let target_runtime = target_task.await.expect("reacquisition join");
+    let retirement = tokio::time::timeout(Duration::from_secs(5), &mut retiring).await;
+    if retirement.is_err() {
+        retiring.abort();
+        target_task.abort();
+        let _ = retiring.await;
+        let _ = target_task.await;
+        panic!("retirement must finish after release");
+    }
+    retirement.unwrap().expect("retirement join");
+    let reacquisition = tokio::time::timeout(Duration::from_secs(5), &mut target_task).await;
+    if reacquisition.is_err() {
+        target_task.abort();
+        let _ = target_task.await;
+        panic!("same-key reacquisition must finish after teardown");
+    }
+    let target_runtime = reacquisition.unwrap().expect("reacquisition join");
     target_rx.close();
     assert!(fixture.runtimes.slot_is_loaded(&other).await);
     assert_eq!(fixture.runtimes.loaded_watcher_count().await, 3);
