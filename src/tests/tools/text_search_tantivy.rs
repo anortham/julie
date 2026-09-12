@@ -370,9 +370,9 @@ pub fn lookup_user_profile(id: u32) -> String {
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
-    let workspace_root = handler.current_workspace_root();
 
     index_workspace_for_search(&handler, &workspace_path).await?;
+    let workspace_root = handler.current_workspace_root();
 
     {
         let mut workspace_guard = handler.workspace.write().await;
