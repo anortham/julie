@@ -1,6 +1,6 @@
 # Plan 3: One bounded production runtime lifecycle
 
-**Status:** 3A baseline, 3B independent cold initialization, 3C lifecycle implementation, and post-change measurement are complete; the final Linux gate remains. Windows validation is deferred to final post-merge validation.
+**Status:** 3A–3D implementation and post-change measurement are complete. The first Linux full gate failed the service coordination-word budget; its one allowed retry ran 2,292 tests with 2,291 pass, then hung only the obsolete non-cooperative force-reindex double. `eb75e4fc` fixes that double and its exact test passes. A third full gate requires owner approval under the retry policy and remains pending. Windows validation is deferred to final post-merge validation.
 **Goal:** Opening a cold checkout does not block warm checkouts, and idle runtime resources are reclaimed safely.
 **Depends on:** Plan 1 recovery and request-local semantics before lifecycle integration.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). Apply `razorback:diagnosing-performance`: baseline before optimization, same workload afterward.
@@ -36,7 +36,7 @@ The initial policy proposal is at most eight unused retained runtimes and expiry
 - [x] Commands, binary/source identities, workload, cold/warm distinctions and three accepted measurements are recorded in `docs/findings/revival-runtime-baseline.md`.
 - [x] Hot-checkout resource budget uses this same-workload before measurement plus 20%.
 - [x] Retention bounds are eight runtimes and 60 seconds before 3C starts.
-- [ ] Unit tests use logical lifecycle assertions; CI does not depend on a noisy millisecond benchmark.
+- [x] Unit tests use logical lifecycle assertions; CI does not depend on a noisy millisecond benchmark.
 
 ## 3B. Move cold initialization out of the global map guard
 
@@ -91,9 +91,9 @@ Use explicit maintenance calls and an injected/current test clock for expiry; no
 
 **Acceptance:**
 
-- [ ] After work settles, resident unused runtimes meet the selected count/age bounds and their watcher resources are released.
-- [ ] Active calls, queued writes and semantic backfill are not discarded by eviction.
-- [ ] Teardown/reopen cannot overlap writers for one workspace.
+- [x] After work settles, resident unused runtimes meet the selected count/age bounds and their watcher resources are released.
+- [x] Active calls, queued writes and semantic backfill are not discarded by eviction.
+- [x] Teardown/reopen cannot overlap writers for one workspace.
 - [x] Disk stores remain intact and subsequent queries are current (`evicted_runtime_reopens_with_fresh_results_and_existing_vectors`).
 - [x] Three repeated checkout-churn runs show bounded live runtime resources; before/after RSS, retained slot metadata and warm-query p95 are recorded on the same workload.
 - [x] Any resource growth or hot-checkout regression beyond the recorded budget is investigated before retaining the change.
@@ -102,18 +102,20 @@ Use explicit maintenance calls and an injected/current test clock for expiry; no
 
 Trace `WorkspaceRuntimeManager`, `ProcessFairScheduler`, public reexports, builders, and tests. Compare its behaviors with the production requirements covered above. Remove dead manager/owner/lease/scheduler code and tests that only prove the discarded implementation. Preserve tests of required behavior by moving their assertions to the production interface, not deleting the requirements.
 
+Traced deletion set, removed in `1a1b700a`: `src/workspace_runtime/{builder,dirty_queue,manager,mod,owner,scheduler,shutdown}.rs`. The associated documentation references were updated in the same commit; production lifecycle behavior remains covered through `RuntimeFactory` and service tests.
+
 Do not claim fair scheduling has shipped merely because a scheduler type exists. If a useful uncovered behavior remains, record it explicitly and either implement the minimal needed production behavior or leave that specific live module outside deletion. This task does not authorize new fairness/admission features.
 
 **Acceptance:**
 
-- [ ] One documented runtime owner governs initialization, requests, teardown and service shutdown.
-- [ ] Removed symbols have no live consumers or dangling docs/reexports.
-- [ ] Required behavior still has tests against the active production path.
-- [ ] Deleted code outweighs any equivalent replacement machinery; no second lifecycle remains as a future fallback.
+- [x] One documented runtime owner governs initialization, requests, teardown and service shutdown.
+- [x] Removed symbols have no live consumers or dangling docs/reexports.
+- [x] Required behavior still has tests against the active production path.
+- [x] Deleted code outweighs any equivalent replacement machinery; no second lifecycle remains as a future fallback.
 
 ## Verification and handoff
 
-Lead runs the common dev/full gates and one isolated multi-checkout lifecycle probe. Report measurement values and resource tradeoffs, not “faster” based on source inspection. Record the slot/lifetime decision in the next available ADR, after checking the current ADR numbering at execution.
+The isolated multi-checkout lifecycle probe and ADR are complete (`6849556a`, `8de8c015`). The Linux full gate has one documented failed run and one documented retry; the next run is a policy-controlled third attempt requiring owner approval. Windows is intentionally deferred to final post-merge validation.
 
 ## Verification ledger
 
@@ -122,15 +124,19 @@ Lead runs the common dev/full gates and one isolated multi-checkout lifecycle pr
 | Post-change isolated warm/cold replay remains within the accepted resource budget | `JULIE_HOME=<mktemp> target/release/julie-server service --semantics off` with the recorded authenticated 20-open replay | live | `c3096cf3` binary | 3/3 complete; 60 alternating opens, 15 concurrent searches, and 12 status reads all HTTP 200; maximum after-open RSS 797179904 bytes / 49 FDs; warm p95 at most 18.104 ms | 2026-09-12T20:43:24Z | no |
 | Isolated warm/cold runtime baseline has bounded release evidence | `JULIE_HOME=<mktemp> target/release/julie-server service --semantics off` with the recorded authenticated 20-open replay | live | `86a4101f` binary; `b499ee33` documented source | 3/3 complete; 60 alternating opens, 15 concurrent searches, and 12 status reads all HTTP 200; maximum after-open RSS 778272768 bytes / 48 FDs | 2026-09-12 | no |
 | Cold initialization releases the global runtime map before bound startup | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `7925798d` | RED: warm query timed out while cold initialization held the map lock | 2026-09-12T19:32:00Z | no |
-| Cold initialization releases the global runtime map before bound startup | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | working tree | GREEN: passed | 2026-09-12T19:33:00Z | no |
-| Same-key cold callers publish one runtime and watcher | `cargo nextest run -p julie --lib same_workspace_cold_requests_share_one_initialization` | worker-red-green | working tree | Characterization/non-regression: baseline behavior already serialized one initialization; passed | 2026-09-12T19:33:00Z | no |
-| Cancelled initialization leaves an empty retryable slot | `cargo nextest run -p julie --lib cancelled_or_failed_initialization_does_not_poison_runtime_slot` | worker-red-green | working tree | Characterization/non-regression: baseline behavior already retried after failure; passed | 2026-09-12T19:33:00Z | no |
+| Cold initialization releases the global runtime map before bound startup | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `1cd52b4b` | GREEN: passed | 2026-09-12T19:33:00Z | no |
+| Same-key cold callers publish one runtime and watcher | `cargo nextest run -p julie --lib same_workspace_cold_requests_share_one_initialization` | worker-red-green | `1cd52b4b` | Characterization/non-regression: passed | 2026-09-12T19:33:00Z | no |
+| Cancelled initialization leaves an empty retryable slot | `cargo nextest run -p julie --lib cancelled_or_failed_initialization_does_not_poison_runtime_slot` | worker-red-green | `1cd52b4b` | Characterization/non-regression: passed | 2026-09-12T19:33:00Z | no |
 | Test barrier stores initialization entry before the test awaits it | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `1dcb2495` | RED: `notify_waiters` lost the entry notification after initializer scheduling; bounded wait timed out | 2026-09-12T19:37:00Z | no |
-| Test barrier stores initialization entry before the test awaits it | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | working tree | GREEN: `notify_one` stored the entry notification; passed | 2026-09-12T19:37:00Z | no |
+| Test barrier stores initialization entry before the test awaits it | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `f051b546` | GREEN: `notify_one` stored the entry notification; passed | 2026-09-12T19:37:00Z | no |
 | Test barrier fails fast when initialization never reaches it | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `f051b546` | Focused correction: bounded attempt polling passed | 2026-09-12T19:39:00Z | no |
-| Embedding cancellation joins the blocking writer before reopen | `cargo nextest run -p julie --lib embedding_cancel_waits_for_blocking_writer_before_runtime_reopen` | worker-red-green | working tree | RED: cancellation completed before the blocked writer; GREEN: passed after cooperative cancel-and-join | 2026-09-12T20:00:00Z | no |
-| Active request and registered embedding writer are retained by explicit retirement | `cargo nextest run -p julie --lib runtime_cache_never_evicts_active_request_or_background_writer` | worker-red-green | working tree | GREEN: passed | 2026-09-12T20:00:00Z | no |
-| Oldest idle checkout retires before newer idle slots | `cargo nextest run -p julie --lib runtime_cache_evicts_oldest_idle_checkout_and_stops_watcher` | worker-red-green | working tree | Initial compilation exposed an ownership-count correction; final exact run remains with the lead because the worker RED/GREEN run budget is exhausted. | 2026-09-12T20:00:00Z | no |
-| Same-key reacquisition waits for teardown | `cargo nextest run -p julie --lib runtime_reacquire_waits_for_teardown_without_duplicate_writer` | worker-red-green | working tree | Initial deterministic-barrier run did not complete before interruption; final exact run remains with the lead because the worker RED/GREEN run budget is exhausted. | 2026-09-12T20:00:00Z | no |
-| Service shutdown joins maintenance, watcher, and embedding writer work | `cargo nextest run -p julie --lib service_shutdown_joins_maintenance_watchers_and_embedding_writers` | worker-red-green | working tree | GREEN: passed; the test holds a writer behind a notify barrier, proves shutdown takes it before awaiting join, then verifies watcher and loaded-runtime release. | 2026-09-12T21:00:00Z | no |
-| Force reindex test double cooperates with embedding cancellation | `cargo nextest run -p julie --lib test_force_reindex_cancels_embedding_task_when_explicit_path_resolves_to_primary_root` | worker-red-green | working tree | GREEN: passed; the double observes the cancellation flag and exits, preserving cancel-and-join verification. | 2026-09-12T21:00:00Z | no |
+| Embedding cancellation joins the blocking writer before reopen | `cargo nextest run -p julie --lib embedding_cancel_waits_for_blocking_writer_before_runtime_reopen` | worker-red-green | `1e111ae6` | RED then GREEN: cooperative cancel-and-join waits for the blocked writer | 2026-09-12T20:00:00Z | no |
+| Active request and registered embedding writer are retained by explicit retirement | `cargo nextest run -p julie --lib runtime_cache_never_evicts_active_request_or_background_writer` | worker-red-green | `be1a77a0` | GREEN: passed | 2026-09-12T20:00:00Z | no |
+| Oldest idle checkout retires before newer idle slots | `cargo nextest run -p julie --lib runtime_cache_evicts_oldest_idle_checkout_and_stops_watcher` | worker-red-green | `be1a77a0` | GREEN: passed | 2026-09-12T20:00:00Z | no |
+| Same-key reacquisition waits for teardown | `cargo nextest run -p julie --lib runtime_reacquire_waits_for_teardown_without_duplicate_writer` | worker-red-green | `be1a77a0` | GREEN: passed | 2026-09-12T20:00:00Z | no |
+| Evicted runtime reopens with current facts and preserved vectors | `cargo nextest run -p julie --lib evicted_runtime_reopens_with_fresh_results_and_existing_vectors` | worker-red-green | `4545849c` | Characterization: passed; source changes reconcile while persisted compatible vectors remain | 2026-09-12T20:28:12Z | no |
+| Service shutdown joins maintenance, watcher, and embedding writer work | `cargo nextest run -p julie --lib service_shutdown_joins_maintenance_watchers_and_embedding_writers` | worker-red-green | `572affc8` | GREEN: passed after shutdown-signal correction | 2026-09-12T20:49:10Z | no |
+| Force reindex test double cooperates with embedding cancellation | `cargo nextest run -p julie --lib test_force_reindex_cancels_embedding_task_when_explicit_path_resolves_to_primary_root` | worker-red-green | `eb75e4fc` | GREEN: passed; the cooperative double observes cancellation and exits | 2026-09-12T20:55:13Z | no |
+| First Linux branch gate rejects the service coordination-word budget | `cargo xtask test full` | full | `c3096cf3` | Failed only `service_modules_contain_no_coordination_words`; corrected in `572affc8` | 2026-09-12T20:48:00Z | no |
+| Service budget and shutdown behavior after the first full-gate failure | `cargo nextest run -p julie --lib service_modules_contain_no_coordination_words` and `cargo nextest run -p julie --lib service_shutdown_joins_maintenance_watchers_and_embedding_writers` | worker-red-green | `572affc8` | Both exact tests passed | 2026-09-12T20:49:10Z | no |
+| Allowed Linux full-gate retry reaches the cooperative force-reindex double | `cargo xtask test full` | full | `572affc8` | 2,291/2,292 passed; only `test_force_reindex_cancels_embedding_task_when_explicit_path_resolves_to_primary_root` hung. `eb75e4fc` corrects it; a third full run requires owner approval. | 2026-09-12T20:55:13Z | no |
