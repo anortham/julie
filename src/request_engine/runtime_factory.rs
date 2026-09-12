@@ -313,7 +313,7 @@ impl RuntimeFactory {
         let probe = self.bound_initialization_probe.lock().unwrap().clone();
         if let Some(probe) = probe {
             probe.attempts.fetch_add(1, Ordering::SeqCst);
-            probe.entered.notify_waiters();
+            probe.entered.notify_one();
             tokio::select! {
                 _ = probe.release.notified() => Ok(()),
                 _ = context.cancellation.cancelled() => context.check_cancelled(),
