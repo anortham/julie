@@ -1,6 +1,6 @@
 # Plan 2: Precise and complete retrieval contracts
 
-**Status:** Proposed. No implementation has started.
+**Status:** Approved for implementation on 2026-09-12. Worktree `.worktrees/revival-retrieval`, branch `fix/revival-retrieval`, baseline `22391e26`. Local commits authorized; merge/push/release remain separate actions.
 **Goal:** Preserve exact evidence and make scoped search, paging, and body retrieval reliable for agents.
 **Depends on:** Reference work can start independently; integrate after Plan 1 freshness and semantics fixes.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md), including Sol ownership, TDD, one Cargo command at a time, no tool renaming, and no durable continuations.
@@ -111,3 +111,11 @@ Run lead dev and dogfood after the coherent retrieval batch, and the roadmap's f
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+
+## Approved execution setup
+
+Tasks 2A and 2B may edit in parallel because navigation/reference evidence and search/content execution own separate files. Cargo commands remain serialized by the lead. Task2C follows both and owns their shared final pagination/rendering behavior; Task2D follows2C.
+
+The Linux baseline is the exact previously verified Plan1 HEAD `22391e26882e54b9e4f5bb0995a69369793e067c`: formatting, clippy, full2245+13+69 tests and isolated live probe passed. The updated win-test CLI synced that SHA to native NTFS at `C:\work\revival-retrieval`. Windows has Rust1.97 MSVC but requires nextest installation before its first baseline. All guest control uses win-test; no direct SSH/virsh or shared-mount test execution. Capture the CLI-emitted log path and exact SHA. Windows baseline and final `cargo xtask test full` are lead-owned gates; failures require diagnosis, not reduced assertions.
+
+Paging must preserve automatic backend policy: serializing an inferred semantic backend as an explicit semantic override would discard the scoped lexical-content arm on later pages. Keep the original null/omitted auto selection in normalized replay arguments while exposing effective backend evidence separately.
