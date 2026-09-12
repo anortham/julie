@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::warn;
 
@@ -35,19 +36,51 @@ pub struct RequestRuntime {
 
 struct RuntimeSlot {
     runtime: RwLock<Option<Arc<RequestRuntime>>>,
+    last_activity: std::sync::Mutex<Instant>,
 }
 
 impl RuntimeSlot {
     fn empty() -> Self {
         Self {
             runtime: RwLock::new(None),
+            last_activity: std::sync::Mutex::new(Instant::now()),
         }
     }
 
     fn loaded(runtime: Arc<RequestRuntime>) -> Self {
         Self {
             runtime: RwLock::new(Some(runtime)),
+            last_activity: std::sync::Mutex::new(Instant::now()),
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeRetirementPolicy {
+    max_idle: usize,
+    idle_for: Duration,
+}
+
+const RUNTIME_RETIREMENT_POLICY: RuntimeRetirementPolicy = RuntimeRetirementPolicy {
+    max_idle: 8,
+    idle_for: Duration::from_secs(60),
+};
+
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct RetirementProbe {
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[cfg(test)]
+impl RetirementProbe {
+    pub(crate) async fn entered(&self) {
+        self.entered.notified().await;
+    }
+
+    pub(crate) fn release(&self) {
+        self.release.notify_one();
     }
 }
 
@@ -102,6 +135,10 @@ pub struct RuntimeFactory {
         Arc<std::sync::RwLock<Arc<dyn crate::request_engine::semantic::SemanticRuntime>>>,
     #[cfg(test)]
     bound_initialization_probe: Arc<Mutex<Option<BoundInitializationProbe>>>,
+    #[cfg(test)]
+    retirement_policy: Arc<Mutex<RuntimeRetirementPolicy>>,
+    #[cfg(test)]
+    retirement_probe: Arc<Mutex<Option<RetirementProbe>>>,
 }
 
 impl RuntimeFactory {
@@ -119,6 +156,10 @@ impl RuntimeFactory {
             semantic_runtime: Arc::new(std::sync::RwLock::new(semantic_runtime)),
             #[cfg(test)]
             bound_initialization_probe: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            retirement_policy: Arc::new(Mutex::new(RUNTIME_RETIREMENT_POLICY)),
+            #[cfg(test)]
+            retirement_probe: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -149,6 +190,10 @@ impl RuntimeFactory {
             semantic_runtime: Arc::new(std::sync::RwLock::new(semantic_runtime)),
             #[cfg(test)]
             bound_initialization_probe: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            retirement_policy: Arc::new(Mutex::new(RUNTIME_RETIREMENT_POLICY)),
+            #[cfg(test)]
+            retirement_probe: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -228,6 +273,138 @@ impl RuntimeFactory {
         probe
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_retirement_policy(&self, max_idle: usize, idle_for: Duration) {
+        *self.retirement_policy.lock().unwrap() = RuntimeRetirementPolicy { max_idle, idle_for };
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pause_retirement(&self) -> RetirementProbe {
+        let probe = RetirementProbe {
+            entered: Arc::new(Notify::new()),
+            release: Arc::new(Notify::new()),
+        };
+        *self.retirement_probe.lock().unwrap() = Some(probe.clone());
+        probe
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn set_slot_activity(&self, binding: &WorkspaceBinding, activity: Instant) {
+        let key = RuntimeKey {
+            root: binding.root.clone(),
+            index_root: binding.index_root.clone(),
+        };
+        if let Some(slot) = self.runtimes.read().await.get(&key).cloned() {
+            *slot.last_activity.lock().unwrap() = activity;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn slot_is_loaded(&self, binding: &WorkspaceBinding) -> bool {
+        let key = RuntimeKey {
+            root: binding.root.clone(),
+            index_root: binding.index_root.clone(),
+        };
+        let slot = self.runtimes.read().await.get(&key).cloned();
+        match slot {
+            Some(slot) => slot.runtime.read().await.is_some(),
+            None => false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn slot_count(&self) -> usize {
+        self.runtimes.read().await.len()
+    }
+
+    #[cfg(test)]
+    async fn wait_for_retirement(&self) {
+        let probe = { self.retirement_probe.lock().unwrap().clone() };
+        if let Some(probe) = probe {
+            probe.entered.notify_one();
+            probe.release.notified().await;
+        }
+    }
+
+    #[cfg(not(test))]
+    async fn wait_for_retirement(&self) {}
+
+    fn retirement_policy(&self) -> RuntimeRetirementPolicy {
+        #[cfg(test)]
+        {
+            *self.retirement_policy.lock().unwrap()
+        }
+        #[cfg(not(test))]
+        {
+            RUNTIME_RETIREMENT_POLICY
+        }
+    }
+
+    pub(crate) async fn retire_idle_runtimes(&self, now: Instant) {
+        let policy = self.retirement_policy();
+        let slots = self
+            .runtimes
+            .read()
+            .await
+            .iter()
+            .map(|(key, slot)| (key.clone(), Arc::clone(slot)))
+            .collect::<Vec<_>>();
+
+        let mut idle = Vec::new();
+        for (key, slot) in slots {
+            let runtime = slot.runtime.read().await.clone();
+            let Some(runtime) = runtime else {
+                continue;
+            };
+            let active = Arc::strong_count(&runtime) > 2
+                || runtime.binding().is_some_and(|binding| {
+                    runtime
+                        .handler()
+                        .embedding_tasks
+                        .try_lock()
+                        .map_or(true, |tasks| tasks.contains_key(&binding.workspace_id))
+                });
+            if active {
+                *slot.last_activity.lock().unwrap() = now;
+                continue;
+            }
+            let last_activity = *slot.last_activity.lock().unwrap();
+            idle.push((key, slot, last_activity));
+        }
+        idle.sort_by_key(|(_, _, last_activity)| *last_activity);
+        let excess = idle.len().saturating_sub(policy.max_idle);
+        for (index, (_, slot, last_activity)) in idle.into_iter().enumerate() {
+            if index >= excess && now.duration_since(last_activity) < policy.idle_for {
+                continue;
+            }
+            self.retire_slot(slot).await;
+        }
+    }
+
+    async fn retire_slot(&self, slot: Arc<RuntimeSlot>) {
+        let mut runtime = slot.runtime.write().await;
+        let Some(loaded) = runtime.as_ref() else {
+            return;
+        };
+        if Arc::strong_count(loaded) > 1 {
+            *slot.last_activity.lock().unwrap() = Instant::now();
+            return;
+        }
+        if let Some(binding) = loaded.binding() {
+            let embedding_tasks = loaded.handler().embedding_tasks.lock().await;
+            if embedding_tasks.contains_key(&binding.workspace_id) {
+                *slot.last_activity.lock().unwrap() = Instant::now();
+                return;
+            }
+        }
+        self.wait_for_retirement().await;
+        if let Err(error) = loaded.handler().teardown_loaded_workspace().await {
+            warn!("Failed to retire runtime: {error:#}");
+            return;
+        }
+        *runtime = None;
+    }
+
     pub async fn acquire(
         &self,
         binding: Option<&WorkspaceBinding>,
@@ -271,6 +448,7 @@ impl RuntimeFactory {
                     }
                     runtime.as_ref().cloned().expect("runtime initialized")
                 };
+                *slot.last_activity.lock().unwrap() = Instant::now();
 
                 if runtime.handler().workspace.read().await.is_none() {
                     initialize_recovering_store(runtime.handler(), &b.index_root).await?;

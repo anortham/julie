@@ -269,16 +269,24 @@ impl JulieServerHandler {
         }
     }
 
-    async fn teardown_loaded_workspace(&self) {
-        let mut workspace_guard = self.workspace.write().await;
-        if let Some(ref mut old_workspace) = *workspace_guard {
+    pub(crate) async fn teardown_loaded_workspace(&self) -> Result<()> {
+        let old_workspace = self.workspace.write().await.take();
+        let workspace_id = self.loaded_workspace_id();
+        if let Some(mut old_workspace) = old_workspace {
             info!("Tearing down loaded workspace before replacement");
-            if let Err(e) = old_workspace.stop_file_watching().await {
-                warn!("Failed to stop file watching during teardown: {}", e);
-            }
+            old_workspace.stop_file_watching().await?;
         }
-        *workspace_guard = None;
+        if let Some(ref workspace_id) = workspace_id {
+            crate::tools::workspace::indexing::embeddings::cancel_and_join_embedding_tasks(
+                self,
+                std::slice::from_ref(workspace_id),
+                "workspace retirement",
+            )
+            .await;
+            self.ref_store_cache.write().await.remove(workspace_id);
+        }
         self.set_loaded_workspace_id(None);
+        Ok(())
     }
 
     /// Create a new Julie server handler with all components initialized.
@@ -897,7 +905,7 @@ impl JulieServerHandler {
         let workspace_result: Result<JulieWorkspace> = if force {
             info!("🔄 Force reinitialization requested - clearing derived data only");
 
-            self.teardown_loaded_workspace().await;
+            self.teardown_loaded_workspace().await?;
 
             if let Some(index_root) = &self.in_process_index_root {
                 if index_root.exists() {
@@ -1387,7 +1395,9 @@ impl JulieServerHandler {
 
     pub(crate) async fn invalidate_checkout_store(&self, workspace_id: &str) {
         if self.loaded_workspace_id().as_deref() == Some(workspace_id) {
-            self.teardown_loaded_workspace().await;
+            if let Err(error) = self.teardown_loaded_workspace().await {
+                warn!("Failed to tear down workspace during store invalidation: {error:#}");
+            }
         }
         self.ref_store_cache.write().await.remove(workspace_id);
     }

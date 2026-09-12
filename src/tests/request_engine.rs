@@ -8,6 +8,7 @@ use crate::request_engine::{
 use crate::tests::helpers::workspace::make_isolated_workspace_root;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 pub struct RequestFixture {
     pub engine: RequestEngine,
@@ -113,6 +114,23 @@ impl RequestFixture {
     }
 }
 
+async fn acquire_runtime(
+    runtimes: &RuntimeFactory,
+    binding: &crate::request_engine::WorkspaceBinding,
+) -> Arc<crate::request_engine::RequestRuntime> {
+    runtimes
+        .acquire(
+            Some(binding),
+            &RequestContext::new(
+                RequestOrigin::Cli,
+                Some(Duration::from_secs(10)),
+                tokio_util::sync::CancellationToken::new(),
+            ),
+        )
+        .await
+        .expect("runtime acquisition")
+}
+
 #[tokio::test]
 async fn cold_workspace_initialization_does_not_block_warm_workspace() {
     let fixture = RequestFixture::indexed().await;
@@ -196,6 +214,127 @@ async fn same_workspace_cold_requests_share_one_initialization() {
     assert_eq!(probe.attempts(), 1);
     assert_eq!(fixture.runtimes.loaded_runtime_count().await, 2);
     assert_eq!(fixture.runtimes.loaded_watcher_count().await, 2);
+}
+
+#[tokio::test]
+async fn runtime_cache_evicts_oldest_idle_checkout_and_stops_watcher() {
+    let fixture = RequestFixture::indexed().await;
+    let oldest = fixture.cold_binding("retire_oldest");
+    let newer = fixture.cold_binding("retire_newer");
+    let baseline_slots = fixture.runtimes.slot_count().await;
+    fixture
+        .runtimes
+        .set_retirement_policy(2, Duration::from_secs(60));
+    drop(acquire_runtime(&fixture.runtimes, &oldest).await);
+    drop(acquire_runtime(&fixture.runtimes, &newer).await);
+    let now = Instant::now();
+    fixture
+        .runtimes
+        .set_slot_activity(&oldest, now - Duration::from_secs(61))
+        .await;
+
+    fixture.runtimes.retire_idle_runtimes(now).await;
+
+    assert!(!fixture.runtimes.slot_is_loaded(&oldest).await);
+    assert!(fixture.runtimes.slot_is_loaded(&newer).await);
+    assert_eq!(fixture.runtimes.slot_count().await, baseline_slots + 2);
+    assert_eq!(fixture.runtimes.loaded_runtime_count().await, 2);
+    assert_eq!(fixture.runtimes.loaded_watcher_count().await, 2);
+}
+
+#[tokio::test]
+async fn runtime_cache_never_evicts_active_request_or_background_writer() {
+    let fixture = RequestFixture::indexed().await;
+    let active_binding = fixture.cold_binding("retire_active_request");
+    let writer_binding = fixture.cold_binding("retire_background_writer");
+    fixture
+        .runtimes
+        .set_retirement_policy(1, Duration::from_secs(60));
+    let active = acquire_runtime(&fixture.runtimes, &active_binding).await;
+    let writer = acquire_runtime(&fixture.runtimes, &writer_binding).await;
+    let writer_handler = Arc::clone(writer.handler());
+    let now = Instant::now();
+    fixture
+        .runtimes
+        .set_slot_activity(&active_binding, now - Duration::from_secs(61))
+        .await;
+    fixture
+        .runtimes
+        .set_slot_activity(&writer_binding, now - Duration::from_secs(61))
+        .await;
+    let workspace_id = writer_binding.workspace_id.clone();
+    let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn(async move {
+        let _ = release_rx.await;
+    });
+    writer_handler
+        .embedding_tasks
+        .lock()
+        .await
+        .insert(workspace_id.clone(), (Arc::clone(&cancelled), handle));
+    drop(writer);
+
+    fixture.runtimes.retire_idle_runtimes(now).await;
+
+    assert!(fixture.runtimes.slot_is_loaded(&active_binding).await);
+    assert!(fixture.runtimes.slot_is_loaded(&writer_binding).await);
+    assert!(!cancelled.load(std::sync::atomic::Ordering::Acquire));
+    drop(active);
+    let (_, handle) = writer_handler
+        .embedding_tasks
+        .lock()
+        .await
+        .remove(&workspace_id)
+        .expect("registered background writer");
+    release_tx.send(()).expect("release writer");
+    handle.await.expect("writer join");
+}
+
+#[tokio::test]
+async fn runtime_reacquire_waits_for_teardown_without_duplicate_writer() {
+    let fixture = RequestFixture::indexed().await;
+    let target = fixture.cold_binding("retire_reacquire_target");
+    let other = fixture.cold_binding("retire_reacquire_other");
+    fixture
+        .runtimes
+        .set_retirement_policy(1, Duration::from_secs(60));
+    drop(acquire_runtime(&fixture.runtimes, &target).await);
+    drop(acquire_runtime(&fixture.runtimes, &other).await);
+    let now = Instant::now();
+    fixture
+        .runtimes
+        .set_slot_activity(&target, now - Duration::from_secs(61))
+        .await;
+    let probe = fixture.runtimes.pause_retirement();
+    let retiring_factory = Arc::clone(&fixture.runtimes);
+    let retiring = tokio::spawn(async move {
+        retiring_factory.retire_idle_runtimes(now).await;
+    });
+    probe.entered().await;
+    let target_factory = Arc::clone(&fixture.runtimes);
+    let (target_tx, mut target_rx) = tokio::sync::oneshot::channel();
+    let target_task = tokio::spawn(async move {
+        let runtime = acquire_runtime(&target_factory, &target).await;
+        let _ = target_tx.send(());
+        runtime
+    });
+    let other_runtime = acquire_runtime(&fixture.runtimes, &other).await;
+
+    assert!(matches!(
+        target_rx.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+    assert!(fixture.runtimes.slot_is_loaded(&other).await);
+    assert_eq!(fixture.runtimes.loaded_watcher_count().await, 3);
+    probe.release();
+    retiring.await.expect("retirement join");
+    let target_runtime = target_task.await.expect("reacquisition join");
+    target_rx.close();
+    assert!(fixture.runtimes.slot_is_loaded(&other).await);
+    assert_eq!(fixture.runtimes.loaded_watcher_count().await, 3);
+    drop(other_runtime);
+    drop(target_runtime);
 }
 
 #[tokio::test]
