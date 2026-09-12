@@ -1,8 +1,6 @@
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
 use std::path::Path;
-use std::sync::atomic::Ordering;
-use tracing::info;
 
 pub(crate) fn workspace_ids_for_force_reindex(
     canonical_path: &Path,
@@ -33,18 +31,12 @@ pub(crate) async fn cancel_embedding_tasks(
     workspace_ids: &[String],
     reason: &str,
 ) {
-    let mut tasks = handler.embedding_tasks.lock().await;
-    for workspace_id in workspace_ids {
-        if let Some((cancel_flag, handle)) = tasks.remove(workspace_id) {
-            info!(
-                workspace_id = %workspace_id,
-                reason,
-                "Cancelling running embedding pipeline before full reindex"
-            );
-            cancel_flag.store(true, Ordering::Release);
-            handle.abort();
-        }
-    }
+    crate::tools::workspace::indexing::embeddings::cancel_and_join_embedding_tasks(
+        handler,
+        workspace_ids,
+        reason,
+    )
+    .await;
 }
 
 fn push_unique(values: &mut Vec<String>, value: String) {

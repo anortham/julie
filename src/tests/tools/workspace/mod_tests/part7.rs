@@ -69,6 +69,152 @@ async fn test_refresh_treats_semantic_version_drift_as_full_reindex() {
 
 #[tokio::test]
 #[serial]
+async fn embedding_cancel_waits_for_blocking_writer_before_runtime_reopen() {
+    struct BlockingEmbeddingProvider {
+        state: Arc<(std::sync::Mutex<(bool, bool, usize)>, std::sync::Condvar)>,
+        entered: Arc<tokio::sync::Notify>,
+    }
+
+    impl EmbeddingProvider for BlockingEmbeddingProvider {
+        fn embed_query(
+            &self,
+            _text: &str,
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<f32>> {
+            Ok(vec![0.1; 384])
+        }
+
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<Vec<f32>>> {
+            let (lock, release) = &*self.state;
+            let mut state = lock.lock().unwrap();
+            state.2 += 1;
+            if state.2 == 1 {
+                self.entered.notify_one();
+                while !state.0 {
+                    state = release.wait(state).unwrap();
+                }
+                state.1 = true;
+            } else {
+                assert!(state.1, "reopened embedding overlapped the old writer");
+            }
+            Ok(vec![vec![0.1; 384]; texts.len()])
+        }
+
+        fn dimensions(&self) -> usize {
+            384
+        }
+
+        fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("blocking", 384))
+        }
+
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "mock".to_string(),
+                device: "cpu".to_string(),
+                model_name: "blocking".to_string(),
+                dimensions: 384,
+            }
+        }
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    fs::write(
+        temp_dir.path().join("Cargo.toml"),
+        "[package]\nname = \"embedding-cancel-join\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    let src_dir = temp_dir.path().join("src");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::write(src_dir.join("lib.rs"), "pub fn embed_me() {}\n").unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool_with_options(&handler, true)
+    .await
+    .unwrap();
+
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let state = Arc::new((
+        std::sync::Mutex::new((false, false, 0usize)),
+        std::sync::Condvar::new(),
+    ));
+    handler.set_injected_embedding_provider(Some(Arc::new(BlockingEmbeddingProvider {
+        state: Arc::clone(&state),
+        entered: Arc::clone(&entered),
+    })));
+    let workspace_id = handler.current_workspace_id().unwrap();
+    let scheduled = crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+        &handler,
+        workspace_id.clone(),
+    )
+    .await;
+    assert!(scheduled.symbols > 0, "scheduled real embedding work");
+    entered.notified().await;
+
+    let cancelled = Arc::new(tokio::sync::Notify::new());
+    let cancellation = {
+        let handler = handler.clone();
+        let workspace_id = workspace_id.clone();
+        let cancelled = Arc::clone(&cancelled);
+        tokio::spawn(async move {
+            crate::tools::workspace::commands::force_safeguards::cancel_embedding_tasks(
+                &handler,
+                &[workspace_id],
+                "test",
+            )
+            .await;
+            cancelled.notify_one();
+        })
+    };
+
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while handler.embedding_tasks.lock().await.contains_key(&workspace_id) {
+        assert!(Instant::now() < deadline, "cancellation did not take the task");
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), cancelled.notified())
+            .await
+            .is_err(),
+        "cancellation completed before the blocking writer stopped"
+    );
+
+    let (lock, release) = &*state;
+    lock.lock().unwrap().0 = true;
+    release.notify_all();
+    cancellation.await.unwrap();
+    assert!(handler.embedding_tasks.lock().await.is_empty());
+
+    let reopened = crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+        &handler,
+        workspace_id.clone(),
+    )
+    .await;
+    assert!(reopened.symbols > 0, "reopened embedding work");
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while !handler.embedding_tasks.lock().await.is_empty() {
+        assert!(Instant::now() < deadline, "reopened task did not finish");
+        tokio::task::yield_now().await;
+    }
+}
+
+#[tokio::test]
+#[serial]
 async fn test_force_reindex_cancels_embedding_task_when_explicit_path_resolves_to_primary_root() {
     let temp_dir = TempDir::new().unwrap();
     fs::write(

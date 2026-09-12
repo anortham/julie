@@ -7,7 +7,6 @@ use crate::handler::JulieServerHandler;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use anyhow::Result;
-use std::time::Duration;
 use tracing::{info, warn};
 
 pub(crate) use crate::startup_repair_plan::{
@@ -180,29 +179,12 @@ async fn cancel_primary_embedding_task(handler: &JulieServerHandler) {
     let Ok(workspace_id) = handler.require_primary_workspace_identity() else {
         return;
     };
-
-    let Some((cancel_flag, mut handle)) =
-        handler.embedding_tasks.lock().await.remove(&workspace_id)
-    else {
-        return;
-    };
-
-    cancel_flag.store(true, std::sync::atomic::Ordering::Release);
-    match tokio::time::timeout(Duration::from_secs(5), &mut handle).await {
-        Ok(join_result) => match join_result {
-            Ok(_) => {}
-            Err(err) => {
-                warn!(%workspace_id, "Embedding task ended with error before startup repair: {err}")
-            }
-        },
-        Err(_) => {
-            handle.abort();
-            warn!(
-                %workspace_id,
-                "Timed out waiting for embedding task cancellation before startup repair"
-            );
-        }
-    }
+    crate::tools::workspace::indexing::embeddings::cancel_and_join_embedding_tasks(
+        handler,
+        &[workspace_id],
+        "startup repair",
+    )
+    .await;
 }
 
 /// Rebuild Tantivy from facts when the projection is absent or stale.

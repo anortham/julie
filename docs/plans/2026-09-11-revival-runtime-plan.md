@@ -1,6 +1,6 @@
 # Plan 3: One bounded production runtime lifecycle
 
-**Status:** 3A baseline and 3B independent cold initialization are complete. Windows validation is deferred to final post-merge validation.
+**Status:** 3A baseline, 3B independent cold initialization, and the 3C embedding cancel-and-join subtask are complete. Windows validation is deferred to final post-merge validation.
 **Goal:** Opening a cold checkout does not block warm checkouts, and idle runtime resources are reclaimed safely.
 **Depends on:** Plan 1 recovery and request-local semantics before lifecycle integration.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). Apply `razorback:diagnosing-performance`: baseline before optimization, same workload afterward.
@@ -127,3 +127,4 @@ Lead runs the common dev/full gates and one isolated multi-checkout lifecycle pr
 | Test barrier stores initialization entry before the test awaits it | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `1dcb2495` | RED: `notify_waiters` lost the entry notification after initializer scheduling; bounded wait timed out | 2026-09-12T19:37:00Z | no |
 | Test barrier stores initialization entry before the test awaits it | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | working tree | GREEN: `notify_one` stored the entry notification; passed | 2026-09-12T19:37:00Z | no |
 | Test barrier fails fast when initialization never reaches it | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `f051b546` | Focused correction: bounded attempt polling passed | 2026-09-12T19:39:00Z | no |
+| Embedding cancellation joins the blocking writer before reopen | `cargo nextest run -p julie --lib embedding_cancel_waits_for_blocking_writer_before_runtime_reopen` | worker-red-green | working tree | RED: cancellation completed before the blocked writer; GREEN: passed after cooperative cancel-and-join | 2026-09-12T20:00:00Z | no |

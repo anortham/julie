@@ -5,6 +5,7 @@
 //! checkout store.
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tracing::{debug, info, warn};
@@ -23,6 +24,36 @@ pub(crate) struct EmbeddingOutcome {
 impl EmbeddingOutcome {
     pub(crate) fn skipped() -> Self {
         Self { symbols: 0 }
+    }
+}
+
+pub(crate) async fn cancel_and_join_embedding_tasks(
+    handler: &JulieServerHandler,
+    workspace_ids: &[String],
+    reason: &str,
+) {
+    let tasks = {
+        let mut tasks = handler.embedding_tasks.lock().await;
+        workspace_ids
+            .iter()
+            .filter_map(|workspace_id| {
+                tasks
+                    .remove(workspace_id)
+                    .map(|(cancel_flag, handle)| (workspace_id.clone(), cancel_flag, handle))
+            })
+            .collect::<Vec<_>>()
+    };
+
+    for (workspace_id, cancel_flag, handle) in tasks {
+        info!(
+            workspace_id = %workspace_id,
+            reason,
+            "Cancelling running embedding pipeline"
+        );
+        cancel_flag.store(true, Ordering::Release);
+        if let Err(error) = handle.await {
+            warn!(workspace_id = %workspace_id, "Embedding cancellation task failed: {error}");
+        }
     }
 }
 
