@@ -1,6 +1,6 @@
 # Plan 3: One bounded production runtime lifecycle
 
-**Status:** 3A baseline and repeatable replay protocol recorded; 3B not started. Windows validation is deferred to final post-merge validation.
+**Status:** 3A baseline completed with three isolated release replays; 3B not started. Windows validation is deferred to final post-merge validation.
 **Goal:** Opening a cold checkout does not block warm checkouts, and idle runtime resources are reclaimed safely.
 **Depends on:** Plan 1 recovery and request-local semantics before lifecycle integration.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). Apply `razorback:diagnosing-performance`: baseline before optimization, same workload afterward.
@@ -117,3 +117,4 @@ Lead runs the common dev/full gates and one isolated multi-checkout lifecycle pr
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| Isolated warm/cold runtime baseline has bounded release evidence | `JULIE_HOME=<mktemp> target/release/julie-server service --semantics off` with the recorded authenticated 20-open replay | live | `86a4101f` binary; `b499ee33` documented source | 3/3 complete; 60 alternating opens, 15 concurrent searches, and 12 status reads all HTTP 200; maximum after-open RSS 778272768 bytes / 48 FDs | 2026-09-12 | no |

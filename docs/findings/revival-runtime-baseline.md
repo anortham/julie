@@ -1,32 +1,55 @@
 # Revival runtime baseline
 
-## Identity and fixed workload
+## Identity and fixed replay
 
-Baseline instrumentation/fix commits are `6224248a`, `e502fe53`, and `86a4101f`; the release binary was built from `86a4101f` and reports `julie-server 8.0.0`. Measurements use Linux, an empty `mktemp`-created `JULIE_HOME`, `JULIE_EMBEDDING_PROVIDER=none`, and the foreground service from `target/release/julie-server service`. The service process is owned by one persistent PTY for the whole replay and stopped before that PTY exits.
+The release executable is `target/release/julie-server`, built from `86a4101f83105429382862c42dc6d60340b00f8b` and reporting `julie-server 8.0.0`; SHA-256: `e3f70c1a3c1d12d044a78190b959ee01024446b043e7f2883ee4db8750561ccc`. The cold checkout is `/home/murphy/source/julie/.worktrees/revival-runtime` at `b499ee33c21159c073fd396f787eef224451bb35`. Its diff from the binary source contains only the finding, plan, and memory documents, so the measured Rust source is `86a4101f`.
 
-The warm checkout is `/home/murphy/source/julie/.worktrees/revival-runtime`. The cold checkout is its sibling `/home/murphy/source/julie`; using a sibling keeps the checkout corpus and seed path fixed. The API is authenticated with the `port` and `token` read from the isolated `$JULIE_HOME/service.json`:
+Every Linux repetition used a new `mktemp -d` `JULIE_HOME`, `JULIE_EMBEDDING_PROVIDER=none`, and `julie-server service --semantics off` in one foreground PTY. No semantic sidecar was started. The warm checkout was a new `mktemp -d` directory made for each repetition with:
+
+```sh
+cp -a /home/murphy/source/julie/.worktrees/revival-runtime/fixtures/seed/a/. "$warm/"
+mkdir "$warm/.git"
+```
+
+The `.git` directory makes the copied seed an isolated workspace root. The cold checkout remained the larger worktree named above. The service token and port came from that repetition's private `$JULIE_HOME/service.json` and were not retained.
 
 ```sh
 base="http://127.0.0.1:$port"
 auth=(-H "Authorization: Bearer $token" -H 'Content-Type: application/json')
-open() { curl --fail --silent -X POST "${auth[@]}" --data "{\"operation\":\"open\",\"path\":\"$1\"}" "$base/api/manage_workspace"; }
-search() { curl --fail --silent -X POST "${auth[@]}" --data "{\"query\":\"RuntimeFactory\",\"workspace\":\"$warm\",\"backend\":\"lexical\"}" "$base/api/fast_search"; }
+curl --silent --show-error --output response.json --write-out '%{http_code}' "${auth[@]}" "$base/status"
+curl --silent --show-error --output response.json --write-out '%{http_code}' -X POST "${auth[@]}" \
+  --data "{\"operation\":\"open\",\"path\":\"$path\"}" "$base/api/manage_workspace"
+curl --silent --show-error --output response.json --write-out '%{http_code}' -X POST "${auth[@]}" \
+  --data "{\"query\":\"RuntimeFactory\",\"workspace\":\"$warm\",\"backend\":\"lexical\"}" "$base/api/fast_search"
 ```
 
-For each repetition: read authenticated `GET /status` at fresh; `open "$warm"` and read status after warm; start `open "$cold"` in the PTY, immediately make five concurrent `search` calls, wait for all six requests, and read status after cold; alternate `open "$warm"` and `open "$cold"` ten times each, then read status after the twentieth open. At every status read, capture `loaded_runtime_count` and `loaded_watcher_count` from JSON, RSS with `ps -o rss= -p "$pid"` multiplied by 1024, and FDs with `find "/proc/$pid/fd" -mindepth 1 -maxdepth 1 | wc -l`. Record cold wall from the cold request's monotonic start/end and each warm request's own start/end; p95 is the maximum of five samples. Finally call `JULIE_HOME="$home" target/release/julie-server service stop`, wait for the owned pid, and require `kill -0 "$pid"` to fail. Do not retain or print the token.
+For each of three repetitions: capture authenticated status at fresh; open warm and capture status; start cold open, immediately issue exactly five concurrent lexical warm searches, await all six, and capture status; alternate warm/cold opens ten times each, then capture status after the twentieth alternating open. Each status sample records the returned `loaded_runtime_count` and `loaded_watcher_count`, `ps -o rss=` multiplied by 1024, and `find /proc/$pid/fd -mindepth 1 -maxdepth 1 | wc -l`. Cold and warm-request wall times use `date +%s%N`. Each status, request body, HTTP result, and latency was written immediately to the repetition directory. Finally `JULIE_HOME="$home" julie-server service stop` was issued and the foreground PID was awaited until `kill -0` failed.
 
-## Accepted release samples
+## Results
 
-The original three clean release repetitions all completed 20 opens with HTTP 200. These are the accepted latency samples pending the post-3C identical replay; nearest-rank p95 is the maximum of each five-query batch.
+All 60 alternating opens, all three initial warm opens, all three cold opens, all fifteen warm searches, and all twelve authenticated status calls returned HTTP 200. Every owned service exited after its `service stop` request.
 
-| repetition | cold wall ms | warm p95 ms | settled runtimes | RSS after opens | FDs after opens |
-|---|---:|---:|---:|---:|---:|
-| 1 | 13991.637 | 13040.917 | 3 | 1049350144 | 49 |
-| 2 | 13811.840 | 12913.482 | 3 | 1007173632 | 49 |
-| 3 | 13810.011 | 12877.101 | 3 | 1023127552 | 49 |
+| repetition | stage | runtimes | watchers | RSS bytes | FDs |
+|---|---|---:|---:|---:|---:|
+| 1 | fresh | 0 | 0 | 23642112 | 18 |
+| 1 | after warm | 2 | 1 | 47001600 | 30 |
+| 1 | after cold | 3 | 2 | 778084352 | 48 |
+| 1 | after 20 opens | 3 | 2 | 778272768 | 48 |
+| 2 | fresh | 0 | 0 | 23629824 | 18 |
+| 2 | after warm | 2 | 1 | 46825472 | 30 |
+| 2 | after cold | 3 | 2 | 754307072 | 47 |
+| 2 | after 20 opens | 3 | 2 | 754442240 | 47 |
+| 3 | fresh | 0 | 0 | 23695360 | 18 |
+| 3 | after warm | 2 | 1 | 46948352 | 30 |
+| 3 | after cold | 3 | 2 | 777142272 | 47 |
+| 3 | after 20 opens | 3 | 2 | 777187328 | 47 |
 
-Warm batches (ms): `[13040.711,13040.917,13040.763,13040.048,13039.316]`, `[12913.482,12913.171,12912.740,12911.487,12912.246]`, and `[3.495,12877.101,12876.580,12875.678,12876.224]`. The +20% budget uses the maximum accepted after-open values only: **1,259,220,173 bytes RSS** and **59 FDs**. No incomplete replay sample drives that budget.
+| repetition | cold wall ms | five concurrent warm-query latencies ms | nearest-rank p95 ms |
+|---|---:|---|---:|
+| 1 | 12011.865 | `[12016.416, 12017.719, 12017.599, 12016.546, 12016.783]` | 12017.719 |
+| 2 | 12129.876 | `[12132.604, 12132.054, 12132.072, 12.234, 11.516]` | 12132.604 |
+| 3 | 12203.795 | `[12203.223, 12205.497, 12205.371, 10.782, 11.106]` | 12205.497 |
 
-The recorded settled watcher count was 2. A follow-up replay must preserve the four stage rows (fresh, after warm, after cold, after 20 opens) for every repetition; this document now gives the exact executable procedure rather than claiming unavailable stage rows. The locally attempted correction replay confirmed the status API shape (`loaded_runtime_count`, `loaded_watcher_count`) at fresh (`0`, `0`, 23,822,336 bytes, 18 FDs) and after warm (`2`, `1`, 760,827,904 bytes, 30 FDs), then was cancelled while the cold request was still pending. It is not an accepted baseline sample.
+For five samples, nearest-rank p95 is rank `ceil(0.95 * 5) = 5`: the maximum after numeric sort. The hot-checkout resource budget is 120% of the largest after-20-opens measurement: `ceil(778272768 * 1.20) = 933927322` RSS bytes and `ceil(48 * 1.20) = 58` FDs. The selected 3C retention policy is at most eight unused runtimes, expiring after 60 seconds.
 
-Selected policy before 3C: retain at most 8 unused runtimes; expire after 60 seconds. Semantics are off, so no semantic sidecar is owned. Windows verification is deferred to final post-merge validation.
+The concurrent-search samples show the current global initialization interference and are a baseline constraint, not a latency target. This is Linux-only release evidence; Windows verification remains deferred to final post-merge validation. Counts cover the service PID's RSS and FDs, not child-process-tree accounting; semantics were off, so no semantic child existed.
