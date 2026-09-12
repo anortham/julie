@@ -254,7 +254,12 @@ async fn indexed_metrics_handler() -> Result<(JulieServerHandler, TempDir)> {
         force: Some(false),
         detailed: None,
     };
-    index_tool.call_tool(&handler).await?;
+    let index_result = index_tool.call_tool(&handler).await?;
+    assert_ne!(
+        index_result.is_error,
+        Some(true),
+        "metrics fixture indexing returned an error: {index_result:?}"
+    );
     let workspace = handler
         .get_workspace()
         .await?
