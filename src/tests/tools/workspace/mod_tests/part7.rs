@@ -236,8 +236,13 @@ async fn test_force_reindex_cancels_embedding_task_when_explicit_path_resolves_t
         .current_workspace_id()
         .expect("test handler should have a primary workspace id");
     let cancel_flag = Arc::new(AtomicBool::new(false));
-    let pending_handle = tokio::spawn(async {
-        std::future::pending::<()>().await;
+    let task_cancel_flag = Arc::clone(&cancel_flag);
+    let pending_handle = tokio::spawn(async move {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !task_cancel_flag.load(Ordering::Acquire) {
+            assert!(Instant::now() < deadline, "embedding task was not cancelled");
+            tokio::task::yield_now().await;
+        }
     });
     {
         let mut tasks = handler.embedding_tasks.lock().await;
