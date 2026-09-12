@@ -7,8 +7,8 @@
 
 use crate::mcp_compat::CallToolResult;
 use crate::tests::helpers::snapshot::snapshot_context;
-use crate::tools::search::FastSearchTool;
 use crate::tools::search::trace::{FilePatternDiagnostic, HintKind};
+use crate::tools::search::{FastSearchTool, SearchBackend};
 use julie_test_support::FakeToolContext;
 use std::fs;
 use std::path::Path;
@@ -218,7 +218,7 @@ async fn filename_locations_preserve_exact_file_rank_instead_of_line_mode_mentio
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn locations_scope_rescue_labels_out_of_scope_results() {
+async fn explicit_lexical_scope_rescue_labels_out_of_scope_results() {
     let temp_dir = TempDir::new().expect("tempdir");
     let workspace_path = temp_dir.path().to_path_buf();
     fs::create_dir_all(workspace_path.join("src/ui")).unwrap();
@@ -240,7 +240,7 @@ async fn locations_scope_rescue_labels_out_of_scope_results() {
         limit: 5,
         context_lines: None,
         exclude_tests: None,
-        backend: None,
+        backend: Some(SearchBackend::Lexical),
         workspace: Some("primary".to_string()),
         return_format: "compact".to_string(),
         offset: 0,

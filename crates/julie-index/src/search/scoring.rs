@@ -304,7 +304,9 @@ pub fn is_test_path(path: &str) -> bool {
 
     // Check file-name patterns for languages that co-locate tests with source
     let file_name = path.rsplit('/').next().unwrap_or(path);
-    let file_stem = file_name.rsplit_once('.').map_or(file_name, |(stem, _)| stem);
+    let file_stem = file_name
+        .rsplit_once('.')
+        .map_or(file_name, |(stem, _)| stem);
 
     if file_stem.ends_with("_test") {
         return true;
