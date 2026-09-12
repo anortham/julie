@@ -25,3 +25,11 @@ The existing-path CLI fixture assumed `/tmp`; it now uses the platform temp dire
 Focused host checks pass: `invalidate_checkout_store_releases_only_matching_workspace_handles`, `test_resolve_workspace_root_with_existing_path`, and `test_run_cli_tool_standalone_workspace_rebuild_reindexes_the_path` (one selected each), plus `cargo check`. The clean-commit NTFS rerun remains the proof for Windows file-handle release.
 
 This repair does not add global request/embedding quiescence or claim full concurrent runtime eviction. Those lifecycle guarantees remain in Plan3. Existing explicit rebuild still fails rather than silently unlinking files that another active reader or embedding job retains.
+
+## Third baseline run
+
+At `e1ee19f27d47d1a38270fac5dd76a9b425cf9f4a`, binary build passed and the development gate ran316tests:315passed,1failed. The standalone rebuild regression passed on NTFS. Exact emitted log: `/home/murphy/.local/share/win-test/logs/20260912T142540Z-revival-retrieval-1440634.log`.
+
+The failure was a fixture pretending to change Windows' default home by setting `HOME` and `USERPROFILE`; `dirs::home_dir()` uses the Windows shell home lookup. The corrected coverage keeps simulated default-home traversal on Unix, tests explicit `JULIE_HOME` traversal on every platform, and directly verifies recognition of the actual default home without modifying its files. All three exact host tests passed; the next NTFS gate verifies the portable replacements.
+
+The full command had finished in76.1seconds, but PowerShell's process-tree wait remained held by Visual C++ telemetry (`VCTIP.EXE`). Process inventory showed no remaining Cargo, nextest, xtask, or Julie process. Stopping only the identity-checked telemetry process created during this build immediately released the original wrapper with its actual failure status and log. No runner skill or unrelated process was modified.

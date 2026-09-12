@@ -212,6 +212,7 @@ fn test_workspace_root_member_crate_resolves_to_workspace_julie_not_own_cargo_to
 /// `.julie/` must NOT capture the global home `.julie/`.
 #[test]
 #[serial]
+#[cfg(unix)]
 fn test_workspace_root_still_rejects_home_julie_under_new_vcs_markers() {
     use crate::workspace::JulieWorkspace;
 
@@ -224,34 +225,12 @@ fn test_workspace_root_still_rejects_home_julie_under_new_vcs_markers() {
     let working_dir = fake_home.path().join("projects").join("myapp");
     fs::create_dir_all(&working_dir).expect("Failed to create working dir");
 
-    let original_home = env::var("HOME").ok();
-    #[cfg(windows)]
-    let original_userprofile = env::var("USERPROFILE").ok();
-    unsafe {
-        env::set_var("HOME", fake_home.path());
-        #[cfg(windows)]
-        env::set_var("USERPROFILE", fake_home.path());
-    }
+    let mut env = crate::tests::helpers::env::EnvVarGuard::new();
+    env.remove("JULIE_HOME");
+    env.set("HOME", fake_home.path().as_os_str());
 
     let result = JulieWorkspace::find_workspace_root(&working_dir)
         .expect("find_workspace_root should not error");
-
-    // Restore env BEFORE asserting so a panic can't leak the override.
-    unsafe {
-        if let Some(val) = original_home {
-            env::set_var("HOME", val);
-        } else {
-            env::remove_var("HOME");
-        }
-        #[cfg(windows)]
-        {
-            if let Some(val) = original_userprofile {
-                env::set_var("USERPROFILE", val);
-            } else {
-                env::remove_var("USERPROFILE");
-            }
-        }
-    }
 
     assert_eq!(
         result, None,
@@ -259,6 +238,38 @@ fn test_workspace_root_still_rejects_home_julie_under_new_vcs_markers() {
          boundary logic; with no VCS root and no non-home .julie the walk must return None, got: {:?}",
         result
     );
+}
+
+#[test]
+#[serial]
+fn test_workspace_root_rejects_configured_julie_home_under_new_vcs_markers() {
+    use crate::workspace::JulieWorkspace;
+
+    let fake_home = TempDir::new().expect("Failed to create fake home");
+    let global_julie = fake_home.path().join(".julie");
+    fs::create_dir_all(global_julie.join("logs")).expect("Failed to create .julie/logs");
+    fs::write(global_julie.join("registry.toml"), "# global registry")
+        .expect("Failed to create registry.toml");
+    let working_dir = fake_home.path().join("projects").join("myapp");
+    fs::create_dir_all(&working_dir).expect("Failed to create working dir");
+
+    let mut env = crate::tests::helpers::env::EnvVarGuard::new();
+    env.set("JULIE_HOME", global_julie.as_os_str());
+
+    assert_eq!(
+        JulieWorkspace::find_workspace_root(&working_dir)
+            .expect("find_workspace_root should not error"),
+        None
+    );
+}
+
+#[test]
+#[serial]
+fn test_default_julie_home_is_always_known() {
+    let default_home = dirs::home_dir().expect("home directory must be available");
+    assert!(julie_core::paths::RegistryPaths::is_any_known_julie_home(
+        &default_home.join(".julie")
+    ));
 }
 
 /// Test (Function #1, explicit-path resolver — cross-VCS breadth, RED before fix):
