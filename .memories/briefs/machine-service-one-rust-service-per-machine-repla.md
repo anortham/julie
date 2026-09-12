@@ -4,7 +4,7 @@ title: "Machine service: one Rust service per machine replaces per-session
   Miller and Julie"
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-12T13:29:14.598Z
+updated: 2026-09-12T18:12:16.134Z
 tags:
   - machine-service
   - architecture
@@ -16,20 +16,23 @@ tags:
 ## Direction
 Ship Julie v8 as one Rust machine service with stateless HTTP MCP, a stdio shim and JSON API over one request engine. Preserve explicit workspace routing, one writer per checkout, facts.sqlite/Tantivy storage, the OS singleton and existing mutation gate. No leases, brokers, durable cursor store or derived-index migrations.
 
-## Approved work
-Plan1 is complete and merged locally into main at22391e26882e54b9e4f5bb0995a69369793e067c. Exact-HEAD formatting, clippy, full2245+13+69 tests and isolated native50-to-51 recovery/mode/freshness probe passed. The owner rebuilt and restarted Julie.
+## Completed work
+Plan1 merged locally into main at 22391e26882e54b9e4f5bb0995a69369793e067c. The owner rebuilt and restarted Julie.
 
-Plan2 was approved on2026-09-12: precise reference sites, scoped content retrieval, self-contained stateless paging and bounded bodies with completeness/source identity. Work stays in .worktrees/revival-retrieval on fix/revival-retrieval, branched from22391e26. Sol owns implementation; Astra owns architecture, inline review and integration. Tasks2A/2B edit independently, all Cargo is serialized;2C follows both,2D follows2C. Local commits authorized. Merge/push/tag/release and live profile/service changes require separate authorization.
+Plan2 merged locally into main at cca0276078a51c6b1e03add3051fe72affd3a1ce. It adds precise reference sites, scoped content retrieval, self-contained stateless paging, and bounded source-hash-bound bodies with explicit completeness. The final Linux branch gate passed formatting, clippy, 2283 development tests, 13 CLI tests, and 69 dogfood tests. The isolated live probe passed seven public API, MCP, and CLI retrieval checks.
 
-## Verification
-Linux baseline evidence is exact22391e26. Updated win-test supports Julie and the guest is running. That baseline SHA is synced to native NTFS at C:/work/revival-retrieval; Rust1.97 MSVC is present, nextest installation and first Windows baseline are underway. Use win-test CLI only, preserve emitted log paths, run Windows baseline/final gates as lead. No Windows pass is claimed yet.
+Windows exact checks validated the Plan2 behavior and several portability fixes. Repeated Windows full qualification exposed unrelated and fixture failures one at a time, so qualification is incomplete and separated from Plan2 implementation. Do not restart that loop inside later feature plans.
+
+## Verification policy
+Use exact tests during implementation. Broad gates run once after code freeze, with one retry after exact in-scope fixes. A third broad run requires an explicit owner decision. Unrelated, pre-existing, platform-only, and fixture-only failures become separate work. Unclear ownership gets at most 15 minutes or one exact diagnostic. Evidence-only descendant commits may reuse passing evidence when their diff cannot affect the command.
 
 ## Constraints and later plans
-Preserve existing tools, canonical evidence and all-language applicability. No fake exact spans or inferred complete values. Paging must retain auto backend policy rather than converting an inferred semantic backend into an explicit symbol-only override. Source hashes protect body pages from mixing versions; no retained snapshots/cursors.
+Preserve existing tools, canonical evidence and all-language applicability. No fake exact spans or inferred complete values. Paging retains automatic backend policy. Source hashes prevent body pages from mixing source versions; no retained snapshots or cursors.
 
-Plans3–5 remain proposals: production runtime lifecycle, installation/guidance qualification and measured Miller replacement. Keep the phase6b naming decision after sufficient telemetry, no earlier than approximately2026-09-25; continuous testing requires its own decision. Existing call_path web mode must be extended, not replaced. Navigation promotion and full Miller retirement are separate owner decisions. Plugin source/publication and native artifact qualification remain pending; no publication is authorized.
+Plans3-5 remain proposals: production runtime lifecycle, installation and guidance qualification, and measured Miller replacement. Keep the phase6b naming decision after sufficient telemetry, no earlier than approximately 2026-09-25. Existing call_path web mode remains the bridge path. Navigation promotion, full Miller retirement, plugin publication, and release remain separate owner decisions.
 
 ## References
 docs/plans/2026-09-11-revival-roadmap.md
 docs/plans/2026-09-11-revival-retrieval-plan.md
+docs/findings/2026-09-12-windows-baseline.md
 .memories/autonomous-run-2026-09-12-revival-correctness.md
