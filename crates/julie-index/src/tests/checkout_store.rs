@@ -127,6 +127,57 @@ fn apply_three_files_publishes_graph_symbols_and_searchable_names() {
 }
 
 #[test]
+#[ignore = "manual Windows diagnostic for parallel Tantivy segment creation"]
+fn parallel_independent_stores_apply_without_segment_creation_failures() {
+    let barrier = Arc::new(std::sync::Barrier::new(8));
+    let workers = (0..8)
+        .map(|worker| {
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                barrier.wait();
+                for iteration in 0..10 {
+                    let dir = tempfile::tempdir().unwrap();
+                    copy_seed(dir.path());
+                    let store = match CheckoutStore::open(&dir.path().join("index"), dir.path()) {
+                        Ok(store) => store,
+                        Err(error) => {
+                            let preserved_root = dir.keep();
+                            return Err(format!(
+                                "worker={worker} iteration={iteration} open failed: {error:#}; preserved_root={}",
+                                preserved_root.display()
+                            ));
+                        }
+                    };
+                    let changes = [
+                        upsert(dir.path(), "app.py"),
+                        upsert(dir.path(), "helpers.py"),
+                        upsert(dir.path(), "config.py"),
+                    ];
+                    if let Err(error) = store.apply(&changes, &guard()) {
+                        let preserved_root = dir.keep();
+                        return Err(format!(
+                            "worker={worker} iteration={iteration} apply failed: {error:#}; preserved_root={}",
+                            preserved_root.display()
+                        ));
+                    }
+                }
+                Ok(())
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let failures = workers
+        .into_iter()
+        .filter_map(|worker| match worker.join() {
+            Ok(Ok(())) => None,
+            Ok(Err(error)) => Some(error),
+            Err(error) => Some(format!("worker panicked: {error:?}")),
+        })
+        .collect::<Vec<_>>();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
 fn apply_change_keeps_the_old_snapshot_and_publishes_the_new_one() {
     let dir = tempfile::tempdir().unwrap();
     copy_seed(dir.path());
