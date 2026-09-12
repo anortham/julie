@@ -370,6 +370,7 @@ pub fn lookup_user_profile(id: u32) -> String {
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
+    let workspace_root = handler.current_workspace_root();
 
     index_workspace_for_search(&handler, &workspace_path).await?;
 
@@ -383,7 +384,7 @@ pub fn lookup_user_profile(id: u32) -> String {
     }
 
     let _ =
-        crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(&workspace_path);
+        crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(&workspace_root);
 
     let query = "how should user profile lookups work".to_string();
     let start_barrier = Arc::new(tokio::sync::Barrier::new(3));
@@ -455,7 +456,7 @@ pub fn lookup_user_profile(id: u32) -> String {
     );
 
     let init_count =
-        crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(&workspace_path);
+        crate::handler::embedding_init::take_nl_definition_embedding_init_attempts(&workspace_root);
     assert_eq!(
         init_count, 1,
         "concurrent NL definition queries should share one lazy init attempt"
