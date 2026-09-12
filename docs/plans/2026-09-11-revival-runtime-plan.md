@@ -62,6 +62,8 @@ Install/retrieve the lightweight per-key slot under the map guard, then release 
 
 ## 3C. Reclaim idle resources without duplicate writers
 
+See the pre-implementation [lifetime inventory](../findings/revival-runtime-lifetime-inventory.md) for the current ownership and quiescence contract.
+
 **Inputs:** The 3B slot, measured retention policy, request-owned runtime Arcs, existing background-task activity, `JulieServerHandler::teardown_loaded_workspace`, and `stop_file_watching`.
 **Produces:** Safe explicit runtime teardown and bounded idle retention, used by service maintenance and shutdown.
 
