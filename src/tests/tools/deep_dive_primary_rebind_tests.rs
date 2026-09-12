@@ -22,6 +22,9 @@ async fn test_deep_dive_primary_uses_rebound_current_primary_store() -> Result<(
         context_file: None,
         workspace: Some("primary".to_string()),
         semantics: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     }
     .call_tool(&context)
     .await?;

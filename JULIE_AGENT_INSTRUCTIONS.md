@@ -1,4 +1,4 @@
-# Julie code intelligence
+# Julie
 
 ## Rules
 
@@ -29,6 +29,6 @@
 
 Use Julie instead of grep, find, or Read. Run `get_symbols` before whole-file reads.
 
-Search, navigation, and editing calls require `workspace`: an absolute path or registered ID. Register with `manage_workspace(operation="open", path="/absolute/project")`; other manage calls use `workspace_id`. Global `list` and `status` need none.
+Search, navigation, and editing calls require `workspace`: an absolute path or ID. Register with `manage_workspace(operation="open", path="/absolute/project")`; other manage calls use `workspace_id`. Global `list` and `status` need none.
 
-More rows end with `next: <tool> <JSON>`; replay that JSON. `offset` paging is best effort across source edits.
+Replay `next: <tool> <JSON>` continuations. `offset` is best effort after edits. Body pages bind `source_hash`; restart with `body_offset=0` on mismatch.

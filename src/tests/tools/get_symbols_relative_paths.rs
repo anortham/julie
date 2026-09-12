@@ -37,6 +37,9 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
         offset: 0,
         target: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result = tool.call_tool(&handler).await?;
     let result_text = format!("{:?}", result);
@@ -77,6 +80,9 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
         offset: 0,
         target: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result = tool.call_tool(&handler).await?;
     let result_text = format!("{:?}", result);
@@ -122,6 +128,9 @@ async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> R
         offset: 0,
         target: None,
         workspace: Some(rebound_id),
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result = tool.call_tool(&handler).await?;
     let result_text = format!("{:?}", result);
@@ -148,6 +157,9 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
         offset: 0,
         target: None,
         workspace: Some("primary".to_string()),
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result = tool.call_tool(&handler).await?;
     let result_text = format!("{:?}", result);

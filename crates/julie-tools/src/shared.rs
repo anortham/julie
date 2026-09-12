@@ -9,10 +9,19 @@ pub use julie_core::shared::{
 
 /// Trailer for a paged result: the exact call that returns the next page.
 pub fn next_line<T: serde::Serialize>(tool: &str, args: &T, next_offset: usize) -> String {
+    request_line(tool, args, "offset", next_offset)
+}
+
+pub fn request_line<T: serde::Serialize>(
+    tool: &str,
+    args: &T,
+    parameter: &str,
+    next_value: usize,
+) -> String {
     let mut args = serde_json::to_value(args).expect("tool arguments must serialize");
     args.as_object_mut()
         .expect("tool arguments must serialize as an object")
-        .insert("offset".to_string(), serde_json::json!(next_offset));
+        .insert(parameter.to_string(), serde_json::json!(next_value));
     format!(
         "next: {tool} {}",
         serde_json::to_string(&args).expect("tool arguments must serialize as JSON")

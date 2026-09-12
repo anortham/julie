@@ -307,6 +307,9 @@ pub fn helper_function() {}
                 offset: 0,
                 mode: None,
                 workspace: None,
+                body_offset: 0,
+                body_limit: None,
+                source_hash: None,
             };
 
             let get_symbols_extra = GetSymbolsTool {
@@ -317,6 +320,9 @@ pub fn helper_function() {}
                 offset: 0,
                 mode: None,
                 workspace: None,
+                body_offset: 0,
+                body_limit: None,
+                source_hash: None,
             };
 
             let handler_a = handler.clone();

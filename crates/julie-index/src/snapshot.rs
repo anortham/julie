@@ -82,6 +82,12 @@ impl Snapshot {
     /// the blob the facts were extracted from. `None` means the path is unknown,
     /// unreadable, or edited since the last apply (the watcher will re-apply).
     pub fn file_text(&self, path: &str) -> Result<Option<String>> {
+        Ok(self
+            .verified_file_bytes(path)?
+            .map(|(bytes, _)| String::from_utf8_lossy(&bytes).into_owned()))
+    }
+
+    pub fn verified_file_bytes(&self, path: &str) -> Result<Option<(Vec<u8>, String)>> {
         let blob_hash: Option<String> = self
             .facts()?
             .conn()
@@ -92,8 +98,7 @@ impl Snapshot {
             )
             .optional()?;
         Ok(blob_hash
-            .and_then(|hash| read_verified(&self.root, path, &hash))
-            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
+            .and_then(|hash| read_verified(&self.root, path, &hash).map(|bytes| (bytes, hash))))
     }
 }
 

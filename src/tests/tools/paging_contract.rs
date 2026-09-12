@@ -172,6 +172,9 @@ async fn get_symbols_next_replays_target_mode_depth_limit_and_workspace() -> Res
         offset: 0,
         mode: Some("structure".into()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let first_text = call_tool_result_text(&first.call_tool(&context).await?);

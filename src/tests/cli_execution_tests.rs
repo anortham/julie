@@ -104,6 +104,9 @@ fn test_symbols_args_tool_name() {
         limit: 50,
         offset: 0,
         max_depth: 1,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     assert_eq!(args.tool_name(), "get_symbols");
 }
@@ -247,6 +250,9 @@ fn test_symbols_to_tool_args_with_target() {
         limit: 5,
         offset: 0,
         max_depth: 2,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["file_path"], "src/handler.rs");

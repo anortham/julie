@@ -9,7 +9,7 @@
 //! Unlike reading entire files with the Read tool, these tools provide
 //! just the "skeleton" - symbol names, types, signatures, and locations.
 
-mod body_extraction;
+pub mod body_extraction;
 pub mod filtering;
 pub mod formatting;
 mod primary;
@@ -107,6 +107,15 @@ pub struct GetSymbolsTool {
     /// Required workspace ID or absolute workspace path for MCP calls
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    /// Zero-based source-line offset within each canonical symbol span.
+    #[serde(default)]
+    pub body_offset: u32,
+    /// Maximum source lines returned for each body (default: 100).
+    #[serde(default)]
+    pub body_limit: Option<u32>,
+    /// Source hash from the previous body page; rejects changed source.
+    #[serde(default)]
+    pub source_hash: Option<String>,
 }
 
 impl GetSymbolsTool {

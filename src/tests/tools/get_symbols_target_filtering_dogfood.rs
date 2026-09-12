@@ -19,6 +19,9 @@ async fn test_target_minimal_mode_includes_body_for_child_symbols() -> Result<()
         offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let text = call_tool_result_text(&tool.call_tool(&handler).await?);

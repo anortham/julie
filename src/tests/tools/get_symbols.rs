@@ -44,6 +44,9 @@ pub const MAX_USERS: usize = 100;
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result = tool.call_tool(&handler).await?;
     let text_content = call_tool_result_text(&result);
@@ -93,6 +96,9 @@ pub fn process_data(input: &str) -> String {
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result = tool.call_tool(&handler).await?;
     let text_content = call_tool_result_text(&result);
@@ -126,6 +132,9 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
             offset: 0,
             mode: None,
             workspace: None,
+            body_offset: 0,
+            body_limit: None,
+            source_hash: None,
         };
         let result = tool.call_tool(&handler).await?;
         let text_content = call_tool_result_text(&result);
@@ -166,6 +175,9 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
     let text_no_limit = call_tool_result_text(&result_no_limit);
@@ -189,6 +201,9 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
     let text_with_limit = call_tool_result_text(&result_with_limit);
@@ -223,6 +238,9 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result_not_found = tool_not_found.call_tool(&handler).await;
 
@@ -249,6 +267,9 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result_exists = tool_exists.call_tool(&handler).await?;
     let text_exists = call_tool_result_text(&result_exists);
@@ -274,6 +295,9 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result_empty = tool_empty.call_tool(&handler).await?;
     let text_empty = call_tool_result_text(&result_empty);
@@ -321,6 +345,9 @@ pub fn get_user(id: &str) -> User {
         offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result = tool.call_tool(&handler).await?;
     let text_content = call_tool_result_text(&result);
@@ -376,7 +403,7 @@ fn test_get_symbols_default_mode_is_structure() {
 }
 
 #[test]
-fn test_lean_format_skips_redundant_kind_prefix() {
+fn test_symbol_format_keeps_explicit_atomic_line_and_skips_redundant_kind_prefix() {
     let struct_sym = Symbol {
         extracted: julie_extractors::Symbol {
             id: "s1".to_string(),
@@ -432,8 +459,23 @@ fn test_lean_format_skips_redundant_kind_prefix() {
         code_context: None,
     };
 
-    let result = format_symbol_response("src/foo.rs", vec![struct_sym, fn_sym], None, None)
-        .expect("format_symbol_response should not fail");
+    let mut large_sym = struct_sym.clone();
+    let atomic_line = "x".repeat(60_000);
+    large_sym.code_context = Some(atomic_line.clone());
+    let large_result =
+        format_symbol_response("src/foo.rs", vec![large_sym], None, None, vec![], true)
+            .expect("explicit body page should format");
+    assert!(call_tool_result_text(&large_result).contains(&atomic_line));
+
+    let result = format_symbol_response(
+        "src/foo.rs",
+        vec![struct_sym, fn_sym],
+        None,
+        None,
+        vec![],
+        false,
+    )
+    .expect("format_symbol_response should not fail");
     let text = call_tool_result_text(&result);
 
     assert!(

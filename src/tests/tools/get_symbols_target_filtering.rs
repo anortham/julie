@@ -21,6 +21,9 @@ async fn targeted_text(file_path: &str, target: &str) -> Result<String> {
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     Ok(call_tool_result_text(&tool.call_tool(&handler).await?))
 }

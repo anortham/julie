@@ -33,3 +33,16 @@ At `e1ee19f27d47d1a38270fac5dd76a9b425cf9f4a`, binary build passed and the devel
 The failure was a fixture pretending to change Windows' default home by setting `HOME` and `USERPROFILE`; `dirs::home_dir()` uses the Windows shell home lookup. The corrected coverage keeps simulated default-home traversal on Unix, tests explicit `JULIE_HOME` traversal on every platform, and directly verifies recognition of the actual default home without modifying its files. All three exact host tests passed; the next NTFS gate verifies the portable replacements.
 
 The full command had finished in76.1seconds, but PowerShell's process-tree wait remained held by Visual C++ telemetry (`VCTIP.EXE`). Process inventory showed no remaining Cargo, nextest, xtask, or Julie process. Stopping only the identity-checked telemetry process created during this build immediately released the original wrapper with its actual failure status and log. No runner skill or unrelated process was modified.
+
+## Retrieval and paging gate
+
+At `13249765bc1424504cf90a0d847e41ae8e05c4dd`, the Windows binary built successfully. The development tier completed510passing tests before an index-upgrade fixture failed with error32. A concurrent MCP test remained alive past its deadlines and was deliberately terminated after209.966seconds; this is recorded as an abort, not a pass. Log: `/home/murphy/.local/share/win-test/logs/20260912T153447Z-revival-retrieval-1667299.log`.
+
+The upgrade fixture now awaits the existing checkout teardown before dropping its old handler and reopening files. The concurrent fixture used a stop notification that could be lost between waits; it now stores a permit with `notify_one` and bounds the driver join. Concurrency and indexing assertions remain intact.
+
+At clean `cae075a32a23c612940a2e0ac55823afcb33396a`, exact NTFS reruns passed:
+
+- `test_concurrent_mcp_requests_do_not_wedge`:1passed in2.219seconds. Log: `/home/murphy/.local/share/win-test/logs/20260912T154440Z-revival-retrieval-1672274.log`.
+- `out_of_date_schema_version_recreates_index_directory_and_reindexes`:1passed in1.749seconds. Log: `/home/murphy/.local/share/win-test/logs/20260912T154644Z-revival-retrieval-1672974.log`.
+
+The concurrent rerun's wrapper again waited on build telemetry after the test process had exited. Process inventory confirmed no Cargo/test process remained before stopping only its identity-checked VCTIP process. The original runner then returned exit0 and its authoritative log. A final Windows full gate is still required after body retrieval lands.

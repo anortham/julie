@@ -13,7 +13,12 @@ use julie_core::Symbol;
 /// Returns code bodies separated by blank lines with a minimal file header.
 const FORMAT_CODE_CHAR_LIMIT: usize = 50_000;
 
-fn format_code_output(file_path: &str, symbols: &[Symbol], next: Option<String>) -> CallToolResult {
+fn format_code_output(
+    file_path: &str,
+    symbols: &[Symbol],
+    next: Option<String>,
+    enforce_display_cap: bool,
+) -> CallToolResult {
     let mut output = String::new();
 
     // Minimal file header
@@ -23,7 +28,7 @@ fn format_code_output(file_path: &str, symbols: &[Symbol], next: Option<String>)
     let mut truncated = false;
     for (i, symbol) in symbols.iter().enumerate() {
         if let Some(code) = &symbol.code_context {
-            if output.len() + code.len() > FORMAT_CODE_CHAR_LIMIT {
+            if enforce_display_cap && output.len() + code.len() > FORMAT_CODE_CHAR_LIMIT {
                 output.push_str(&format!(
                     "\n// ... truncated ({} of {} symbols shown — output exceeded {} chars)",
                     i,
@@ -157,7 +162,26 @@ pub fn format_symbol_response(
     symbols: Vec<Symbol>,
     target: Option<&str>,
     next: Option<String>,
+    body_pages: Vec<super::body_extraction::BodyPage>,
+    explicit_body_window: bool,
 ) -> anyhow::Result<CallToolResult> {
+    let body_status = body_pages
+        .iter()
+        .map(|page| {
+            format!(
+                "body: {} lines {}..{} of {} status={} complete={} end_reached={} page_text=structuredContent.body_pages",
+                page.symbol,
+                page.returned_range[0],
+                page.returned_range[1],
+                page.total_lines,
+                page.status,
+                page.complete,
+                page.end_reached
+            )
+        })
+        .collect::<Vec<_>>();
+    let trailer = body_status.into_iter().chain(next).collect::<Vec<_>>();
+    let trailer = (!trailer.is_empty()).then(|| trailer.join("\n"));
     // Auto-select format: "code" when code bodies are available, "lean" otherwise
     let has_code_bodies = symbols.iter().any(|s| s.code_context.is_some());
     let effective_format = if has_code_bodies { "code" } else { "lean" };
@@ -169,7 +193,13 @@ pub fn format_symbol_response(
             symbols.len(),
             target
         );
-        return Ok(format_code_output(file_path, &symbols, next));
+        let mut result = format_code_output(file_path, &symbols, trailer, !explicit_body_window);
+        result.structured_content = Some(serde_json::json!({
+            "file_path": file_path,
+            "symbols": symbols,
+            "body_pages": body_pages,
+        }));
+        return Ok(result);
     }
 
     // Everything else (including "lean", unknown formats) → lean text overview
@@ -178,5 +208,11 @@ pub fn format_symbol_response(
         symbols.len(),
         target
     );
-    Ok(format_lean_symbols(file_path, &symbols, next))
+    let mut result = format_lean_symbols(file_path, &symbols, trailer);
+    result.structured_content = Some(serde_json::json!({
+        "file_path": file_path,
+        "symbols": symbols,
+        "body_pages": body_pages,
+    }));
+    Ok(result)
 }

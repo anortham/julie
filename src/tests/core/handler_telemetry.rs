@@ -739,6 +739,9 @@ fn test_get_symbols_metadata_prefers_file_target_with_symbol_filter() {
         offset: 0,
         mode: Some("minimal".to_string()),
         workspace: Some("primary".to_string()),
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let metadata = tool_targets::get_symbols_metadata(&params);
@@ -758,6 +761,9 @@ fn test_deep_dive_metadata_carries_symbol_and_context_file_target() {
         context_file: Some("src/dashboard/routes/search.rs".to_string()),
         workspace: Some("primary".to_string()),
         semantics: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let metadata = tool_targets::deep_dive_metadata(&params);

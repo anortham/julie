@@ -9,7 +9,7 @@ use crate::cli_tools::input::{
     MAX_INPUT_BYTES, parse_request_input, read_bounded_input, resolve_parameter_map,
 };
 use crate::cli_tools::replay::parse_replay_line;
-use crate::cli_tools::subcommands::{DeepDiveArgs, EditArgs, GenericToolArgs};
+use crate::cli_tools::subcommands::{DeepDiveArgs, EditArgs, GenericToolArgs, SymbolsArgs};
 use crate::request_engine::RequestFailure;
 
 #[test]
@@ -176,11 +176,33 @@ fn cli_subcommands_map_to_canonical_mcp_tools() {
         depth: Some("callers".into()),
         context_file: None,
         workspace: None,
+        body_offset: 20,
+        body_limit: Some(10),
+        source_hash: Some("indexed-hash".into()),
     };
     assert_eq!(deep_dive.tool_name(), "deep_dive");
     let map = deep_dive.to_tool_args_map().unwrap();
     assert_eq!(map["symbol"], "MyStruct");
     assert_eq!(map["depth"], "callers");
+    assert_eq!(map["body_offset"], 20);
+    assert_eq!(map["body_limit"], 10);
+    assert_eq!(map["source_hash"], "indexed-hash");
+
+    let symbols = SymbolsArgs {
+        file_path: "src/lib.rs".into(),
+        target: Some("Widget".into()),
+        mode: "full".into(),
+        max_depth: 1,
+        limit: 50,
+        offset: 0,
+        body_offset: 30,
+        body_limit: Some(15),
+        source_hash: Some("source-hash".into()),
+    };
+    let map = symbols.to_tool_args_map().unwrap();
+    assert_eq!(map["body_offset"], 30);
+    assert_eq!(map["body_limit"], 15);
+    assert_eq!(map["source_hash"], "source-hash");
 
     let edit = EditArgs {
         file_path: "src/main.rs".into(),

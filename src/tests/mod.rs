@@ -46,6 +46,7 @@ pub mod core {
 // ============================================================================
 pub mod tools {
     pub mod blast_radius_mixed_traversal;
+    pub mod body_completeness;
     pub mod deep_dive_complexity;
     pub mod get_symbols; // GetSymbolsTool tests
     pub mod get_symbols_relative_paths; // GetSymbolsTool Phase 2 relative path tests (TDD)

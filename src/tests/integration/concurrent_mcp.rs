@@ -214,6 +214,9 @@ mod tests {
                     offset: 0,
                     mode: Some("structure".to_string()),
                     workspace: None,
+                    body_offset: 0,
+                    body_limit: None,
+                    source_hash: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;
@@ -229,6 +232,9 @@ mod tests {
                     context_file: None,
                     workspace: None,
                     semantics: None,
+                    body_offset: 0,
+                    body_limit: None,
+                    source_hash: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;
@@ -433,6 +439,9 @@ mod tests {
                     offset: 0,
                     mode: Some("structure".to_string()),
                     workspace: Some(ws),
+                    body_offset: 0,
+                    body_limit: None,
+                    source_hash: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;
@@ -451,6 +460,9 @@ mod tests {
                     context_file: None,
                     workspace: Some(ws),
                     semantics: None,
+                    body_offset: 0,
+                    body_limit: None,
+                    source_hash: None,
                 }
                 .call_tool(h.as_ref())
                 .await?;

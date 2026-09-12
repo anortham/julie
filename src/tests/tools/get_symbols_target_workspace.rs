@@ -43,6 +43,9 @@ async fn test_get_symbols_target_workspace() -> Result<()> {
         offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let result = get_symbols_tool.call_tool(&handler).await?;
     let result_text = call_tool_result_text(&result);
@@ -93,6 +96,9 @@ pub struct Another { pub field: String }
         offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let text_all = call_tool_result_text(&get_all.call_tool(&handler).await?);
 
@@ -120,6 +126,9 @@ pub struct Another { pub field: String }
         offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let text_depth_0 = call_tool_result_text(&get_depth_0.call_tool(&handler).await?);
 
@@ -136,6 +145,9 @@ pub struct Another { pub field: String }
         offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let text_target = call_tool_result_text(&get_target.call_tool(&handler).await?);
 
@@ -158,6 +170,9 @@ pub struct Another { pub field: String }
         offset: 0,
         mode: None,
         workspace: Some(workspace_id.clone()),
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
     let text_limit = call_tool_result_text(&get_limit.call_tool(&handler).await?);
 
@@ -188,6 +203,9 @@ async fn test_get_symbols_target_workspace_relative_paths_after_primary_rebind()
             offset: 0,
             mode: Some("full".to_string()),
             workspace: Some(target_workspace_id.clone()),
+            body_offset: 0,
+            body_limit: None,
+            source_hash: None,
         };
         let result = get_symbols_tool.call_tool(&handler).await?;
         let result_text = call_tool_result_text(&result);

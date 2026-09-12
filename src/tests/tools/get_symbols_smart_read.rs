@@ -62,6 +62,9 @@ async fn test_default_behavior_strips_context() -> Result<()> {
         offset: 0,
         mode: None,
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -93,6 +96,9 @@ async fn test_invalid_mode_returns_error() -> Result<()> {
         offset: 0,
         mode: Some("minmal".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let error = tool
@@ -124,6 +130,9 @@ async fn test_structure_mode_strips_context() -> Result<()> {
         offset: 0,
         mode: Some("structure".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -153,6 +162,9 @@ async fn test_mode_structure_always_strips() -> Result<()> {
         offset: 0,
         mode: Some("structure".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -182,6 +194,9 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
         offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -215,6 +230,9 @@ async fn test_mode_full_all_symbols() -> Result<()> {
         offset: 0,
         mode: Some("full".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -255,6 +273,9 @@ async fn test_target_with_minimal_mode() -> Result<()> {
         offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -289,6 +310,9 @@ async fn test_file_read_error_handling() -> Result<()> {
         offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await;
@@ -324,6 +348,9 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
         offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -396,6 +423,9 @@ async fn test_vue_target_minimal_extracts_code_body() -> Result<()> {
         offset: 0,
         mode: Some("minimal".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -420,6 +450,9 @@ async fn test_vue_target_minimal_extracts_code_body() -> Result<()> {
         offset: 0,
         mode: Some("structure".to_string()),
         workspace: None,
+        body_offset: 0,
+        body_limit: None,
+        source_hash: None,
     };
 
     let structure_result = structure_tool.call_tool(&handler).await?;

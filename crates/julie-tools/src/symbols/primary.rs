@@ -46,6 +46,9 @@ pub async fn get_symbols_from_primary(
     );
     debug!("🔍 Workspace root: '{}'", current_workspace_root.display());
 
+    if let Some(source_hash) = next_request.source_hash.as_deref() {
+        super::body_extraction::validate_source_hash(&snapshot, &query_path, source_hash)?;
+    }
     if !std::path::Path::new(&absolute_path).exists() {
         bail!(super::file_not_found_message(file_path, target));
     }
@@ -92,9 +95,50 @@ pub async fn get_symbols_from_primary(
         mode
     };
     let kept = symbols_to_return.len();
-    let symbols_to_return = extract_code_bodies(symbols_to_return, &absolute_path, body_mode)?;
-    let count = symbols_to_return.len() as u32;
+    let mut extraction = extract_code_bodies(
+        &snapshot,
+        symbols_to_return,
+        body_mode,
+        next_request.body_offset,
+        next_request.body_limit,
+        next_request.source_hash.as_deref(),
+    )?;
+    let count = extraction.symbols.len() as u32;
     let next = more.then(|| crate::shared::next_line("get_symbols", next_request, offset + kept));
-    let result = format_symbol_response(file_path, symbols_to_return, target, next)?;
+    let body_next = if extraction.pages.iter().any(|page| !page.end_reached) {
+        let mut request = next_request.clone();
+        request.body_limit = Some(
+            next_request
+                .body_limit
+                .unwrap_or(super::body_extraction::DEFAULT_BODY_LIMIT)
+                .max(1),
+        );
+        request.source_hash = extraction.source_hash.clone();
+        Some(crate::shared::request_line(
+            "get_symbols",
+            &request,
+            "body_offset",
+            request.body_offset as usize + request.body_limit.unwrap_or(1) as usize,
+        ))
+    } else {
+        None
+    };
+    for page in &mut extraction.pages {
+        if !page.end_reached {
+            page.continuation = body_next.clone();
+        }
+    }
+    let trailers = [next, body_next].into_iter().flatten().collect::<Vec<_>>();
+    let next = (!trailers.is_empty()).then(|| trailers.join("\n"));
+    let result = format_symbol_response(
+        file_path,
+        extraction.symbols,
+        target,
+        next,
+        extraction.pages,
+        next_request.body_limit.is_some()
+            || next_request.body_offset > 0
+            || next_request.source_hash.is_some(),
+    )?;
     Ok((result, count))
 }

@@ -149,6 +149,15 @@ pub struct SymbolsArgs {
     /// Maximum nesting depth (0=top-level, 1=include methods, 2+=deeper)
     #[arg(short = 'd', long, default_value = "1")]
     pub max_depth: u32,
+    /// Zero-based source-line offset within each canonical symbol body.
+    #[arg(long, default_value = "0")]
+    pub body_offset: u32,
+    /// Maximum source lines returned for each body.
+    #[arg(long)]
+    pub body_limit: Option<u32>,
+    /// Source hash returned by the previous body page.
+    #[arg(long)]
+    pub source_hash: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +429,15 @@ pub struct DeepDiveArgs {
     /// Target workspace path
     #[arg(id = "target_workspace", long = "target-workspace")]
     pub workspace: Option<String>,
+    /// Zero-based source-line offset within the canonical symbol body.
+    #[arg(long, default_value = "0")]
+    pub body_offset: u32,
+    /// Maximum source lines returned for the body.
+    #[arg(long)]
+    pub body_limit: Option<u32>,
+    /// Source hash returned by the previous body page.
+    #[arg(long)]
+    pub source_hash: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

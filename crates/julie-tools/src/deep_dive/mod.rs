@@ -17,6 +17,8 @@ use julie_extractors::SymbolKind;
 use julie_index::graph::{Graph, SymbolId};
 use julie_index::snapshot::Snapshot;
 
+const DISAMBIGUATION_THRESHOLD: usize = 5;
+
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DeepDiveDepth {
@@ -45,7 +47,7 @@ fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
 
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 /// Investigate a symbol with progressive depth. Returns definition, references, children,
 /// and type info in a single call — tailored to the symbol's kind.
 ///
@@ -71,6 +73,15 @@ pub struct DeepDiveTool {
     /// Optional semantic mode override (e.g. Off, Required, Auto)
     #[serde(default)]
     pub semantics: Option<julie_core::embeddings_contract::SemanticMode>,
+    /// Zero-based source-line offset within the canonical symbol span.
+    #[serde(default)]
+    pub body_offset: u32,
+    /// Maximum source lines returned for the selected body.
+    #[serde(default)]
+    pub body_limit: Option<u32>,
+    /// Source hash from the previous body page; rejects changed source.
+    #[serde(default)]
+    pub source_hash: Option<String>,
 }
 
 /// Reference caps by depth level
@@ -102,23 +113,169 @@ impl DeepDiveTool {
         let snapshot = handler.snapshot(&workspace_target).await?;
         let (incoming_cap, outgoing_cap) = ref_caps(depth);
         let graph = snapshot.graph();
-        let resolved =
-            !data::find_symbol(graph, &self.symbol, self.context_file.as_deref()).is_empty();
+        let exact_path_id = self.context_file.as_deref().and_then(|path| {
+            graph
+                .symbols_in_path(path)
+                .iter()
+                .copied()
+                .find(|id| graph.symbol(*id).id == self.symbol)
+        });
+        let exact_id = exact_path_id.or_else(|| {
+            graph.symbol_by_row_id(&self.symbol).filter(|id| {
+                data::find_symbol(graph, &graph.symbol(*id).name, self.context_file.as_deref())
+                    .contains(id)
+            })
+        });
+        let selected = exact_id.map_or_else(
+            || data::find_symbol(graph, &self.symbol, self.context_file.as_deref()),
+            |id| vec![id],
+        );
+        let body_selected = if exact_id.is_some() || selected.len() <= DISAMBIGUATION_THRESHOLD {
+            selected.clone()
+        } else {
+            auto_select_same_file_overload(graph, &selected)
+                .into_iter()
+                .collect()
+        };
+        let query_symbol = exact_id
+            .map(|id| graph.symbol(id).name.as_str())
+            .unwrap_or(&self.symbol);
+        let query_file = exact_id
+            .map(|id| graph.symbol(id).path.as_str())
+            .or(self.context_file.as_deref());
+        let resolved = !selected.is_empty();
+        if !resolved && self.source_hash.is_some() {
+            anyhow::bail!(
+                "source changed since the previous body page; refresh and restart with body_offset=0"
+            );
+        }
 
-        let result = deep_dive_query_with_semantics(
-            &snapshot,
-            &self.symbol,
-            self.context_file.as_deref(),
-            depth,
-            incoming_cap,
-            outgoing_cap,
-            self.semantics,
-        )?;
+        let explicit_body_window =
+            self.body_limit.is_some() || self.body_offset > 0 || self.source_hash.is_some();
+        let body_requested = explicit_body_window || depth != "overview";
+        let mut body_pages = Vec::new();
+        if body_requested {
+            let default_limit = if depth == "context" { 30 } else { 100 };
+            let body_limit = self.body_limit.unwrap_or(default_limit).max(1);
+            let workspace = crate::shared::resolved_workspace(handler, &workspace_target)?;
+            for id in &body_selected {
+                let symbol = crate::snapshot_rows::to_symbol(graph, *id);
+                let mut page = crate::symbols::body_extraction::body_page(
+                    &snapshot,
+                    &symbol,
+                    self.body_offset,
+                    body_limit,
+                    self.source_hash.as_deref(),
+                )?;
+                if !page.end_reached {
+                    let mut next = self.clone();
+                    next.symbol = symbol.id.clone();
+                    next.context_file = Some(symbol.file_path.clone());
+                    next.workspace = Some(workspace.clone());
+                    next.body_limit = Some(body_limit);
+                    next.source_hash = Some(page.source_hash.clone());
+                    page.continuation = Some(crate::shared::request_line(
+                        "deep_dive",
+                        &next,
+                        "body_offset",
+                        self.body_offset as usize + body_limit as usize,
+                    ));
+                }
+                body_pages.push(page);
+            }
+        }
 
-        Ok((
-            CallToolResult::text_content(vec![Content::text(result)]),
-            if resolved { 1 } else { 0 },
-        ))
+        let mut text = if explicit_body_window && !body_selected.is_empty() {
+            let allow_similarity =
+                self.semantics != Some(julie_core::embeddings_contract::SemanticMode::Off);
+            let mut sections = Vec::new();
+            for id in &body_selected {
+                let mut context = data::build_symbol_context_with_semantics(
+                    &snapshot,
+                    *id,
+                    depth,
+                    incoming_cap,
+                    outgoing_cap,
+                    allow_similarity,
+                )?;
+                context.symbol.code_context = None;
+                sections.push(formatting::format_symbol_context(&context, depth));
+            }
+            sections.join("\n\n---\n\n")
+        } else if let Some(id) = exact_id {
+            let allow_similarity =
+                self.semantics != Some(julie_core::embeddings_contract::SemanticMode::Off);
+            let context = data::build_symbol_context_with_semantics(
+                &snapshot,
+                id,
+                depth,
+                incoming_cap,
+                outgoing_cap,
+                allow_similarity,
+            )?;
+            formatting::format_symbol_context(&context, depth)
+        } else {
+            deep_dive_query_with_semantics(
+                &snapshot,
+                query_symbol,
+                query_file,
+                depth,
+                incoming_cap,
+                outgoing_cap,
+                self.semantics,
+            )?
+        };
+
+        if body_requested {
+            if !body_pages.is_empty() {
+                text.push_str(
+                    "\n\nBody page status (exact text is in structured_content.body_pages):\n",
+                );
+                for page in &body_pages {
+                    if explicit_body_window {
+                        text.push_str(if page.canonical_span_exact {
+                            "Body page (exact):\n"
+                        } else {
+                            "Body page (inferred):\n"
+                        });
+                        text.push_str(&page.text);
+                        if !page.text.ends_with('\n') {
+                            text.push('\n');
+                        }
+                    }
+                    let page_location = if explicit_body_window {
+                        "above-and-structuredContent"
+                    } else {
+                        "structuredContent.body_pages"
+                    };
+                    text.push_str(&format!(
+                        "body {} lines [{}, {})/{}; status={}; complete={}; end_reached={}; page_text={}",
+                        page.symbol,
+                        page.returned_range[0],
+                        page.returned_range[1],
+                        page.total_lines,
+                        page.status,
+                        page.complete,
+                        page.end_reached,
+                        page_location
+                    ));
+                    if let Some(next) = &page.continuation {
+                        text.push('\n');
+                        text.push_str(next);
+                    }
+                    text.push('\n');
+                }
+                text = text.trim_end().to_string();
+            }
+        }
+
+        let mut result = CallToolResult::text_content(vec![Content::text(text)]);
+        result.structured_content = Some(serde_json::json!({
+            "symbol": query_symbol,
+            "body_pages": body_pages,
+        }));
+
+        Ok((result, if resolved { 1 } else { 0 }))
     }
 }
 
@@ -164,7 +321,6 @@ pub fn deep_dive_query_with_semantics(
 
     let mut output = String::new();
 
-    const DISAMBIGUATION_THRESHOLD: usize = 5;
     let allow_similarity = semantics != Some(julie_core::embeddings_contract::SemanticMode::Off);
     if symbols.len() > DISAMBIGUATION_THRESHOLD {
         if let Some(selected) = auto_select_same_file_overload(graph, &symbols) {
