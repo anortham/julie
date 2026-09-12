@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use std::time::Duration;
 
 use julie_core::embeddings_contract::{EmbeddingProvider, EmbeddingRequestBudget};
