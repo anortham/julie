@@ -1,6 +1,6 @@
 # Plan 3: One bounded production runtime lifecycle
 
-**Status:** 3A complete; 3B not started. Windows validation is deferred to final post-merge validation.
+**Status:** 3A baseline and repeatable replay protocol recorded; 3B not started. Windows validation is deferred to final post-merge validation.
 **Goal:** Opening a cold checkout does not block warm checkouts, and idle runtime resources are reclaimed safely.
 **Depends on:** Plan 1 recovery and request-local semantics before lifecycle integration.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). Apply `razorback:diagnosing-performance`: baseline before optimization, same workload afterward.
@@ -33,7 +33,7 @@ The initial policy proposal is at most eight unused retained runtimes and expiry
 
 **Acceptance:**
 
-- [x] Commands, binary/source identities, workload, cold/warm distinctions and three measurements are recorded in `docs/findings/revival-runtime-baseline.md`.
+- [x] Commands, binary/source identities, workload, cold/warm distinctions and three accepted measurements are recorded in `docs/findings/revival-runtime-baseline.md`.
 - [x] Hot-checkout resource budget uses this same-workload before measurement plus 20%.
 - [x] Retention bounds are eight runtimes and 60 seconds before 3C starts.
 - [ ] Unit tests use logical lifecycle assertions; CI does not depend on a noisy millisecond benchmark.
