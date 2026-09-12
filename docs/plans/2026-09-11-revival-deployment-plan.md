@@ -63,11 +63,11 @@ Existing inline xtask tests are `dev_link_creates_split_binary_symlinks_for_exis
 
 **Acceptance:**
 
-- [ ] Native Windows can hold the old executable open while the new archive extracts successfully elsewhere.
-- [ ] A corrupt/incomplete package fails with its actual extraction error and recovery action, never a misleading in-use explanation for every error.
-- [ ] Explicit restart stops the old service, waits for its exit, starts the selected version and leaves one service.
-- [ ] Surviving old shims receive an actionable incompatibility message; no automatic client termination or hidden downgrade occurs.
-- [ ] Maintainer dev-link remains tested and reversible.
+- [ ] Native Windows can hold the old executable open while the new archive extracts successfully elsewhere. Pending the final Plan 4E native qualification.
+- [x] A corrupt/incomplete package fails with its actual extraction error and recovery action, never a misleading in-use explanation for every error.
+- [x] Explicit restart stops the old service, waits for its exit, starts the selected version and leaves one service.
+- [x] Surviving old shims receive an actionable incompatibility message; no automatic client termination or hidden downgrade occurs.
+- [x] Maintainer dev-link remains tested and reversible.
 
 ## 4C. Qualify cold and offline semantics
 
@@ -145,3 +145,10 @@ Owner-approved publication order is: publish the reviewed v8 plugin launcher/wor
 | Deployment guidance matches selectors, skills and the pinned 37-language inventory | `cargo nextest run -p xtask --test docs_contract_tests docs_contract_tests_deployment_guidance_matches_runtime_contract` | worker-red-green | `9bc5339f` | PASS: 1 passed | 2026-09-12T22:22Z | Worker ran the identical pre-commit tree after lead corrections. |
 | Mirrored plugin instructions and hooks remain valid | `node --test hooks/*.test.cjs` | dev | `1aa320a` | PASS: 22 passed | 2026-09-12T22:23Z | Lead ran the complete plugin gate. |
 | Source skills and instructions exactly match the selected plugin mirror | `cargo xtask sync-plugin --plugin-root /home/murphy/.config/razorback/worktrees/julie-plugin/revival-deployment --dry-run` | dev | `9bc5339f` / `1aa320a` | PASS: 0 updates, 0 removals | 2026-09-12T22:23Z | None. |
+| Selected archives install immutably, reject unsafe/incomplete packages, never downgrade, and reuse only a matching ready version | `node --test --test-name-pattern='new archive extracts without overwriting running version|failed extraction never launches another archive version|partial extraction is never marked ready|required sidecar is validated before launch|archive traversal is rejected before extraction|symlink package entries are rejected before ready|maintainer override rejects directory symlink targets' hooks/run.test.cjs` | worker-red-green | `cdc0690` | PASS: 7 passed, 0 skipped | 2026-09-12T22:52Z | Worker ran the identical pre-commit tree. |
+| Plugin launcher and hooks remain integrated after versioned installation changes | `node --test hooks/*.test.cjs` | dev | `cdc0690` | PASS: 29 passed | 2026-09-12T22:54Z | Lead ran the identical pre-commit tree. |
+| Dev-link creates the paired override for completed versioned layouts | `cargo nextest run -p xtask --lib dev_link_creates_server_and_sidecar_override_for_versioned_layout` | worker-red-green | `a8a64b33` | PASS: 1 passed | 2026-09-12T22:44Z | Worker ran the identical pre-commit tree. |
+| Dev-restart reports the shared-service restart procedure | `cargo nextest run -p xtask --lib dev_restart_reports_shared_service_restart` | worker-red-green | `a8a64b33` | PASS: 1 passed | 2026-09-12T22:47Z | Worker ran the identical pre-commit tree. |
+| Explicit restart replaces a mismatched service with the current executable and reaps the old process | `cargo nextest run -p julie --lib restart_stops_mismatched_service_and_starts_current_binary` | worker-red-green | `a8a64b33` | PASS: 1 passed | 2026-09-12T22:52Z | Worker ran the identical pre-commit tree after a plan-required debug fixture build. |
+| Version mismatch reports both versions, the quoted current-binary restart command, and old-client recovery | `cargo nextest run -p julie --lib version_mismatch_exits_3_with_the_exact_message` | worker-red-green | `a8a64b33` | PASS: 1 passed | 2026-09-12T22:52Z | Worker ran the identical pre-commit tree. |
+| Windows locked-executable extraction | Nonpublishing `windows-latest` qualification job in Plan 4E | full | `a8a64b33` / `cdc0690` | PENDING | — | Deferred by the approved plan and owner instruction. |
