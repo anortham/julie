@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Result;
+use julie::tools::search::SearchBackend;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -22,6 +23,10 @@ pub struct SearchMatrixCase {
     pub file_pattern: Option<String>,
     #[serde(default)]
     pub exclude_tests: Option<bool>,
+    #[serde(default)]
+    pub backend: Option<SearchBackend>,
+    #[serde(default)]
+    pub product_route: bool,
     #[serde(default)]
     pub profile_tags: Vec<String>,
     #[serde(default)]

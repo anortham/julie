@@ -9,7 +9,7 @@ use julie_index::snapshot::Snapshot;
 use super::formatting;
 use super::hint_formatter;
 use super::line_mode;
-use super::params::FastSearchTool;
+use super::params::{FastSearchTool, MAX_LIMIT};
 use super::query;
 use super::trace::{self, SearchExecutionResult, SearchHit, ZeroHitReason};
 use super::types::LineMatchStrategy;
@@ -21,8 +21,13 @@ pub(crate) async fn try_line_mode_locations(
     workspace_target: &WorkspaceTarget,
     snapshot: &Arc<Snapshot>,
     execution: &mut SearchExecutionResult,
+    scoped_auto_content: bool,
 ) -> Result<Option<String>> {
-    let effective_limit = tool.effective_limit();
+    let effective_limit = if scoped_auto_content {
+        MAX_LIMIT
+    } else {
+        tool.effective_limit()
+    };
     let line_result = line_mode::line_mode_matches_in_snapshot(
         &tool.query,
         &tool.language,
@@ -35,7 +40,7 @@ pub(crate) async fn try_line_mode_locations(
     .await?;
 
     let line_match_strategy = line_match_strategy_label(&line_result.strategy).to_string();
-    if line_result.matches.is_empty() {
+    if line_result.matches.is_empty() || (scoped_auto_content && line_result.scope_relaxed) {
         execution.trace.record_line_enrichment_no_matches(
             line_match_strategy,
             line_result.zero_hit_reason,
@@ -112,6 +117,19 @@ pub(crate) async fn try_line_mode_locations(
         Some(header) => format!("{header}\n\n{output}"),
         None => output,
     }))
+}
+
+pub(crate) fn should_merge_scoped_auto_content(
+    tool: &FastSearchTool,
+    symbol_backend_active: bool,
+) -> bool {
+    tool.backend.is_none()
+        && symbol_backend_active
+        && (tool
+            .file_pattern
+            .as_deref()
+            .is_some_and(|pattern| !pattern.trim().is_empty())
+            || tool.language.is_some())
 }
 
 pub(crate) fn should_try_line_mode_locations(

@@ -182,6 +182,24 @@ impl FastSearchTool {
             "fast_search_semantic" | "fast_search_hybrid" | "fast_search_semantic_fallback"
         );
 
+        let scoped_auto_content =
+            line_enrichment::should_merge_scoped_auto_content(self, symbol_backend_active);
+        if scoped_auto_content
+            && let Err(err) = line_enrichment::try_line_mode_locations(
+                self,
+                handler,
+                &workspace_target,
+                &snapshot,
+                &mut execution,
+                true,
+            )
+            .await
+        {
+            execution
+                .trace
+                .record_line_enrichment_failed(err.to_string());
+        }
+
         if execution.hits.is_empty() {
             let message = if let Some((_hint_kind, hint_text)) =
                 hint_formatter::build_content_zero_hit_hint(
@@ -231,6 +249,7 @@ impl FastSearchTool {
                 &workspace_target,
                 &snapshot,
                 &mut execution,
+                false,
             )
             .await
             {
@@ -251,9 +270,19 @@ impl FastSearchTool {
             }
         }
 
+        let mixed_content = scoped_auto_content
+            && execution.hits.iter().any(|hit| hit.as_symbol().is_none());
         let offset = self.offset as usize;
         let page_limit = self.effective_limit() as usize;
         sort_hits_by_score_desc(&mut execution.hits);
+        if scoped_auto_content
+            && let Some(position) = execution
+                .hits
+                .iter()
+                .position(|hit| hit.as_symbol().is_none())
+        {
+            execution.hits[..=position].rotate_right(1);
+        }
         execution.hits =
             formatting::collapse_covered_file_hits(std::mem::take(&mut execution.hits));
         let more = execution.hits.len() > offset + page_limit
@@ -268,15 +297,24 @@ impl FastSearchTool {
         }
         execution.trace.refresh_hits(&execution.hits);
         let kept = execution.hits.len();
+        let effective_backend =
+            if matches!(
+                execution.trace.strategy_id.as_str(),
+                "fast_search_semantic" | "fast_search_semantic_fallback"
+            ) {
+                "semantic"
+            } else if execution.trace.strategy_id == "fast_search_hybrid" {
+                "hybrid"
+            } else {
+                "lexical"
+            };
 
         let mut output = if format == "compact" {
-            let backend = self.backend.map(SearchBackend::as_str).unwrap_or(
-                if execution.trace.strategy_id == "fast_search_semantic" {
-                    "semantic"
-                } else {
-                    "auto"
-                },
-            );
+            let backend = if mixed_content {
+                "semantic+content"
+            } else {
+                effective_backend
+            };
             formatting::render_compact(&self.query, backend, &execution.hits, offset, kept, more)
         } else {
             let mut lean = formatting::format_unified_search_results(
@@ -314,8 +352,22 @@ impl FastSearchTool {
             execution.hits.len(),
             execution.relaxed,
         );
+        let mut result = CallToolResult::text_content(vec![Content::text(output)]);
+        result.structured_content = Some(serde_json::json!({
+            "query": self.query,
+            "backend": effective_backend,
+            "requested_backend": self.backend.map(SearchBackend::as_str),
+            "backend_auto": self.backend.is_none(),
+            "content_enriched": mixed_content,
+            "hits": execution.hits,
+            "offset": offset,
+            "limit": page_limit,
+            "has_more": more,
+            "next_offset": more.then_some(offset + kept),
+            "trace": execution.trace,
+        }));
         Ok(FastSearchExecution {
-            result: CallToolResult::text_content(vec![Content::text(output)]),
+            result,
             execution: Some(execution),
         })
     }

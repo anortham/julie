@@ -2,7 +2,8 @@ use anyhow::Result;
 use julie::handler::JulieServerHandler;
 use julie::paths::RegistryPaths;
 use julie::registry::database::{DaemonDatabase, WorkspaceRow};
-use julie::tools::search::SearchBackend;
+use julie::tools::navigation::resolution::WorkspaceTarget;
+use julie::tools::search::{FastSearchTool, SearchBackend};
 use julie::tools::search::execution::{
     SearchExecutionParams, SearchExecutionWorkspace, execute_search,
 };
@@ -218,24 +219,42 @@ async fn execute_baseline_case(
     let language = case.language.clone();
     let file_pattern = case.file_pattern.clone();
     let started = Instant::now();
-    let result = execute_search(
-        SearchExecutionParams {
-            query: &case.query,
-            language: &language,
-            file_pattern: &file_pattern,
+    let result = if case.product_route {
+        FastSearchTool {
+            query: case.query.clone(),
+            language: language.clone(),
+            file_pattern: file_pattern.clone(),
             limit: 10,
-            context_lines: None,
             exclude_tests: case.exclude_tests,
-            backend: SearchBackend::resolve(None, &case.query),
-            semantic_mode: None,
-            budget: None,
-        },
-        &[SearchExecutionWorkspace::primary(
-            workspace.workspace_id.clone(),
-        )],
-        handler,
-    )
-    .await;
+            backend: case.backend,
+            ..Default::default()
+        }
+        .execute_with_trace_with_target(handler, WorkspaceTarget::Primary)
+        .await
+        .and_then(|run| {
+            run.execution
+                .ok_or_else(|| anyhow::anyhow!("product search returned no execution evidence"))
+        })
+    } else {
+        execute_search(
+            SearchExecutionParams {
+                query: &case.query,
+                language: &language,
+                file_pattern: &file_pattern,
+                limit: 10,
+                context_lines: None,
+                exclude_tests: case.exclude_tests,
+                backend: SearchBackend::resolve(case.backend, &case.query),
+                semantic_mode: None,
+                budget: None,
+            },
+            &[SearchExecutionWorkspace::primary(
+                workspace.workspace_id.clone(),
+            )],
+            handler,
+        )
+        .await
+    };
     let latency_ms = started.elapsed().as_millis();
 
     match result {

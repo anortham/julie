@@ -103,3 +103,123 @@ file_pattern = "docs/**|src/**"
 profile_tags = ["breadth", "full"]
 repo_selector = ["julie"]
 expected_mode = "observational"
+
+[[cases]]
+case_id = "revival-markdown-routing-auto"
+family = "revival_scoped_content"
+query = "workspace isolation happens at the file level"
+search_target = "content"
+file_pattern = "docs/WORKSPACE_ARCHITECTURE.md"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = "docs/WORKSPACE_ARCHITECTURE.md"
+product_route = true
+
+[[cases]]
+case_id = "revival-markdown-routing-lexical"
+family = "revival_scoped_content"
+query = "workspace isolation happens at the file level"
+search_target = "content"
+file_pattern = "docs/WORKSPACE_ARCHITECTURE.md"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = "docs/WORKSPACE_ARCHITECTURE.md"
+backend = "lexical"
+product_route = true
+
+[[cases]]
+case_id = "revival-markdown-routing-semantic"
+family = "revival_scoped_content"
+query = "workspace isolation happens at the file level"
+search_target = "content"
+file_pattern = "docs/WORKSPACE_ARCHITECTURE.md"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = "docs/WORKSPACE_ARCHITECTURE.md"
+backend = "semantic"
+product_route = true
+
+[[cases]]
+case_id = "revival-config-dogfood-threads-auto"
+family = "revival_scoped_content"
+query = "dogfood max threads"
+search_target = "content"
+file_pattern = ".config/nextest.toml"
+language = "toml"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = ".config/nextest.toml"
+product_route = true
+
+[[cases]]
+case_id = "revival-config-dogfood-threads-lexical"
+family = "revival_scoped_content"
+query = "dogfood max threads"
+search_target = "content"
+file_pattern = ".config/nextest.toml"
+language = "toml"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = ".config/nextest.toml"
+backend = "lexical"
+product_route = true
+
+[[cases]]
+case_id = "revival-config-dogfood-threads-semantic"
+family = "revival_scoped_content"
+query = "dogfood max threads"
+search_target = "content"
+file_pattern = ".config/nextest.toml"
+language = "toml"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = ".config/nextest.toml"
+backend = "semantic"
+product_route = true
+
+[[cases]]
+case_id = "revival-comment-provider-wait-auto"
+family = "revival_scoped_content"
+query = "auto selected semantic run must not block a plain query"
+search_target = "content"
+file_pattern = "crates/julie-tools/src/search/execution/mod.rs"
+language = "rust"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = "crates/julie-tools/src/search/execution/mod.rs"
+product_route = true
+
+[[cases]]
+case_id = "revival-comment-provider-wait-lexical"
+family = "revival_scoped_content"
+query = "auto selected semantic run must not block a plain query"
+search_target = "content"
+file_pattern = "crates/julie-tools/src/search/execution/mod.rs"
+language = "rust"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = "crates/julie-tools/src/search/execution/mod.rs"
+backend = "lexical"
+product_route = true
+
+[[cases]]
+case_id = "revival-comment-provider-wait-semantic"
+family = "revival_scoped_content"
+query = "auto selected semantic run must not block a plain query"
+search_target = "content"
+file_pattern = "crates/julie-tools/src/search/execution/mod.rs"
+language = "rust"
+profile_tags = ["full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+expected_value = "crates/julie-tools/src/search/execution/mod.rs"
+backend = "semantic"
+product_route = true

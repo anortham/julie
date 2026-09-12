@@ -235,6 +235,38 @@ fn search_matrix_contract_tests_case_fixture_loads_query_families_and_profiles()
 }
 
 #[test]
+fn search_matrix_contract_tests_revival_content_cases_use_product_route_and_backends() {
+    let fixture_path = workspace_root().join("fixtures/search-quality/search-matrix-cases.toml");
+    let cases =
+        SearchMatrixCaseSet::load(&fixture_path).expect("case fixture should deserialize cleanly");
+    let revival = cases
+        .cases
+        .iter()
+        .filter(|case| case.family == "revival_scoped_content")
+        .collect::<Vec<_>>();
+
+    assert_eq!(revival.len(), 9);
+    assert!(revival.iter().all(|case| case.product_route));
+    assert_eq!(
+        revival
+            .iter()
+            .filter_map(|case| case.backend.map(|backend| backend.as_str()))
+            .filter(|backend| *backend == "lexical")
+            .count(),
+        3
+    );
+    assert_eq!(
+        revival
+            .iter()
+            .filter_map(|case| case.backend.map(|backend| backend.as_str()))
+            .filter(|backend| *backend == "semantic")
+            .count(),
+        3
+    );
+    assert_eq!(revival.iter().filter(|case| case.backend.is_none()).count(), 3);
+}
+
+#[test]
 fn search_matrix_contract_tests_corpus_fixture_loads_profiles_and_roots() {
     let fixture_path = workspace_root().join("fixtures/search-quality/search-matrix-corpus.toml");
 

@@ -114,6 +114,52 @@ async fn semantic_workspace_without_vectors() -> Result<(TempDir, FakeToolContex
     Ok((temp_dir, handler))
 }
 
+async fn scoped_content_workspace() -> Result<(TempDir, FakeToolContext)> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    fs::create_dir_all(workspace_path.join("materials"))?;
+    fs::create_dir_all(workspace_path.join("outside"))?;
+    fs::write(
+        workspace_path.join("materials/routing.md"),
+        "Workspace routing keeps each checkout in its own physical index.\n",
+    )?;
+    fs::write(
+        workspace_path.join("materials/routing-copy.md"),
+        "Workspace routing keeps each checkout in its own physical index. Secondary copy.\n",
+    )?;
+    fs::write(
+        workspace_path.join("materials/routing.json"),
+        r#"{"note":"workspace routing keeps configuration isolated"}"#,
+    )?;
+    fs::write(
+        workspace_path.join("materials/routing.rs"),
+        "// Workspace routing source comment describes checkout isolation.\npub fn workspace_routing_candidate() {}\n",
+    )?;
+    fs::write(
+        workspace_path.join("materials/routing_test.rs"),
+        "// Workspace routing source comment belongs to a test.\npub fn workspace_routing_test_candidate() {}\n",
+    )?;
+    fs::write(
+        workspace_path.join("outside/routing.md"),
+        "Workspace routing outside the requested scope.\n",
+    )?;
+
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(StaticProvider);
+    let handler = index_workspace(workspace_path)
+        .await?
+        .with_embedding_provider(provider);
+    handler
+        .snapshot_fixture
+        .as_ref()
+        .expect("snapshot fixture")
+        .store_named_vectors(
+            &EncoderIdentity::mock("static-fast-search-backend", 768),
+            &[("workspace_routing_candidate", semantic_target_vector())],
+        )?;
+
+    Ok((temp_dir, handler))
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn required_semantics_report_not_ready_without_an_encoder_row() -> Result<()> {
     let (_temp_dir, handler) = semantic_workspace_without_vectors().await?;
@@ -756,6 +802,209 @@ async fn off_semantics_with_explicit_backends_never_waits_for_provider() -> Resu
         assert!(execution.trace.backend_fallback);
         assert_eq!(handler.ensure_embedding_provider_call_count(), 0);
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn auto_scoped_search_returns_matching_document_with_semantic_candidates() -> Result<()> {
+    let (_temp_dir, handler) = scoped_content_workspace().await?;
+
+    for (query, expected_path) in [
+        ("workspace routing keeps each checkout", "materials/routing.md"),
+        (
+            "workspace routing keeps configuration isolated",
+            "materials/routing.json",
+        ),
+        (
+            "workspace routing source comment describes checkout isolation",
+            "materials/routing.rs",
+        ),
+    ] {
+        let run = FastSearchTool {
+            query: query.to_string(),
+            file_pattern: Some("materials/**".to_string()),
+            limit: 2,
+            ..Default::default()
+        }
+        .execute_with_trace(&handler)
+        .await?;
+
+        let execution = run.execution.expect("fast_search should return execution");
+        if expected_path.ends_with(".md") {
+            assert!(execution.hits[0].file.ends_with(".md"), "query={query}");
+        } else {
+            assert_eq!(execution.hits[0].file, expected_path, "query={query}");
+        }
+        assert!(
+            execution
+                .hits
+                .iter()
+                .any(|hit| hit.name == "workspace_routing_candidate"),
+            "query={query}"
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn auto_natural_language_code_query_keeps_semantic_primary() -> Result<()> {
+    let (_temp_dir, handler) = scoped_content_workspace().await?;
+
+    let run = FastSearchTool {
+        query: "where is workspace routing kept isolated".to_string(),
+        limit: 1,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let execution = run.execution.expect("fast_search should return execution");
+    assert_eq!(execution.trace.strategy_id, "fast_search_semantic");
+    assert_eq!(execution.hits[0].name, "workspace_routing_candidate");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn content_route_preserves_all_requested_filters() -> Result<()> {
+    let (_temp_dir, handler) = scoped_content_workspace().await?;
+
+    let run = FastSearchTool {
+        query: "workspace routing source comment".to_string(),
+        file_pattern: Some("materials/**".to_string()),
+        language: Some("rust".to_string()),
+        exclude_tests: Some(true),
+        limit: 5,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let execution = run.execution.expect("fast_search should return execution");
+    assert!(
+        execution
+            .hits
+            .iter()
+            .any(|hit| hit.file == "materials/routing.rs" && hit.as_symbol().is_none())
+    );
+    assert!(execution.hits.iter().all(|hit| {
+        hit.file.starts_with("materials/")
+            && hit.language == "rust"
+            && !hit.file.contains("routing_test.rs")
+    }));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn content_route_never_rescues_outside_file_pattern() -> Result<()> {
+    let (_temp_dir, handler) = scoped_content_workspace().await?;
+
+    let run = FastSearchTool {
+        query: "workspace routing outside requested scope".to_string(),
+        file_pattern: Some("missing/**".to_string()),
+        limit: 5,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let execution = run.execution.expect("fast_search should return execution");
+    assert!(execution.hits.is_empty());
+    assert!(!execution.trace.scope_relaxed);
+    assert!(!extract_text(&run.result).contains("outside/routing.md"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn scoped_auto_content_paging_keeps_all_line_matches() -> Result<()> {
+    let (_temp_dir, handler) = scoped_content_workspace().await?;
+    let mut files = Vec::new();
+
+    for offset in 0..3 {
+        let run = FastSearchTool {
+            query: "workspace routing keeps each checkout".to_string(),
+            file_pattern: Some("materials/**".to_string()),
+            limit: 1,
+            offset,
+            ..Default::default()
+        }
+        .execute_with_trace(&handler)
+        .await?;
+        files.extend(
+            run.execution
+                .expect("fast_search should return execution")
+                .hits
+                .into_iter()
+                .map(|hit| hit.file),
+        );
+    }
+
+    assert!(files.contains(&"materials/routing.md".to_string()), "{files:?}");
+    assert!(
+        files.contains(&"materials/routing-copy.md".to_string()),
+        "{files:?}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn scoped_auto_compact_output_labels_mixed_content() -> Result<()> {
+    let (_temp_dir, handler) = scoped_content_workspace().await?;
+
+    let run = FastSearchTool {
+        query: "workspace routing keeps each checkout".to_string(),
+        file_pattern: Some("materials/**".to_string()),
+        return_format: "compact".to_string(),
+        limit: 2,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let text = extract_text(&run.result);
+    assert!(text.contains("(semantic+content)"), "{text}");
+    assert!(text.contains("materials/routing"), "{text}");
+    let structured = run
+        .result
+        .structured_content
+        .as_ref()
+        .expect("fast_search should expose structured content");
+    assert_eq!(structured["backend"], "semantic");
+    assert!(structured["requested_backend"].is_null());
+    assert_eq!(structured["backend_auto"], true);
+    assert_eq!(structured["content_enriched"], true);
+    assert_eq!(structured["hits"].as_array().map(Vec::len), Some(2));
+    assert_eq!(structured["hits"][0]["file"], "materials/routing-copy.md");
+    assert_eq!(structured["trace"]["line_enrichment_status"], "applied");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn structured_content_reports_actual_lexical_backend_when_semantics_off() -> Result<()> {
+    let (_temp_dir, handler) = semantic_workspace_with_embeddings().await?;
+
+    let run = FastSearchTool {
+        query: "semantic_backend_target".to_string(),
+        backend: Some(SearchBackend::Semantic),
+        semantics: Some(julie_core::embeddings_contract::SemanticMode::Off),
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let structured = run
+        .result
+        .structured_content
+        .expect("fast_search should expose structured content");
+    assert_eq!(structured["backend"], "lexical");
+    assert_eq!(structured["requested_backend"], "semantic");
+    assert_eq!(structured["backend_auto"], false);
 
     Ok(())
 }

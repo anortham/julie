@@ -202,7 +202,8 @@ pub async fn execute_search_unified(
         && file_pattern_diagnostic == Some(FilePatternDiagnostic::NoInScopeCandidates)
         && normalized_file_pattern
             .as_deref()
-            .is_some_and(|pattern| !query::looks_like_whitespace_separated_globs(pattern));
+            .is_some_and(|pattern| !query::looks_like_whitespace_separated_globs(pattern))
+        && (params.backend.explicit || params.backend.value == SearchBackend::Lexical);
 
     if should_rescue {
         let rescue = run_unified_pass(
