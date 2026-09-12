@@ -49,13 +49,14 @@ Before execution, inventory worktrees and refresh the referenced symbols with Ju
 
 - **Worker red/green:** `cargo nextest run -p <owning-package> --lib <exact_test_name>`. Root package is `julie`; crate tests use their owning package such as `julie-runtime` or `julie-tools`. Never use an unfiltered library run. Check the owning test target before running; new target names in these plans are explicitly marked proposed.
 - **Worker ceiling:** Exact test only. No worker runs `dev`, `dogfood`, or `full`; lead serializes all Cargo activity. Preserve exit codes when piping output.
-- **Lead affected-change:** `cargo xtask test dev` once per completed coherent batch. After search, ranking, graph, or index-freshness changes, also run `cargo xtask test dogfood`.
-- **Branch gate:** `cargo fmt --check`, `cargo clippy --workspace --all-targets`, and `cargo xtask test full` before merge. Reuse only exact-SHA, matching-scope evidence; do not run dev/dogfood immediately before full if full supplies the same required branch check.
+- **Lead affected-change:** exact tests or one affected narrow group during implementation. `dev` is an optional broad diagnostic when `full` is not imminent.
+- **Branch gate:** after code freeze, run `cargo fmt --check`, `cargo clippy --workspace --all-targets`, and one `cargo xtask test full`. Do not run `dev` or `dogfood` immediately before `full`.
 - **Plugin:** `node --test hooks/*.test.cjs` in the chosen plugin worktree. New launcher tests use Node's existing test runner, with one exact-name RED/GREEN cycle before the full plugin gate.
 - **Security scope:** None declared for a blanket scan. Plan 4 requires targeted archive-path, authentication, token-output, and upgrade checks. Do not claim a dependency/CVE audit was run.
 - **Live evidence:** Isolated `JULIE_HOME`, temporary profiles, representative fixture checkouts. No writes to the maintainer's live registry or installed plugin. Native checks and real model downloads are outside unit-test timings; missing machines/access are reported as unverified gates, not replaced with mocks.
-- **Assigned failures:** Diagnose and fix within scope; do not weaken assertions, classify regressions as known failures, or silently skip an unavailable gate.
-- **Ledger:** Every plan starts with an empty ledger. Record command, invariant, scope label, exact SHA, timestamp, result, and evidence location. Do not copy historical passes into new execution ledgers.
+- **Assigned failures:** Fix failures caused by the current diff or required acceptance behavior. Record unrelated, pre-existing, platform-only, or fixture-only failures as separate work. Spend at most 15 minutes or one exact diagnostic run on unclear ownership before reporting the gate incomplete.
+- **Broad retry:** After exact fixes, allow one broad retry. Stop after a second broad failure. A third run requires an explicit owner decision.
+- **Ledger:** Every plan starts with an empty ledger. Record command, invariant, scope label, tested SHA, timestamp, result, and evidence location. Evidence-only descendant commits may reuse a pass when their diff cannot affect the command.
 
 ## Assessment coverage
 

@@ -44,13 +44,13 @@ struct EditingTestCase {
 cargo check
 cargo nextest run --lib <exact_test_name>
 
-# Batch gate after a completed change set, and before handoff
+# Optional broad diagnostic when the final full gate is not imminent
 cargo xtask test dev
 
-# Search-quality gate after search, scoring, ranking, or graph changes
+# Search-quality gate when the final full gate is not imminent
 cargo xtask test dogfood
 
-# Dev, then dogfood, before merge
+# One branch gate after code freeze, before merge
 cargo xtask test full
 
 # Product-linked search matrix / eval harnesses (Cargo alias → xtask-eval package)
@@ -69,13 +69,27 @@ cargo nextest run --lib test_stemming
 
 | Tier | Command | What it runs | When to use |
 |------|---------|--------------|-------------|
-| dev | `cargo xtask test dev` | Builds `julie-server`. Runs the whole workspace except the dogfood set. Then runs the ignored `tests::cli::` tests. About 20 s warm. | Once per completed batch, and before handoff |
-| dogfood | `cargo xtask test dogfood` | Ensures the search-quality fixture. Then runs the dogfood set: `search_quality`, `fixtures::julie_db`, `dogfood`. About 15 s, plus 42 s when the fixture rebuilds. | After search, scoring, ranking, or graph changes |
-| full | `cargo xtask test full` | Dev, then dogfood. | Before merge |
+| dev | `cargo xtask test dev` | Builds `julie-server`. Runs the whole workspace except the dogfood set. Then runs the ignored `tests::cli::` tests. About 20 s warm. | Optional broad diagnostic after a coherent milestone when `full` is not imminent |
+| dogfood | `cargo xtask test dogfood` | Ensures the search-quality fixture. Then runs the dogfood set: `search_quality`, `fixtures::julie_db`, `dogfood`. About 15 s, plus 42 s when the fixture rebuilds. | Search-quality branch gate when `full` is not imminent |
+| full | `cargo xtask test full` | Dev, then dogfood. | Once after code freeze, before merge |
 
 The dogfood set runs at most six tests at a time. `.config/nextest.toml` sets test group `dogfood` to `max-threads = 6`. No environment variable is needed.
 
-Workers run exact tests only, at most two runs per change (RED, GREEN). The lead runs `dev` once per batch. Never run more than one cargo test command at once.
+Workers run exact tests only, at most two runs per change (RED, GREEN). The lead runs exact tests or one affected narrow group during implementation. Never run more than one cargo test command at once.
+
+## Broad gate budget
+
+Broad gates are branch events, not edit-loop checks. Freeze code before running one. Since `full` includes `dev` and `dogfood`, do not run either immediately before `full`.
+
+When a broad gate fails, classify the failure before editing:
+
+- If the current diff caused it, or the plan's acceptance criteria require it, reproduce it with one exact test and fix it in the current task.
+- If it is pre-existing, platform-only, fixture-only, or unrelated, record separate follow-up work. It does not enter the active task.
+- If ownership is unclear, spend at most 15 minutes or one exact diagnostic run to classify it. If it remains unclear, report the gate as incomplete.
+
+After all known in-scope failures pass exact tests, allow one broad-gate retry. If that retry reveals another failure, stop. A third broad run requires an explicit owner decision. The same rule applies to Windows qualification: use exact Windows tests during implementation and one full Windows gate after code freeze when the plan or release requires it.
+
+Report `implementation complete; <gate> pending` when implementation is done but qualification is not. Do not use `almost done` without listing the remaining gates and whether they can expand scope.
 
 ## Standalone CLI Dogfood Contract
 
@@ -116,7 +130,7 @@ Each ledger row must record:
 - timestamp (UTC)
 - evidence reused (`yes` or `no`)
 
-Evidence may be reused only at the same HEAD commit SHA and the same scope label, and only from a row that already passed. If those conditions are not true, run the command again and record a new row. This is the default rule for expensive gates such as `cargo xtask test dogfood`.
+Evidence may be reused when the scope matches, the tested commit is an ancestor of the current commit, and the intervening diff cannot affect the command. Evidence-only changes under `.memories/`, `docs/plans/`, or `docs/findings/` may reuse a pass when the command does not consume those files. Record the tested SHA and current SHA. Never rerun an expensive gate only because a later commit recorded its evidence.
 
 ## Search Matrix Harness
 
@@ -183,4 +197,3 @@ When testing multi-worktree scenarios:
 - Detached HEAD worktrees prevent git branch locking collisions across test runners.
 - Each worktree directory is resolved to a canonical path and assigned a unique workspace ID hash, so SQLite and Tantivy stay isolated even when worktrees share the underlying git object database.
 - Cleanup hooks remove worktrees and temporary trees only after all child processes have terminated.
-

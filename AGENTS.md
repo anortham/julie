@@ -35,9 +35,9 @@ cargo check                    # Type-check only (fastest compilation, no binary
 cargo build                    # Debug build
 cargo build --release          # Release build (for live MCP testing)
 cargo nextest run --lib <name>       # Default: one exact test first
-cargo xtask test dev           # Batch gate: whole workspace, once per batch (about 20 s warm)
-cargo xtask test dogfood       # Search-quality gate after search, scoring, ranking, or graph changes
-cargo xtask test full          # Dev then dogfood, before merge
+cargo xtask test dev           # Optional broad diagnostic when the final full gate is not imminent
+cargo xtask test dogfood       # Search-quality gate when the final full gate is not imminent
+cargo xtask test full          # One pre-merge branch gate after code freeze
 cargo xtask-eval search-matrix|eval  # Product-linked harnesses (Cargo alias → xtask-eval)
 cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)
 cargo xtask dev-link           # (maintainer-only) Symlink installed plugin binaries → target/release (`--dry-run` to preview)
@@ -74,7 +74,7 @@ This project **MUST** follow Test-Driven Development:
 3. **Verify the test fails** — run ONLY your specific test: `cargo nextest run --lib <test_name> 2>&1 | tail -10`
 4. **Fix the bug** with minimal changes
 5. **Verify the test passes** — same narrow command as step 3
-6. **Ensure no regressions**: if you are the main session, run `cargo xtask test dev` once per completed batch. **If you are a subagent, SKIP this step**; the lead session handles it
+6. **Check the affected scope**: run the exact test or narrow test group that covers the change. Broad tiers are branch gates, not part of each RED/GREEN cycle. **If you are a subagent, SKIP broad tiers**; the lead session owns the single branch gate
 
 See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CONTROL methodology.
 
@@ -86,17 +86,17 @@ Three tiers exist. Each tier runs one `cargo nextest run --workspace` pass. `xta
 
 | Tier | Command | What it runs | When to use |
 |------|---------|--------------|-------------|
-| **Dev** | `cargo xtask test dev` | Builds `julie-server`. Runs the whole workspace except the dogfood set. Then runs the ignored `tests::cli::` tests. About 20 s warm. | Once per completed batch, and before handoff |
-| **Dogfood** | `cargo xtask test dogfood` | Ensures the search-quality fixture. Then runs the dogfood set: `search_quality`, `fixtures::julie_db`, `dogfood`. About 15 s, plus 42 s when the fixture rebuilds. | After search, scoring, ranking, or graph changes |
-| **Full** | `cargo xtask test full` | Dev, then dogfood. | Before merge |
+| **Dev** | `cargo xtask test dev` | Builds `julie-server`. Runs the whole workspace except the dogfood set. Then runs the ignored `tests::cli::` tests. About 20 s warm. | Optional broad diagnostic after a coherent milestone when `full` is not imminent |
+| **Dogfood** | `cargo xtask test dogfood` | Ensures the search-quality fixture. Then runs the dogfood set: `search_quality`, `fixtures::julie_db`, `dogfood`. About 15 s, plus 42 s when the fixture rebuilds. | Search-quality branch gate when `full` is not imminent |
+| **Full** | `cargo xtask test full` | Dev, then dogfood. | Once after code freeze, before merge |
 
 The dogfood set runs at most six tests at a time. `.config/nextest.toml` sets test group `dogfood` to `max-threads = 6`. No environment variable is needed.
 
 ### 🔥 Edit Loop (Edit → Verify)
 
-1. Run `cargo check` after each code change.
+1. Run `cargo check` once when a coherent edit batch needs compiler feedback. Skip it when the exact test already compiles the affected target.
 2. Run `cargo nextest run --lib <exact_test_name>` for the test you wrote. The incremental rebuild takes about 3.5 s.
-3. Batch three to five edits. Then run `cargo xtask test dev` once.
+3. Continue with exact tests or one affected narrow group. Do not run `dev`, `dogfood`, or `full` in the edit loop.
 
 The extractor dependency re-pin gate is `cargo xtask test dev`. It contains the three contract tests: `test_semantic_index_engine_version_includes_extraction_contract`, `real_world_parser_upgrade_contracts_assert_expected_outputs`, and `current_parser_release_contracts_parse_without_diagnostics`.
 
@@ -105,10 +105,17 @@ The extractor dependency re-pin gate is `cargo xtask test dev`. It contains the 
 ### The Rules
 
 1. **Run the narrowest test first.** `cargo nextest run --lib <name>` for one function.
-2. **Run `cargo xtask test dev` once per completed batch,** not after every edit.
+2. **Broad gates are branch events.** Freeze code, then run the narrowest required broad gate once. `full` already includes `dev` and `dogfood`; never run them immediately before `full`.
 3. **Use raw cargo filters only to narrow a failure** that a tier reported. Example: `cargo nextest run --lib tests::tools::search`.
 4. **Do not run `cargo nextest run --lib` without a filter.** That runs the whole suite.
 5. **Run one cargo test command at a time.** On Windows, parallel `cargo nextest` runs fight over the same output binary (`LNK1104` linker lock error).
+6. **A broad-gate failure does not expand the task.** Classify it before editing:
+   - Caused by the current diff or required acceptance behavior: reproduce with one exact test, fix it, and add it to the pending branch-gate retry.
+   - Existing, platform-only, fixture-only, or unrelated: record it as follow-up work. Do not fix it on the active feature branch.
+   - Unclear: spend at most 15 minutes or one exact diagnostic run to classify it. If it remains unclear, stop qualification and report the open gate.
+7. **Broad-gate retry budget: one.** After fixing all known in-scope failures with exact tests, run one retry. If that retry finds another failure, stop and report the gate as incomplete. A third broad run needs an explicit owner decision.
+8. **Windows full is a qualification gate.** During implementation, run only exact Windows tests for changed behavior. Run one Windows full after code freeze only when the plan or release requires it. Unrelated Windows failures go to a separate task.
+9. **Report status precisely.** Say `implementation complete; <gate> pending` when that is the state. Do not say `almost done` without naming every remaining gate and whether a failure can expand scope.
 
 ### 🚨 Subagent & Worker Agent Test Rules (CRITICAL)
 
@@ -130,11 +137,11 @@ The extractor dependency re-pin gate is `cargo xtask test dev`. It contains the 
 
 Plan docs use `docs/plans/verification-ledger-template.md` for verification evidence. Scope labels are `worker-red-green`, `dev`, `dogfood`, `full`, and `live`.
 
-Reuse evidence only when the scope label matches and the commit SHA matches the current HEAD exactly. If either value differs, run the command again and record a new ledger row.
+Reuse evidence when the scope matches and the tested commit is an ancestor of the current commit, provided the intervening diff cannot affect that command. Evidence-only changes under `.memories/`, `docs/plans/`, or `docs/findings/` may reuse a pass when the command does not consume those files. Record both the tested SHA and current SHA. Never create a documentation-only commit and rerun an expensive gate solely to make the SHA match.
 
 ### Known Failures
 
-**All tiers are green. A failure is a regression.** Investigate it.
+All tiers are expected to be green. A failing broad gate is evidence to triage, not automatic ownership. The current task owns failures caused by its diff or required acceptance behavior. Record unrelated or pre-existing failures separately and keep them out of the active branch.
 
 (#33, resolved 2026-05-30): the workspace rebind tests (`tests::tools::workspace::global_targeting::rebind_index`, `test_manage_workspace_index_*`) used to fail **only on a polluted dev box**, never on clean CI. Root cause was **test non-hermeticity, not a product bug**: the fixtures created marker-less temp workspaces under `$TMPDIR`, so `find_workspace_root` walked up past them to a stray `/private/tmp/Cargo.toml` and resolved every workspace to `tmp_*` instead of `target_*`. Product rebind code was correct and untouched. The resolution-critical fixtures now drop a `.git` marker via `make_isolated_workspace_root` / `mark_workspace_root` (`src/tests/helpers/workspace.rs`) so resolution stops at the temp workspace. Most other temp-workspace tests still assume a clean `$TMPDIR` (as CI always has) — **do not leave stray workspace markers (`Cargo.toml`, `.git`, `.julie`) in your system temp root**, or you will get spurious local-only failures.
 

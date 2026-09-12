@@ -1,6 +1,6 @@
 # Plan 2: Precise and complete retrieval contracts
 
-**Status:** All four implementation slices completed on 2026-09-12; Linux and live integration verified; final Windows gate in progress. Worktree `.worktrees/revival-retrieval`, branch `fix/revival-retrieval`, baseline `22391e26`. Local commits authorized; merge/push/release remain separate actions.
+**Status:** All four implementation slices completed on 2026-09-12. Linux and live integration passed. Windows qualification exposed separate platform and fixture work and is paused under the broad-gate budget. Worktree `.worktrees/revival-retrieval`, branch `fix/revival-retrieval`, baseline `22391e26`. Local commits authorized; merge/push/release remain separate actions.
 **Goal:** Preserve exact evidence and make scoped search, paging, and body retrieval reliable for agents.
 **Depends on:** Reference work can start independently; integrate after Plan 1 freshness and semantics fixes.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md), including Sol ownership, TDD, one Cargo command at a time, no tool renaming, and no durable continuations.
@@ -105,7 +105,7 @@ Proposed exact tests: `full_symbol_body_is_bounded_and_reports_remaining_lines`,
 
 ## Verification and handoff
 
-Run lead dev and dogfood after the coherent retrieval batch, and the roadmap's final full gate before merge. Plan 5 owns the fresh product comparison; do not reuse the earlier 23-case winner claim as proof that new ranking changes are good.
+Use exact tests during implementation. After code freeze, run one final full gate. If it fails, fix only Plan2 regressions with exact tests and allow one retry. Move unrelated Windows or baseline failures to separate work. Plan5 owns the fresh product comparison; do not reuse the earlier23-case winner claim as proof that new ranking changes are good.
 
 ## Verification ledger
 
@@ -118,7 +118,7 @@ Run lead dev and dogfood after the coherent retrieval batch, and the roadmap's f
 
 Tasks 2A and 2B may edit in parallel because navigation/reference evidence and search/content execution own separate files. Cargo commands remain serialized by the lead. Task2C follows both and owns their shared final pagination/rendering behavior; Task2D follows2C.
 
-The Linux baseline is the exact previously verified Plan1 HEAD `22391e26882e54b9e4f5bb0995a69369793e067c`: formatting, clippy, full2245+13+69 tests and isolated live probe passed. The updated win-test CLI synced that SHA to native NTFS at `C:\work\revival-retrieval`. Windows has Rust1.97 MSVC and nextest0.9.144; baseline failures and repairs are recorded in the Windows findings. All guest control uses win-test; no direct SSH/virsh or shared-mount test execution. Capture the CLI-emitted log path and exact SHA. Windows baseline and final `cargo xtask test full` are lead-owned gates; failures require diagnosis, not reduced assertions.
+The Linux baseline is the exact previously verified Plan1 HEAD `22391e26882e54b9e4f5bb0995a69369793e067c`: formatting, clippy, full2245+13+69 tests and isolated live probe passed. The updated win-test CLI synced that SHA to native NTFS at `C:\work\revival-retrieval`. Windows has Rust1.97 MSVC and nextest0.9.144; baseline failures and repairs are recorded in the Windows findings. All guest control uses win-test; no direct SSH/virsh or shared-mount test execution. Windows qualification is separate from Plan2 implementation. Its failures do not expand this plan unless the Plan2 diff caused them.
 
 Paging must preserve automatic backend policy: serializing an inferred semantic backend as an explicit semantic override would discard the scoped lexical-content arm on later pages. Keep the original null/omitted auto selection in normalized replay arguments while exposing effective backend evidence separately.
 
