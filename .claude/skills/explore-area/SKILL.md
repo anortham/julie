@@ -15,12 +15,12 @@ Orient on an unfamiliar area of the codebase using Julie's `get_context` tool. T
 ### Step 1: Get Token-Budgeted Context
 
 ```
-get_context(query="<area, concept, or module name>")
+get_context(query="<area, concept, or module name>", workspace="<workspace_id>")
 ```
 
-Conceptual queries work well here, not just symbol names. For example, `get_context(query="error handling and retries")` will find relevant symbols by meaning via semantic search.
+Conceptual queries work well here, not just symbol names. For example, `get_context(query="error handling and retries", workspace="<workspace_id>")` will find relevant symbols by meaning via semantic search.
 
-For a quick concept-to-symbol probe before expanding context, use `fast_search(query="...", backend="semantic")` or `backend="hybrid"`. Those backends return symbol-backed hits only; use explicit `backend="lexical"` for file names, path fragments, or pure lexical comparison. Omitting `backend` runs semantic for natural-language queries when vectors are ready, else lexical; lexical may show a labeled semantic fallback only when an identifier-like unscoped query returns zero hits and embeddings are ready.
+For a quick concept-to-symbol probe before expanding context, use `fast_search(query="...", backend="semantic", workspace="<workspace_id>")` or `backend="hybrid"`. Those backends return symbol-backed hits only; use explicit `backend="lexical"` for file names, path fragments, or pure lexical comparison. Omitting `backend` runs semantic for natural-language queries when vectors are ready, else lexical; lexical may show a labeled semantic fallback only when an identifier-like unscoped query returns zero hits and embeddings are ready.
 
 This returns:
 - **Pivots**: The most relevant symbols with full code bodies
@@ -46,7 +46,8 @@ Example — task-shaped usage combining several inputs:
 get_context(query="error handling in request path",
             edited_files=["src/handler.rs"],
             failing_test="test_request_rejects_invalid_auth",
-            max_hops=2)
+            max_hops=2,
+            workspace="<workspace_id>")
 ```
 
 ### Step 2: Identify Key Symbols
@@ -63,13 +64,13 @@ Centrality scores in the output indicate how well-connected each symbol is — h
 For pivots that need more context (e.g., you need to see callers/callees):
 
 ```
-deep_dive(symbol="<key_symbol>", depth="overview")
+deep_dive(symbol="<key_symbol>", depth="overview", workspace="<workspace_id>")
 ```
 
 Use `context_file` if the symbol name is ambiguous:
 
 ```
-deep_dive(symbol="<symbol>", depth="overview", context_file="<partial_path>")
+deep_dive(symbol="<symbol>", depth="overview", context_file="<partial_path>", workspace="<workspace_id>")
 ```
 
 ### Step 3b: Trace a concrete path when the question is about reachability
@@ -77,7 +78,7 @@ deep_dive(symbol="<symbol>", depth="overview", context_file="<partial_path>")
 If the user asks a path-shaped question, use `call_path` instead of trying to reconstruct the route by hand:
 
 ```
-call_path(from="<entry_or_caller>", to="<sink_or_dependency>")
+call_path(from="<entry_or_caller>", to="<sink_or_dependency>", workspace="<workspace_id>")
 ```
 
 Use `from_file_path` and `to_file_path` when shared names make either endpoint ambiguous.
@@ -87,7 +88,7 @@ Use `from_file_path` and `to_file_path` when shared names make either endpoint a
 For files with many symbols that weren't fully covered by `get_context`:
 
 ```
-get_symbols(file_path="<file>", mode="structure", max_depth=1)
+get_symbols(file_path="<file>", mode="structure", max_depth=1, workspace="<workspace_id>")
 ```
 
 This shows the full outline without reading the file contents.
@@ -124,23 +125,23 @@ Suggested Starting Point:
 
 - **Use `format: "readable"` for human-friendly output** with section separators and richer formatting:
   ```
-  get_context(query="...", format="readable")
+  get_context(query="...", format="readable", workspace="<workspace_id>")
   ```
   The default format is compact (optimized for AI agent consumption).
 - **Use `max_tokens` to control budget** if the default is too much or too little:
   ```
-  get_context(query="...", max_tokens=1000)
+  get_context(query="...", max_tokens=1000, workspace="<workspace_id>")
   ```
 - **Filter by language or file pattern** to narrow scope:
   ```
-  get_context(query="...", language="rust", file_pattern="src/tools/**")
+  get_context(query="...", language="rust", file_pattern="src/tools/**", workspace="<workspace_id>")
   ```
 - **Use `call_path` for one concrete route**, not general impact:
   ```
-  call_path(from="RequestHandler::handle", to="persist_session")
+  call_path(from="RequestHandler::handle", to="persist_session", workspace="<workspace_id>")
   ```
   Reach for `blast_radius` when the real question is "what would this change affect?"
-- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned ID as `workspace` to scoped calls; use `workspace_id` only for management operations that require it.
 
 ## Long neighbor lists
 

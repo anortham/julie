@@ -174,6 +174,17 @@ fn docs_contract_tests_agent_instructions_fit_the_server_instruction_budget() {
         count <= 2000,
         "JULIE_AGENT_INSTRUCTIONS.md is {count} characters; the ceiling is 2000"
     );
+    let initial: String = instructions.chars().take(512).collect();
+    for contract in [
+        "Scoped calls require `workspace` as an absolute path or registered ID.",
+        "manage_workspace(operation=\"open\", path=\"/absolute/project\")",
+        "Start with `fast_search` or `get_context`, then inspect evidence before editing.",
+    ] {
+        assert!(
+            initial.contains(contract),
+            "the first 512 instruction characters must include {contract}"
+        );
+    }
     for name in [
         "fast_search",
         "get_symbols",
@@ -194,6 +205,46 @@ fn docs_contract_tests_agent_instructions_fit_the_server_instruction_budget() {
             instructions.contains(&format!("`{name}`")),
             "instructions must name {name}"
         );
+    }
+}
+
+#[test]
+fn docs_contract_tests_deployment_guidance_matches_runtime_contract() {
+    let readme = read_repo_file("README.md");
+    assert!(readme.contains("## Supported Languages (37)"));
+    assert!(!readme.contains("36 languages"));
+    for category in [
+        "**Core:** Rust, TypeScript, JavaScript, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin",
+        "**Systems:** C, C++, Go, Lua, Zig",
+        "**Functional:** Elixir, Erlang, F#, Scala",
+        "**Specialized:** GDScript, Vue, QML, R, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart",
+        "**Documentation and data:** Markdown, JSON, TOML, YAML, XML",
+    ] {
+        assert!(readme.contains(category), "README must include {category}");
+    }
+    assert!(readme.contains(
+        "The plugin distributes six skills: `/dead-code-audit`, `/editing`, `/explore-area`, `/impact-analysis`, `/search-debug`, and `/web-research`."
+    ));
+    let operations = read_repo_file("docs/OPERATIONS.md");
+    assert!(operations.contains("provides 37 user-facing languages"));
+    assert!(operations.contains("VB.NET"));
+    assert!(operations.contains("Erlang"));
+    assert!(operations.contains("XML"));
+
+    let instructions = read_repo_file("JULIE_AGENT_INSTRUCTIONS.md");
+    assert!(instructions.contains("`regions` filters stored `source_regions`"));
+
+    let commands = read_repo_file("src/tools/workspace/commands/mod.rs");
+    assert!(commands.contains(
+        "Health check:         {\"operation\": \"health\", \"workspace_id\": \"workspace-id\", \"detailed\": true}"
+    ));
+    assert!(commands.contains("remove, refresh, health, open, rebuild, status"));
+
+    for skill in ["explore-area", "impact-analysis", "search-debug"] {
+        let contents = read_repo_file(&format!(".claude/skills/{skill}/SKILL.md"));
+        assert!(contents.contains(
+            "pass the returned ID as `workspace` to scoped calls; use `workspace_id` only for management operations that require it."
+        ));
     }
 }
 

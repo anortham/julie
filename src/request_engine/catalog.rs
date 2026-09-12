@@ -209,6 +209,7 @@ register_tool_catalog! {
         workspace: |p| p.path.as_deref().or(p.workspace_id.as_deref()),
         unbound: |p| {
             p.operation == "list"
+                || (p.operation == "health" && p.workspace_id.is_none())
                 || (p.operation == "status" && p.path.is_none() && p.workspace_id.is_none())
         },
         semantics: |_p| SemanticRequirement::None,

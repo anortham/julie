@@ -186,9 +186,16 @@ impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
                 workspace_id: tool.workspace_id.clone(),
                 path: tool.path.clone(),
             }),
-            ManageWorkspaceOperation::Health => Ok(Self::Health {
-                detailed: tool.detailed.unwrap_or(false),
-            }),
+            ManageWorkspaceOperation::Health => {
+                tool.workspace_id.as_deref().ok_or_else(|| {
+                    anyhow!(
+                        "'workspace_id' parameter required for 'health' operation. Run manage_workspace(operation=\"open\", path=\"/absolute/project\") first."
+                    )
+                })?;
+                Ok(Self::Health {
+                    detailed: tool.detailed.unwrap_or(false),
+                })
+            }
             ManageWorkspaceOperation::Dashboard => Ok(Self::Dashboard),
             ManageWorkspaceOperation::RecoverEdit => {
                 let edit_id = tool
@@ -221,7 +228,7 @@ pub struct ManageWorkspaceTool {
     /// Open by path:         {"operation": "open", "path": "/path/to/project"}
     /// Refresh workspace:    {"operation": "refresh", "workspace_id": "workspace-id", "force": true}
     /// Open and force sync:   {"operation": "open", "workspace_id": "workspace-id", "force": true}
-    /// Health check:         {"operation": "health", "detailed": true}
+    /// Health check:         {"operation": "health", "workspace_id": "workspace-id", "detailed": true}
     /// Launch dashboard:      {"operation": "dashboard"}
     pub operation: String,
 
@@ -242,7 +249,7 @@ pub struct ManageWorkspaceTool {
     #[serde(skip_serializing_if = "Option::is_none", alias = "edit_id")]
     pub name: Option<String>,
 
-    /// Workspace ID (used by: remove, refresh, open, rebuild, status) or recovery_action (used by: recover_edit)
+    /// Workspace ID (used by: remove, refresh, health, open, rebuild, status) or recovery_action (used by: recover_edit)
     #[serde(skip_serializing_if = "Option::is_none", alias = "recovery_action")]
     pub workspace_id: Option<String>,
 

@@ -1,8 +1,8 @@
 # Julie
 
-**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-12)** · **[External Extract](#external-extract-host-integration)** · **[Skills](#skills)** · **[36 Languages](#supported-languages-36)**
+**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-10)** · **[External Extract](#external-extract-host-integration)** · **[Skills](#skills)** · **[37 Languages](#supported-languages-37)**
 
-A cross-platform code intelligence server built in Rust, providing LSP-quality features across 36 programming languages via the Model Context Protocol (MCP).
+A cross-platform code intelligence server built in Rust, providing LSP-quality features across 37 programming languages via the Model Context Protocol (MCP).
 
 ## Retired
 
@@ -39,8 +39,8 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 ## Features
 
 - **Fast symbol search** with code-aware tokenization (CamelCase/snake_case splitting, stemming, <5ms)
-- **Cross-language code navigation** (go-to-definition, find-references) across 36 languages
-- **Test-aware search** — automatic test detection across all 36 languages with smart filtering (`exclude_tests`)
+- **Cross-language code navigation** (go-to-definition, find-references) across 37 languages
+- **Test-aware search** — automatic test detection across all 37 languages with smart filtering (`exclude_tests`)
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
@@ -69,17 +69,17 @@ Julie uses embeddings for semantic search, related symbol discovery, and intelli
 - `JULIE_NATIVE_SIDECAR_PROGRAM`: explicit path to the `julie-semantic-sidecar` binary (default: next to `julie-server`, then `PATH`).
 - `JULIE_NATIVE_SIDECAR_MODEL`: native sidecar model id.
 
-## Supported Languages (36)
+## Supported Languages (37)
 
-**Core:** Rust, TypeScript, JavaScript, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala
+**Core:** Rust, TypeScript, JavaScript, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin
 
 **Systems:** C, C++, Go, Lua, Zig
 
-**Functional:** Elixir, Erlang
+**Functional:** Elixir, Erlang, F#, Scala
 
 **Specialized:** GDScript, Vue, QML, R, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
 
-**Documentation:** Markdown, JSON, TOML, YAML, XML
+**Documentation and data:** Markdown, JSON, TOML, YAML, XML
 
 ## Installation
 
@@ -228,7 +228,7 @@ cargo build --release
 
 **First Use / Verify:**
 
-Julie indexes a checkout when you open it by absolute path. Run `manage_workspace(operation="open", path="/absolute/project")`, then pass the returned ID as `workspace` on search, navigation, and editing calls, or as `workspace_id` on other `manage_workspace` operations. First indexing may take a few seconds on small projects and longer on large repos; later sessions reuse the cached index and file watcher updates.
+Julie indexes a checkout when you open it by absolute path. Run `manage_workspace(operation="open", path="/absolute/project")`, then pass the returned ID as `workspace` on search, navigation, and editing calls. Pass it as `workspace_id` to `health`, `refresh`, and `remove`; global `list` and `status` take no selector. First indexing may take a few seconds on small projects and longer on large repos; later sessions reuse the cached index and file watcher updates.
 
 ## Tools (10)
 
@@ -296,7 +296,7 @@ relationships. Those typed tables power region search, `patterns`, and
 - `manage_workspace` - Index, open, remove, refresh, list, rebuild, report status, health-check workspaces, recover interrupted edits, and launch the dashboard
   - Operations: `index`, `list`, `open`, `remove`, `refresh`, `health`, `rebuild`, `status`, `recover_edit`, `dashboard`
   - `rebuild` deletes a checkout's index and indexes it again; `status` reports every checkout (root, watcher, counts, database size, Tantivy age, last write)
-  - Cross-workspace work: call `open` first, then pass the returned `workspace_id` to other tools
+  - Cross-workspace work: call `open` first, then pass the returned ID as `workspace` to scoped tools; `health`, `refresh`, and `remove` use `workspace_id`, while global `list` and `status` use no selector
 
 > Operational and session metrics are surfaced through the dashboard. Start it from a shell with `julie-server dashboard`, or from an MCP session with `manage_workspace(operation="dashboard")`.
 
@@ -358,7 +358,7 @@ See **[docs/EXTERNAL_EXTRACT.md](docs/EXTERNAL_EXTRACT.md)** for the full report
 
 ## Test Detection
 
-Julie automatically detects tests during indexing across all 36 languages, with no configuration required. It recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and other language-specific test patterns.
+Julie automatically detects tests during indexing across all 37 languages, with no configuration required. It recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and other language-specific test patterns.
 
 - **Search filtering** — `fast_search` supports `exclude_tests` to keep test symbols out of production code results
 - **Test navigation** — `deep_dive` shows which test functions reference a symbol, so agents can find relevant tests without grepping
@@ -369,7 +369,7 @@ For test *coverage measurement* (which lines executed, branch coverage), use you
 
 Julie ships with a focused set of pre-built skills, reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/explore-area`) in harnesses that support them, or used as system prompt instructions.
 
-The plugin distributes four user-facing skills (`/editing`, `/explore-area`, `/impact-analysis`, `/web-research`); this repo also ships `/search-debug` for Julie development.
+The plugin distributes six skills: `/dead-code-audit`, `/editing`, `/explore-area`, `/impact-analysis`, `/search-debug`, and `/web-research`.
 
 ### Editing Skills
 
@@ -383,6 +383,7 @@ The plugin distributes four user-facing skills (`/editing`, `/explore-area`, `/i
 |-------|-------------|
 | `/explore-area` | Orient on an unfamiliar area with token-budgeted exploration via `get_context` |
 | `/impact-analysis` | Analyze blast radius of changing a symbol — callers grouped by risk |
+| `/dead-code-audit` | Investigate likely unused code before deletion with graph and identifier evidence |
 
 ### Research Skills
 
@@ -396,7 +397,7 @@ Web research applies Julie's token-efficiency model to web content. Instead of d
 
 | Skill | Description |
 |-------|-------------|
-| `/search-debug` | Diagnose why a search returns unexpected results (for Julie development; not distributed in the plugin) |
+| `/search-debug` | Diagnose why a search returns unexpected results |
 
 ### Installing Skills
 
@@ -461,9 +462,9 @@ service loads the new binary.
 
 ## Command-Line Interface (CLI)
 
-Julie exposes all 12 tools directly to the terminal through named subcommands, a generic tool runner, instant schema discovery, and serial request replay. Every CLI invocation routes through `RequestEngine::execute`, guaranteeing identical parameter validation and execution semantics as MCP sessions.
+Julie exposes all 10 tools directly to the terminal through named subcommands, a generic tool runner, instant schema discovery, and serial request replay. Every CLI invocation routes through `RequestEngine::execute`, guaranteeing identical parameter validation and execution semantics as MCP sessions.
 
-### 12 Named Tool Subcommands
+### 10 Named Tool Subcommands
 
 Every tool is directly accessible as a named subcommand (with ergonomic aliases):
 
@@ -513,7 +514,7 @@ cat edit_req.json | julie-server tool edit_file --params-stdin --json
 Instant catalog inspection answering in <15ms without starting file watchers, compiling indexes, or warming embedding models:
 
 ```bash
-# List all 12 registered tools with descriptions and schema availability
+# List all 10 registered tools with descriptions and schema availability
 julie-server tools list --json
 
 # Print the complete JSON Schema for a specific tool
@@ -611,7 +612,7 @@ src/
 ├── cli_tools/       # Standalone CLI command bootstrap
 ├── registry/        # Registry DB and project logging
 ├── dashboard/       # Standalone read-only dashboard (htmx + Tera templates)
-├── extractors/      # Thin re-export of the external 36-language extractor crate
+├── extractors/      # Thin re-export of the external 37-language extractor crate
 ├── external_extract/ # Process-facing extractor commands
 ├── health/          # Health report and diagnostics
 ├── indexing_core/   # Shared indexing orchestration

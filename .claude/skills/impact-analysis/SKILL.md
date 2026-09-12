@@ -17,16 +17,16 @@ Analyze the impact of changing a symbol by finding all references and assessing 
 If the user gives you a symbol name, resolve the definition first so you know which file or symbol they mean:
 
 ```
-fast_search(query="<symbol_name>")
-deep_dive(symbol="<symbol_name>", context_file="<partial_file_path>", depth="overview")
+fast_search(query="<symbol_name>", workspace="<workspace_id>")
+deep_dive(symbol="<symbol_name>", context_file="<partial_file_path>", depth="overview", workspace="<workspace_id>")
 ```
 
-Use `context_file` when the name is ambiguous. If the target is described conceptually rather than named exactly, try `fast_search(query="<concept>", backend="semantic")` or `backend="hybrid"` to find candidate symbols. Semantic/hybrid `fast_search` results are symbol-only; use explicit lexical for file paths and pure lexical comparison. Default `fast_search` may show labeled semantic fallback candidates only after an identifier-like unscoped lexical zero-hit. `blast_radius(symbol_ids=[...])` is the tightest seed mode, but only use it when another Julie result already gave you concrete symbol IDs. If all you have is a definition file, use `file_paths=[...]`.
+Use `context_file` when the name is ambiguous. If the target is described conceptually rather than named exactly, try `fast_search(query="<concept>", backend="semantic", workspace="<workspace_id>")` or `backend="hybrid"` to find candidate symbols. Semantic/hybrid `fast_search` results are symbol-only; use explicit lexical for file paths and pure lexical comparison. Default `fast_search` may show labeled semantic fallback candidates only after an identifier-like unscoped lexical zero-hit. `blast_radius(symbol_ids=[...], workspace="<workspace_id>")` is the tightest seed mode, but only use it when another Julie result already gave you concrete symbol IDs. If all you have is a definition file, use `file_paths=[...]`.
 
 ### Step 2: One-shot impact via blast_radius
 
 ```
-blast_radius(file_paths=["<definition_file>"], max_depth=2, include_tests=true)
+blast_radius(file_paths=["<definition_file>"], max_depth=2, include_tests=true, workspace="<workspace_id>")
 ```
 
 `blast_radius` is the primary entry point for impact analysis. One call returns ranked impacted symbols with why-reasons and likely tests. It walks the reference graph deterministically, so you don't have to chain `get_context → fast_refs → deep_dive` to build the same picture.
@@ -42,14 +42,14 @@ If the impact list is large, the output ends with `Output truncated at <N> resul
 For any impacted symbol you need to understand in depth (unfamiliar caller, ambiguous usage, high centrality), use the targeted tools:
 
 ```
-fast_refs(symbol="<caller>", include_definition=true, limit=100)
-deep_dive(symbol="<caller>", depth="context")
+fast_refs(symbol="<caller>", include_definition=true, limit=100, workspace="<workspace_id>")
+deep_dive(symbol="<caller>", depth="context", workspace="<workspace_id>")
 ```
 
 If `deep_dive` returns the wrong symbol (common names like `new`, `result`, `config`), use `context_file` to disambiguate:
 
 ```
-deep_dive(symbol="<caller>", context_file="<partial_file_path>")
+deep_dive(symbol="<caller>", context_file="<partial_file_path>", workspace="<workspace_id>")
 ```
 
 ### Step 4: Narrow long impact lists
@@ -66,7 +66,7 @@ For each high-risk file surfaced by `blast_radius`, `deep_dive` on the calling f
 If you need the shortest route from one surfaced caller into a downstream sink or shared dependency, use `call_path` after `blast_radius`:
 
 ```
-call_path(from="<impacted_symbol>", to="<downstream_symbol>")
+call_path(from="<impacted_symbol>", to="<downstream_symbol>", workspace="<workspace_id>")
 ```
 
 ### Categorizing Callers by Risk
@@ -126,4 +126,4 @@ Recommendation:
 - **Always check test coverage** — high-risk changes with no test references are especially dangerous. `blast_radius` surfaces likely tests via the `include_tests=true` flag, so use it.
 - **Type changes cascade** — if the symbol is a type/struct, any field change affects all users
 - **Interface/trait changes are widest** — changing an interface method, trait, or abstract class affects all implementors
-- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned ID as `workspace` to scoped calls; use `workspace_id` only for management operations that require it.

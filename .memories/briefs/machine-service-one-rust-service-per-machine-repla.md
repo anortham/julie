@@ -1,42 +1,46 @@
 ---
 id: machine-service-one-rust-service-per-machine-repla
-title: "Machine service: one Rust service per machine replaces per-session
-  Miller and Julie"
+title: Julie revival Plans 4 and 5
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-12T21:37:56.257Z
+updated: 2026-09-12T21:52:19.517Z
 tags:
   - machine-service
   - architecture
   - complexity-rule
 ---
 
-# Machine service and revival hardening
+# Julie revival Plans 4 and 5
 
-## Direction
+## Goal
 
-Ship Julie v8 as one Rust machine service with stateless HTTP MCP, a stdio shim and JSON API over one request engine. Preserve explicit workspace routing, one writer per checkout, facts.sqlite/Tantivy storage, the OS singleton and existing mutation gate. No leases, brokers, durable cursor store or derived-index migrations.
+Complete Plan 4 deployment and guidance qualification, then Plan 5 replacement qualification. Plan 4 must leave a locally reviewable release candidate with consistent agent instructions, immutable versioned installation, truthful cold/offline semantics, executable archive checks and a fresh-install evidence matrix.
 
-## Completed work
+## Completed
 
-Plans 1 and 2 are merged locally into main. Plan 3 is merged at `53d177f1`, with post-merge evidence recorded at `347e88b2`. Runtime initialization now uses per-key slots, idle runtimes retire through service-owned maintenance, shutdown drains watchers and embedding writers, durable indexes and vectors survive reopen, and the unused alternate runtime manager is gone.
+Plans 1 through 3 are merged on local `main`. Plan 3 added the single runtime lifecycle owner, bounded idle retirement, cooperative writer shutdown and durable reopen behavior.
 
-Linux post-merge formatting and `cargo xtask test full` passed. All seven Plan 3 lifecycle tests passed on Windows/NTFS. Windows full qualification remains incomplete because two untouched xtask tests assume Unix TOML-path escaping or command quoting; track those separately from Plan 3.
+## Current work
 
-## Verification policy
+Plan 4 is active on Julie branch `fix/revival-deployment` and plugin branch `fix/revival-deployment-plugin`. Work follows `docs/plans/2026-09-11-revival-deployment-plan.md` in serial order from 4A through 4E.
 
-Use exact tests during implementation. Broad gates run once after code freeze, with one retry after exact in-scope fixes. A third broad run requires an explicit owner decision. Unrelated, pre-existing, platform-only, and fixture-only failures become separate work. Evidence-only descendant commits may reuse passing evidence when their diff cannot affect the command.
+## Constraints
 
-## Constraints and later plans
+- Keep the stdio shim, one machine service and native semantic sidecar.
+- Use immutable versioned install directories and explicit service restart on version mismatch.
+- Preserve exact workspace routing and the pinned extractor inventory.
+- Use current official harness documentation before changing harness guidance.
+- Do not write live user profiles, installed plugin caches or the maintainer JULIE_HOME.
+- Do not push, force-push, tag, release or publish without separate owner approval.
+- Local commits inside the approved plan are authorized.
+- Windows qualification failures unrelated to the active diff remain separate follow-up work.
 
-Preserve existing tools, canonical evidence and all-language applicability. No fake exact spans or inferred complete values. Paging retains automatic backend policy. Source hashes prevent body pages from mixing source versions; no retained snapshots or cursors.
+## Success
 
-Plans 4 and 5 remain: installation and guidance qualification, then measured Miller replacement. Keep the phase6b naming decision after sufficient telemetry, no earlier than approximately 2026-09-25. Existing call_path web mode remains the bridge path. Navigation promotion, full Miller retirement, plugin publication and release remain separate owner decisions.
+The local release candidate has passing Julie and plugin gates, verified native archives, isolated fresh-profile evidence, documented unresolved native/client gaps, and no publication side effects.
 
 ## References
 
 - docs/plans/2026-09-11-revival-roadmap.md
-- docs/plans/2026-09-11-revival-runtime-plan.md
-- docs/plans/2026-09-11-revival-retrieval-plan.md
-- docs/findings/revival-runtime-baseline.md
-- docs/adr/ADR-0007-request-runtime-lifecycle-owner.md
+- docs/plans/2026-09-11-revival-deployment-plan.md
+- docs/plans/2026-09-11-revival-qualification-plan.md

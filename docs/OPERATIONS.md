@@ -52,6 +52,13 @@ Each workspace owns its own SQLite database and Tantivy index under
 that workspace's database path; Julie does not query multiple workspaces from a
 single SQLite connection.
 
+The pinned `julie-extractors` v2.42.0 dependency provides 37 user-facing languages:
+Rust, C, C++, Go, Zig, TypeScript, JavaScript, HTML, CSS, Vue, QML, Python,
+Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Dart, Elixir, Erlang, F#, Scala,
+Lua, R, Bash, PowerShell, GDScript, Razor, SQL, Regex, Markdown, JSON, TOML,
+YAML, and XML. JSX and TSX are aliases; `qmldir` is a container format, not an
+additional language.
+
 Standalone CLI commands that pass `--standalone` use project-local storage under
 `<project>/.julie/indexes/` instead of `$JULIE_HOME`.
 
@@ -76,6 +83,8 @@ Its handler for a checkout is the only writer for that checkout:
 - A new checkout of a registered repository seeds from its sibling:
   `manage_workspace(operation="open", path=...)` copies the sibling's `symbols.db`
   and `tantivy/`, rewrites the workspace id, and runs the incremental scan.
+- Pass the returned ID as `workspace` to scoped tools. `health`, `refresh`, and
+  `remove` use `workspace_id`; global `list` and `status` use no selector.
 
 ## Semantic Sidecar
 

@@ -17,7 +17,7 @@ Diagnose why a Julie search returns unexpected results. Use this when a search m
 Run the exact search the user reported:
 
 ```
-fast_search(query="<original_query>", limit=20)
+fast_search(query="<original_query>", limit=20, workspace="<workspace_id>")
 ```
 
 `fast_search` returns mixed-kind results; each hit carries `kind`. Note what comes back, the top results, their scores, and what's missing. If the default response says "No lexical results. Showing semantic fallback candidates.", treat that as a semantic rescue, not a lexical hit.
@@ -29,7 +29,7 @@ If the report involves backend behavior, run the exact requested backend and com
 Search for the expected symbol directly:
 
 ```
-fast_search(query="<expected_symbol_name>")
+fast_search(query="<expected_symbol_name>", workspace="<workspace_id>")
 ```
 
 If it doesn't appear at all, the symbol may not be indexed.
@@ -37,7 +37,7 @@ If it doesn't appear at all, the symbol may not be indexed.
 ### Step 3: Check Index Health
 
 ```
-manage_workspace(operation="health", detailed=true)
+manage_workspace(operation="health", workspace_id="<workspace_id>", detailed=true)
 ```
 
 Look for:
@@ -48,7 +48,7 @@ Look for:
 ### Step 4: Deep Dive the Expected Symbol
 
 ```
-deep_dive(symbol="<expected_symbol>", depth="context")
+deep_dive(symbol="<expected_symbol>", depth="context", workspace="<workspace_id>")
 ```
 
 Check:
@@ -72,7 +72,7 @@ Consider why the expected result might score lower than competitors:
 - Is the expected symbol in a docs or fixture path that gets a prior penalty?
 
 **Index issues:**
-- Was the file recently added? It may need re-indexing: `manage_workspace(operation="refresh")`
+- Was the file recently added? It may need re-indexing: `manage_workspace(operation="refresh", workspace_id="<workspace_id>")`
 - Is the symbol in a language Julie doesn't extract well?
 
 ### Step 6: Report
@@ -111,4 +111,4 @@ Recommendation:
 - **Not every "missing" result is a bug**. If the query is ambiguous, the correct result may rank lower than a more central symbol with the same name.
 - **Check tokenization first**. Most search misses come from query tokens that do not line up with symbol-name tokens.
 - **Centrality is intentional**. Well-connected symbols ranking higher is a feature, not a bug. Flag it only when the centrality score looks wrong.
-- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned ID as `workspace` to scoped calls; use `workspace_id` only for management operations that require it.

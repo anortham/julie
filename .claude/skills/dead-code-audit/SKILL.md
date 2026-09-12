@@ -64,7 +64,7 @@ For every candidate before recommending deletion:
 0. Confirm the index is fresh:
 
 ```text
-manage_workspace(operation="health", detailed=true)
+manage_workspace(operation="health", workspace_id="<workspace_id>", detailed=true)
 ```
 
 If files changed since indexing, refresh or rebuild the debug index before trusting the report.
@@ -72,13 +72,13 @@ If files changed since indexing, refresh or rebuild the debug index before trust
 1. Resolve the exact symbol:
 
 ```text
-fast_search(query="<name>", file_pattern="<narrow path>")
+fast_search(query="<name>", file_pattern="<narrow path>", workspace="<workspace_id>")
 ```
 
 2. Check references with identifier fallback:
 
 ```text
-fast_refs(symbol="<name>", include_definition=true, limit=200)
+fast_refs(symbol="<name>", include_definition=true, limit=200, workspace="<workspace_id>")
 ```
 
 If the name is overloaded, disambiguate with the file path and rerun.
@@ -86,7 +86,7 @@ If the name is overloaded, disambiguate with the file path and rerun.
 3. Inspect the symbol and its role:
 
 ```text
-deep_dive(symbol="<name>", context_file="<path>", depth="context")
+deep_dive(symbol="<name>", context_file="<path>", depth="context", workspace="<workspace_id>")
 ```
 
 Look for trait implementations, `#[cfg(test)]`, CLI/MCP registration, parser factory registration, annotation-driven entry points, and cross-language extractor contracts.
@@ -94,7 +94,7 @@ Look for trait implementations, `#[cfg(test)]`, CLI/MCP registration, parser fac
 4. Search for non-graph usage:
 
 ```text
-fast_search(query="<symbol-name>", limit=50)
+fast_search(query="<symbol-name>", limit=50, workspace="<workspace_id>")
 ```
 
 Check strings, config, route names, command names, JSON/TOML/YAML keys, shell scripts, CI files, macro sites, and plugin manifests.
@@ -102,7 +102,7 @@ Check strings, config, route names, command names, JSON/TOML/YAML keys, shell sc
 5. Check impact before editing:
 
 ```text
-blast_radius(file_paths=["<path>"], include_tests=true, max_depth=2)
+blast_radius(file_paths=["<path>"], include_tests=true, max_depth=2, workspace="<workspace_id>")
 ```
 
 If the candidate lives in shared indexing, database, search ranking, workspace registry, parser extraction, or MCP handling code, escalate to design review before deletion.

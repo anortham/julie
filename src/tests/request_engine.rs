@@ -667,6 +667,7 @@ fn mcp_catalog_requires_a_non_null_workspace_for_scoped_tools() {
         "get_symbols",
         "patterns",
     ];
+    assert_eq!(scoped.len(), 9);
 
     for name in scoped {
         let listed = list["tools"]
@@ -702,6 +703,35 @@ fn mcp_catalog_requires_a_non_null_workspace_for_scoped_tools() {
             .as_array()
             .is_some_and(|required| required.iter().any(|field| field == "workspace"))
     );
+}
+
+#[tokio::test]
+async fn manage_workspace_health_accepts_workspace_id_and_rejects_unbound_call_with_guidance() {
+    let fixture = RequestFixture::indexed().await;
+    let workspace_id = julie_core::workspace::registry::generate_workspace_id(
+        &fixture.root.to_string_lossy(),
+    )
+    .unwrap();
+
+    fixture
+        .execute(
+            "manage_workspace",
+            serde_json::json!({ "operation": "health", "workspace_id": workspace_id }),
+        )
+        .await
+        .unwrap();
+
+    let error = fixture
+        .execute_with_envelope_workspace(
+            "manage_workspace",
+            serde_json::json!({ "operation": "health" }),
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert!(error.message.contains(
+        "manage_workspace(operation=\"open\", path=\"/absolute/project\")"
+    ));
 }
 
 #[tokio::test]
