@@ -4,7 +4,7 @@ title: "Machine service: one Rust service per machine replaces per-session
   Miller and Julie"
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-12T01:00:49.178Z
+updated: 2026-09-12T01:44:54.179Z
 tags:
   - machine-service
   - architecture
@@ -15,39 +15,41 @@ tags:
 
 ## Direction
 
-Ship v8 as one Rust service per developer machine with stateless MCP over HTTP, a stdio shim, and a JSON API over the shared request engine. The approved design is `docs/plans/2026-09-09-machine-service-design.md`.
+Ship v8 as one Rust machine service with stateless MCP over HTTP, a stdio shim, and a JSON API over the shared request engine. The approved design remains docs/plans/2026-09-09-machine-service-design.md.
 
-## Non-negotiable architecture
+## Approved architecture constraints
 
-- Every workspace-scoped MCP tool requires an explicit absolute workspace path or registered workspace ID. The shim never infers a project from its startup directory, cwd, or `JULIE_WORKSPACE`; ordinary terminal CLI commands may resolve cwd.
-- Each checkout keeps `facts.sqlite` and `tantivy/`; one registry and one service process exist per machine.
-- The only coordination exception is an OS-held `service.lock` for the service lifetime. Do not add PID election, stale-lock recovery, per-checkout locks, brokers, leases, or migrations for derived indexes.
-- Preserve the proven tool surface unless telemetry supports a rename. Phase 6b is deferred until about 2026-09-25 after two weeks of telemetry against `docs/findings/2026-09-11-machine-service-phase6a-gate.md`. Continuous testing requires its own design review.
+- Every scoped MCP call uses an explicit absolute workspace path or registered ID. No shim cwd or JULIE_WORKSPACE inference; terminal CLI cwd convenience remains.
+- Each checkout owns facts.sqlite and Tantivy; one registry and one service exist per machine.
+- Preserve the OS-held service singleton and existing mutation gate. No PID election, leases, fencing, brokers, additional durable coordination stores, or derived-index migrations.
+- Preserve tool names until the phase-6b decision after enough real telemetry, no earlier than approximately 2026-09-25. Continuous testing requires its own design decision.
 
-## Integration status (2026-09-12)
+## Current source and publication state
 
-The owner authorized local integration. Julie `main` now contains the full deployment story and audit at `cda68bed`; the companion plugin `main` contains `db4dd894`. Both were fast-forward merges. No push, tag, publication, deployment, or release was authorized or performed.
+Deployment work was merged locally at cda68bed; Julie main is eabf93cb and plugin main db4dd894. Previous cda68bed evidence: full gate 2221 development + 13 CLI + 69 dogfood tests; plugin 22 tests. This is historical verification, not evidence for future changes.
 
-Committed-source verification at `cda68bed`: full gate 5/5 in 27.9s; 2,221 development, 13 CLI, and 69 dogfood tests; no process leaks. The preceding audit also passed formatting and clippy. The plugin main at `db4dd894` passed all 22 tests. Fresh isolated service startup and workspace/edit probes passed. See `docs/findings/2026-09-11-v8-architecture-audit.md`.
+GitHub checks during the assessment found no v8.0.0 release; latest was v7.18.1. Plugin public main remains an orphan distribution history. Publication order and a retained source reference for any pinned reusable workflow must be explicit. No push, tag, publication, deployment, or release is authorized.
 
-The plugin changes are on local `main` in `~/source/julie-plugin`. Its recorded `origin/main` ref has an unrelated pre-existing root history; reconcile that publication path before a push. Fresh plugin installation and native macOS/Windows archive builds remain unverified and must be checked before release.
+## New planning direction
 
-## Product sequence
+The owner requested actionable plans from the Julie-versus-Miller assessment. The roadmap is docs/plans/2026-09-11-revival-roadmap.md, with five linked proposed implementation briefs: correctness, retrieval contracts, runtime lifecycle, deployment/guidance, and replacement qualification. They were independently challenged by Sol and reconciled by Astra. They are ready for owner review; implementation has not started and their narrow proposed architecture exceptions are not yet implementation approval.
 
-1. Semantic-by-default search — merged.
-2. Registry and index hygiene — merged.
-3. Test speed — merged.
-4. Deployment story — merged locally to main; publication remains unapproved.
-5. Code cleanup.
-6. Dashboard.
-7. Dashboard troubleshooting and bug-report evidence.
+Proposed next priority is freshness and request isolation, then precise retrieval and one production lifecycle, then installation qualification and measured adoption. General dashboard expansion remains outside these plans. Navigation-default promotion and full Miller retirement are separate decisions; symbol operations, existing web bridge coverage, external content and continuous testing receive explicit evidence-based dispositions rather than silent deferral or automatic ports.
 
-Each later item gets its own brainstorm, plan, worktree, and gate. Push and release remain owner approval boundaries.
+## Findings that constrain execution
 
-## Known follow-ups
+- Watcher rescan flags have no active recovery consumer; time-only dedup can discard distinct saves. Recovery must preserve unreadable discovered files and rebuild projections even when facts already committed.
+- Request semantics mutate shared handler state. Regression must pause at the actual dispatch/provider-lookup race seam.
+- Partial embeddings do not resume after restart. Eligibility comes from pipeline filters and variable budgets over the current snapshot, with distinct blob/ordinal/encoder storage keys, not raw facts counts.
+- Active RuntimeFactory has global cold-init locking and no runtime eviction. Old lifecycle machinery is not production. Safe teardown must join blocking embedding writers, not just abort outer async handles.
+- Reference sites lose spans/identity; scoped content retrieval and paging/completeness need better contracts.
+- Correction to the assessment: call_path(mode="web") already exists. Extend and qualify it; do not build another bridge subsystem.
+- Nine final MCP schemas already require workspace. The actual guidance gaps are management examples, stale loaded instructions, and first-512 placement.
+- Versioned installs must preserve dev-link's explicit maintainer override. Current win-test helper does not support Julie. Four native artifact/client routes still need qualification.
 
-- Service memory remains unbounded by an LRU and was observed at 1.4–2.9 GB with multiple checkouts.
-- `RuntimeFactory::acquire` holds the runtimes write lock during cold initialization.
-- Paging trailers can omit workspace and non-default filters.
-- Partial semantic vector backfill does not resume after restart.
-- A running old stdio shim rejects a newer service until its harness restarts.
+## References
+
+- docs/findings/2026-09-11-julie-miller-replacement-review.md
+- docs/plans/2026-09-11-revival-roadmap.md
+- docs/findings/2026-09-11-v8-architecture-audit.md
+- docs/findings/2026-09-11-machine-service-phase6a-gate.md
