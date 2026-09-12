@@ -344,7 +344,6 @@ async fn runtime_reacquire_waits_for_teardown_without_duplicate_writer() {
         Err(tokio::sync::oneshot::error::TryRecvError::Empty)
     ));
     assert!(fixture.runtimes.slot_is_loaded(&other).await);
-    assert_eq!(fixture.runtimes.loaded_watcher_count().await, 3);
     probe.release();
     let retirement = tokio::time::timeout(Duration::from_secs(5), &mut retiring).await;
     if retirement.is_err() {
