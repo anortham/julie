@@ -116,11 +116,29 @@ jobs:
           ARCHIVE=$(bash .github/scripts/pack-release.sh "${{ matrix.target }}" "${GITHUB_REF#refs/tags/v}" "target/${{ matrix.target }}/release" . | tail -n 1)
           echo "ARCHIVE=$(basename "${ARCHIVE}")" >> $GITHUB_ENV
 
+      - name: Write archive checksum
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          fi
+
+      - name: Verify packaged archive
+        shell: bash
+        run: |
+          WINDOWS=()
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then WINDOWS+=(--windows); fi
+          python3 .github/scripts/verify-release-archive.py "${ARCHIVE}" --sha256 "${ARCHIVE}.sha256" --version "${GITHUB_REF#refs/tags/v}" --sidecar-version "0.1.0" "${WINDOWS[@]}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARCHIVE }}
-          path: ${{ env.ARCHIVE }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
 
   # ==========================================================================
   # Create GitHub release with all artifacts
@@ -129,6 +147,8 @@ jobs:
     name: Create Release
     needs: [build]
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -206,26 +226,76 @@ jobs:
             done
           done
 
-      - name: Verify Release
+      - name: Verify four public release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Release v${{ steps.version.outputs.version }} created successfully"
-          echo ""
-          echo "Bundled binaries: julie-server, julie-semantic-sidecar"
-          echo ""
-          echo "Platforms built:"
-          echo "  - Windows (x86_64-pc-windows-msvc)"
-          echo "  - macOS Apple Silicon (aarch64-apple-darwin)"
-          echo "  - macOS Intel (x86_64-apple-darwin)"
-          echo "  - Linux (x86_64-unknown-linux-gnu)"
-          echo ""
-          echo "View release: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.version }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu; do
+            gh release download "v${VERSION}" --repo "${{ github.repository }}" --pattern "julie-v${VERSION}-${target}.tar.gz" --pattern "julie-v${VERSION}-${target}.tar.gz.sha256" --dir public-assets
+          done
+          gh release download "v${VERSION}" --repo "${{ github.repository }}" --pattern "julie-v${VERSION}-x86_64-pc-windows-msvc.zip" --pattern "julie-v${VERSION}-x86_64-pc-windows-msvc.zip.sha256" --dir public-assets
+          python3 .github/scripts/verify-release-assets.py public-assets "${VERSION}"
 
-      - name: Trigger plugin update
+  update-plugin:
+    name: Update plugin from verified release
+    needs: [release]
+    uses: anortham/julie-plugin/.github/workflows/update-binaries.yml@7d3996a7bb6130747c631446caacb800a1c34622
+    with:
+      version: ${{ needs.release.outputs.version }}
+      tag: v${{ needs.release.outputs.version }}
+      plugin_source_sha: 7d3996a7bb6130747c631446caacb800a1c34622
+    secrets:
+      publication_token: ${{ secrets.PLUGIN_REPO_TOKEN }}
+
+  verify-plugin-publication:
+    name: Verify published plugin snapshot
+    needs: [release, update-plugin]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the exact published plugin commit
         env:
           GH_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
         run: |
-          echo "Triggering plugin repo update for v${{ steps.version.outputs.version }}..."
-          gh workflow run "Update Plugin" \
-            --repo anortham/julie-plugin \
-            -f version="${{ steps.version.outputs.version }}" \
-            -f tag="v${{ steps.version.outputs.version }}"
+          git clone https://x-access-token:${GH_TOKEN}@github.com/anortham/julie-plugin.git plugin
+          cd plugin
+          git checkout --detach "${{ needs.update-plugin.outputs.published_sha }}"
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.5.0
+      - name: Verify manifests, archives, hooks, and instructions
+        run: |
+          cd plugin
+          VERSION="${{ needs.release.outputs.version }}"
+          node --test hooks/*.test.cjs
+          node - "$VERSION" <<'NODE'
+          const fs = require('node:fs');
+          const version = process.argv[2];
+          const manifests = [
+            ['package.json', value => value.version],
+            ['plugin.json', value => value.version],
+            ['.claude-plugin/plugin.json', value => value.version],
+            ['.codex-plugin/plugin.json', value => value.version],
+            ['.claude-plugin/marketplace.json', value => value.plugins[0].version],
+            ['.agents/plugins/marketplace.json', value => value.plugins[0].version],
+          ];
+          for (const [path, getVersion] of manifests) {
+            if (getVersion(JSON.parse(fs.readFileSync(path))) !== version) throw new Error(`version mismatch: ${path}`);
+          }
+          for (const path of ['mcp.json', 'mcp_codex.json', 'mcp_config.json', 'hooks/hooks.json', 'JULIE_AGENT_INSTRUCTIONS.md']) {
+            if (!fs.statSync(path).size) throw new Error(`missing required plugin file: ${path}`);
+          }
+          NODE
+          for archive in \
+            "julie-v${VERSION}-aarch64-apple-darwin.tar.gz" \
+            "julie-v${VERSION}-x86_64-apple-darwin.tar.gz" \
+            "julie-v${VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            "julie-v${VERSION}-x86_64-pc-windows-msvc.zip"; do
+            test -f "bin/archives/$archive"
+          done
+          [ "$(find bin/archives -maxdepth 1 -type f -name "julie-v${VERSION}-*" | wc -l)" -eq 4 ]
+          find . -type l -print -quit | grep -q . && { echo "generated plugin contains a symlink" >&2; exit 1; } || true
+          for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu x86_64-pc-windows-msvc; do
+            test ! -e "bin/$target"
+          done

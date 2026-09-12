@@ -92,7 +92,8 @@ fn release_packaging_uses_shasum_fallback_and_preserves_manifest_files() {
     fs::set_permissions(&shasum, fs::Permissions::from_mode(0o755)).unwrap();
 
     for command in [
-        "basename", "cp", "cut", "gzip", "mkdir", "mktemp", "mv", "rm", "tar",
+        "basename", "cp", "cut", "find", "grep", "gzip", "mkdir", "mktemp", "mv", "python3", "rm",
+        "tar",
     ] {
         symlink(resolve(command), commands.join(command)).unwrap();
     }
@@ -138,10 +139,37 @@ fn release_packaging_uses_shasum_fallback_and_preserves_manifest_files() {
         .unwrap();
     assert!(manifest.status.success());
     let manifest: serde_json::Value = serde_json::from_slice(&manifest.stdout).unwrap();
+    let mut covered = std::collections::BTreeSet::new();
     for file in manifest["files"].as_array().unwrap() {
         let path = file["path"].as_str().unwrap();
         assert!(entries.lines().any(|entry| entry == path), "{path}");
+        assert!(covered.insert(path));
+        let extracted = Command::new("tar")
+            .args(["-xOf"])
+            .arg(&archive)
+            .arg(path)
+            .output()
+            .unwrap();
+        let extracted_path = tmp.path().join(format!("checksum-{path}"));
+        fs::write(&extracted_path, extracted.stdout).unwrap();
+        let actual = Command::new("sha256sum")
+            .arg(&extracted_path)
+            .output()
+            .unwrap();
+        let expected_checksum = file["sha256"].as_str().unwrap();
+        let checksum = String::from_utf8(actual.stdout).unwrap();
+        assert_eq!(
+            checksum.split_whitespace().next().unwrap(),
+            expected_checksum
+        );
     }
+    assert_eq!(
+        covered.len(),
+        entries
+            .lines()
+            .filter(|entry| *entry != "sidecar-package-manifest.json")
+            .count()
+    );
 }
 
 fn read_repo_file(relative_path: &str) -> String {
@@ -154,4 +182,206 @@ fn repo_file(relative_path: &str) -> PathBuf {
         .parent()
         .unwrap()
         .join(relative_path)
+}
+
+#[test]
+fn release_workflow_qualifies_archives_and_awaits_the_pinned_plugin_workflow() {
+    let workflow = read_repo_file(".github/workflows/release.yml");
+    let verifier = read_repo_file(".github/scripts/verify-release-archive.py");
+    let notes = read_repo_file("docs/release-notes/v8.0.0.md");
+
+    assert!(workflow.contains("Verify packaged archive"));
+    assert!(workflow.contains("verify-release-archive.py"));
+    assert!(workflow.contains("anortham/julie-plugin/.github/workflows/update-binaries.yml@"));
+    assert!(!workflow.contains("gh workflow run \"Update Plugin\""));
+    assert!(workflow.contains("uses: actions/setup-node@v4"));
+    assert!(workflow.contains("node-version: 22.5.0"));
+    assert!(workflow.contains("node --test hooks/*.test.cjs"));
+    assert!(verifier.contains("sidecar-package-manifest.json"));
+    assert!(verifier.contains("julie-semantic-sidecar"));
+    assert!(verifier.contains("instructions"));
+    for section in [
+        "## Semantic search by default",
+        "## Upgrade notes",
+        "## Known caveats",
+    ] {
+        assert!(notes.contains(section), "{section}");
+    }
+    for platform in [
+        "macOS Apple Silicon",
+        "macOS Intel",
+        "Windows x86_64",
+        "Linux x86_64",
+    ] {
+        assert!(notes.contains(platform), "{platform}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
+    use std::{fmt::Write, os::unix::fs::PermissionsExt, process::Command};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let verifier = repo_file(".github/scripts/verify-release-archive.py");
+    let assets_verifier = repo_file(".github/scripts/verify-release-assets.py");
+    let sha256 = |path: &std::path::Path| {
+        let output = Command::new("python3")
+            .args(["-c", "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], 'rb').read()).hexdigest())"])
+            .arg(path)
+            .output()
+            .unwrap();
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    };
+    let package = |name: &str, variant: &str| {
+        let root = tmp.path().join(name);
+        fs::create_dir_all(&root).unwrap();
+        let server = root.join("julie-server");
+        fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) exit 0 ;; *) echo '{\"result\":{\"instructions\":\"open workspace\"}}' ;; esac\n").unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+        let sidecar = root.join("julie-semantic-sidecar");
+        fs::write(&sidecar, "#!/bin/sh\necho 'julie-semantic-sidecar 0.1.0'\n").unwrap();
+        fs::set_permissions(&sidecar, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::write(root.join("README.md"), "readme").unwrap();
+        fs::write(root.join("LICENSE"), "license").unwrap();
+        let mut files = String::new();
+        for file in [
+            "LICENSE",
+            "README.md",
+            "julie-semantic-sidecar",
+            "julie-server",
+        ] {
+            write!(
+                files,
+                r#"{{"path":"{file}","sha256":"{}"}},"#,
+                sha256(&root.join(file))
+            )
+            .unwrap();
+        }
+        let manifest = format!(
+            r#"{{"source":{{"files":[{{"path":"README.md"}}]}},"files":[{}]}}"#,
+            files.trim_end_matches(',')
+        );
+        fs::write(root.join("sidecar-package-manifest.json"), manifest).unwrap();
+        match variant {
+            "missing-sidecar" => fs::remove_file(&sidecar).unwrap(),
+            "wrong-version" => {
+                let old_checksum = sha256(&server);
+                fs::write(&server, "#!/bin/sh\necho 'julie-server 8.0.1'\n").unwrap();
+                let manifest =
+                    fs::read_to_string(root.join("sidecar-package-manifest.json")).unwrap();
+                fs::write(
+                    root.join("sidecar-package-manifest.json"),
+                    manifest.replace(&old_checksum, &sha256(&server)),
+                )
+                .unwrap();
+            }
+            "malformed-manifest" => {
+                fs::write(root.join("sidecar-package-manifest.json"), "{").unwrap()
+            }
+            "wrong-checksum" => fs::write(
+                root.join("sidecar-package-manifest.json"),
+                r#"{"source":{"files":[]},"files":[{"path":"README.md","sha256":"wrong"}]}"#,
+            )
+            .unwrap(),
+            _ => {}
+        }
+        let archive = tmp.path().join(format!("{name}.tar.gz"));
+        assert!(
+            Command::new("tar")
+                .args(["-czf"])
+                .arg(&archive)
+                .arg("-C")
+                .arg(&root)
+                .arg(".")
+                .status()
+                .unwrap()
+                .success()
+        );
+        let checksum = tmp.path().join(format!("{name}.sha256"));
+        fs::write(
+            &checksum,
+            format!("{}  {}\n", sha256(&archive), archive.display()),
+        )
+        .unwrap();
+        let result = Command::new("python3")
+            .arg(&verifier)
+            .arg(&archive)
+            .args([
+                "--version",
+                "8.0.0",
+                "--sidecar-version",
+                "0.1.0",
+                "--sha256",
+            ])
+            .arg(&checksum)
+            .output()
+            .unwrap();
+        (variant == "valid", result)
+    };
+
+    for (name, variant) in [
+        ("valid", "valid"),
+        ("missing", "missing-sidecar"),
+        ("version", "wrong-version"),
+        ("malformed", "malformed-manifest"),
+        ("checksum", "wrong-checksum"),
+    ] {
+        let (expected, result) = package(name, variant);
+        assert_eq!(
+            result.status.success(),
+            expected,
+            "{variant}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        if variant == "wrong-version" {
+            assert!(
+                String::from_utf8_lossy(&result.stderr)
+                    .contains("packaged server version does not match release version")
+            );
+        }
+    }
+
+    let assets = tmp.path().join("assets");
+    fs::create_dir_all(&assets).unwrap();
+    let archives = [
+        "julie-v8.0.0-aarch64-apple-darwin.tar.gz",
+        "julie-v8.0.0-x86_64-apple-darwin.tar.gz",
+        "julie-v8.0.0-x86_64-unknown-linux-gnu.tar.gz",
+        "julie-v8.0.0-x86_64-pc-windows-msvc.zip",
+    ];
+    for archive in archives {
+        fs::write(assets.join(archive), archive).unwrap();
+        if archive != "julie-v8.0.0-x86_64-pc-windows-msvc.zip" {
+            fs::write(
+                assets.join(format!("{archive}.sha256")),
+                format!("{}  {archive}\n", sha256(&assets.join(archive))),
+            )
+            .unwrap();
+        }
+    }
+    let partial = Command::new("python3")
+        .arg(&assets_verifier)
+        .arg(&assets)
+        .arg("8.0.0")
+        .output()
+        .unwrap();
+    assert!(!partial.status.success());
+    assert!(String::from_utf8_lossy(&partial.stderr).contains("incomplete public asset set"));
+    fs::write(
+        assets.join("julie-v8.0.0-x86_64-pc-windows-msvc.zip.sha256"),
+        "wrong  julie-v8.0.0-x86_64-pc-windows-msvc.zip\n",
+    )
+    .unwrap();
+    let wrong_checksum = Command::new("python3")
+        .arg(&assets_verifier)
+        .arg(&assets)
+        .arg("8.0.0")
+        .output()
+        .unwrap();
+    assert!(!wrong_checksum.status.success());
+    assert!(
+        String::from_utf8_lossy(&wrong_checksum.stderr)
+            .contains("public archive checksum mismatch")
+    );
 }
