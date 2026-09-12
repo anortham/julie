@@ -43,10 +43,7 @@ fn test_rejects_private_var_root_literal_on_macos() {
     );
 }
 
-/// `dirs::home_dir()` returns `$HOME` verbatim. If a workspace path canonicalizes
-/// to the same directory through a symlink (common when HOME lives under
-/// `/var/folders` on macOS), the guard must still fire. Uses serial_test to
-/// avoid clobbering HOME for parallel tests.
+#[cfg(unix)]
 #[test]
 #[serial_test::serial(home_env)]
 fn test_rejects_canonicalized_home_when_home_is_symlinked() {
@@ -80,6 +77,18 @@ fn test_rejects_canonicalized_home_when_home_is_symlinked() {
             raw.display(),
             canonical.display()
         );
+    }
+}
+
+#[test]
+#[serial_test::serial(home_env)]
+fn test_rejects_native_home_and_its_canonical_path() {
+    let Some(home) = dirs::home_dir() else {
+        return;
+    };
+    assert!(is_sensitive_workspace_root(&home));
+    if let Ok(canonical) = home.canonicalize() {
+        assert!(is_sensitive_workspace_root(&canonical));
     }
 }
 
