@@ -214,7 +214,10 @@ fn version_mismatch_error_formats_and_maps_to_exit_code_3() {
     };
     assert_eq!(
         err.to_string(),
-        "julie: service version 1.0.0 does not match client version 1.0.1; run: julie-server service restart"
+        format!(
+            "julie: service version 1.0.0 does not match client version 1.0.1; run: \"{}\" service restart; then restart old harness clients",
+            std::env::current_exe().unwrap().display()
+        )
     );
     assert_eq!(crate::service::client::exit_code(&err), 3);
 }

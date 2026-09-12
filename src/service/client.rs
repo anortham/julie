@@ -13,7 +13,8 @@ impl std::fmt::Display for ConnectError {
         match self {
             ConnectError::VersionMismatch { service, client } => write!(
                 f,
-                "julie: service version {service} does not match client version {client}; run: julie-server service restart"
+                "julie: service version {service} does not match client version {client}; run: \"{}\" service restart; then restart old harness clients",
+                std::env::current_exe().map(|path| path.display().to_string()).unwrap_or_else(|_| "julie-server".into())
             ),
             ConnectError::Unavailable(why) => write!(f, "julie: service unavailable: {why}"),
         }

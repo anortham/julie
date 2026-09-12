@@ -144,11 +144,51 @@ fn version_mismatch_exits_3_with_the_exact_message() {
     assert_eq!(
         String::from_utf8_lossy(&out.stderr).trim(),
         format!(
-            "julie: service version 0.0.0-other does not match client version {}; run: julie-server service restart",
-            env!("CARGO_PKG_VERSION")
+              "julie: service version 0.0.0-other does not match client version {}; run: \"{}\" service restart; then restart old harness clients",
+              env!("CARGO_PKG_VERSION"),
+              bin().display()
         )
     );
     let _ = svc.kill();
+}
+
+#[test]
+fn restart_stops_mismatched_service_and_starts_current_binary() {
+    let home = home();
+    let mut service = Command::new(bin())
+        .env("JULIE_HOME", home.path())
+        .env("JULIE_SERVICE_IDLE_SECS", "0")
+        .arg("service")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(wait_for(&service_json(&home), true, Duration::from_secs(5)));
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(service_json(&home)).unwrap()).unwrap();
+    let old_pid = record["pid"].as_u64().unwrap();
+    record["version"] = "0.0.0-other".into();
+    std::fs::write(service_json(&home), record.to_string()).unwrap();
+
+    let restarted = Command::new(bin())
+        .env("JULIE_HOME", home.path())
+        .args(["service", "restart"])
+        .output()
+        .unwrap();
+    assert!(restarted.status.success(), "{}", String::from_utf8_lossy(&restarted.stderr));
+    let record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(service_json(&home)).unwrap()).unwrap();
+    assert_eq!(record["version"], env!("CARGO_PKG_VERSION"));
+    assert_ne!(record["pid"].as_u64(), Some(old_pid));
+    assert!(service.try_wait().unwrap().is_some());
+
+    let stopped = Command::new(bin())
+        .env("JULIE_HOME", home.path())
+        .args(["service", "stop"])
+        .output()
+        .unwrap();
+    assert!(stopped.status.success());
+    let _ = service.wait();
 }
 
 #[test]

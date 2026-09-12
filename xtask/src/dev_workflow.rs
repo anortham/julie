@@ -58,6 +58,7 @@ impl PreviousKind {
 }
 
 /// Replace bundled plugin binaries with symlinks to the dev `target/release` binary.
+/// Links the paired server and semantic-sidecar development binaries into plugin caches.
 pub fn run_dev_link(
     workspace_root: &Path,
     dry_run: bool,
@@ -151,17 +152,7 @@ pub fn run_dev_link(
 pub fn run_dev_restart(out: &mut impl Write) -> Result<()> {
     writeln!(
         out,
-        "dev-restart: the in-process server runs per-MCP-session — there is no \
-         shared daemon to restart."
-    )?;
-    writeln!(
-        out,
-        "  after `cargo build --release`, restart your MCP client (or start a new \
-         session) to load the new binary;"
-    )?;
-    writeln!(
-        out,
-        "  the per-workspace leader lock means the first new session becomes the writer."
+        "dev-restart: after `cargo build --release`, run `target/release/julie-server service restart`, then restart old harness clients."
     )?;
     Ok(())
 }
@@ -188,9 +179,9 @@ fn binary_name() -> &'static str {
 
 fn split_binary_names() -> &'static [&'static str] {
     if cfg!(windows) {
-        &["julie-server.exe"]
+        &["julie-server.exe", "julie-semantic-sidecar.exe"]
     } else {
-        &["julie-server"]
+        &["julie-server", "julie-semantic-sidecar"]
     }
 }
 
@@ -225,9 +216,16 @@ fn discover_plugin_bin_dirs(cache_root: &Path, report: &mut DevLinkReport) -> Re
             }
 
             let arch_dir = arch_entry.path();
-            let has_known_binary = split_binary_names().iter().any(|binary| {
+            let has_known_binary = split_binary_names().iter().all(|binary| {
                 let candidate = arch_dir.join(binary);
                 candidate.exists() || candidate.is_symlink()
+            }) || arch_dir.join("versions").read_dir().ok().is_some_and(|entries| {
+                entries.flatten().any(|entry| {
+                    let version = entry.path();
+                    version.join(".ready").is_file()
+                        && version.join("package-manifest.json").is_file()
+                        && split_binary_names().iter().all(|binary| version.join(binary).is_file())
+                })
             });
             if has_known_binary {
                 results.push(arch_dir);
@@ -326,7 +324,9 @@ mod tests {
         let bin_dir = root.join(version).join("bin").join(arch);
         fs::create_dir_all(&bin_dir)?;
         let path = bin_dir.join(binary_name());
-        File::create(&path)?;
+        for binary in split_binary_names() {
+            File::create(bin_dir.join(binary))?;
+        }
         Ok(path)
     }
 
@@ -362,6 +362,41 @@ mod tests {
             assert!(meta.file_type().is_symlink(), "{binary} is a symlink");
             assert_eq!(fs::read_link(&cache_bin).unwrap(), target.join(binary));
         }
+    }
+
+    #[test]
+    fn dev_link_creates_server_and_sidecar_override_for_versioned_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let cache = tmp.path().join("cache").join("julie-plugin").join("julie");
+        let target = make_fake_release_bins(&workspace).unwrap();
+        let arch_dir = cache.join("7.9.3").join("bin").join("aarch64-apple-darwin");
+        let version_dir = arch_dir.join("versions").join("julie-v7.9.3-aarch64-apple-darwin.tar.gz");
+        fs::create_dir_all(&version_dir).unwrap();
+        for binary in split_binary_names() {
+            File::create(version_dir.join(binary)).unwrap();
+        }
+        fs::write(version_dir.join(".ready"), "julie-v7.9.3-aarch64-apple-darwin.tar.gz\n").unwrap();
+        fs::write(version_dir.join("package-manifest.json"), "{}\n").unwrap();
+
+        let mut out = Vec::new();
+        let report = run_dev_link(&workspace, false, &cache, &mut out).unwrap();
+
+        assert_eq!(report.linked.len(), split_binary_names().len());
+        for binary in split_binary_names() {
+            assert!(arch_dir.join(binary).is_symlink());
+            assert_eq!(fs::read_link(arch_dir.join(binary)).unwrap(), target.join(binary));
+        }
+    }
+
+    #[test]
+    fn dev_restart_reports_shared_service_restart() {
+        let mut out = Vec::new();
+        run_dev_restart(&mut out).unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "dev-restart: after `cargo build --release`, run `target/release/julie-server service restart`, then restart old harness clients.\n"
+        );
     }
 
     #[test]
