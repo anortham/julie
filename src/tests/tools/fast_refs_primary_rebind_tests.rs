@@ -198,17 +198,20 @@ async fn test_fast_refs_lists_a_reexport_line_once() -> Result<()> {
     let result = fast_refs("Thing", 10, None).call_tool(&context).await?;
 
     let result_text = extract_text_from_result(&result);
-    let reexport_lines: Vec<&str> = result_text
-        .lines()
-        .filter(|line| line.contains("src/lib.rs"))
+    let reexport_references: Vec<&serde_json::Value> = result.structured_content.as_ref().unwrap()
+        ["references"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|reference| reference["filePath"] == "src/lib.rs")
         .collect();
     assert_eq!(
-        reexport_lines.len(),
+        reexport_references.len(),
         1,
-        "the `pub use` line must be listed once: {result_text}"
+        "the `pub use` line must be listed once: {reexport_references:#?}\n{result_text}"
     );
     assert!(
-        reexport_lines[0].contains("src/lib.rs:2") && reexport_lines[0].contains("Imports"),
+        reexport_references[0]["lineNumber"] == 2 && reexport_references[0]["kind"] == "imports",
         "the re-export is an import reference: {result_text}"
     );
     assert!(

@@ -80,6 +80,89 @@ fn fast_refs_labels_relationship_fallback_without_claiming_exactness() {
 }
 
 #[test]
+fn fast_refs_import_filter_retains_canonical_site_evidence() {
+    let files = &[
+        ("src/inner.rs", "pub struct Thing;\n"),
+        ("src/lib.rs", "pub use crate::inner::Thing;\n"),
+    ];
+    let unfiltered = refs(files, "Thing", 100, None);
+    let filtered = refs(files, "Thing", 100, Some("import"));
+    let unfiltered_imports: HashSet<_> = unfiltered
+        .references
+        .iter()
+        .filter(|reference| reference.kind == RelationshipKind::Imports)
+        .map(|reference| {
+            (
+                reference.id.clone(),
+                reference.span.map(|span| {
+                    (
+                        span.start_line,
+                        span.start_column,
+                        span.end_line,
+                        span.end_column,
+                        span.start_byte,
+                        span.end_byte,
+                    )
+                }),
+            )
+        })
+        .collect();
+    let filtered_imports: HashSet<_> = filtered
+        .references
+        .iter()
+        .map(|reference| {
+            (
+                reference.id.clone(),
+                reference.span.map(|span| {
+                    (
+                        span.start_line,
+                        span.start_column,
+                        span.end_line,
+                        span.end_column,
+                        span.start_byte,
+                        span.end_byte,
+                    )
+                }),
+            )
+        })
+        .collect();
+
+    assert_eq!(filtered_imports, unfiltered_imports);
+    assert!(
+        filtered
+            .references
+            .iter()
+            .all(|reference| reference.span.is_some())
+    );
+}
+
+#[test]
+fn fast_refs_keeps_two_same_line_import_sites_with_distinct_spans() {
+    let found = refs(
+        &[
+            ("src/a.rs", "pub struct Thing;\n"),
+            ("src/b.rs", "pub struct Thing;\n"),
+            (
+                "src/lib.rs",
+                "pub use crate::a::Thing; pub use crate::b::Thing;\n",
+            ),
+        ],
+        "Thing",
+        100,
+        Some("import"),
+    );
+    let sites: Vec<_> = found
+        .references
+        .iter()
+        .filter(|reference| reference.file_path == "src/lib.rs")
+        .collect();
+
+    assert_eq!(sites.len(), 2);
+    assert_ne!(sites[0].id, sites[1].id);
+    assert_ne!(sites[0].span, sites[1].span);
+}
+
+#[test]
 fn test_target_workspace_includes_identifier_refs() {
     let found = refs(
         &[

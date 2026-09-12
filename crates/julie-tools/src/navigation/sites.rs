@@ -24,7 +24,7 @@ pub struct Site {
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-fn normalized(span: Span) -> NormalizedSpan {
+pub(crate) fn normalized(span: Span) -> NormalizedSpan {
     NormalizedSpan {
         start_line: span.start_line,
         start_column: span.start_col,

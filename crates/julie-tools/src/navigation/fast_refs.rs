@@ -22,7 +22,7 @@ use tracing::debug;
 
 use super::formatting::format_lean_refs_results;
 use super::resolution::{WorkspaceTarget, has_parent_named, parse_qualified_name, to_symbol};
-use super::sites::{Site, identifier_kind_name, reference_sites};
+use super::sites::{Site, identifier_kind_name, normalized, reference_sites};
 
 const MAX_DEFINITIONS: usize = 50;
 
@@ -245,17 +245,57 @@ fn definition_ids(graph: &Graph, symbol: &str) -> Vec<SymbolId> {
 fn import_reference(graph: &Graph, id: SymbolId) -> Relationship {
     let row = graph.symbol(id);
     Relationship {
-        id: format!("import_{}_{}", row.path, row.span.start_line),
+        id: row.id.clone(),
         from_symbol_id: row.id.clone(),
         to_symbol_id: String::new(),
         kind: RelationshipKind::Imports,
         file_path: row.path.clone(),
         line_number: row.span.start_line,
-        span: None,
+        span: Some(normalized(row.span)),
         reference_site_is_exact: false,
         confidence: 1.0,
-        metadata: None,
+        metadata: Some(HashMap::from([
+            (
+                "reference_site_provenance".into(),
+                serde_json::json!("import_symbol"),
+            ),
+            ("import_symbol_id".into(), serde_json::json!(row.id)),
+        ])),
     }
+}
+
+fn merge_import_alias(existing: &mut Relationship, mut candidate: Relationship) {
+    if candidate.reference_site_is_exact && !existing.reference_site_is_exact {
+        std::mem::swap(existing, &mut candidate);
+    }
+    existing.kind = RelationshipKind::Imports;
+    existing.confidence = existing.confidence.max(candidate.confidence);
+    let mut metadata = existing.metadata.take().unwrap_or_default();
+    metadata.extend(candidate.metadata.take().unwrap_or_default());
+    metadata.insert(
+        "reference_site_provenance".into(),
+        serde_json::json!("combined"),
+    );
+    existing.metadata = Some(metadata);
+}
+
+fn overlaps_import_alias(import: &Relationship, candidate: &Relationship) -> bool {
+    let import_symbol_id = import
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("import_symbol_id"))
+        .and_then(serde_json::Value::as_str);
+    import.file_path == candidate.file_path
+        && import.kind == RelationshipKind::Imports
+        && import_symbol_id.is_some()
+        && (import_symbol_id == Some(candidate.from_symbol_id.as_str())
+            || match (&import.span, &candidate.span) {
+                (Some(import_span), Some(candidate_span)) => {
+                    import_span.start_byte < candidate_span.end_byte
+                        && candidate_span.start_byte < import_span.end_byte
+                }
+                _ => false,
+            })
 }
 
 fn edge_relationship_kind(kind: EdgeKind) -> RelationshipKind {
@@ -299,23 +339,23 @@ pub fn find_references(
 ) -> FoundReferences {
     let graph = snapshot.graph();
     let mut found = FoundReferences::default();
+    let mut seen = HashSet::new();
+    let mut import_aliases = Vec::new();
 
     let mut definitions = Vec::new();
     for id in definition_ids(graph, symbol) {
         if graph.symbol(id).kind == SymbolKind::Import {
             if reference_kind.is_none_or(|kind| kind == "import") {
-                found.references.push(import_reference(graph, id));
+                let reference = import_reference(graph, id);
+                if seen.insert((reference.file_path.clone(), reference.id.clone())) {
+                    import_aliases.push(found.references.len());
+                    found.references.push(reference);
+                }
             }
         } else {
             definitions.push(id);
         }
     }
-
-    let mut seen: HashSet<(String, String)> = found
-        .references
-        .iter()
-        .map(|reference| (reference.file_path.clone(), reference.id.clone()))
-        .collect();
 
     for &to in &definitions {
         let to_row = graph.symbol(to);
@@ -326,7 +366,7 @@ pub fn find_references(
                 sites.push(Site {
                     id: format!("graph_{}_{}", from_row.id, to_row.id),
                     line: from_row.span.start_line,
-                    span: None,
+                    span: (edge == EdgeKind::Imports).then(|| normalized(from_row.span)),
                     exact: false,
                     kind: edge_relationship_kind(edge),
                     identifier_kind: None,
@@ -339,13 +379,7 @@ pub fn find_references(
             }
             for site in sites {
                 let site_kind = site.identifier_kind.as_ref().map(identifier_kind_name);
-                if reference_kind.is_some_and(|kind| site_kind != Some(kind)) {
-                    continue;
-                }
-                if !seen.insert((from_row.path.clone(), site.id.clone())) {
-                    continue;
-                }
-                found.references.push(Relationship {
+                let reference = Relationship {
                     id: site.id,
                     from_symbol_id: from_row.id.clone(),
                     to_symbol_id: to_row.id.clone(),
@@ -356,10 +390,31 @@ pub fn find_references(
                     reference_site_is_exact: site.exact,
                     confidence: site.confidence,
                     metadata: site.metadata,
-                });
+                };
+                if !seen.insert((reference.file_path.clone(), reference.id.clone())) {
+                    continue;
+                }
                 found
                     .source_names
                     .insert(from_row.id.clone(), from_row.name.clone());
+                if let Some(index) = import_aliases
+                    .iter()
+                    .copied()
+                    .find(|index| overlaps_import_alias(&found.references[*index], &reference))
+                {
+                    merge_import_alias(&mut found.references[index], reference);
+                    continue;
+                }
+                if reference_kind.is_some_and(|kind| {
+                    site_kind != Some(kind)
+                        && !(kind == "import" && reference.kind == RelationshipKind::Imports)
+                }) {
+                    continue;
+                }
+                if reference.kind == RelationshipKind::Imports {
+                    import_aliases.push(found.references.len());
+                }
+                found.references.push(reference);
             }
         }
     }

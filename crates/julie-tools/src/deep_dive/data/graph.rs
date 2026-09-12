@@ -10,7 +10,7 @@ use julie_index::graph::{EdgeKind, Graph, SymbolId};
 use julie_index::search::scoring::is_test_path;
 
 use super::types::RefEntry;
-use crate::navigation::sites::{Site, reference_sites};
+use crate::navigation::sites::{Site, normalized, reference_sites};
 use crate::snapshot_rows::to_symbol;
 
 const TEST_REF_CAP: usize = 10;
@@ -53,7 +53,7 @@ fn ref_entries(
         sites.push(Site {
             id: format!("graph_{}_{}", from_row.id, graph.symbol(to).id),
             line: from_row.span.start_line,
-            span: None,
+            span: (edge == EdgeKind::Imports).then(|| normalized(from_row.span)),
             exact: false,
             kind: edge_relationship_kind(edge),
             identifier_kind: None,
