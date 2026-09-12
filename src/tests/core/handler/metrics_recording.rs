@@ -255,11 +255,6 @@ async fn indexed_metrics_handler() -> Result<(JulieServerHandler, TempDir)> {
         detailed: None,
     };
     let index_result = index_tool.call_tool(&handler).await?;
-    assert_ne!(
-        index_result.is_error,
-        Some(true),
-        "metrics fixture indexing returned an error: {index_result:?}"
-    );
     let workspace = handler
         .get_workspace()
         .await?
@@ -269,6 +264,16 @@ async fn indexed_metrics_handler() -> Result<(JulieServerHandler, TempDir)> {
         .ok()
         .map(|metadata| metadata.len());
     let store_status = workspace.store.status();
+    if index_result.is_error == Some(true) {
+        let preserved_root = temp_dir.keep();
+        panic!(
+            "metrics fixture indexing returned an error: index_result={index_result:?}, preserved_root={}, workspace_root={}, store_root={}, source_exists={}, source_len={source_len:?}, store_status={store_status:?}",
+            preserved_root.display(),
+            workspace.root.display(),
+            workspace.store.root().display(),
+            source_path.exists(),
+        );
+    }
     assert_eq!(
         store_status.graph.symbols,
         2,
