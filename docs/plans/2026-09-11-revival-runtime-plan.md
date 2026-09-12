@@ -1,6 +1,6 @@
 # Plan 3: One bounded production runtime lifecycle
 
-**Status:** 3A baseline, 3B independent cold initialization, and 3C lifecycle implementation are complete; post-change measurement and the final Linux gate remain. Windows validation is deferred to final post-merge validation.
+**Status:** 3A baseline, 3B independent cold initialization, 3C lifecycle implementation, and post-change measurement are complete; the final Linux gate remains. Windows validation is deferred to final post-merge validation.
 **Goal:** Opening a cold checkout does not block warm checkouts, and idle runtime resources are reclaimed safely.
 **Depends on:** Plan 1 recovery and request-local semantics before lifecycle integration.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). Apply `razorback:diagnosing-performance`: baseline before optimization, same workload afterward.
@@ -95,8 +95,8 @@ Use explicit maintenance calls and an injected/current test clock for expiry; no
 - [ ] Active calls, queued writes and semantic backfill are not discarded by eviction.
 - [ ] Teardown/reopen cannot overlap writers for one workspace.
 - [x] Disk stores remain intact and subsequent queries are current (`evicted_runtime_reopens_with_fresh_results_and_existing_vectors`).
-- [ ] Three repeated checkout-churn runs show bounded live runtime resources; before/after RSS, retained slot metadata and warm-query p95 are recorded on the same workload.
-- [ ] Any resource growth or hot-checkout regression beyond the recorded budget is investigated before retaining the change.
+- [x] Three repeated checkout-churn runs show bounded live runtime resources; before/after RSS, retained slot metadata and warm-query p95 are recorded on the same workload.
+- [x] Any resource growth or hot-checkout regression beyond the recorded budget is investigated before retaining the change.
 
 ## 3D. Delete the unused lifecycle alternative
 
@@ -119,6 +119,7 @@ Lead runs the common dev/full gates and one isolated multi-checkout lifecycle pr
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| Post-change isolated warm/cold replay remains within the accepted resource budget | `JULIE_HOME=<mktemp> target/release/julie-server service --semantics off` with the recorded authenticated 20-open replay | live | `c3096cf3` binary | 3/3 complete; 60 alternating opens, 15 concurrent searches, and 12 status reads all HTTP 200; maximum after-open RSS 797179904 bytes / 49 FDs; warm p95 at most 18.104 ms | 2026-09-12T20:43:24Z | no |
 | Isolated warm/cold runtime baseline has bounded release evidence | `JULIE_HOME=<mktemp> target/release/julie-server service --semantics off` with the recorded authenticated 20-open replay | live | `86a4101f` binary; `b499ee33` documented source | 3/3 complete; 60 alternating opens, 15 concurrent searches, and 12 status reads all HTTP 200; maximum after-open RSS 778272768 bytes / 48 FDs | 2026-09-12 | no |
 | Cold initialization releases the global runtime map before bound startup | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `7925798d` | RED: warm query timed out while cold initialization held the map lock | 2026-09-12T19:32:00Z | no |
 | Cold initialization releases the global runtime map before bound startup | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | working tree | GREEN: passed | 2026-09-12T19:33:00Z | no |
