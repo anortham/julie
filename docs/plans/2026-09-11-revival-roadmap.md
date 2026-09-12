@@ -1,6 +1,6 @@
 # Julie revival hardening and replacement roadmap
 
-**Status:** Proposed plans for owner review. Planning is authorized; implementation and publication have not started.
+**Status:** Plan 1 implementation authorized on 2026-09-11 and in progress on `fix/revival-correctness`. Plans 2–5 remain proposals. Publication is not authorized.
 
 **Source:** [Replacement assessment](../findings/2026-09-11-julie-miller-replacement-review.md), reviewed against Julie `eabf93cb`, Miller `3ed3920b`, and julie-plugin `db4dd894`.
 

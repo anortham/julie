@@ -287,8 +287,8 @@ impl ManageWorkspaceTool {
                             // No files changed, but the workspace may have been
                             // indexed before the embedding sidecar was ready.
                             // Check if symbols exist without any embeddings.
-                            let embedding_count =
-                                crate::tools::workspace::indexing::embeddings::workspace_vector_count(
+                            let (eligible, embedded) =
+                                crate::tools::workspace::indexing::embeddings::workspace_vector_coverage(
                                     handler, &ws_id,
                                 )
                                 .await;
@@ -301,10 +301,11 @@ impl ManageWorkspaceTool {
                                 tasks.contains_key(&ws_id)
                             };
 
-                            if embedding_count == 0 && symbols_total > 0 && !task_already_running {
+                            if embedded < eligible && !task_already_running {
                                 info!(
-                                    symbols_total,
-                                    "Workspace has symbols but 0 embeddings, scheduling catch-up embedding"
+                                    eligible,
+                                    embedded,
+                                    "Workspace has incomplete embedding coverage, scheduling catch-up embedding"
                                 );
                                 let embed_outcome =
                                     crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(

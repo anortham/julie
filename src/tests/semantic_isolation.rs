@@ -5,9 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::embeddings::{
-    DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity,
-};
+use crate::embeddings::{DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity};
 use crate::paths::RegistryPaths;
 use crate::request_engine::semantic::DefaultSemanticRuntime;
 use crate::request_engine::{
@@ -70,7 +68,7 @@ async fn concurrent_off_request_cannot_disable_required_request_provider() {
         calls: AtomicUsize::new(0),
     });
     let semantic_runtime = Arc::new(DefaultSemanticRuntime::new(Some(
-        provider.clone() as Arc<dyn EmbeddingProvider>,
+        provider.clone() as Arc<dyn EmbeddingProvider>
     )));
     let engine = RequestEngine::with_semantic_runtime(bindings, runtimes.clone(), semantic_runtime);
 

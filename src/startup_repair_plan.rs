@@ -92,14 +92,30 @@ pub(crate) async fn plan_primary_workspace_repair(
         reasons.push(IndexingRepairReason::StaleFiles);
     }
 
-    let embeddings_possible = handler.embedding_provider().await.is_some()
-        || (!handler
-            .semantics_disabled
-            .load(std::sync::atomic::Ordering::Acquire)
-            && !julie_pipeline::embeddings::init::embeddings_disabled_by_env());
+    let provider = handler.embedding_provider().await;
+    let embeddings_possible =
+        provider.is_some() || !julie_pipeline::embeddings::init::embeddings_disabled_by_env();
     if reasons.is_empty() && embeddings_possible {
-        let vector_count = store.status().vector_count;
-        if vector_count == 0 {
+        let lang_configs = crate::search::language_config::LanguageConfigs::load_embedded();
+        let snapshot = store.current();
+        let (eligible, embedded) = julie_pipeline::embeddings::pipeline::eligible_vector_coverage(
+            snapshot.as_ref(),
+            Some(&lang_configs),
+        );
+        let incomplete = if let Some(provider) = provider {
+            !matches!(
+                crate::request_engine::semantic_store::check_facts_vectors(
+                    snapshot.as_ref(),
+                    &lang_configs,
+                    provider.as_ref(),
+                    crate::request_engine::semantic::SemanticMode::Auto,
+                ),
+                Ok(crate::request_engine::semantic::SemanticReadiness::Ready { .. })
+            )
+        } else {
+            embedded < eligible
+        };
+        if eligible > 0 && incomplete {
             let task_already_running = handler
                 .embedding_tasks
                 .lock()
@@ -108,7 +124,9 @@ pub(crate) async fn plan_primary_workspace_repair(
             if task_already_running {
                 debug!("Skipping MissingEmbeddings — embedding task already in flight");
             } else {
-                info!("📊 Workspace has symbols but 0 embeddings - scheduling catch-up embedding");
+                info!(
+                    "📊 Workspace embedding coverage is {embedded}/{eligible} - scheduling catch-up embedding"
+                );
                 reasons.push(IndexingRepairReason::MissingEmbeddings);
             }
         }

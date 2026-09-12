@@ -80,6 +80,28 @@ pub fn normalize_structured(val: Option<&Value>) -> Value {
 }
 
 #[test]
+fn mcp_transport_preserves_request_readiness() {
+    let reply = crate::request_engine::ToolReply::from_result(
+        "fast_search",
+        Some("workspace-1".to_string()),
+        json!({ "content": [], "structuredContent": { "matches": [] } }),
+        crate::request_engine::RequestReadiness {
+            mode: crate::request_engine::SemanticMode::Auto,
+            status: "degraded: VECTORS_PARTIAL".to_string(),
+            coverage: Some("1/2".to_string()),
+            facts_revision: None,
+            lexical_revision: None,
+        },
+    );
+
+    let result = crate::handler::mcp_adapter::to_mcp_tool_result(reply).unwrap();
+    let evidence = &result.meta.unwrap().0["io.julie/readiness"];
+    assert_eq!(evidence["workspace_id"], "workspace-1");
+    assert_eq!(evidence["readiness"]["coverage"], "1/2");
+    assert_eq!(evidence["readiness"]["status"], "degraded: VECTORS_PARTIAL");
+}
+
+#[test]
 fn checkout_normalization_ignores_measurements_but_keeps_semantics() {
     let first = json!({"checkouts":[{
         "workspace_id":"julie_a",

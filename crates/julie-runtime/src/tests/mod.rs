@@ -3,9 +3,9 @@
 
 // ── Watcher tests ──────────────────────────────────────────────────────────
 pub mod watcher_filtering; // Gitignore/julieignore filtering, blacklist, extension policy
+pub mod watcher_freshness;
 pub mod watcher_mutation_gate; // Per-workspace mutation gate concurrency contract
 pub mod watcher_runtime_boundary;
-pub mod watcher_freshness;
 
 // ── Workspace tests (handler-free) ────────────────────────────────────────
 pub mod workspace_init; // env_paths.rs — workspace env-var and path init tests

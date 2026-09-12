@@ -175,7 +175,6 @@ pub struct JulieServerHandler {
     /// priority over the per-workspace provider.
     injected_embedding_provider:
         Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>,
-    pub(crate) semantics_disabled: Arc<std::sync::atomic::AtomicBool>,
     /// Shared semantic runtime managing embedding providers and readiness across checkouts.
     pub(crate) semantic_runtime:
         Arc<std::sync::RwLock<Arc<dyn crate::request_engine::semantic::SemanticRuntime>>>,
@@ -318,7 +317,6 @@ impl JulieServerHandler {
             dashboard_tx: None,
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
-            semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             semantic_runtime: Arc::new(std::sync::RwLock::new(Arc::new(
                 crate::request_engine::semantic::NoopSemanticRuntime,
             ))),
@@ -412,7 +410,6 @@ impl JulieServerHandler {
             dashboard_tx,
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
-            semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             semantic_runtime: Arc::new(std::sync::RwLock::new(Arc::new(
                 crate::request_engine::semantic::NoopSemanticRuntime,
             ))),
@@ -497,7 +494,6 @@ impl JulieServerHandler {
             dashboard_tx,
             in_process: false,
             injected_embedding_provider: Arc::new(std::sync::RwLock::new(None)),
-            semantics_disabled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             semantic_runtime: Arc::new(std::sync::RwLock::new(Arc::new(
                 crate::request_engine::semantic::NoopSemanticRuntime,
             ))),
@@ -760,6 +756,8 @@ impl JulieServerHandler {
             .semantic_runtime()
             .ensure_ready(
                 &binding,
+                None,
+                &crate::search::language_config::LanguageConfigs::load_embedded(),
                 crate::request_engine::semantic::SemanticRequirement::Query,
                 crate::request_engine::semantic::SemanticMode::Auto,
                 deadline,

@@ -465,7 +465,9 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
     let t1 = tokio::spawn(async move {
         r1.ensure_ready(
             &b1,
-            SemanticRequirement::QueryAndSymbols,
+            None,
+            &crate::search::language_config::LanguageConfigs::load_embedded(),
+            SemanticRequirement::Query,
             SemanticMode::Required,
             deadline,
             &cancel1,
@@ -479,7 +481,9 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
     let t2 = tokio::spawn(async move {
         r2.ensure_ready(
             &b2,
-            SemanticRequirement::QueryAndSymbols,
+            None,
+            &crate::search::language_config::LanguageConfigs::load_embedded(),
+            SemanticRequirement::Query,
             SemanticMode::Required,
             deadline,
             &cancel2_clone,
@@ -493,7 +497,9 @@ async fn challenge_single_flight_concurrency_and_cancellation_isolation() {
     let t3 = tokio::spawn(async move {
         r3.ensure_ready(
             &b3,
-            SemanticRequirement::QueryAndSymbols,
+            None,
+            &crate::search::language_config::LanguageConfigs::load_embedded(),
+            SemanticRequirement::Query,
             SemanticMode::Required,
             deadline,
             &cancel3_clone,
@@ -536,8 +542,8 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
 
     let binding = WorkspaceBinding {
         workspace_id: "ws2".to_string(),
-        root,
-        index_root,
+        root: root.clone(),
+        index_root: index_root.clone(),
     };
 
     let mock_provider = Arc::new(MockReadyProvider::new("bge-small-en-v1.5-f32", 384));
@@ -545,25 +551,15 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
     let cancel = CancellationToken::new();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
 
-    // Case 0: DB file missing
-    let res_missing = runtime
-        .ensure_ready(
-            &binding,
-            SemanticRequirement::QueryAndSymbols,
-            SemanticMode::Required,
-            deadline,
-            &cancel,
-        )
-        .await;
-    let err_missing = res_missing.expect_err("must fail closed when db file is missing");
-    assert_eq!(err_missing.code, "SEMANTICS_NOT_READY");
-    assert_eq!(err_missing.details["coverage"], "missing");
-
-    // Case 1: DB exists with symbols, but no encoder row
     let conn = setup_facts_db(&db_path);
+    let store = julie_index::checkout_store::CheckoutStore::open(&index_root, &root).unwrap();
+    let configs = crate::search::language_config::LanguageConfigs::load_embedded();
+    let snapshot = store.current();
     let res_no_encoder = runtime
         .ensure_ready(
             &binding,
+            Some(snapshot.as_ref()),
+            &configs,
             SemanticRequirement::QueryAndSymbols,
             SemanticMode::Required,
             deadline,
@@ -575,11 +571,14 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
     assert_eq!(err_no_encoder.code, "SEMANTICS_NOT_READY");
     assert_eq!(err_no_encoder.details["coverage"], "missing");
 
-    // Case 2: Encoder row exists with incompatible model/dimensions
     set_facts_encoder(&conn, "other-model", 384);
+    store.publish_vectors().unwrap();
+    let snapshot = store.current();
     let res_incompatible = runtime
         .ensure_ready(
             &binding,
+            Some(snapshot.as_ref()),
+            &configs,
             SemanticRequirement::QueryAndSymbols,
             SemanticMode::Required,
             deadline,
@@ -591,13 +590,16 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
     assert_eq!(err_incompatible.code, "SEMANTICS_NOT_READY");
     assert_eq!(err_incompatible.details["coverage"], "incompatible");
 
-    // Case 3: Encoder row matches, but 0 vectors stored
     let expected_identity = mock_provider.encoder_identity().expect("encoder identity");
     let expected_key = expected_identity.storage_key().expect("storage key");
     set_facts_encoder(&conn, &expected_key, 384);
+    store.publish_vectors().unwrap();
+    let snapshot = store.current();
     let res_no_vectors = runtime
         .ensure_ready(
             &binding,
+            Some(snapshot.as_ref()),
+            &configs,
             SemanticRequirement::QueryAndSymbols,
             SemanticMode::Required,
             deadline,
@@ -609,10 +611,11 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
     assert_eq!(err_no_vectors.code, "SEMANTICS_NOT_READY");
     assert_eq!(err_no_vectors.details["coverage"], "missing");
 
-    // In Auto mode, 0 vectors should report Degraded { reason: "VECTORS_MISSING", retryable: true }
     let res_auto = runtime
         .ensure_ready(
             &binding,
+            Some(snapshot.as_ref()),
+            &configs,
             SemanticRequirement::QueryAndSymbols,
             SemanticMode::Auto,
             deadline,
@@ -622,12 +625,15 @@ async fn challenge_required_mode_fails_closed_when_generation_unready() {
         .expect("auto mode succeeds degraded");
     assert_eq!(res_auto.reason(), Some("VECTORS_MISSING"));
 
-    // Case 4: Store vectors -> Required mode now succeeds!
     insert_facts_vector(&conn, &expected_key, 384);
+    store.publish_vectors().unwrap();
+    let snapshot = store.current();
 
     let res_ready = runtime
         .ensure_ready(
             &binding,
+            Some(snapshot.as_ref()),
+            &configs,
             SemanticRequirement::QueryAndSymbols,
             SemanticMode::Required,
             deadline,

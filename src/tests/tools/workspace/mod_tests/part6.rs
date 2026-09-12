@@ -419,3 +419,125 @@ async fn test_startup_repair_does_not_schedule_missing_embeddings_when_task_alre
         let _ = handle.await;
     }
 }
+
+#[tokio::test]
+async fn startup_repair_schedules_missing_embeddings_when_vector_count_is_nonzero_but_partial() {
+    use julie_facts::rows::VectorRow;
+    use julie_index::vectors::encoder_row;
+
+    let temp_dir = TempDir::new().unwrap();
+    fs::write(
+        temp_dir.path().join("main.rs"),
+        "fn alpha() {}\nfn beta() {}\n",
+    )
+    .unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await.unwrap();
+    wait_for_embedding_tasks_to_finish(&handler).await;
+
+    let primary = handler.primary_workspace_snapshot().await.unwrap();
+    let provider = NoopEmbeddingProvider;
+    let encoder = encoder_row(&provider.encoder_identity().unwrap()).unwrap();
+    let snapshot = primary.store.current();
+    let ids = julie_pipeline::embeddings::pipeline::select_eligible_symbol_ids(
+        snapshot.graph(),
+        Some(&crate::search::language_config::LanguageConfigs::load_embedded()),
+    );
+    assert_eq!(ids.len(), 2);
+    let row = snapshot.graph().symbol(ids[0]);
+    primary
+        .store
+        .set_encoder(&julie_facts::rows::EncoderRow {
+            id: format!("{}-reset", encoder.id),
+            ..encoder.clone()
+        })
+        .unwrap();
+    primary.store.set_encoder(&encoder).unwrap();
+    primary
+        .store
+        .store_vectors(
+            &encoder.id,
+            &[VectorRow {
+                blob_hash: row.blob_hash.clone(),
+                symbol_ordinal: row.ordinal,
+                vector: vec![0.1; provider.dimensions()],
+            }],
+        )
+        .unwrap();
+    primary.store.publish_vectors().unwrap();
+    assert_eq!(primary.store.status().vector_count, 1);
+
+    let plan = crate::startup_repair_plan::plan_primary_workspace_repair(&handler)
+        .await
+        .unwrap()
+        .expect("partial coverage should require startup repair");
+    assert!(
+        plan.reasons.contains(
+            &crate::tools::workspace::indexing::state::IndexingRepairReason::MissingEmbeddings
+        ),
+        "{:?}",
+        plan.reasons
+    );
+}
+
+#[tokio::test]
+async fn concurrent_schedule_keeps_existing_embedding_job() {
+    let temp_dir = TempDir::new().unwrap();
+    fs::write(temp_dir.path().join("main.rs"), "fn alpha() {}\n").unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+    handler.set_injected_embedding_provider(Some(Arc::new(NoopEmbeddingProvider)));
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+    wait_for_embedding_tasks_to_finish(&handler).await;
+
+    let workspace_id = handler.current_workspace_id().unwrap();
+    let sentinel = Arc::new(AtomicBool::new(false));
+    let handle = tokio::spawn(std::future::pending());
+    handler
+        .embedding_tasks
+        .lock()
+        .await
+        .insert(workspace_id.clone(), (sentinel.clone(), handle));
+
+    let outcome = crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+        &handler,
+        workspace_id.clone(),
+    )
+    .await;
+    assert_eq!(outcome.symbols, 0);
+    let (stored, handle) = handler
+        .embedding_tasks
+        .lock()
+        .await
+        .remove(&workspace_id)
+        .unwrap();
+    assert!(Arc::ptr_eq(&stored, &sentinel));
+    assert!(!stored.load(Ordering::Acquire));
+    handle.abort();
+}

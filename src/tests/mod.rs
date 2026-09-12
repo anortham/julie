@@ -296,11 +296,12 @@ pub mod request_engine;
 pub mod request_process_helpers;
 mod request_scenarios;
 mod request_transport_parity;
+pub mod semantic_coverage;
+pub mod semantic_isolation;
 #[cfg(any())]
 pub mod semantic_m1_challenges;
 #[cfg(any())]
 pub mod semantic_request_contract;
-pub mod semantic_isolation;
 pub mod service;
 
 // ============================================================================

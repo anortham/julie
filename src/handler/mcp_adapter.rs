@@ -11,8 +11,8 @@ use std::sync::Arc;
 use rmcp::RoleServer;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ErrorCode, ErrorData as McpError,
-    Implementation, InitializeRequestParams, ListToolsResult, ProtocolVersion, ResultType,
-    ServerCapabilities, ServerInfo, Tool,
+    Implementation, InitializeRequestParams, ListToolsResult, MetaObject, ProtocolVersion,
+    ResultType, ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::RequestContext;
 use serde_json::{Map, Value, json};
@@ -94,6 +94,10 @@ pub fn to_mcp_error(failure: RequestFailure) -> McpError {
 /// `resultType` for legacy peers negotiating < 2026-07-28).
 pub fn to_mcp_tool_result(reply: ToolReply) -> Result<CallToolResult, McpError> {
     let is_err = reply.is_error();
+    let evidence = json!({
+        "workspace_id": reply.workspace_id,
+        "readiness": reply.readiness,
+    });
 
     let mut call_result: CallToolResult = match serde_json::from_value(reply.result.clone()) {
         Ok(r) => r,
@@ -112,6 +116,13 @@ pub fn to_mcp_tool_result(reply: ToolReply) -> Result<CallToolResult, McpError> 
     if is_err {
         call_result.is_error = Some(true);
     }
+    let mut meta = call_result
+        .meta
+        .take()
+        .map(|meta| meta.0)
+        .unwrap_or_default();
+    meta.insert("io.julie/readiness".to_string(), evidence);
+    call_result.meta = Some(MetaObject(meta));
 
     Ok(call_result)
 }

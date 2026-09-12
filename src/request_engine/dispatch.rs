@@ -157,15 +157,52 @@ impl RequestEngine {
         let semantic_req = decoded.semantic_requirement();
         let semantic_readiness = match binding.as_ref() {
             Some(b) if !semantic_req.is_none() => {
-                self.semantic_runtime
+                let store = runtime
+                    .handler()
+                    .checkout_store_for_workspace(&b.workspace_id, &b.root)
+                    .await
+                    .map_err(|error| RequestFailure::internal(error.to_string()))?;
+                let snapshot = store.current();
+                let lang_configs = crate::search::language_config::LanguageConfigs::load_embedded();
+                let readiness = self
+                    .semantic_runtime
                     .ensure_ready(
                         b,
+                        Some(snapshot.as_ref()),
+                        &lang_configs,
                         semantic_req,
                         request.semantics,
                         context.deadline,
                         &context.cancellation,
                     )
-                    .await?
+                    .await;
+                let needs_embeddings = match &readiness {
+                    Ok(SemanticReadiness::Degraded { reason, .. }) => {
+                        matches!(
+                            reason.as_str(),
+                            "VECTORS_MISSING" | "VECTORS_PARTIAL" | "VECTORS_INCOMPATIBLE"
+                        )
+                    }
+                    Err(error) if error.code == "SEMANTICS_NOT_READY" => matches!(
+                        error
+                            .details
+                            .get("coverage")
+                            .and_then(|value| value.as_str()),
+                        Some("missing" | "partial" | "incompatible")
+                    ),
+                    _ => false,
+                };
+                if semantic_req.requires_symbols()
+                    && request.semantics != SemanticMode::Off
+                    && needs_embeddings
+                {
+                    crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                        runtime.handler(),
+                        b.workspace_id.clone(),
+                    )
+                    .await;
+                }
+                readiness?
             }
             _ => SemanticReadiness::Disabled,
         };

@@ -268,6 +268,27 @@ pub fn select_budgeted_variables(
     policy: &VariableEmbeddingPolicy,
     lang_configs: Option<&LanguageConfigs>,
 ) -> Vec<(String, String)> {
+    let by_id: HashMap<&str, &Symbol> = symbols
+        .iter()
+        .map(|symbol| (symbol.id.as_str(), symbol))
+        .collect();
+    select_budgeted_variable_ids(symbols, reference_scores, base_count, policy, lang_configs)
+        .into_iter()
+        .filter_map(|id| {
+            by_id
+                .get(id.as_str())
+                .map(|symbol| (id, format_symbol_metadata(symbol)))
+        })
+        .collect()
+}
+
+pub fn select_budgeted_variable_ids(
+    symbols: &[Symbol],
+    reference_scores: &HashMap<String, f64>,
+    base_count: usize,
+    policy: &VariableEmbeddingPolicy,
+    lang_configs: Option<&LanguageConfigs>,
+) -> Vec<String> {
     if !policy.enabled {
         return Vec::new();
     }
@@ -320,7 +341,7 @@ pub fn select_budgeted_variables(
 
     all_selected
         .into_iter()
-        .map(|(s, _)| (s.id.clone(), format_symbol_metadata(s)))
+        .map(|(s, _)| s.id.clone())
         .collect()
 }
 

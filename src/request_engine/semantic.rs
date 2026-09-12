@@ -111,6 +111,10 @@ pub enum SemanticReadiness {
         #[serde(alias = "code")]
         reason: String,
         retryable: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        eligible_symbols: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        embedded_symbols: Option<usize>,
     },
 }
 
@@ -150,10 +154,18 @@ impl SemanticReadiness {
                 };
                 (mode, "ready".to_string(), Some(cov))
             }
-            Self::Degraded { reason, .. } => (
+            Self::Degraded {
+                reason,
+                eligible_symbols,
+                embedded_symbols,
+                ..
+            } => (
                 mode,
                 format!("degraded: {reason}"),
-                Some("missing".to_string()),
+                match (embedded_symbols, eligible_symbols) {
+                    (Some(embedded), Some(eligible)) => Some(format!("{embedded}/{eligible}")),
+                    _ => Some("missing".to_string()),
+                },
             ),
         };
         RequestReadiness {
@@ -173,6 +185,8 @@ pub trait SemanticRuntime: Send + Sync {
     async fn ensure_ready(
         &self,
         binding: &WorkspaceBinding,
+        snapshot: Option<&julie_index::snapshot::Snapshot>,
+        lang_configs: &julie_index::search::language_config::LanguageConfigs,
         requirement: SemanticRequirement,
         mode: SemanticMode,
         deadline: Instant,
@@ -225,6 +239,8 @@ impl SemanticRuntime for NoopSemanticRuntime {
     async fn ensure_ready(
         &self,
         _binding: &WorkspaceBinding,
+        _snapshot: Option<&julie_index::snapshot::Snapshot>,
+        _lang_configs: &julie_index::search::language_config::LanguageConfigs,
         requirement: SemanticRequirement,
         mode: SemanticMode,
         _deadline: Instant,
@@ -246,6 +262,8 @@ impl SemanticRuntime for NoopSemanticRuntime {
         Ok(SemanticReadiness::Degraded {
             reason: "no_semantic_runtime".to_string(),
             retryable: false,
+            eligible_symbols: None,
+            embedded_symbols: None,
         })
     }
 }
@@ -490,6 +508,8 @@ impl SemanticRuntime for DefaultSemanticRuntime {
     async fn ensure_ready(
         &self,
         binding: &WorkspaceBinding,
+        snapshot: Option<&julie_index::snapshot::Snapshot>,
+        lang_configs: &julie_index::search::language_config::LanguageConfigs,
         requirement: SemanticRequirement,
         mode: SemanticMode,
         deadline: Instant,
@@ -529,6 +549,8 @@ impl SemanticRuntime for DefaultSemanticRuntime {
                     SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
                         reason: "PROVIDER_UNAVAILABLE".to_string(),
                         retryable,
+                        eligible_symbols: None,
+                        embedded_symbols: None,
                     }),
                     SemanticMode::Off => Ok(SemanticReadiness::Disabled),
                 };
@@ -551,11 +573,15 @@ impl SemanticRuntime for DefaultSemanticRuntime {
         }
 
         // Rule 4: Symbols or QueryAndSymbols requires vectors the provider can query
-        let facts_path = binding
-            .index_root
-            .join(julie_index::checkout_store::FACTS_FILE);
+        let snapshot = snapshot.ok_or_else(|| {
+            RequestFailure::internal(format!(
+                "Workspace snapshot unavailable for semantic coverage: {}",
+                binding.workspace_id
+            ))
+        })?;
         crate::request_engine::semantic_store::check_facts_vectors(
-            &facts_path,
+            snapshot,
+            lang_configs,
             provider.as_ref(),
             mode,
         )

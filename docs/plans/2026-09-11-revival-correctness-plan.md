@@ -87,12 +87,12 @@ The fact schema/reader are evidence inputs, not owners of eligibility policy. `p
 
 **Acceptance:**
 
-- [ ] Any partial eligible coverage remains visibly incomplete after restart, even with nonzero vectors.
-- [ ] Valid vectors survive restart; work resumes and reaches full current coverage without a forced reindex.
-- [ ] Off schedules no semantic work on behalf of its request; a machine-wide disabled provider stays disabled.
-- [ ] Incompatible encoder or incomplete coverage uses the existing error/reason contract, not an empty success labeled ready; real network/model preparation belongs to Plan 4C.
-- [ ] Tests cover empty workspace, no eligible symbols, stale vectors, partial vectors, complete coverage, edits, and deleted symbols.
-- [ ] Required semantics and health agree across MCP and JSON API; terminal exit-code behavior remains consistent.
+- [x] Any partial eligible coverage remains visibly incomplete after restart, even with nonzero vectors.
+- [x] Valid vectors survive restart; work resumes and reaches full current coverage without a forced reindex.
+- [x] Off schedules no semantic work on behalf of its request; a machine-wide disabled provider stays disabled.
+- [x] Incompatible encoder or incomplete coverage uses the existing error/reason contract, not an empty success labeled ready; real network/model preparation belongs to Plan 4C.
+- [x] Tests cover empty workspace, no eligible symbols, stale vectors, partial vectors, complete coverage, edits, and deleted symbols.
+- [x] Required semantics and health agree across MCP and JSON API; terminal exit-code behavior remains consistent.
 
 ## Execution adjustment
 
@@ -116,3 +116,9 @@ Both enabled exact regressions selected one test, failed for the intended defect
 ### Task 1A worker evidence and reviewed extensions
 
 Nine exact regressions passed across julie-runtime and julie-core: rapid saves, overflow, failed apply, unreadable rescan paths, queued read failures, strict scan errors, retry pacing, facts-ahead projection recovery, and deletion metadata errors. Original behavior and targeted mutation checks supplied negative evidence as recorded in the worker report; no zero-test run counts as proof. Lead review required strict walker errors, preserving metadata/read failures, and a 30-second retry cadence while ordinary queue work continues. Runtime cargo check passed; root integration waits for task1C API completion. Task1A owns the small core scanner change and its test.
+
+### Task 1C worker evidence and reviewed extensions
+
+Pipeline and root regressions pass for partial compatible coverage, ineligible/shared-blob keys, empty/edit/delete transitions, preserving vectors on restart, late-provider scheduling, existing-job preservation, and MCP readiness metadata. Health uses the same semantic coverage check while preserving lexical readiness. No-change index/refresh catch-up also uses eligible coverage. Lead review required one canonical representative per durable key, source eligibility when identical content appears under a test path, atomic task-map insertion, and retaining container enrichment inputs.
+
+The initial pipeline shared-blob test followed RED/GREEN. Several readiness edits preceded their negative checks; their original raw-count/nonzero behavior was explicitly restored and tested before GREEN. Added invariant checks are not claimed as original test-first repairs. Final `cargo check -p julie --tests` passed on the working diff over `80a2a39e`; no worker result substitutes for the pending clean-commit full and live gates.

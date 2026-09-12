@@ -28,19 +28,22 @@ impl EmbeddingOutcome {
 
 /// Vectors bound to the workspace's current snapshot; zero when the store
 /// cannot be opened.
-pub(crate) async fn workspace_vector_count(
+pub(crate) async fn workspace_vector_coverage(
     handler: &JulieServerHandler,
     workspace_id: &str,
-) -> u64 {
+) -> (usize, usize) {
     let Ok(root) = handler.get_workspace_root_for_target(workspace_id).await else {
-        return 0;
+        return (0, 0);
     };
     match handler
         .checkout_store_for_workspace(workspace_id, &root)
         .await
     {
-        Ok(store) => store.status().vector_count,
-        Err(_) => 0,
+        Ok(store) => julie_pipeline::embeddings::pipeline::eligible_vector_coverage(
+            store.current().as_ref(),
+            Some(&crate::search::language_config::LanguageConfigs::load_embedded()),
+        ),
+        Err(_) => (0, 0),
     }
 }
 
@@ -83,50 +86,37 @@ pub(crate) async fn spawn_workspace_embedding(
             return EmbeddingOutcome::skipped();
         }
     };
-    let total_symbols = store.current().graph().len();
+    let lang_configs = crate::search::language_config::LanguageConfigs::load_embedded();
+    let total_symbols = julie_pipeline::embeddings::pipeline::select_eligible_symbol_ids(
+        store.current().graph(),
+        Some(&lang_configs),
+    )
+    .len();
 
-    // Cancel and abort any previously running embedding pipeline for this workspace.
-    // Setting the flag stops the spawn_blocking pipeline between batches;
-    // aborting the handle kills the outer async wrapper.
-    {
-        let mut tasks = handler.embedding_tasks.lock().await;
-        if let Some((cancel_flag, handle)) = tasks.remove(&workspace_id) {
-            info!("Cancelling previous embedding pipeline for workspace {workspace_id}");
-            cancel_flag.store(true, std::sync::atomic::Ordering::Release);
-            handle.abort();
-        }
-    }
-
-    // Create cancellation flag for the new pipeline
     let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let cancel_for_pipeline = cancel_flag.clone();
-
-    // Capture daemon_db so we can update vector_count on completion
     let daemon_db = handler.daemon_db.clone();
-
-    // Capture workspace_id for the store step (workspace_id is moved into spawn below)
     let workspace_id_for_store = workspace_id.clone();
-
-    // Spawn the pipeline in the background, storing handle + flag for cancellation.
     let embedding_task_slot = handler.embedding_tasks.clone();
     let self_cancel_flag = cancel_flag.clone();
-    let handle = tokio::spawn(async move {
-        super::pipeline_runner::run_pipeline_body(
-            provider,
-            store,
-            workspace_id,
-            cancel_for_pipeline,
-            self_cancel_flag,
-            daemon_db,
-            embedding_task_slot,
-            total_symbols,
-        )
-        .await;
-    });
-
-    // Store the handle + flag so it can be cancelled by a subsequent force reindex
     {
         let mut tasks = handler.embedding_tasks.lock().await;
+        if tasks.contains_key(&workspace_id_for_store) {
+            return EmbeddingOutcome::skipped();
+        }
+        let handle = tokio::spawn(async move {
+            super::pipeline_runner::run_pipeline_body(
+                provider,
+                store,
+                workspace_id,
+                cancel_for_pipeline,
+                self_cancel_flag,
+                daemon_db,
+                embedding_task_slot,
+                total_symbols,
+            )
+            .await;
+        });
         tasks.insert(workspace_id_for_store.clone(), (cancel_flag, handle));
     }
 

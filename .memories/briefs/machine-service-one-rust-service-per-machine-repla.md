@@ -4,7 +4,7 @@ title: "Machine service: one Rust service per machine replaces per-session
   Miller and Julie"
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-12T01:44:54.179Z
+updated: 2026-09-12T02:31:04.979Z
 tags:
   - machine-service
   - architecture
@@ -32,7 +32,7 @@ GitHub checks during the assessment found no v8.0.0 release; latest was v7.18.1.
 
 ## New planning direction
 
-The owner requested actionable plans from the Julie-versus-Miller assessment. The roadmap is docs/plans/2026-09-11-revival-roadmap.md, with five linked proposed implementation briefs: correctness, retrieval contracts, runtime lifecycle, deployment/guidance, and replacement qualification. They were independently challenged by Sol and reconciled by Astra. They are ready for owner review; implementation has not started and their narrow proposed architecture exceptions are not yet implementation approval.
+The owner requested actionable plans from the Julie-versus-Miller assessment. The roadmap is docs/plans/2026-09-11-revival-roadmap.md, with five linked proposed implementation briefs: correctness, retrieval contracts, runtime lifecycle, deployment/guidance, and replacement qualification. They were independently challenged by Sol and reconciled by Astra. The owner authorized Plan 1 on 2026-09-11. Its task worktree is .worktrees/revival-correctness on fix/revival-correctness. Watcher recovery and request isolation are committed locally; eligible coverage and restart recovery are in progress. Final integration verification remains pending. Plans 2–5 remain proposals, and publication remains unauthorized.
 
 Proposed next priority is freshness and request isolation, then precise retrieval and one production lifecycle, then installation qualification and measured adoption. General dashboard expansion remains outside these plans. Navigation-default promotion and full Miller retirement are separate decisions; symbol operations, existing web bridge coverage, external content and continuous testing receive explicit evidence-based dispositions rather than silent deferral or automatic ports.
 

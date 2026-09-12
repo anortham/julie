@@ -591,3 +591,104 @@ async fn test_manage_workspace_health_reports_initialized_when_not_degraded() {
     assert!(health.contains("Degraded: none"), "{health}");
     assert!(health.contains("Query Fallback: semantic"), "{health}");
 }
+
+#[serial(embedding_env)]
+#[tokio::test]
+async fn health_snapshot_degrades_embedding_runtime_for_partial_eligible_coverage() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    let temp_dir = TempDir::new().unwrap();
+    crate::tests::helpers::workspace::mark_workspace_root(temp_dir.path());
+    let source_dir = temp_dir.path().join("src");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::write(
+        source_dir.join("lib.rs"),
+        "pub fn first_eligible() {}\npub fn second_eligible() {}\n",
+    )
+    .unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    let provider = Arc::new(NoopEmbeddingProvider);
+    let store = primary_store(&handler).await;
+    let identity = provider.encoder_identity().unwrap();
+    let encoder = julie_index::vectors::encoder_row(&identity).unwrap();
+    let snapshot = store.current();
+    let eligible = julie_pipeline::embeddings::pipeline::select_eligible_symbol_ids(
+        snapshot.graph(),
+        Some(&crate::search::language_config::LanguageConfigs::load_embedded()),
+    );
+    let symbol = snapshot.graph().symbol(eligible[0]);
+    store.set_encoder(&encoder).unwrap();
+    store
+        .store_vectors(
+            &encoder.id,
+            &[julie_facts::rows::VectorRow {
+                blob_hash: symbol.blob_hash.clone(),
+                symbol_ordinal: symbol.ordinal,
+                vector: vec![0.1; 384],
+            }],
+        )
+        .unwrap();
+    store.publish_vectors().unwrap();
+
+    {
+        let mut workspace = handler.workspace.write().await;
+        let workspace = workspace.as_mut().unwrap();
+        workspace.embedding_provider = Some(provider);
+        workspace.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+            requested_backend: EmbeddingBackend::Auto,
+            resolved_backend: EmbeddingBackend::Native,
+            accelerated: false,
+            degraded_reason: None,
+        });
+    }
+
+    let snapshot = crate::health::HealthChecker::system_snapshot(&handler)
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        snapshot.readiness,
+        crate::health::SystemStatus::FullyReady { .. }
+    ));
+    assert_eq!(
+        snapshot.runtime_plane.level,
+        crate::health::HealthLevel::Degraded
+    );
+    assert_eq!(
+        snapshot.runtime_plane.embeddings.state,
+        crate::health::EmbeddingState::Degraded
+    );
+    assert!(
+        snapshot
+            .runtime_plane
+            .embeddings
+            .detail
+            .contains("VECTORS_PARTIAL")
+    );
+    assert!(snapshot.runtime_plane.embeddings.detail.contains("1/2"));
+    assert_eq!(
+        snapshot.runtime_plane.embeddings.query_fallback,
+        "keyword-only"
+    );
+
+    unsafe {
+        std::env::remove_var("JULIE_SKIP_EMBEDDINGS");
+    }
+}

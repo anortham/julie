@@ -71,7 +71,7 @@ impl HealthChecker {
         let primary = Self::primary_workspace_health(handler).await?;
         let control_plane = Self::build_control_plane(handler, &primary).await?;
         let data_plane = build_data_plane(handler, &primary).await?;
-        let runtime_plane = Self::build_runtime_plane(handler).await?;
+        let runtime_plane = Self::build_runtime_plane(handler, &primary).await?;
         let readiness = readiness_from_data_plane(&data_plane);
         let overall =
             overall_from_planes(control_plane.level, data_plane.level, runtime_plane.level);
@@ -334,10 +334,56 @@ impl HealthChecker {
         })
     }
 
-    async fn build_runtime_plane(handler: &JulieServerHandler) -> Result<RuntimePlaneHealth> {
+    async fn build_runtime_plane(
+        handler: &JulieServerHandler,
+        primary: &PrimaryWorkspaceHealth,
+    ) -> Result<RuntimePlaneHealth> {
         let runtime_status = handler.embedding_runtime_status().await;
         let embedding_provider = handler.embedding_provider().await;
-        let embeddings = project_embedding_runtime(runtime_status, embedding_provider.as_deref());
+        let mut embeddings =
+            project_embedding_runtime(runtime_status, embedding_provider.as_deref());
+
+        if let (Some(provider), PrimaryWorkspaceHealth::Ready(state)) =
+            (embedding_provider.as_deref(), primary)
+            && let Ok(store) = handler
+                .checkout_store_for_workspace(
+                    &state.binding.workspace_id,
+                    &state.binding.workspace_root,
+                )
+                .await
+        {
+            let configs = crate::search::language_config::LanguageConfigs::load_embedded();
+            match crate::request_engine::semantic_store::check_facts_vectors(
+                store.current().as_ref(),
+                &configs,
+                provider,
+                crate::request_engine::semantic::SemanticMode::Auto,
+            ) {
+                Ok(crate::request_engine::semantic::SemanticReadiness::Degraded {
+                    reason,
+                    eligible_symbols,
+                    embedded_symbols,
+                    ..
+                }) => {
+                    embeddings.level = HealthLevel::Degraded;
+                    embeddings.state = crate::health::EmbeddingState::Degraded;
+                    embeddings.detail = match (embedded_symbols, eligible_symbols) {
+                        (Some(embedded), Some(eligible)) => {
+                            format!("{reason}: {embedded}/{eligible} eligible symbols")
+                        }
+                        _ => reason,
+                    };
+                    embeddings.query_fallback = "keyword-only".to_string();
+                }
+                Err(error) => {
+                    embeddings.level = HealthLevel::Degraded;
+                    embeddings.state = crate::health::EmbeddingState::Degraded;
+                    embeddings.detail = error.message;
+                    embeddings.query_fallback = "keyword-only".to_string();
+                }
+                _ => {}
+            }
+        }
 
         Ok(RuntimePlaneHealth {
             level: embeddings.level,

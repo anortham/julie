@@ -15,6 +15,7 @@ use std::sync::atomic::AtomicBool;
 use anyhow::{Context, Result};
 use julie_extractors::SymbolKind;
 use julie_index::checkout_store::CheckoutStore;
+use julie_index::graph::{Graph, SymbolId};
 use julie_index::search::language_config::LanguageConfigs;
 use julie_index::vectors::encoder_row;
 use tracing::info;
@@ -25,8 +26,9 @@ use symbols::graph_symbols;
 
 use crate::embeddings::EmbeddingProvider;
 use crate::embeddings::metadata::{
-    GLOBAL_VARIABLE_EMBEDDING_CAP, VariableEmbeddingPolicy, prepare_batch_for_embedding,
-    select_budgeted_variables,
+    GLOBAL_VARIABLE_EMBEDDING_CAP, VariableEmbeddingPolicy, format_symbol_metadata,
+    is_embeddable_for_language, is_embeddable_language, is_test_symbol_for_embedding,
+    prepare_batch_for_embedding, select_budgeted_variable_ids,
 };
 
 /// Texts per sidecar request. The sidecar splits them into smaller GPU
@@ -36,6 +38,93 @@ const VARIABLE_EMBEDDING_POLICY: VariableEmbeddingPolicy = VariableEmbeddingPoli
     enabled: true,
     max_ratio: 0.20,
 };
+
+fn canonical_symbols(graph: &Graph) -> Vec<(SymbolId, julie_core::Symbol)> {
+    let graph_symbols = graph_symbols(graph);
+    let mut order = Vec::new();
+    let mut candidates: HashMap<SymbolId, Vec<julie_core::Symbol>> = HashMap::new();
+    for (_, symbol) in &graph_symbols {
+        let Some(id) = graph.symbol_by_row_id(&symbol.id) else {
+            continue;
+        };
+        if !candidates.contains_key(&id) {
+            order.push(id);
+        }
+        candidates.entry(id).or_default().push(symbol.clone());
+    }
+    order
+        .into_iter()
+        .filter_map(|id| {
+            let choices = candidates.remove(&id)?;
+            let symbol = choices
+                .iter()
+                .find(|symbol| !is_test_symbol_for_embedding(symbol))
+                .cloned()
+                .unwrap_or_else(|| choices[0].clone());
+            Some((id, symbol))
+        })
+        .collect()
+}
+
+fn select_eligible_symbols(
+    graph: &Graph,
+    lang_configs: Option<&LanguageConfigs>,
+) -> Vec<(SymbolId, julie_core::Symbol)> {
+    let canonical = canonical_symbols(graph);
+    let symbols: Vec<_> = canonical.iter().map(|(_, symbol)| symbol.clone()).collect();
+    let base_ids: HashSet<String> = symbols
+        .iter()
+        .filter(|symbol| {
+            is_embeddable_for_language(&symbol.kind, &symbol.language, lang_configs)
+                && is_embeddable_language(&symbol.language)
+                && !is_test_symbol_for_embedding(symbol)
+        })
+        .map(|symbol| symbol.id.clone())
+        .collect();
+    let scores: HashMap<_, _> = canonical
+        .iter()
+        .filter(|(_, symbol)| symbol.kind == SymbolKind::Variable)
+        .map(|(id, symbol)| (symbol.id.clone(), graph.reference_score(*id)))
+        .collect();
+    let variable_ids: HashSet<_> = select_budgeted_variable_ids(
+        &symbols,
+        &scores,
+        base_ids.len(),
+        &VARIABLE_EMBEDDING_POLICY,
+        lang_configs,
+    )
+    .into_iter()
+    .collect();
+    canonical
+        .into_iter()
+        .filter_map(|(id, symbol)| {
+            (base_ids.contains(&symbol.id) || variable_ids.contains(&symbol.id))
+                .then_some((id, symbol))
+        })
+        .collect()
+}
+
+pub fn select_eligible_symbol_ids(
+    graph: &Graph,
+    lang_configs: Option<&LanguageConfigs>,
+) -> Vec<SymbolId> {
+    select_eligible_symbols(graph, lang_configs)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect()
+}
+
+pub fn eligible_vector_coverage(
+    snapshot: &julie_index::snapshot::Snapshot,
+    lang_configs: Option<&LanguageConfigs>,
+) -> (usize, usize) {
+    let eligible = select_eligible_symbol_ids(snapshot.graph(), lang_configs);
+    let embedded = eligible
+        .iter()
+        .filter(|id| snapshot.vectors().contains(**id))
+        .count();
+    (eligible.len(), embedded)
+}
 
 /// Statistics from an embedding pipeline run.
 #[derive(Debug, Clone)]
@@ -89,7 +178,19 @@ pub fn run_embedding_pipeline_cancellable(
     let snapshot = store.current();
     let graph = snapshot.graph();
     let vectors = snapshot.vectors();
-    let graph_symbols = graph_symbols(graph);
+    let canonical = canonical_symbols(graph);
+    let eligible_ids: HashSet<_> = select_eligible_symbol_ids(graph, lang_configs)
+        .into_iter()
+        .collect();
+    let eligible_row_ids: HashSet<_> = eligible_ids
+        .iter()
+        .map(|id| graph.symbol(*id).id.clone())
+        .collect();
+    let graph_symbols: Vec<_> = canonical
+        .iter()
+        .filter(|(id, _)| eligible_ids.contains(id))
+        .cloned()
+        .collect();
     stats.symbols_scanned = graph_symbols.len();
     info!(
         "Embedding pipeline: {} total symbols loaded",
@@ -114,25 +215,30 @@ pub fn run_embedding_pipeline_cancellable(
         .map(|(id, s)| (s.id.clone(), graph.reference_score(*id)))
         .collect();
 
-    let callees_by_symbol = build_callee_map(graph, &graph_symbols);
+    let callees_by_symbol = build_callee_map(graph, &canonical);
     let fields_by_symbol = build_field_access_map(graph);
-    let implementors_by_symbol = build_implementor_map(graph, &graph_symbols);
-    let symbols: Vec<_> = graph_symbols.iter().map(|(_, s)| s.clone()).collect();
+    let implementors_by_symbol = build_implementor_map(graph, &canonical);
+    let all_symbols: Vec<_> = canonical.iter().map(|(_, symbol)| symbol.clone()).collect();
+    let symbols: Vec<_> = graph_symbols
+        .iter()
+        .map(|(_, symbol)| symbol.clone())
+        .collect();
 
     let base_prepared = prepare_batch_for_embedding(
-        &symbols,
+        &all_symbols,
         lang_configs,
         &callees_by_symbol,
         &fields_by_symbol,
         &implementors_by_symbol,
-    );
-    let selected_variables = select_budgeted_variables(
-        &symbols,
-        &variable_reference_scores,
-        base_prepared.len(),
-        &VARIABLE_EMBEDDING_POLICY,
-        lang_configs,
-    );
+    )
+    .into_iter()
+    .filter(|(id, _)| eligible_row_ids.contains(id))
+    .collect::<Vec<_>>();
+    let selected_variables: Vec<_> = symbols
+        .iter()
+        .filter(|symbol| symbol.kind == SymbolKind::Variable)
+        .map(|symbol| (symbol.id.clone(), format_symbol_metadata(symbol)))
+        .collect();
     let per_language_cap =
         ((base_prepared.len() as f64) * VARIABLE_EMBEDDING_POLICY.max_ratio).floor() as usize;
     info!(
