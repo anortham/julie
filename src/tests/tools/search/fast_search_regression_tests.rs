@@ -6,6 +6,7 @@ use crate::extractors::{Symbol, SymbolKind};
 use crate::mcp_compat::CallToolResult;
 use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use crate::tests::helpers::snapshot::snapshot_context;
+use crate::tests::helpers::workspace::mark_workspace_root;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::text_search::definition_search_with_index_for_test;
 use crate::tools::search::trace::{LineEnrichmentStatus, ZeroHitReason};
@@ -709,7 +710,8 @@ async fn definition_search_with_zero_limit_still_returns_one_result() -> Result<
 #[tokio::test(flavor = "multi_thread")]
 async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let workspace_path = temp_dir.path();
+    let workspace_path = temp_dir.path().to_path_buf();
+    mark_workspace_root(&workspace_path);
     fs::create_dir_all(workspace_path.join(".cargo"))?;
     fs::write(
         workspace_path.join(".cargo/config.toml"),
@@ -725,7 +727,7 @@ async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Resu
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
-    crate::tools::workspace::ManageWorkspaceTool {
+    let index_result = crate::tools::workspace::ManageWorkspaceTool {
         operation: "index".to_string(),
         path: Some(workspace_path.to_string_lossy().to_string()),
         force: Some(false),
@@ -735,7 +737,19 @@ async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Resu
     }
     .call_tool(&handler)
     .await?;
-    let execution = FastSearchTool {
+    if index_result.is_error == Some(true) {
+        let preserved_root = temp_dir.keep();
+        panic!(
+            "hidden-directory fixture indexing failed: index_result={index_result:?}, preserved_root={}",
+            preserved_root.display()
+        );
+    }
+    assert_eq!(
+        handler.current_workspace_root().canonicalize()?,
+        workspace_path.canonicalize()?,
+        "hidden-directory fixture should remain bound to its isolated root"
+    );
+    let run = FastSearchTool {
         query: ".cargo".to_string(),
         limit: 10,
         offset: 0,
@@ -744,9 +758,15 @@ async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Resu
         ..Default::default()
     }
     .execute_with_trace(&handler)
-    .await?
-    .execution
-    .expect("file search should populate execution trace");
+    .await?;
+    let execution = run.execution.unwrap_or_else(|| {
+        let preserved_root = temp_dir.keep();
+        panic!(
+            "file search should populate execution trace: result={:?}, preserved_root={}",
+            run.result,
+            preserved_root.display()
+        )
+    });
 
     assert_eq!(
         execution.hits.first().map(|hit| hit.file.as_str()),
