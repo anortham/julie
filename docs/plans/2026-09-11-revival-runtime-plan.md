@@ -1,6 +1,6 @@
 # Plan 3: One bounded production runtime lifecycle
 
-**Status:** 3A–3D implementation and post-change measurement are complete. The first Linux full gate failed the service coordination-word budget; its one allowed retry ran 2,292 tests with 2,291 pass, then hung only the obsolete non-cooperative force-reindex double. `eb75e4fc` fixes that double and its exact test passes. A third full gate requires owner approval under the retry policy and remains pending. Windows validation is deferred to final post-merge validation.
+**Status:** 3A–3D implementation, post-change measurement, and post-merge Linux validation are complete. The final Linux `cargo xtask test full` gate passed all 5 phases in 54.9 seconds at `53d177f1`. Windows/NTFS post-merge validation built successfully, then fail-fast stopped the dev phase after 2,273/2,275 tests passed; the two failures are unrelated xtask Windows-quoting follow-ups. All seven Plan 3 lifecycle tests passed on Windows. Windows full remains incomplete.
 **Goal:** Opening a cold checkout does not block warm checkouts, and idle runtime resources are reclaimed safely.
 **Depends on:** Plan 1 recovery and request-local semantics before lifecycle integration.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). Apply `razorback:diagnosing-performance`: baseline before optimization, same workload afterward.
@@ -115,7 +115,7 @@ Do not claim fair scheduling has shipped merely because a scheduler type exists.
 
 ## Verification and handoff
 
-The isolated multi-checkout lifecycle probe and ADR are complete (`6849556a`, `8de8c015`). The Linux full gate has one documented failed run and one documented retry; the next run is a policy-controlled third attempt requiring owner approval. Windows is intentionally deferred to final post-merge validation.
+The isolated multi-checkout lifecycle probe and ADR are complete (`6849556a`, `8de8c015`). Post-merge Linux validation passed at `53d177f1`. Windows/NTFS validation at the same SHA verified every Plan 3 lifecycle test, but the full gate is incomplete because two untouched xtask tests have Windows-specific quoting defects; they are separate follow-up work under the branch-gate policy. Evidence: `/home/murphy/.local/share/win-test/logs/20260912T210812Z-revival-runtime-2073090.log`.
 
 ## Verification ledger
 
@@ -140,3 +140,6 @@ The isolated multi-checkout lifecycle probe and ADR are complete (`6849556a`, `8
 | First Linux branch gate rejects the service coordination-word budget | `cargo xtask test full` | full | `c3096cf3` | Failed only `service_modules_contain_no_coordination_words`; corrected in `572affc8` | 2026-09-12T20:48:00Z | no |
 | Service budget and shutdown behavior after the first full-gate failure | `cargo nextest run -p julie --lib service_modules_contain_no_coordination_words` and `cargo nextest run -p julie --lib service_shutdown_joins_maintenance_watchers_and_embedding_writers` | worker-red-green | `572affc8` | Both exact tests passed | 2026-09-12T20:49:10Z | no |
 | Allowed Linux full-gate retry reaches the cooperative force-reindex double | `cargo xtask test full` | full | `572affc8` | 2,291/2,292 passed; only `test_force_reindex_cancels_embedding_task_when_explicit_path_resolves_to_primary_root` hung. `eb75e4fc` corrects it; a third full run requires owner approval. | 2026-09-12T20:55:13Z | no |
+| Post-merge formatting | `cargo fmt --check` | full | `53d177f1` | Passed | 2026-09-12 | no |
+| Post-merge Linux branch gate | `cargo xtask test full` | full | `53d177f1` | Passed all 5 phases in 54.9 seconds | 2026-09-12 | no |
+| Post-merge Windows/NTFS lifecycle verification | Windows/NTFS `cargo xtask test full` | full | `53d177f1` | Build passed; 2,273/2,275 dev tests passed before fail-fast. All seven lifecycle tests passed: `cold_workspace_initialization_does_not_block_warm_workspace`, `embedding_cancel_waits_for_blocking_writer_before_runtime_reopen`, `runtime_cache_never_evicts_active_request_or_background_writer`, `runtime_cache_evicts_oldest_idle_checkout_and_stops_watcher`, `runtime_reacquire_waits_for_teardown_without_duplicate_writer`, `evicted_runtime_reopens_with_fresh_results_and_existing_vectors`, and `service_shutdown_joins_maintenance_watchers_and_embedding_writers`. Full gate remains incomplete because untouched xtask tests `search_matrix_contract_tests_baseline_no_longer_errors_on_removed_workspace_pool` (unescaped Windows TOML path) and `dispatch_tests_dev_runs_the_three_dev_commands_through_cargo` (Unix quoting expectation) failed. Evidence: `/home/murphy/.local/share/win-test/logs/20260912T210812Z-revival-runtime-2073090.log`. | 2026-09-12T21:08:12Z | no |
