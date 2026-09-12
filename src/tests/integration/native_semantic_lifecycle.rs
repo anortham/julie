@@ -360,7 +360,24 @@ async fn native_semantics_becomes_ready_without_client_restart() {
     conn.execute(
         "INSERT OR REPLACE INTO vectors (blob_hash, symbol_ordinal, encoder_id, vector) VALUES (?1, 0, ?2, ?3)",
         rusqlite::params![blob_hash, expected_key, vec_bytes],
-    ).expect("insert vector");
+    )
+    .expect("insert vector");
+    drop(conn);
+    let publish_context = RequestContext::new(
+        RequestOrigin::Cli,
+        Some(Duration::from_secs(10)),
+        CancellationToken::new(),
+    );
+    let runtime = runtime_factory
+        .acquire(Some(&binding), &publish_context)
+        .await
+        .expect("acquire existing runtime");
+    let store = runtime
+        .handler()
+        .checkout_store_for_workspace(&binding.workspace_id, &binding.root)
+        .await
+        .expect("open checkout store");
+    store.publish_vectors().expect("publish inserted vector");
 
     // Second request with Required semantics in the SAME session
     let req_required = ToolRequest::new(
