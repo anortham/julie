@@ -271,39 +271,39 @@ async fn execute_baseline_case(
             let content_enriched = effective_backend == "semantic"
                 && result.hits.iter().any(|hit| hit.as_symbol().is_none());
             SearchMatrixBaselineExecution {
-            repo_name: repo_name.to_string(),
-            workspace_id: workspace.workspace_id.clone(),
-            case_id: case.case_id.clone(),
-            family: case.family.clone(),
-            search_target: case.search_target.clone(),
-            hit_count: result.hits.len(),
-            hit_count_is_lower_bound: result.total_results > result.hits.len(),
-            relaxed: result.relaxed,
-            zero_hit_reason: result.trace.zero_hit_reason.as_ref().map(enum_label),
-            file_pattern_diagnostic: result
-                .trace
-                .file_pattern_diagnostic
-                .as_ref()
-                .map(enum_label),
-            hint_kind: result.trace.hint_kind.as_ref().map(enum_label),
-            latency_ms,
-            top_hits: result
-                .hits
-                .into_iter()
-                .take(10)
-                .map(|hit| SearchMatrixTopHit {
-                    name: hit.name,
-                    file: hit.file,
-                    line: hit.line,
-                    kind: hit.kind,
-                    score: hit.score,
-                })
-                .collect(),
-            requested_backend: case.backend.map(|backend| backend.as_str().to_string()),
-            effective_backend: Some(effective_backend.to_string()),
-            strategy_id: Some(strategy_id),
-            content_enriched,
-            ablation_label: ablation_label.to_string(),
+                repo_name: repo_name.to_string(),
+                workspace_id: workspace.workspace_id.clone(),
+                case_id: case.case_id.clone(),
+                family: case.family.clone(),
+                search_target: case.search_target.clone(),
+                hit_count: result.hits.len(),
+                hit_count_is_lower_bound: result.total_results > result.hits.len(),
+                relaxed: result.relaxed,
+                zero_hit_reason: result.trace.zero_hit_reason.as_ref().map(enum_label),
+                file_pattern_diagnostic: result
+                    .trace
+                    .file_pattern_diagnostic
+                    .as_ref()
+                    .map(enum_label),
+                hint_kind: result.trace.hint_kind.as_ref().map(enum_label),
+                latency_ms,
+                top_hits: result
+                    .hits
+                    .into_iter()
+                    .take(10)
+                    .map(|hit| SearchMatrixTopHit {
+                        name: hit.name,
+                        file: hit.file,
+                        line: hit.line,
+                        kind: hit.kind,
+                        score: hit.score,
+                    })
+                    .collect(),
+                requested_backend: case.backend.map(|backend| backend.as_str().to_string()),
+                effective_backend: Some(effective_backend.to_string()),
+                strategy_id: Some(strategy_id),
+                content_enriched,
+                ablation_label: ablation_label.to_string(),
             }
         }
         Err(error) => SearchMatrixBaselineExecution {

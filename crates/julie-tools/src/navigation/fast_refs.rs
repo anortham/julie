@@ -38,7 +38,7 @@ fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
 
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct FastRefsTool {
     /// Symbol name (supports qualified names)
     pub symbol: String,
@@ -121,7 +121,8 @@ impl FastRefsTool {
         debug!("Finding references for: {}", self.symbol);
 
         let snapshot = handler.snapshot(workspace_target).await?;
-        let fetch_limit = self.limit.saturating_add(self.offset).saturating_add(1);
+        let page_limit = self.limit.max(1);
+        let fetch_limit = page_limit.saturating_add(self.offset).saturating_add(1);
         let mut found = find_references(
             &snapshot,
             &self.symbol,
@@ -163,7 +164,7 @@ impl FastRefsTool {
             Vec::new()
         };
         let offset = self.offset as usize;
-        let page_limit = self.limit.max(1) as usize;
+        let page_limit = page_limit as usize;
         let more = found.references.len() > offset + page_limit;
         found.references = found
             .references
@@ -183,9 +184,15 @@ impl FastRefsTool {
             if !lean_output.ends_with('\n') {
                 lean_output.push('\n');
             }
+            let mut next_request = self.clone();
+            next_request.limit = page_limit as u32;
+            next_request.workspace = Some(crate::shared::resolved_workspace(
+                handler,
+                workspace_target,
+            )?);
             lean_output.push_str(&crate::shared::next_line(
                 "fast_refs",
-                &[("symbol", &self.symbol)],
+                &next_request,
                 offset + kept,
             ));
         }

@@ -8,7 +8,7 @@ pub mod walk;
 use anyhow::{Result, anyhow};
 use julie_core::mcp_compat::{CallToolResult, Content};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use julie_context::{ToolContext, WorkspaceTarget};
@@ -39,7 +39,7 @@ fn default_workspace() -> Option<String> {
 /// Cap on visible paths/names under Likely tests / Related test symbols.
 const LIKELY_TESTS_LIMIT: usize = 10;
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct BlastRadiusTool {
     /// Symbol names or ids to seed the impact walk. Every definition with a matching name seeds the walk.
     #[serde(
@@ -140,13 +140,14 @@ pub async fn run(tool: &BlastRadiusTool, handler: &dyn ToolContext) -> Result<(S
         .await?;
     debug!("blast_radius: using workspace {:?}", target);
     let mut seeded = tool.clone();
+    seeded.workspace = Some(crate::shared::resolved_workspace(handler, &target)?);
     if seeded.seeds_from_git() {
         let root = match &target {
             WorkspaceTarget::Primary => handler.require_primary_workspace_root()?,
             WorkspaceTarget::Target(id) => handler.get_workspace_root_for_target(id).await?,
         };
         seeded.file_paths = git_seed::changed_files(&root)?;
-        seeded.git = true;
+        seeded.git = false;
         if seeded.file_paths.is_empty() {
             return Ok(("No changed files in the working tree.".to_string(), 0));
         }
@@ -167,7 +168,7 @@ fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<(Str
     let page_limit = tool.limit.max(1) as usize;
     let offset = tool.offset as usize;
     let walk_budget = WalkBudget {
-        max_frontier_per_depth: ((page_limit + offset) * 10).clamp(100, 500),
+        max_frontier_per_depth: 500,
     };
     let traversal_policy = if tool.mode.as_deref() == Some("web") {
         ImpactTraversalPolicy::Web
@@ -227,20 +228,10 @@ fn run_with_snapshot(tool: &BlastRadiusTool, snapshot: &Snapshot) -> Result<(Str
         .take(page_limit)
         .collect();
 
-    let file_paths = tool.file_paths.join(",");
-    let symbol_ids = tool.symbol_ids.join(",");
-    let seed_args: Vec<(&str, &str)> = if tool.seeds_from_git() {
-        vec![("git", "true")]
-    } else if !tool.file_paths.is_empty() {
-        vec![("file_paths", file_paths.as_str())]
-    } else if !tool.symbol_ids.is_empty() {
-        vec![("symbol_ids", symbol_ids.as_str())]
-    } else {
-        vec![]
-    };
-    let next = impact_overflow.then(|| {
-        crate::shared::next_line("blast_radius", &seed_args, offset + visible_impacts.len())
-    });
+    let web_callers_overflow = web_callers_total > offset + page_limit;
+    let kept = visible_impacts.len().max(web_caller_rows.len());
+    let next = (impact_overflow || web_callers_overflow)
+        .then(|| crate::shared::next_line("blast_radius", tool, offset + kept));
 
     let header = BlastRadiusHeader {
         impact_overflow,

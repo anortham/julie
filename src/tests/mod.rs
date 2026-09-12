@@ -54,6 +54,7 @@ pub mod tools {
     pub mod get_symbols_target_filtering_dogfood; // GetSymbolsTool dogfood test: indexes full repo (~164s)
     pub mod get_symbols_target_workspace; // GetSymbolsTool target-workspace bug test
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
+    pub mod paging_contract;
     pub mod patterns;
     pub mod web_navigation; // derived web-edge navigation (trace web mode + impact web callers)
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)

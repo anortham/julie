@@ -611,10 +611,12 @@ fn compact_search_groups_repeated_files_and_appends_next_when_rows_remain() {
         hit("src/a.rs", 20, "beta", "function"),
         hit("src/b.rs", 5, "gamma", "struct"),
     ];
-    let text = crate::search::formatting::render_compact("q", "lexical", &hits, 0, 3, true);
+    let request = serde_json::json!({"query": "q"});
+    let text =
+        crate::search::formatting::render_compact("q", "lexical", &hits, 0, 3, true, &request);
     assert_eq!(
         text,
-        "3 hits for \"q\" (lexical)\nsrc/a.rs:\n  :10 alpha function\n  :20 beta function\nsrc/b.rs:5 gamma struct\nnext: fast_search query=\"q\" offset=3"
+        "3 hits for \"q\" (lexical)\nsrc/a.rs:\n  :10 alpha function\n  :20 beta function\nsrc/b.rs:5 gamma struct\nnext: fast_search {\"offset\":3,\"query\":\"q\"}"
     );
     assert!(
         !text
@@ -622,7 +624,8 @@ fn compact_search_groups_repeated_files_and_appends_next_when_rows_remain() {
             .any(|line| line == "src/a.rs" || line == "  src/a.rs"),
         "file-backed rows must not appear inside a group: {text}"
     );
-    let last_page = crate::search::formatting::render_compact("q", "lexical", &hits, 0, 3, false);
+    let last_page =
+        crate::search::formatting::render_compact("q", "lexical", &hits, 0, 3, false, &request);
     assert!(!last_page.contains("next:"));
 }
 
@@ -646,8 +649,11 @@ fn compact_search_pages_from_a_fixed_hit_list_do_not_overlap() {
     );
     let page1 = &hits[..3];
     let page2 = &hits[3..6];
-    let text1 = crate::search::formatting::render_compact("q", "lexical", page1, 0, 3, true);
-    let text2 = crate::search::formatting::render_compact("q", "lexical", page2, 3, 3, false);
+    let request = serde_json::json!({"query": "q"});
+    let text1 =
+        crate::search::formatting::render_compact("q", "lexical", page1, 0, 3, true, &request);
+    let text2 =
+        crate::search::formatting::render_compact("q", "lexical", page2, 3, 3, false, &request);
     let rows1 = compact_content_rows(&text1);
     let rows2 = compact_content_rows(&text2);
     for row in &rows1 {

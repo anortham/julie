@@ -78,6 +78,11 @@ impl FastSearchParams {
                 .unwrap_or_else(|_| "primary".to_string()),
             WorkspaceTarget::Target(id) => id.clone(),
         };
+        let mut next_request = self.clone();
+        next_request.search.workspace = Some(crate::shared::resolved_workspace(
+            handler,
+            &workspace_target,
+        )?);
         let requested_language = self.search.language.clone();
         let hits = line_result
             .matches
@@ -144,10 +149,9 @@ impl FastSearchParams {
                     if !lean.ends_with('\n') {
                         lean.push('\n');
                     }
-                    let quoted = format!("\"{}\"", self.search.query);
                     lean.push_str(&crate::shared::next_line(
                         "fast_search",
-                        &[("query", quoted.as_str())],
+                        &next_request,
                         offset + kept,
                     ));
                 }
@@ -165,6 +169,7 @@ impl FastSearchParams {
                     offset,
                     kept,
                     more,
+                    &next_request,
                 )
             };
             let output = if line_result.scope_relaxed

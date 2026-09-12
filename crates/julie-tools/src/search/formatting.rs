@@ -52,13 +52,14 @@ pub fn collapse_covered_file_hits(hits: Vec<SearchHit>) -> Vec<SearchHit> {
         .collect()
 }
 
-pub fn render_compact(
+pub fn render_compact<T: serde::Serialize>(
     query: &str,
     backend: &str,
     hits: &[SearchHit],
     offset: usize,
     kept: usize,
     more: bool,
+    next_request: &T,
 ) -> String {
     let mut output = format!("{kept} hits for \"{query}\" ({backend})\n");
     for group in group_hits_by_file(hits) {
@@ -84,12 +85,7 @@ pub fn render_compact(
         }
     }
     if more {
-        let quoted = format!("\"{query}\"");
-        output.push_str(&next_line(
-            "fast_search",
-            &[("query", quoted.as_str())],
-            offset + kept,
-        ));
+        output.push_str(&next_line("fast_search", next_request, offset + kept));
     }
     output
 }

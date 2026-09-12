@@ -20,11 +20,11 @@ fn fast_search_rejects_the_removed_locations_format() {
 #[test]
 fn next_line_names_the_tool_and_the_next_offset() {
     assert_eq!(
-        next_line("fast_search", &[("query", "\"a b\"")], 16),
-        "next: fast_search query=\"a b\" offset=16"
+        next_line("fast_search", &serde_json::json!({"query": "a b"}), 16),
+        "next: fast_search {\"offset\":16,\"query\":\"a b\"}"
     );
     assert_eq!(
-        next_line("fast_refs", &[("symbol", "Foo")], 10),
-        "next: fast_refs symbol=Foo offset=10"
+        next_line("fast_refs", &serde_json::json!({"symbol": "Foo"}), 10),
+        "next: fast_refs {\"offset\":10,\"symbol\":\"Foo\"}"
     );
 }

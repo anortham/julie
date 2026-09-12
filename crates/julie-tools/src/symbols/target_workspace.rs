@@ -22,6 +22,7 @@ pub async fn get_symbols_from_target_workspace(
     offset: u32,
     mode: &str,
     target_workspace_id: String,
+    next_request: &super::GetSymbolsTool,
 ) -> Result<(CallToolResult, u32)> {
     info!(
         "📋 Getting symbols from workspace: {} in file: {} (depth: {})",
@@ -127,9 +128,7 @@ pub async fn get_symbols_from_target_workspace(
     let kept = symbols_to_return.len();
     let symbols_to_return = extract_code_bodies(symbols_to_return, &absolute_path, body_mode)?;
     let count = symbols_to_return.len() as u32;
-    let next = more.then(|| {
-        crate::shared::next_line("get_symbols", &[("file_path", file_path)], offset + kept)
-    });
+    let next = more.then(|| crate::shared::next_line("get_symbols", next_request, offset + kept));
     let result = format_symbol_response(file_path, symbols_to_return, target, next)?;
     Ok((result, count))
 }

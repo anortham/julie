@@ -149,6 +149,11 @@ impl FastSearchTool {
             ),
             WorkspaceTarget::Target(id) => execution::SearchExecutionWorkspace::target(id.clone()),
         };
+        let mut next_request = self.clone();
+        next_request.workspace = Some(crate::shared::resolved_workspace(
+            handler,
+            &workspace_target,
+        )?);
 
         let mut execution = execution::execute_search_unified(
             execution::SearchExecutionParams {
@@ -314,7 +319,15 @@ impl FastSearchTool {
             } else {
                 effective_backend
             };
-            formatting::render_compact(&self.query, backend, &execution.hits, offset, kept, more)
+            formatting::render_compact(
+                &self.query,
+                backend,
+                &execution.hits,
+                offset,
+                kept,
+                more,
+                &next_request,
+            )
         } else {
             let mut lean = formatting::format_unified_search_results(
                 &self.query,
@@ -325,10 +338,9 @@ impl FastSearchTool {
                 if !lean.ends_with('\n') {
                     lean.push('\n');
                 }
-                let quoted = format!("\"{}\"", self.query);
                 lean.push_str(&crate::shared::next_line(
                     "fast_search",
-                    &[("query", quoted.as_str())],
+                    &next_request,
                     offset + kept,
                 ));
             }

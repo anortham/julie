@@ -76,7 +76,7 @@ fn file_not_found_message(file_path: &str, target: Option<&str>) -> String {
 //   Get Symbols Tool   //
 //**********************//
 
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct GetSymbolsTool {
     /// File path (relative to workspace root)
     pub file_path: String,
@@ -125,6 +125,12 @@ impl GetSymbolsTool {
         let workspace_target = handler
             .resolve_workspace_target(self.workspace.as_deref())
             .await?;
+        let mut next_request = self.clone();
+        next_request.mode = Some(mode.to_string());
+        next_request.workspace = Some(crate::shared::resolved_workspace(
+            handler,
+            &workspace_target,
+        )?);
 
         match workspace_target {
             WorkspaceTarget::Target(target_workspace_id) => {
@@ -138,6 +144,7 @@ impl GetSymbolsTool {
                     self.offset,
                     mode,
                     target_workspace_id,
+                    &next_request,
                 )
                 .await
             }
@@ -150,6 +157,7 @@ impl GetSymbolsTool {
                     self.limit,
                     self.offset,
                     mode,
+                    &next_request,
                 )
                 .await
             }

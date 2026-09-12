@@ -8,14 +8,23 @@ pub use julie_core::shared::{
 };
 
 /// Trailer for a paged result: the exact call that returns the next page.
-pub fn next_line(tool: &str, args: &[(&str, &str)], next_offset: usize) -> String {
-    let mut line = format!("next: {tool}");
-    for (key, value) in args {
-        line.push(' ');
-        line.push_str(key);
-        line.push('=');
-        line.push_str(value);
+pub fn next_line<T: serde::Serialize>(tool: &str, args: &T, next_offset: usize) -> String {
+    let mut args = serde_json::to_value(args).expect("tool arguments must serialize");
+    args.as_object_mut()
+        .expect("tool arguments must serialize as an object")
+        .insert("offset".to_string(), serde_json::json!(next_offset));
+    format!(
+        "next: {tool} {}",
+        serde_json::to_string(&args).expect("tool arguments must serialize as JSON")
+    )
+}
+
+pub fn resolved_workspace(
+    handler: &dyn julie_context::ToolContext,
+    target: &julie_context::WorkspaceTarget,
+) -> anyhow::Result<String> {
+    match target {
+        julie_context::WorkspaceTarget::Primary => handler.require_primary_workspace_identity(),
+        julie_context::WorkspaceTarget::Target(id) => Ok(id.clone()),
     }
-    line.push_str(&format!(" offset={next_offset}"));
-    line
 }

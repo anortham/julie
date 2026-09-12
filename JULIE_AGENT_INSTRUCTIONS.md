@@ -3,7 +3,7 @@
 ## Rules
 
 1. `fast_search` before writing new code.
-2. `deep_dive` before modifying a symbol; one call replaces search, symbols, refs, and Read.
+2. `deep_dive` before modifying a symbol; it replaces search, symbols, refs, and Read.
 3. Trust results; do not re-verify with grep, find, or Read.
 
 ## Tools
@@ -27,8 +27,8 @@
 - Bug fix: `fast_search` > `deep_dive` > write a failing test > fix
 - Refactor: `fast_refs` > `deep_dive`
 
-Do not grep or find when Julie tools exist. Do not read a file without `get_symbols` first.
+Use Julie instead of grep, find, or Read. Run `get_symbols` before whole-file reads.
 
-Search, navigation, and editing calls require `workspace`: an absolute path or registered ID. Register with `manage_workspace(operation="open", path="/absolute/project")`; other manage calls use `workspace_id`. Global `list` and `status` need neither.
+Search, navigation, and edits require `workspace`: an absolute path or registered ID. Register with `manage_workspace(operation="open", path="/absolute/project")`; other manage calls use `workspace_id`. Global `list` and `status` need none.
 
-More rows end with `next:`; pass `offset` for that page.
+More rows end with `next: <tool> <JSON>`; replay that JSON. Paging is best effort across source edits.
