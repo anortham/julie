@@ -82,11 +82,16 @@ async fn test_blast_radius_ranks_direct_callers_and_truncates() -> Result<()> {
         text.contains("tests/request_tests.rs"),
         "linked tests should be listed: {text}"
     );
-    assert!(
-        text.trim_end()
-            .ends_with("next: blast_radius symbol_ids=run_pipeline offset=1"),
-        "overflowing impacts must end with the next line: {text}"
-    );
+    let next = text
+        .trim_end()
+        .lines()
+        .last()
+        .and_then(|line| line.strip_prefix("next: blast_radius "))
+        .unwrap_or_else(|| panic!("overflowing impacts must end with the next line: {text}"));
+    let next: BlastRadiusTool = serde_json::from_str(next)?;
+    assert_eq!(next.symbol_ids, vec!["run_pipeline"]);
+    assert_eq!(next.limit, 1);
+    assert_eq!(next.offset, 1);
     Ok(())
 }
 
