@@ -255,6 +255,11 @@ async fn indexed_metrics_handler() -> Result<(JulieServerHandler, TempDir)> {
         detailed: None,
     };
     index_tool.call_tool(&handler).await?;
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("metrics fixture workspace should be loaded");
+    assert_eq!(workspace.store.status().graph.symbols, 2);
     Ok((handler, temp_dir))
 }
 
@@ -290,8 +295,7 @@ async fn call_and_count(
     args: serde_json::Value,
 ) -> Result<Option<i64>> {
     let tool = tool.to_string();
-    let (server_transport, client_transport) = tokio::io::duplex(64);
-    drop(client_transport);
+    let (server_transport, _client_transport) = tokio::io::duplex(64);
     let service =
         serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
     let request = CallToolRequestParams::new(tool.clone()).with_arguments(json_object(args));
@@ -300,8 +304,13 @@ async fn call_and_count(
         request,
         RequestContext::new(NumberOrString::Number(1), service.peer().clone()),
     )
-    .await;
-    assert!(result.is_ok(), "{tool} failed: {result:?}");
+    .await
+    .unwrap_or_else(|error| panic!("{tool} failed: {error:?}"));
+    assert_ne!(
+        result.as_result().is_error,
+        Some(true),
+        "{tool} returned an error: {result:?}"
+    );
     let count = wait_result_count(handler, &tool).await?;
     let _ = service.cancel().await;
     Ok(count)
