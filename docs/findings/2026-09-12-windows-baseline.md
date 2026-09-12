@@ -54,3 +54,9 @@ At `80d0da04c0116ea383ddb2d02d20949181dd2690`, the binary built in37.4seconds an
 At `1a4d804f310887ffee2088083b5089f80225ef9c`, both root-guard tests passed on NTFS. The development tier ran649tests:648passed,1failed. The service architecture budget test did not match its allowlisted path on Windows; the portable-path correction is in progress. Log: `/home/murphy/.local/share/win-test/logs/20260912T163025Z-revival-retrieval-1764942.log`.
 
 At `d13a835d8e58eaa3cbdf15275b340e1dd1a41c03`, the portable architecture-budget check passed. The development tier ran666tests:665passed,1failed. `stale_record_is_removed_and_the_spawn_hook_runs_once` exceeded its one-second wall-clock assertion; diagnosis is in progress. Log: `/home/murphy/.local/share/win-test/logs/20260912T163427Z-revival-retrieval-1768108.log`.
+
+## Service lifecycle diagnostics
+
+At `85eb197164600f47873718f582f9e97409732bf7`, the known-dead PID is checked before HTTP, and the stale-record test additionally proves no connection reaches a bound listener. A narrowed Windows service-group run completed48tests:46passed,2process-fixture failures. Log: `/home/murphy/.local/share/win-test/logs/20260912T163939Z-revival-retrieval-1771784.log`. Because that command did not rebuild the server binary, it is not final executable evidence.
+
+A fresh server build passed (`/home/murphy/.local/share/win-test/logs/20260912T164143Z-revival-retrieval-1772727.log`). The four process tests then ran against that binary:2passed and the same2failed (`/home/murphy/.local/share/win-test/logs/20260912T164241Z-revival-retrieval-1773238.log`). Both observed a one-second-idle service record only after a subprocess exited, leaving a lifecycle race under investigation.

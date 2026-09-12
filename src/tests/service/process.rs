@@ -24,6 +24,29 @@ fn wait_for(path: &std::path::Path, present: bool, timeout: Duration) -> bool {
     false
 }
 
+fn wait_for_fresh_record(
+    path: &std::path::Path,
+    stale_port: u16,
+    timeout: Duration,
+) -> Option<serde_json::Value> {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if let Some(record) = std::fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .filter(|record| {
+                record["port"]
+                    .as_u64()
+                    .is_some_and(|port| port != u64::from(stale_port))
+            })
+        {
+            return Some(record);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    None
+}
+
 #[test]
 fn shim_starts_the_service_answers_and_service_exits_when_idle() {
     let home = home();
@@ -44,12 +67,12 @@ fn shim_starts_the_service_answers_and_service_exits_when_idle() {
         )
         .unwrap();
     }
+    assert!(wait_for(&service_json(&home), true, Duration::from_secs(5)));
     drop(shim.stdin.take());
     let out = shim.wait_with_output().unwrap();
     assert!(out.status.success(), "shim exit {:?}", out.status);
     let line = String::from_utf8(out.stdout).unwrap();
     assert!(line.contains("2026-07-28"), "got {line}");
-    assert!(wait_for(&service_json(&home), true, Duration::from_secs(5)));
     assert!(
         wait_for(&service_json(&home), false, Duration::from_secs(10)),
         "service did not exit when idle"
@@ -72,20 +95,22 @@ fn stale_service_json_is_replaced_by_a_fresh_service() {
         ),
     )
     .unwrap();
-    let out = Command::new(bin())
+    let child = Command::new(bin())
         .env("JULIE_HOME", home.path())
         .env("JULIE_SERVICE_IDLE_SECS", "1")
         .args(["service", "status"])
         .stderr(Stdio::piped())
-        .output()
+        .stdout(Stdio::piped())
+        .spawn()
         .unwrap();
+    let record = wait_for_fresh_record(&service_json(&home), dead_port, Duration::from_secs(5))
+        .expect("fresh service record");
+    let out = child.wait_with_output().unwrap();
     assert!(
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let record: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(service_json(&home)).unwrap()).unwrap();
     assert_ne!(record["port"], dead_port);
     assert!(wait_for(
         &service_json(&home),
