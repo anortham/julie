@@ -1,19 +1,47 @@
 //! Source sites of a graph edge: the relationship and identifier rows of the
-//! referencing symbol that name the target, one per line.
+//! referencing symbol that name the target.
 
-use julie_extractors::{IdentifierKind, RelationshipKind};
+use std::collections::HashMap;
+
+use julie_extractors::{IdentifierKind, NormalizedSpan, RelationshipKind};
+use julie_facts::rows::Span;
 use julie_index::graph::{Graph, SymbolId};
+use serde_json::{Value, json};
 
 use super::resolution::qualified_leaf;
 
-/// One line in the referencing symbol where the target is named.
+/// One canonical source occurrence where the target is named.
 pub struct Site {
+    pub id: String,
     pub line: u32,
+    pub span: Option<NormalizedSpan>,
+    pub exact: bool,
     pub kind: RelationshipKind,
-    /// The identifier kind on this line, when an identifier row exists; the
+    /// The identifier kind at this site, when an identifier row exists; the
     /// `reference_kind` filter matches against it.
     pub identifier_kind: Option<IdentifierKind>,
     pub confidence: f32,
+    pub metadata: Option<HashMap<String, Value>>,
+}
+
+fn normalized(span: Span) -> NormalizedSpan {
+    NormalizedSpan {
+        start_line: span.start_line,
+        start_column: span.start_col,
+        end_line: span.end_line,
+        end_column: span.end_col,
+        start_byte: span.start_byte,
+        end_byte: span.end_byte,
+    }
+}
+
+fn with_provenance(
+    metadata: Option<HashMap<String, Value>>,
+    provenance: &'static str,
+) -> Option<HashMap<String, Value>> {
+    let mut metadata = metadata.unwrap_or_default();
+    metadata.insert("reference_site_provenance".into(), json!(provenance));
+    Some(metadata)
 }
 
 pub fn identifier_relationship_kind(kind: &IdentifierKind) -> RelationshipKind {
@@ -46,6 +74,25 @@ pub fn reference_sites(graph: &Graph, from: SymbolId, to: SymbolId) -> Vec<Site>
     let same_file = from_row.path == to_row.path;
 
     let mut sites: Vec<Site> = rows
+        .identifiers
+        .iter()
+        .filter(|row| {
+            row.containing_ordinal == Some(from_row.ordinal)
+                && qualified_leaf(&row.name) == to_row.name
+        })
+        .map(|row| Site {
+            id: row.id.clone(),
+            line: row.span.start_line,
+            span: Some(normalized(row.span)),
+            exact: true,
+            kind: identifier_relationship_kind(&row.kind),
+            identifier_kind: Some(row.kind.clone()),
+            confidence: row.confidence,
+            metadata: with_provenance(None, "identifier"),
+        })
+        .collect();
+
+    for relationship in rows
         .relationships
         .iter()
         .filter(|row| row.from_ordinal == Some(from_row.ordinal))
@@ -53,36 +100,58 @@ pub fn reference_sites(graph: &Graph, from: SymbolId, to: SymbolId) -> Vec<Site>
             Some(ordinal) => same_file && ordinal == to_row.ordinal,
             None => qualified_leaf(&row.to_name) == to_row.name,
         })
-        .map(|row| Site {
-            line: row.line_number,
-            kind: row.kind.clone(),
-            identifier_kind: None,
-            confidence: row.confidence,
-        })
-        .collect();
-
-    let identifiers = rows.identifiers.iter().filter(|row| {
-        row.containing_ordinal == Some(from_row.ordinal) && qualified_leaf(&row.name) == to_row.name
-    });
-    for identifier in identifiers {
-        match sites
-            .iter_mut()
-            .find(|site| site.line == identifier.span.start_line)
-        {
-            Some(site) => {
-                site.identifier_kind
-                    .get_or_insert_with(|| identifier.kind.clone());
-            }
-            None => sites.push(Site {
-                line: identifier.span.start_line,
-                kind: identifier_relationship_kind(&identifier.kind),
-                identifier_kind: Some(identifier.kind.clone()),
-                confidence: identifier.confidence,
-            }),
+    {
+        let span = relationship.span.map(normalized);
+        if let Some(site) = sites.iter_mut().find(|site| {
+            span.as_ref().is_some_and(|relationship_span| {
+                site.span.as_ref() == Some(relationship_span)
+                    || (!relationship.reference_site_is_exact
+                        && site.kind == relationship.kind
+                        && site.span.as_ref().is_some_and(|identifier_span| {
+                            relationship_span.start_byte <= identifier_span.start_byte
+                                && relationship_span.end_byte >= identifier_span.end_byte
+                        }))
+            })
+                || (span.is_none()
+                    && site.line == relationship.line_number
+                    && site.kind == relationship.kind)
+        }) {
+            site.kind = relationship.kind.clone();
+            site.confidence = site.confidence.max(relationship.confidence);
+            site.metadata =
+                with_provenance(relationship.metadata.clone(), "identifier+relationship");
+            continue;
         }
+        sites.push(Site {
+            id: format!(
+                "relationship_{}_{}_{}",
+                relationship.path, relationship.blob_hash, relationship.ordinal
+            ),
+            line: relationship.line_number,
+            span,
+            exact: relationship.reference_site_is_exact && relationship.span.is_some(),
+            kind: relationship.kind.clone(),
+            identifier_kind: None,
+            confidence: relationship.confidence,
+            metadata: with_provenance(relationship.metadata.clone(), "relationship"),
+        });
     }
 
-    sites.sort_by_key(|site| site.line);
-    sites.dedup_by_key(|site| site.line);
+    sites.sort_by(|a, b| {
+        a.line
+            .cmp(&b.line)
+            .then_with(|| {
+                a.span
+                    .as_ref()
+                    .map(|span| (span.start_byte, span.end_byte))
+                    .cmp(
+                        &b.span
+                            .as_ref()
+                            .map(|span| (span.start_byte, span.end_byte)),
+                    )
+            })
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    sites.dedup_by(|a, b| a.id == b.id);
     sites
 }

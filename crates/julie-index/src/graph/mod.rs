@@ -19,7 +19,10 @@ use julie_facts::rows::SymbolRow;
 pub use edges::Adjacency;
 pub use load::FileRows;
 pub use resolve::resolve;
-pub use web_edges::{sql_query_edges, web_route_edges};
+pub use web_edges::{
+    HTTP_CLIENT_CALL_PATTERN_IDS, ROUTE_HANDLER_PATTERN_IDS, WebRouteResolution, sql_query_edges,
+    web_route_edges,
+};
 
 /// Dense graph id: assigned at load in path order, then ordinal order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -204,6 +207,9 @@ pub struct Graph {
 }
 
 impl Graph {
+    pub fn resolved_web_routes(&self, facts: &[julie_facts::rows::StructuralFactRow]) -> Vec<WebRouteResolution> {
+        web_edges::resolve_web_route_facts(&self.table, facts)
+    }
     pub fn symbol(&self, id: SymbolId) -> &SymbolRow {
         self.table.symbol(id)
     }

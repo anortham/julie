@@ -5,6 +5,81 @@ use julie_extractors::RelationshipKind;
 use super::*;
 
 #[test]
+fn fast_refs_keeps_two_distinct_reference_sites_on_one_line() {
+    let found = refs(
+        &[(
+            "src/lib.rs",
+            "pub fn target() {} fn same_line() { target(); }\nfn caller() { target(); target(); }\n",
+        )],
+        "target",
+        100,
+        None,
+    );
+
+    assert_eq!(found.definitions.len(), 1);
+    assert_eq!(found.references.len(), 3);
+    assert_eq!(
+        found
+            .references
+            .iter()
+            .filter(|reference| reference.line_number == 2)
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn fast_refs_preserves_exact_span_and_site_identity() {
+    let found = refs(
+        &[
+            ("src/lib.rs", "pub fn target() {}\n"),
+            ("src/caller.rs", "fn caller() { target(); target(); }\n"),
+        ],
+        "target",
+        100,
+        Some("call"),
+    );
+
+    assert_eq!(found.references.len(), 2);
+    assert!(
+        found
+            .references
+            .iter()
+            .all(|reference| reference.reference_site_is_exact && reference.span.is_some())
+    );
+    assert_ne!(found.references[0].id, found.references[1].id);
+    assert_ne!(found.references[0].span, found.references[1].span);
+}
+
+#[test]
+fn fast_refs_labels_relationship_fallback_without_claiming_exactness() {
+    let found = refs(
+        &[(
+            "src/lib.rs",
+            "pub trait Target {}\npub struct Source;\nimpl Target for Source {}\n",
+        )],
+        "Target",
+        100,
+        None,
+    );
+
+    let fallback = found
+        .references
+        .iter()
+        .find(|reference| reference.kind == RelationshipKind::Implements)
+        .unwrap();
+    assert!(!fallback.reference_site_is_exact);
+    assert_eq!(
+        fallback
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("reference_site_provenance"))
+            .and_then(serde_json::Value::as_str),
+        Some("relationship")
+    );
+}
+
+#[test]
 fn test_target_workspace_includes_identifier_refs() {
     let found = refs(
         &[
@@ -56,7 +131,7 @@ fn test_target_workspace_identifier_dedup_against_relationships() {
 }
 
 #[test]
-fn test_target_workspace_identifier_dedup_against_definitions() {
+fn test_target_workspace_distinguishes_reference_on_definition_line() {
     let found = refs(
         &[
             ("src/lib.rs", "pub fn bar() {} fn same_line() { bar(); }\n"),
@@ -70,11 +145,22 @@ fn test_target_workspace_identifier_dedup_against_definitions() {
     assert_eq!(found.definitions.len(), 1);
     assert_eq!(
         found.references.len(),
-        1,
-        "should not include identifier at definition site, got {} refs",
+        2,
+        "should retain the distinct reference on the definition's line, got {} refs",
         found.references.len()
     );
-    assert_eq!(found.references[0].file_path, "src/other.rs");
+    assert!(
+        found
+            .references
+            .iter()
+            .any(|reference| reference.file_path == "src/lib.rs")
+    );
+    assert!(
+        found
+            .references
+            .iter()
+            .any(|reference| reference.file_path == "src/other.rs")
+    );
 }
 
 #[test]

@@ -144,10 +144,17 @@ impl FastRefsTool {
 
             let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &HashMap::new());
             result_text.push_str(&semantic_section);
-            return Ok((
-                CallToolResult::text_content(vec![Content::text(result_text)]),
-                0,
-            ));
+            let mut result = CallToolResult::text_content(vec![Content::text(result_text)]);
+            result.structured_content = Some(serde_json::json!({
+                "symbol": self.symbol,
+                "definitions": [],
+                "references": [],
+                "offset": self.offset,
+                "limit": self.limit.max(1),
+                "has_more": false,
+                "next_offset": null,
+            }));
+            return Ok((result, 0));
         }
 
         let definitions = if self.include_definition {
@@ -182,10 +189,17 @@ impl FastRefsTool {
                 offset + kept,
             ));
         }
-        Ok((
-            CallToolResult::text_content(vec![Content::text(lean_output)]),
-            count,
-        ))
+        let mut result = CallToolResult::text_content(vec![Content::text(lean_output)]);
+        result.structured_content = Some(serde_json::json!({
+            "symbol": self.symbol,
+            "definitions": definitions,
+            "references": found.references,
+            "offset": self.offset,
+            "limit": page_limit,
+            "has_more": more,
+            "next_offset": more.then_some(offset + kept),
+        }));
+        Ok((result, count))
     }
 
     /// Definitions and references for callers that edit every site.
@@ -297,15 +311,11 @@ pub fn find_references(
         }
     }
 
-    let mut seen: HashSet<(String, u32)> = found
+    let mut seen: HashSet<(String, String)> = found
         .references
         .iter()
-        .map(|r| (r.file_path.clone(), r.line_number))
+        .map(|reference| (reference.file_path.clone(), reference.id.clone()))
         .collect();
-    for id in &definitions {
-        let row = graph.symbol(*id);
-        seen.insert((row.path.clone(), row.span.start_line));
-    }
 
     for &to in &definitions {
         let to_row = graph.symbol(to);
@@ -314,10 +324,17 @@ pub fn find_references(
             let mut sites = reference_sites(graph, from, to);
             if sites.is_empty() {
                 sites.push(Site {
+                    id: format!("graph_{}_{}", from_row.id, to_row.id),
                     line: from_row.span.start_line,
+                    span: None,
+                    exact: false,
                     kind: edge_relationship_kind(edge),
                     identifier_kind: None,
                     confidence: 1.0,
+                    metadata: Some(HashMap::from([(
+                        "reference_site_provenance".into(),
+                        serde_json::json!("graph"),
+                    )])),
                 });
             }
             for site in sites {
@@ -325,20 +342,20 @@ pub fn find_references(
                 if reference_kind.is_some_and(|kind| site_kind != Some(kind)) {
                     continue;
                 }
-                if !seen.insert((from_row.path.clone(), site.line)) {
+                if !seen.insert((from_row.path.clone(), site.id.clone())) {
                     continue;
                 }
                 found.references.push(Relationship {
-                    id: format!("ident_{}_{}", from_row.path, site.line),
+                    id: site.id,
                     from_symbol_id: from_row.id.clone(),
                     to_symbol_id: to_row.id.clone(),
                     kind: site.kind,
                     file_path: from_row.path.clone(),
                     line_number: site.line,
-                    span: None,
-                    reference_site_is_exact: false,
+                    span: site.span,
+                    reference_site_is_exact: site.exact,
                     confidence: site.confidence,
-                    metadata: None,
+                    metadata: site.metadata,
                 });
                 found
                     .source_names
@@ -353,6 +370,17 @@ pub fn find_references(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.file_path.cmp(&b.file_path))
             .then_with(|| a.line_number.cmp(&b.line_number))
+            .then_with(|| {
+                a.span
+                    .as_ref()
+                    .map(|span| (span.start_byte, span.end_byte))
+                    .cmp(
+                        &b.span
+                            .as_ref()
+                            .map(|span| (span.start_byte, span.end_byte)),
+                    )
+            })
+            .then_with(|| a.id.cmp(&b.id))
     });
     found.references.truncate(limit as usize);
 

@@ -51,10 +51,14 @@ fn ref_entries(
     let mut sites = reference_sites(graph, from, to);
     if sites.is_empty() {
         sites.push(Site {
+            id: format!("graph_{}_{}", from_row.id, graph.symbol(to).id),
             line: from_row.span.start_line,
+            span: None,
+            exact: false,
             kind: edge_relationship_kind(edge),
             identifier_kind: None,
             confidence: 1.0,
+            metadata: None,
         });
     }
     sites

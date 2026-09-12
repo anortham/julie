@@ -114,6 +114,14 @@ struct Handler {
     confidence: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WebRouteResolution {
+    pub client_index: usize,
+    pub from: SymbolId,
+    pub to: Option<SymbolId>,
+    pub confidence: Option<f32>,
+}
+
 fn best_handler(
     client: &StructuralFactRow,
     verb: Option<&str>,
@@ -141,9 +149,12 @@ fn best_handler(
     if ambiguous { None } else { best }
 }
 
-/// One `WebRoute` edge per client call whose verb and path match exactly one
-/// best handler at or above the confidence threshold.
-pub fn web_route_edges(symbols: &SymbolTable, facts: &[StructuralFactRow]) -> Vec<Edge> {
+/// One result per scoped client fact. `to` and `confidence` are absent when
+/// matching is ambiguous, below threshold, self-referential, or unmatched.
+pub(super) fn resolve_web_route_facts(
+    symbols: &SymbolTable,
+    facts: &[StructuralFactRow],
+) -> Vec<WebRouteResolution> {
     let mut handlers_by_segments: HashMap<usize, Vec<Handler>> = HashMap::new();
     for fact in facts {
         if !ROUTE_HANDLER_PATTERN_IDS.contains(&fact.pattern_id.as_str()) {
@@ -165,15 +176,21 @@ pub fn web_route_edges(symbols: &SymbolTable, facts: &[StructuralFactRow]) -> Ve
             });
     }
 
-    let mut edges = Vec::new();
-    for client in facts {
+    let mut routes = Vec::new();
+    for (client_index, client) in facts.iter().enumerate() {
         if !HTTP_CLIENT_CALL_PATTERN_IDS.contains(&client.pattern_id.as_str()) {
             continue;
         }
-        let (Some(from), Some(target_path)) = (
-            containing_symbol(symbols, client),
-            meta_str(client, "target_path"),
-        ) else {
+        let Some(from) = containing_symbol(symbols, client) else {
+            continue;
+        };
+        let Some(target_path) = meta_str(client, "target_path") else {
+            routes.push(WebRouteResolution {
+                client_index,
+                from,
+                to: None,
+                confidence: None,
+            });
             continue;
         };
         let verb = meta_str(client, "verb");
@@ -181,20 +198,34 @@ pub fn web_route_edges(symbols: &SymbolTable, facts: &[StructuralFactRow]) -> Ve
             .get(&split_path(&target_path).len())
             .map(Vec::as_slice)
             .unwrap_or(&[]);
-        match best_handler(client, verb.as_deref(), &target_path, bucket) {
+        let resolved = match best_handler(client, verb.as_deref(), &target_path, bucket) {
             Some((to, confidence))
-                if confidence >= HTTP_MATCH_CONFIDENCE_THRESHOLD && to != from =>
-            {
-                edges.push(Edge {
-                    from,
-                    to,
-                    kind: EdgeKind::WebRoute,
-                })
-            }
-            _ => {}
-        }
+                if confidence >= HTTP_MATCH_CONFIDENCE_THRESHOLD && to != from => {
+                    (Some(to), Some(confidence))
+                }
+            _ => (None, None),
+        };
+        routes.push(WebRouteResolution {
+            client_index,
+            from,
+            to: resolved.0,
+            confidence: resolved.1,
+        });
     }
-    edges
+    routes
+}
+
+pub fn web_route_edges(symbols: &SymbolTable, facts: &[StructuralFactRow]) -> Vec<Edge> {
+    resolve_web_route_facts(symbols, facts)
+        .into_iter()
+        .filter_map(|route| {
+            Some(Edge {
+                from: route.from,
+                to: route.to?,
+                kind: EdgeKind::WebRoute,
+            })
+        })
+        .collect()
 }
 
 fn meta_str_array(fact: &StructuralFactRow, key: &str) -> Vec<String> {

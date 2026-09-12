@@ -16,7 +16,10 @@ fn write_tree(files: &[(&str, &str)]) -> Result<TempDir> {
 }
 
 const CLIENT_TS: &str = "export async function fetchUser() {\n  const r = await fetch(\"/api/users/123\");\n  return r.json();\n}\nexport async function fetchUnknown() {\n  const r = await fetch(\"/api/unknown\", { method: \"POST\" });\n  return r.json();\n}\n";
+const MIXED_CLIENT_TS: &str = "export async function fetchBoth() {\n  await fetch(\"/api/unknown\");\n  return fetch(\"/api/users/123\");\n}\n";
+const AMBIGUOUS_CLIENT_TS: &str = "export async function fetchAmbiguous() {\n  await fetch(\"/api/items/123\");\n  return fetch(\"/api/users/123\");\n}\n";
 const CONTROLLER_PHP: &str = "<?php\nuse Symfony\\Component\\Routing\\Attribute\\Route;\nclass UserController {\n    #[Route('/api/users/{id}', methods: ['GET'])]\n    public function showUser(int $id) { return $id; }\n}\n";
+const AMBIGUOUS_CONTROLLER_PHP: &str = "<?php\nuse Symfony\\Component\\Routing\\Attribute\\Route;\nclass UserController {\n    #[Route('/api/users/{id}', methods: ['GET'])]\n    #[Route('/api/items/{id}', methods: ['GET'])]\n    public function showUser(int $id) { return $id; }\n}\nclass OtherController {\n    #[Route('/api/items/{id}', methods: ['GET'])]\n    public function showOther(int $id) { return $id; }\n}\n";
 
 fn seeded_context() -> Result<(TempDir, julie_test_support::FakeToolContext)> {
     let tree = write_tree(&[
@@ -93,6 +96,80 @@ async fn trace_web_mode_reports_external_endpoint_for_unmatched_call() -> Result
         text.contains("external_endpoint: POST /api/unknown"),
         "expected external endpoint label, got: {text}"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn web_call_path_reports_unmatched_call_beside_a_matched_call() -> Result<()> {
+    let tree = write_tree(&[
+        ("client.ts", MIXED_CLIENT_TS),
+        ("UserController.php", CONTROLLER_PHP),
+    ])?;
+    let context = snapshot_context(tree.path())?;
+
+    let result = CallPathTool {
+        from: "fetchBoth".into(),
+        to: "showUser".into(),
+        mode: Some("web".into()),
+        ..Default::default()
+    }
+    .call_tool(&context)
+    .await?;
+    let text = call_tool_result_text(&result);
+
+    assert!(text.contains("found=true"), "expected a matched route: {text}");
+    assert!(
+        text.contains("GET /api/unknown"),
+        "expected the unmatched call to remain visible: {text}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn web_call_path_uses_the_matched_call_site() -> Result<()> {
+    let tree = write_tree(&[
+        ("client.ts", MIXED_CLIENT_TS),
+        ("UserController.php", CONTROLLER_PHP),
+    ])?;
+    let context = snapshot_context(tree.path())?;
+
+    let result = CallPathTool {
+        from: "fetchBoth".into(),
+        to: "showUser".into(),
+        mode: Some("web".into()),
+        ..Default::default()
+    }
+    .call_tool(&context)
+    .await?;
+    let text = call_tool_result_text(&result);
+
+    assert!(
+        text.contains("client.ts:3"),
+        "expected the matched call's line: {text}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn web_call_path_preserves_ambiguous_neighbor_call() -> Result<()> {
+    let tree = write_tree(&[
+        ("client.ts", AMBIGUOUS_CLIENT_TS),
+        ("Controllers.php", AMBIGUOUS_CONTROLLER_PHP),
+    ])?;
+    let context = snapshot_context(tree.path())?;
+
+    let result = CallPathTool {
+        from: "fetchAmbiguous".into(),
+        to: "showUser".into(),
+        mode: Some("web".into()),
+        ..Default::default()
+    }
+    .call_tool(&context)
+    .await?;
+    let text = call_tool_result_text(&result);
+
+    assert!(text.contains("GET /api/items/123"), "{text}");
+    assert!(text.contains("client.ts:3"), "{text}");
     Ok(())
 }
 

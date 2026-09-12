@@ -2,10 +2,14 @@
 //! frontend client call traces through to its backend handler, and reports the
 //! external endpoints of client calls that matched no handler.
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 use julie_facts::FactsReader;
-use julie_facts::rows::{StructuralFactQuery, StructuralFactRow, SymbolRow};
-use julie_index::graph::EdgeKind;
+use julie_facts::rows::{StructuralFactQuery, StructuralFactRow};
+use julie_index::graph::{
+    EdgeKind, HTTP_CLIENT_CALL_PATTERN_IDS, ROUTE_HANDLER_PATTERN_IDS, SymbolId,
+};
 use julie_index::snapshot::Snapshot;
 
 use super::{
@@ -13,36 +17,33 @@ use super::{
     found_response, not_found_response, resolve_endpoints,
 };
 
-const HTTP_CLIENT_CALL_PATTERN: &str = "http.client_request.v1";
+fn meta(fact: &StructuralFactRow, key: &str) -> Option<String> {
+    fact.metadata
+        .as_ref()?
+        .get(key)?
+        .as_str()
+        .map(str::to_string)
+}
 
 fn endpoint_label(fact: &StructuralFactRow) -> String {
-    let meta = |key: &str| {
-        fact.metadata
-            .as_ref()?
-            .get(key)?
-            .as_str()
-            .map(str::to_string)
-    };
-    let path = meta("target_path").unwrap_or_default();
-    match meta("verb") {
+    let path = meta(fact, "target_path").unwrap_or_else(|| "<unresolved target>".to_string());
+    match meta(fact, "verb") {
         Some(verb) => format!("{verb} {path}"),
         None => path,
     }
 }
 
-/// `(line, "VERB /path")` of every HTTP client call inside `symbol`.
-fn client_calls(reader: &FactsReader<'_>, symbol: &SymbolRow) -> Result<Vec<(u32, String)>> {
-    let facts = reader.structural_facts(&StructuralFactQuery {
-        pattern_ids: vec![HTTP_CLIENT_CALL_PATTERN.to_string()],
-        path_pattern: Some(symbol.path.clone()),
+fn web_facts(reader: &FactsReader<'_>) -> Result<Vec<StructuralFactRow>> {
+    reader.structural_facts(&StructuralFactQuery {
+        pattern_ids: HTTP_CLIENT_CALL_PATTERN_IDS
+            .iter()
+            .chain(ROUTE_HANDLER_PATTERN_IDS)
+            .map(|pattern| (*pattern).to_string())
+            .collect(),
+        path_pattern: None,
         language: None,
         limit: i64::MAX as usize,
-    })?;
-    Ok(facts
-        .iter()
-        .filter(|fact| fact.containing_ordinal == Some(symbol.ordinal))
-        .map(|fact| (fact.span.start_line, endpoint_label(fact)))
-        .collect())
+    })
 }
 
 /// Run a web-mode `call_path` traversal over `Calls`, `WebRoute`, and `SqlQuery` edges.
@@ -62,18 +63,26 @@ pub(super) fn run_web_call_path(
     let graph = snapshot.graph();
     let facts = snapshot.facts()?;
     let reader = facts.reader();
+    let web_facts = web_facts(&reader)?;
+    let mut calls_by_symbol: HashMap<SymbolId, Vec<(Option<SymbolId>, &StructuralFactRow)>> =
+        HashMap::new();
+    for route in graph.resolved_web_routes(&web_facts) {
+        calls_by_symbol
+            .entry(route.from)
+            .or_default()
+            .push((route.to, &web_facts[route.client_index]));
+    }
 
     let mut external_endpoints = Vec::new();
-    let mut failure = None;
     let search = bfs_shortest_path(endpoints.from, &endpoints.targets, max_hops, |id| {
         let edges = graph.outgoing(id);
-        // ponytail: a symbol with any matched route reports none of its client
-        // calls as external; per-call matching needs the handlers' templates.
-        if !edges.iter().any(|(_, kind)| *kind == EdgeKind::WebRoute) {
-            match client_calls(&reader, graph.symbol(id)) {
-                Ok(calls) => external_endpoints.extend(calls.into_iter().map(|(_, label)| label)),
-                Err(error) => failure = Some(error),
-            }
+        if let Some(calls) = calls_by_symbol.get(&id) {
+            external_endpoints.extend(
+                calls
+                    .iter()
+                    .filter(|(to, _)| to.is_none())
+                    .map(|(_, call)| endpoint_label(call)),
+            );
         }
         edges
             .iter()
@@ -85,9 +94,6 @@ pub(super) fn run_web_call_path(
             })
             .collect()
     });
-    if let Some(error) = failure {
-        return Err(error);
-    }
     external_endpoints.sort();
     external_endpoints.dedup();
 
@@ -98,11 +104,16 @@ pub(super) fn run_web_call_path(
         if label != "http_call" {
             return call_site_line(graph, from, to);
         }
-        let symbol = graph.symbol(from);
-        client_calls(&reader, symbol)
-            .ok()
-            .and_then(|calls| calls.first().map(|(line, _)| *line))
-            .unwrap_or(symbol.span.start_line)
+        calls_by_symbol
+            .get(&from)
+            .and_then(|calls| {
+                calls
+                    .iter()
+                    .filter(|(target, _)| *target == Some(to))
+                    .map(|(_, call)| call.span.start_line)
+                    .min()
+            })
+            .unwrap_or(graph.symbol(from).span.start_line)
     };
     let hops = build_hops(
         graph,

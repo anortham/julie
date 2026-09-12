@@ -27,6 +27,25 @@ fn truncate_signature(sig: &str, max_len: usize) -> String {
     }
 }
 
+/// Formats canonical 1-based lines and 0-based columns.
+fn reference_position(reference: &Relationship) -> String {
+    match &reference.span {
+        Some(span) => format!(
+            " @{}:{}-{}:{}{}",
+            span.start_line,
+            span.start_column,
+            span.end_line,
+            span.end_column,
+            if reference.reference_site_is_exact {
+                ""
+            } else {
+                " [inferred]"
+            }
+        ),
+        None => " [inferred]".to_string(),
+    }
+}
+
 /// Format references in lean text format for AI agents
 ///
 /// Output format:
@@ -152,13 +171,17 @@ pub fn format_lean_refs_results(
                 let rel = rels[0];
                 let kind = format!("{:?}", rel.kind);
                 let name = source_names.get(&rel.from_symbol_id);
+                let evidence = reference_position(rel);
                 if let Some(name) = name {
                     output.push_str(&format!(
-                        "  {}:{}  {} ({})\n",
-                        file_path, rel.line_number, name, kind
+                        "  {}:{}  {} ({}){}\n",
+                        file_path, rel.line_number, name, kind, evidence
                     ));
                 } else {
-                    output.push_str(&format!("  {}:{} ({})\n", file_path, rel.line_number, kind));
+                    output.push_str(&format!(
+                        "  {}:{} ({}){}\n",
+                        file_path, rel.line_number, kind, evidence
+                    ));
                 }
             } else {
                 // Multiple refs in same file: group under file header
@@ -166,11 +189,17 @@ pub fn format_lean_refs_results(
                 for rel in rels.iter() {
                     let kind = format!("{:?}", rel.kind);
                     let name = source_names.get(&rel.from_symbol_id);
+                    let evidence = reference_position(rel);
                     if let Some(name) = name {
-                        output
-                            .push_str(&format!("    :{}  {} ({})\n", rel.line_number, name, kind));
+                        output.push_str(&format!(
+                            "    :{}  {} ({}){}\n",
+                            rel.line_number, name, kind, evidence
+                        ));
                     } else {
-                        output.push_str(&format!("    :{} ({})\n", rel.line_number, kind));
+                        output.push_str(&format!(
+                            "    :{} ({}){}\n",
+                            rel.line_number, kind, evidence
+                        ));
                     }
                 }
             }

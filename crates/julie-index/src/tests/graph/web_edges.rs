@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use julie_extractors::SymbolKind;
+use julie_facts::rows::StructuralFactQuery;
 use serde_json::json;
 
 use super::fixture::{edges_of_kind, file, graph_of, store_with};
@@ -82,6 +83,35 @@ fn equally_confident_handlers_in_different_symbols_are_ambiguous() {
     let graph = graph_of(&store);
 
     assert!(edges_of_kind(&graph, EdgeKind::WebRoute).is_empty());
+}
+
+#[test]
+fn web_route_resolution_retains_bound_client_without_target_path() {
+    let (_, store) = store_with(vec![file("client.ts")
+        .symbol("dynamic", "dynamic", SymbolKind::Function)
+        .fact(
+            "http.client_request.v1",
+            Some("dynamic"),
+            0.9,
+            HashMap::from([("verb".to_string(), json!("GET"))]),
+        )]);
+    let graph = graph_of(&store);
+    let facts = store
+        .reader()
+        .structural_facts(&StructuralFactQuery {
+            pattern_ids: vec!["http.client_request.v1".to_string()],
+            path_pattern: None,
+            language: None,
+            limit: usize::MAX,
+        })
+        .unwrap();
+    let routes = graph.resolved_web_routes(&facts);
+
+    assert_eq!(routes.len(), 1);
+    assert_eq!(graph.symbol(routes[0].from).name, "dynamic");
+    assert_eq!(routes[0].client_index, 0);
+    assert_eq!(routes[0].to, None);
+    assert_eq!(routes[0].confidence, None);
 }
 
 fn table_fact(name: &str) -> HashMap<String, serde_json::Value> {

@@ -142,14 +142,48 @@ async fn test_fast_refs_primary_identifier_fallback_dedupes_within_batch() -> Re
     let second_line_count = result_text.matches(":3  caller_fast_refs").count();
 
     assert_eq!(
-        first_line_count, 1,
-        "duplicate file:line refs should collapse before limit handling: {result_text}"
+        first_line_count, 2,
+        "distinct same-line sites should consume separate page rows: {result_text}"
     );
     assert_eq!(
-        second_line_count, 1,
-        "limit should still leave room for the unique line after dedupe: {result_text}"
+        second_line_count, 0,
+        "the next distinct site should remain on the next page: {result_text}"
     );
+    assert!(result_text.contains("offset=2"));
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn fast_refs_call_tool_exposes_canonical_reference_sites() -> Result<()> {
+    let (_dir, context) = context(&[
+        ("src/fast_refs.rs", FAST_REFS_TOOL),
+        (
+            "src/caller.rs",
+            "pub fn caller_fast_refs() {\n    FastRefsTool::call_tool(); FastRefsTool::call_tool();\n}\n",
+        ),
+    ])?;
+
+    let result = fast_refs("FastRefsTool::call_tool", 10, Some("call"))
+        .call_tool(&context)
+        .await?;
+    let structured = result.structured_content.as_ref().unwrap();
+    let references = structured["references"].as_array().unwrap();
+
+    assert_eq!(references.len(), 2);
+    assert_ne!(references[0]["id"], references[1]["id"]);
+    assert_ne!(references[0]["span"], references[1]["span"]);
+    assert!(
+        references
+            .iter()
+            .all(|reference| reference["reference_site_is_exact"] == true)
+    );
+    assert!(references.iter().all(|reference| {
+        reference["metadata"]["reference_site_provenance"]
+            .as_str()
+            .is_some()
+    }));
+    assert!(extract_text_from_result(&result).matches("@2:").count() >= 2);
     Ok(())
 }
 
