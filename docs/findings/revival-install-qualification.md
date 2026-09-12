@@ -6,7 +6,7 @@
 
 | Field | Value |
 |---|---|
-| Candidate SHA at preparation | `319ff7dbb2cef85d93deccd2309531df087a3592` |
+| Candidate SHA | `87f333dd84206e690c248c18e6f7c85d1b90e6c0` (locally committed candidate) |
 | Package version | `8.0.0` |
 | Plugin source revision | `7d3996a7bb6130747c631446caacb800a1c34622` |
 | Archive SHA-256 | PENDING: archive not built |
