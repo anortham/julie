@@ -94,7 +94,7 @@ Use explicit maintenance calls and an injected/current test clock for expiry; no
 - [ ] After work settles, resident unused runtimes meet the selected count/age bounds and their watcher resources are released.
 - [ ] Active calls, queued writes and semantic backfill are not discarded by eviction.
 - [ ] Teardown/reopen cannot overlap writers for one workspace.
-- [ ] Disk stores remain intact and subsequent queries are current.
+- [x] Disk stores remain intact and subsequent queries are current (`evicted_runtime_reopens_with_fresh_results_and_existing_vectors`).
 - [ ] Three repeated checkout-churn runs show bounded live runtime resources; before/after RSS, retained slot metadata and warm-query p95 are recorded on the same workload.
 - [ ] Any resource growth or hot-checkout regression beyond the recorded budget is investigated before retaining the change.
 

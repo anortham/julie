@@ -1,5 +1,6 @@
 //! Tests for shared RequestEngine application dispatch and cancellation.
 
+use crate::embeddings::{DeviceInfo, EmbeddingProvider, EmbeddingRequestBudget, EncoderIdentity};
 use crate::paths::RegistryPaths;
 use crate::request_engine::{
     BindingResolver, RequestContext, RequestEngine, RequestFailure, RequestOrigin, RuntimeFactory,
@@ -240,6 +241,124 @@ async fn runtime_cache_evicts_oldest_idle_checkout_and_stops_watcher() {
     assert_eq!(fixture.runtimes.slot_count().await, baseline_slots + 2);
     assert_eq!(fixture.runtimes.loaded_runtime_count().await, 2);
     assert_eq!(fixture.runtimes.loaded_watcher_count().await, 2);
+}
+
+#[tokio::test]
+async fn evicted_runtime_reopens_with_fresh_results_and_existing_vectors() {
+    struct PipelineProvider;
+
+    impl EmbeddingProvider for PipelineProvider {
+        fn embed_query(
+            &self,
+            _text: &str,
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<f32>> {
+            Ok(vec![0.1; 384])
+        }
+
+        fn embed_batch(
+            &self,
+            texts: &[String],
+            _budget: &EmbeddingRequestBudget,
+        ) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(vec![vec![0.1; 384]; texts.len()])
+        }
+
+        fn dimensions(&self) -> usize {
+            384
+        }
+
+        fn encoder_identity(&self) -> anyhow::Result<EncoderIdentity> {
+            Ok(EncoderIdentity::mock("runtime-reopen", 384))
+        }
+
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "test".to_string(),
+                device: "cpu".to_string(),
+                model_name: "runtime-reopen".to_string(),
+                dimensions: 384,
+            }
+        }
+    }
+
+    let fixture = RequestFixture::indexed().await;
+    let binding = BindingResolver::new(
+        Some(fixture.root.clone()),
+        false,
+        fixture.runtimes.registry_paths().clone(),
+    )
+    .resolve(None, None, false)
+    .unwrap()
+    .unwrap();
+    let runtime = acquire_runtime(&fixture.runtimes, &binding).await;
+    let handler = Arc::clone(runtime.handler());
+    handler.set_injected_embedding_provider(Some(Arc::new(PipelineProvider)));
+    let scheduled = crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+        &handler,
+        binding.workspace_id.clone(),
+    )
+    .await;
+    assert!(scheduled.symbols > 0, "scheduled real embedding work");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if !handler
+            .embedding_tasks
+            .lock()
+            .await
+            .contains_key(&binding.workspace_id)
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "embedding task did not complete");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let vector_count = handler
+        .checkout_store_for_workspace(&binding.workspace_id, &fixture.root)
+        .await
+        .unwrap()
+        .status()
+        .vector_count;
+    assert!(
+        vector_count > 0,
+        "real embedding pipeline persisted vectors"
+    );
+
+    drop(handler);
+    drop(runtime);
+    fixture.runtimes.set_retirement_policy(0, Duration::ZERO);
+    fixture.runtimes.retire_idle_runtimes(Instant::now()).await;
+    assert!(!fixture.runtimes.slot_is_loaded(&binding).await);
+
+    std::fs::write(
+        fixture.root.join("src/reopened.rs"),
+        "pub fn reopened_runtime_search_result() {}\n",
+    )
+    .unwrap();
+    let reply = fixture
+        .execute(
+            "fast_search",
+            serde_json::json!({ "query": "reopened_runtime_search_result" }),
+        )
+        .await
+        .unwrap();
+    assert!(
+        reply
+            .result
+            .to_string()
+            .contains("reopened_runtime_search_result")
+    );
+
+    let reopened = acquire_runtime(&fixture.runtimes, &binding).await;
+    let reopened_vectors = reopened
+        .handler()
+        .checkout_store_for_workspace(&binding.workspace_id, &fixture.root)
+        .await
+        .unwrap()
+        .status()
+        .vector_count;
+    assert!(reopened_vectors >= vector_count);
 }
 
 #[tokio::test]
