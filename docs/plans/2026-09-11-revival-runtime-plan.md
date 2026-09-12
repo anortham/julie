@@ -1,6 +1,6 @@
 # Plan 3: One bounded production runtime lifecycle
 
-**Status:** 3A baseline, 3B independent cold initialization, and the 3C embedding cancel-and-join subtask are complete. Windows validation is deferred to final post-merge validation.
+**Status:** 3A baseline, 3B independent cold initialization, and 3C lifecycle implementation are complete; post-change measurement and the final Linux gate remain. Windows validation is deferred to final post-merge validation.
 **Goal:** Opening a cold checkout does not block warm checkouts, and idle runtime resources are reclaimed safely.
 **Depends on:** Plan 1 recovery and request-local semantics before lifecycle integration.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). Apply `razorback:diagnosing-performance`: baseline before optimization, same workload afterward.
@@ -131,3 +131,4 @@ Lead runs the common dev/full gates and one isolated multi-checkout lifecycle pr
 | Active request and registered embedding writer are retained by explicit retirement | `cargo nextest run -p julie --lib runtime_cache_never_evicts_active_request_or_background_writer` | worker-red-green | working tree | GREEN: passed | 2026-09-12T20:00:00Z | no |
 | Oldest idle checkout retires before newer idle slots | `cargo nextest run -p julie --lib runtime_cache_evicts_oldest_idle_checkout_and_stops_watcher` | worker-red-green | working tree | Initial compilation exposed an ownership-count correction; final exact run remains with the lead because the worker RED/GREEN run budget is exhausted. | 2026-09-12T20:00:00Z | no |
 | Same-key reacquisition waits for teardown | `cargo nextest run -p julie --lib runtime_reacquire_waits_for_teardown_without_duplicate_writer` | worker-red-green | working tree | Initial deterministic-barrier run did not complete before interruption; final exact run remains with the lead because the worker RED/GREEN run budget is exhausted. | 2026-09-12T20:00:00Z | no |
+| Service shutdown joins maintenance, watcher, and embedding writer work | `cargo nextest run -p julie --lib service_shutdown_joins_maintenance_watchers_and_embedding_writers` | worker-red-green | working tree | GREEN: passed; the test holds a writer behind a notify barrier, proves shutdown takes it before awaiting join, then verifies watcher and loaded-runtime release. | 2026-09-12T21:00:00Z | no |

@@ -3,11 +3,14 @@ use crate::service::client::ServiceClient;
 use crate::service::discovery::{self, ServiceRecord};
 use crate::service::{ServiceApp, ServiceConfig};
 use julie_core::paths::RegistryPaths;
-use std::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 struct OwnedService {
     paths: RegistryPaths,
     record: ServiceRecord,
+    engine: Arc<crate::request_engine::RequestEngine>,
     task: tokio::task::JoinHandle<anyhow::Result<()>>,
     _home: tempfile::TempDir,
 }
@@ -21,12 +24,14 @@ impl OwnedService {
             registry_paths: paths.clone(),
         })
         .unwrap();
+        let engine = app.engine().clone();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let task = tokio::spawn(app.serve(listener));
         let record = wait_for_record(&paths).await;
         OwnedService {
             paths,
             record,
+            engine,
             task,
             _home: home,
         }
@@ -61,6 +66,97 @@ async fn shutdown_removes_only_a_record_it_owns() {
         discovery::read_record(&service.paths).unwrap(),
         Some(foreign)
     );
+}
+
+#[tokio::test]
+async fn service_shutdown_joins_maintenance_watchers_and_embedding_writers() {
+    let mut service = OwnedService::start().await;
+    let workspace = tempfile::tempdir().unwrap();
+    std::fs::create_dir(workspace.path().join(".git")).unwrap();
+    std::fs::write(
+        workspace.path().join("Cargo.toml"),
+        "[package]\nname=\"service-drain\"\nversion=\"0.1.0\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir(workspace.path().join("src")).unwrap();
+    std::fs::write(
+        workspace.path().join("src/lib.rs"),
+        "pub fn service_drain() {}\n",
+    )
+    .unwrap();
+
+    let binding = crate::request_engine::BindingResolver::new(
+        Some(workspace.path().to_path_buf()),
+        false,
+        service.paths.clone(),
+    )
+    .resolve(None, None, false)
+    .unwrap()
+    .unwrap();
+    let runtime = service
+        .engine
+        .runtimes
+        .acquire(
+            Some(&binding),
+            &crate::request_engine::RequestContext::new(
+                crate::request_engine::RequestOrigin::Mcp,
+                Some(Duration::from_secs(5)),
+                tokio_util::sync::CancellationToken::new(),
+            ),
+        )
+        .await
+        .unwrap();
+    let handler = Arc::clone(runtime.handler());
+    assert!(handler.loaded_workspace_file_watcher_running().await);
+
+    let release_writer = Arc::new(tokio::sync::Notify::new());
+    let writer_finished = Arc::new(AtomicBool::new(false));
+    let release = Arc::clone(&release_writer);
+    let finished = Arc::clone(&writer_finished);
+    handler.embedding_tasks.lock().await.insert(
+        binding.workspace_id.clone(),
+        (
+            Arc::new(AtomicBool::new(false)),
+            tokio::spawn(async move {
+                release.notified().await;
+                finished.store(true, Ordering::SeqCst);
+            }),
+        ),
+    );
+    drop(runtime);
+
+    let client = ServiceClient::from_record(&service.record);
+    assert_eq!(client.post_shutdown().await.unwrap().status(), 202);
+
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while handler
+        .embedding_tasks
+        .lock()
+        .await
+        .contains_key(&binding.workspace_id)
+    {
+        assert!(
+            Instant::now() < deadline,
+            "shutdown did not take the embedding writer"
+        );
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), &mut service.task)
+            .await
+            .is_err(),
+        "service completed before the embedding writer joined"
+    );
+
+    release_writer.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), &mut service.task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(writer_finished.load(Ordering::SeqCst));
+    assert!(!handler.loaded_workspace_file_watcher_running().await);
+    assert_eq!(service.engine.runtimes.loaded_runtime_count().await, 0);
 }
 
 #[tokio::test]

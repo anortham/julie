@@ -15,7 +15,7 @@ use anyhow::Context;
 use julie_core::paths::RegistryPaths;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
 pub struct ServiceConfig {
@@ -103,6 +103,20 @@ impl ServiceApp {
         tokio::spawn(sweep_registry(self.config.registry_paths.clone()));
 
         let shutdown = self.state.shutdown.clone();
+        let maintenance = {
+            let runtimes = Arc::clone(&self.state.engine.runtimes);
+            let shutdown = shutdown.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = shutdown.cancelled() => return,
+                        _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                            runtimes.retire_idle_runtimes(Instant::now()).await;
+                        }
+                    }
+                }
+            })
+        };
         let idle_watch = {
             let status = Arc::clone(&self.state.status);
             let shutdown = shutdown.clone();
@@ -121,11 +135,25 @@ impl ServiceApp {
                 }
             }
         };
-        let server = axum::serve(listener, self.router).with_graceful_shutdown({
-            let shutdown = shutdown.clone();
-            async move { shutdown.cancelled().await }
-        });
-        let result = tokio::select! { r = server => r.map_err(anyhow::Error::from), _ = idle_watch => Ok(()) };
+        let server = axum::serve(listener, self.router)
+            .with_graceful_shutdown({
+                let shutdown = shutdown.clone();
+                async move { shutdown.cancelled().await }
+            })
+            .into_future();
+        tokio::pin!(server);
+        let result = tokio::select! {
+            r = server.as_mut() => r.map_err(anyhow::Error::from),
+            _ = idle_watch => {
+                shutdown.cancel();
+                server.as_mut().await.map_err(anyhow::Error::from)
+            }
+        };
+        shutdown.cancel();
+        if let Err(error) = maintenance.await {
+            warn!("Runtime maintenance task failed to join: {error}");
+        }
+        self.state.engine.runtimes.shutdown_all().await;
         let owned = discovery::read_record(&self.config.registry_paths)?
             .is_some_and(|r| r.pid == std::process::id());
         if owned {

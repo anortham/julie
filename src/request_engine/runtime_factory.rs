@@ -381,6 +381,28 @@ impl RuntimeFactory {
         }
     }
 
+    pub(crate) async fn shutdown_all(&self) {
+        let slots = self
+            .runtimes
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        for slot in slots {
+            if let Some(runtime) = slot.runtime.write().await.take()
+                && let Err(error) = runtime.handler().teardown_loaded_workspace().await
+            {
+                warn!("Failed to tear down runtime during service shutdown: {error:#}");
+            }
+        }
+        if let Some(runtime) = self.unbound_runtime.write().await.take()
+            && let Err(error) = runtime.handler().teardown_loaded_workspace().await
+        {
+            warn!("Failed to tear down unbound runtime during service shutdown: {error:#}");
+        }
+    }
+
     async fn retire_slot(&self, slot: Arc<RuntimeSlot>) {
         let mut runtime = slot.runtime.write().await;
         let Some(loaded) = runtime.as_ref() else {
