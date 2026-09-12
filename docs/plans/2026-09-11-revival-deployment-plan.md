@@ -38,11 +38,11 @@ Run `cargo xtask sync-plugin --dry-run` against the selected plugin checkout bef
 
 **Acceptance:**
 
-- [ ] A fresh no-hook MCP client receives essential routing and succeeds on its first explicit-workspace call.
-- [ ] All management examples use valid current operations and selectors.
-- [ ] Source, compiled initialization and mirrored plugin guidance agree; generated tool schemas retain required workspace.
-- [ ] Every affected skill call includes the correct selector and preserves paging arguments.
-- [ ] Documentation uses the pinned extractor's verified language inventory, not stale unsupported counts.
+- [x] A fresh no-hook MCP client receives essential routing and succeeds on its first explicit-workspace call.
+- [x] All management examples use valid current operations and selectors.
+- [x] Source, compiled initialization and mirrored plugin guidance agree; generated tool schemas retain required workspace.
+- [x] Every affected skill call includes the correct selector and preserves paging arguments.
+- [x] Documentation uses the pinned extractor's verified language inventory, not stale unsupported counts.
 
 ## 4B. Make upgrades version-safe
 
@@ -139,3 +139,9 @@ Owner-approved publication order is: publish the reviewed v8 plugin launcher/wor
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| Health requires a checkout selector and gives the exact open recovery call | `cargo nextest run -p julie --lib manage_workspace_health_accepts_workspace_id_and_rejects_unbound_call_with_guidance` | worker-red-green | `9bc5339f` | PASS: 1 passed | 2026-09-12T22:00Z | Worker ran the identical pre-commit tree. |
+| Nine scoped MCP schemas require a non-null string workspace | `cargo nextest run -p julie --lib mcp_catalog_requires_a_non_null_workspace_for_scoped_tools` | worker-red-green | `9bc5339f` | PASS: 1 passed | 2026-09-12T22:00Z | Worker ran the identical pre-commit tree. |
+| Compiled initialization fits the budget and carries the first-512 routing contract | `cargo nextest run -p xtask --test docs_contract_tests docs_contract_tests_agent_instructions_fit_the_server_instruction_budget` | worker-red-green | `9bc5339f` | PASS: 1 passed | 2026-09-12T22:00Z | Worker ran the identical pre-commit tree. |
+| Deployment guidance matches selectors, skills and the pinned 37-language inventory | `cargo nextest run -p xtask --test docs_contract_tests docs_contract_tests_deployment_guidance_matches_runtime_contract` | worker-red-green | `9bc5339f` | PASS: 1 passed | 2026-09-12T22:22Z | Worker ran the identical pre-commit tree after lead corrections. |
+| Mirrored plugin instructions and hooks remain valid | `node --test hooks/*.test.cjs` | dev | `1aa320a` | PASS: 22 passed | 2026-09-12T22:23Z | Lead ran the complete plugin gate. |
+| Source skills and instructions exactly match the selected plugin mirror | `cargo xtask sync-plugin --plugin-root /home/murphy/.config/razorback/worktrees/julie-plugin/revival-deployment --dry-run` | dev | `9bc5339f` / `1aa320a` | PASS: 0 updates, 0 removals | 2026-09-12T22:23Z | None. |
