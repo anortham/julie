@@ -120,7 +120,7 @@ impl RuntimeFactory {
         let runtimes = self.runtimes.read().await.values().cloned().collect::<Vec<_>>();
         let mut count = 0;
         for runtime in runtimes {
-            if runtime.handler().loaded_workspace_file_watcher_running_for_test().await {
+            if runtime.handler().loaded_workspace_file_watcher_running().await {
                 count += 1;
             }
         }

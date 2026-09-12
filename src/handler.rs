@@ -670,8 +670,7 @@ impl JulieServerHandler {
         self.bind_current_primary(workspace_id, workspace_root);
     }
 
-    #[cfg(test)]
-    pub async fn loaded_workspace_file_watcher_running_for_test(&self) -> bool {
+    pub async fn loaded_workspace_file_watcher_running(&self) -> bool {
         let workspace_guard = self.workspace.read().await;
         workspace_guard
             .as_ref()
