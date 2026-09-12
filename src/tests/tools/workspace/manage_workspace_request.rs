@@ -137,6 +137,7 @@ fn manage_workspace_request_parses_valid_operations_with_live_fields() {
 
     let request = request_from_json(json!({
         "operation": "health",
+        "workspace_id": "workspace-1",
         "detailed": true
     }))
     .unwrap();
