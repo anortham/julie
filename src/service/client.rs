@@ -98,6 +98,10 @@ async fn try_connect(paths: &RegistryPaths) -> Result<Option<ServiceClient>, Con
     else {
         return Ok(None);
     };
+    if !discovery::pid_alive(record.pid) {
+        discovery::remove_record(paths).map_err(|e| ConnectError::Unavailable(e.to_string()))?;
+        return Ok(None);
+    }
     let client = ServiceClient::from_record(&record);
     match client.status().await {
         Ok(_) => {

@@ -26,10 +26,8 @@ async fn connects_to_a_running_service_without_spawning() {
 async fn stale_record_is_removed_and_the_spawn_hook_runs_once() {
     let home = tempfile::tempdir().unwrap();
     let paths = RegistryPaths::with_home(home.path().to_path_buf());
-    let dead_port = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let dead_port = listener.local_addr().unwrap().port();
     discovery::write_record(
         &paths,
         &ServiceRecord {
@@ -57,6 +55,11 @@ async fn stale_record_is_removed_and_the_spawn_hook_runs_once() {
     assert!(matches!(result, Err(ConnectError::Unavailable(_))));
     assert_eq!(spawns.load(Ordering::SeqCst), 1);
     assert!(discovery::read_record(&paths).unwrap().is_none());
+    listener.set_nonblocking(true).unwrap();
+    assert!(matches!(
+        listener.accept(),
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+    ));
 }
 
 #[tokio::test]
