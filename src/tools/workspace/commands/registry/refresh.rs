@@ -247,8 +247,9 @@ impl ManageWorkspaceTool {
             }
         };
 
-        let guard = handler.acquire_mutation_guard(&workspace_id).await;
         let index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
+        handler.invalidate_checkout_store(&workspace_id).await;
+        let guard = handler.acquire_mutation_guard(&workspace_id).await;
         if index_dir.exists() {
             std::fs::remove_dir_all(&index_dir)?;
             info!(
@@ -257,7 +258,6 @@ impl ManageWorkspaceTool {
                 index_dir.display()
             );
         }
-        handler.invalidate_checkout_store(&workspace_id).await;
         let indexed = self
             .handle_index_command_with_guard(
                 handler,

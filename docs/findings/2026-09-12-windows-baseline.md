@@ -15,3 +15,13 @@ The first `cargo xtask test full` completed with failure, with an authoritative 
 All four tests in that module already had `#[cfg(unix)]` and use POSIX shell fixtures. Adding a module-level `#![cfg(unix)]` applies the same condition to the shared helper/imports. It removes no previously enabled Windows test. The corrected Windows gate remains pending until a clean commit is synced and tested.
 
 A clean read-only export clone under the task's ignored `.razorback/sdd/revival-retrieval/windows-source/revival-retrieval` permits exact-commit syncing while host workers have unrelated in-flight diffs. All implementation edits remain in the primary task worktree; the export is only verification input. Keeping its basename preserves the warmed guest checkout and target directory.
+
+## Second baseline run
+
+The corrected `c0e3828f827451b01131e4310270b4b39e57e72b` run compiled successfully and ran111/2237 development tests before fail-fast:109passed,2failed. Log: `/home/murphy/.local/share/win-test/logs/20260912T140002Z-revival-retrieval-1419592.log`.
+
+The existing-path CLI fixture assumed `/tmp`; it now uses the platform temp directory. Standalone rebuild failed with Windows error32 because it deleted files before releasing the loaded workspace and reference cache. Rebuild now captures its resolved index path before teardown, stops/releases only the matching workspace/cache, then acquires the existing mutation gate before deleting/reindexing. Capturing the path first preserves rebound standalone storage anchors. Stopping the watcher before taking the gate avoids joining a task blocked on that same gate.
+
+Focused host checks pass: `invalidate_checkout_store_releases_only_matching_workspace_handles`, `test_resolve_workspace_root_with_existing_path`, and `test_run_cli_tool_standalone_workspace_rebuild_reindexes_the_path` (one selected each), plus `cargo check`. The clean-commit NTFS rerun remains the proof for Windows file-handle release.
+
+This repair does not add global request/embedding quiescence or claim full concurrent runtime eviction. Those lifecycle guarantees remain in Plan3. Existing explicit rebuild still fails rather than silently unlinking files that another active reader or embedding job retains.

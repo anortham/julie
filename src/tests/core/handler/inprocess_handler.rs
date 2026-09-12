@@ -153,6 +153,66 @@ async fn test_inprocess_handler_f2_storage_under_index_root() {
     assert!(!project_local_db.exists());
 }
 
+#[tokio::test]
+async fn invalidate_checkout_store_releases_only_matching_workspace_handles() {
+    let primary = tempfile::tempdir().unwrap();
+    let primary_id = generate_workspace_id(&primary.path().to_string_lossy()).unwrap();
+    let handler = JulieServerHandler::new_in_process(
+        hint(primary.path(), WorkspaceStartupSource::Cli),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    handler
+        .initialize_workspace_with_force(
+            Some(primary.path().to_string_lossy().to_string()),
+            false,
+        )
+        .await
+        .unwrap();
+
+    let secondary = tempfile::tempdir().unwrap();
+    let secondary_id = generate_workspace_id(&secondary.path().to_string_lossy()).unwrap();
+    drop(
+        handler
+            .checkout_store_for_workspace(&secondary_id, secondary.path())
+            .await
+            .unwrap(),
+    );
+    let secondary_store = handler
+        .checkout_store_for_workspace(&secondary_id, secondary.path())
+        .await
+        .unwrap();
+    let secondary_handle = Arc::downgrade(&secondary_store);
+    drop(secondary_store);
+
+    handler.invalidate_checkout_store(&secondary_id).await;
+    assert!(secondary_handle.upgrade().is_none());
+    assert_eq!(handler.loaded_workspace_id(), Some(primary_id.clone()));
+    assert!(handler.get_workspace().await.unwrap().is_some());
+
+    let rebound = tempfile::tempdir().unwrap();
+    let rebound_id = generate_workspace_id(&rebound.path().to_string_lossy()).unwrap();
+    handler.set_current_primary_binding(rebound_id, rebound.path().to_path_buf());
+    let captured_index_dir = handler
+        .workspace_index_dir_for(&primary_id)
+        .await
+        .unwrap();
+
+    handler.invalidate_checkout_store(&primary_id).await;
+    assert_eq!(handler.loaded_workspace_id(), None);
+    assert!(handler.get_workspace().await.unwrap().is_none());
+    assert_eq!(
+        captured_index_dir,
+        rebound.path().join(".julie/indexes").join(&primary_id)
+    );
+    assert_eq!(
+        handler.workspace_index_dir_for(&primary_id).await.unwrap(),
+        primary.path().join(".julie/indexes").join(&primary_id)
+    );
+}
+
 #[test]
 fn test_in_process_workspace_id_is_canonicalized() {
     let dir = tempfile::tempdir().unwrap();

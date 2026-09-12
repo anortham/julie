@@ -107,9 +107,7 @@ fn nonexistent_absolute_path(path: &str) -> PathBuf {
 
 #[test]
 fn test_resolve_workspace_root_with_existing_path() {
-    // Use a path that definitely exists
-    let result = resolve_workspace_root(Some(PathBuf::from("/tmp")));
-    // Should be canonicalized (on macOS /tmp -> /private/tmp)
+    let result = resolve_workspace_root(Some(std::env::temp_dir()));
     assert!(result.exists());
 }
 

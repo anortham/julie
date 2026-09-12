@@ -1387,6 +1387,9 @@ impl JulieServerHandler {
     }
 
     pub(crate) async fn invalidate_checkout_store(&self, workspace_id: &str) {
+        if self.loaded_workspace_id().as_deref() == Some(workspace_id) {
+            self.teardown_loaded_workspace().await;
+        }
         self.ref_store_cache.write().await.remove(workspace_id);
     }
 
