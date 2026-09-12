@@ -264,7 +264,19 @@ async fn indexed_metrics_handler() -> Result<(JulieServerHandler, TempDir)> {
         .get_workspace()
         .await?
         .expect("metrics fixture workspace should be loaded");
-    assert_eq!(workspace.store.status().graph.symbols, 2);
+    let source_path = workspace.root.join("src/lib.rs");
+    let source_len = std::fs::metadata(&source_path)
+        .ok()
+        .map(|metadata| metadata.len());
+    let store_status = workspace.store.status();
+    assert_eq!(
+        store_status.graph.symbols,
+        2,
+        "metrics fixture index was not ready: index_result={index_result:?}, workspace_root={}, store_root={}, source_exists={}, source_len={source_len:?}, store_status={store_status:?}",
+        workspace.root.display(),
+        workspace.store.root().display(),
+        source_path.exists(),
+    );
     Ok((handler, temp_dir))
 }
 

@@ -104,7 +104,7 @@ fn copy_sibling_blobs(
     if hashes.is_empty() {
         return Ok(0);
     }
-    let uri = format!("file:{}?mode=ro", sibling_facts.display());
+    let uri = sqlite_read_only_uri(sibling_facts)?;
     target.execute("ATTACH DATABASE ?1 AS sibling", [uri])?;
     target.execute_batch("CREATE TEMP TABLE wanted (hash TEXT PRIMARY KEY)")?;
     {
@@ -129,6 +129,13 @@ fn copy_sibling_blobs(
     );
     target.execute_batch("DROP TABLE wanted; DETACH DATABASE sibling")?;
     Ok(copied)
+}
+
+pub(crate) fn sqlite_read_only_uri(path: &Path) -> Result<String> {
+    let mut uri = reqwest::Url::from_file_path(path)
+        .map_err(|_| anyhow::anyhow!("sibling facts path is not absolute: {}", path.display()))?;
+    uri.query_pairs_mut().append_pair("mode", "ro");
+    Ok(uri.into())
 }
 
 fn create_facts(path: &Path) -> Result<FactsStore> {

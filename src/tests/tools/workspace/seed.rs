@@ -8,6 +8,7 @@ use crate::tests::helpers::mcp::call_tool_result_text;
 use crate::tests::helpers::workspace::{make_isolated_workspace_root, mark_workspace_root};
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::seed::copy_dir;
+use crate::tools::workspace::indexing::seed::sqlite_read_only_uri;
 use crate::workspace::registry::generate_workspace_id;
 
 fn fixture_copy(parent: &Path, name: &str) -> PathBuf {
@@ -29,6 +30,24 @@ fn index_tool(path: &Path) -> ManageWorkspaceTool {
         workspace_id: None,
         detailed: None,
     }
+}
+
+#[test]
+fn sqlite_read_only_uri_encodes_a_native_absolute_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let uri = sqlite_read_only_uri(&temp.path().join("seed #?.sqlite")).unwrap();
+    assert!(uri.starts_with("file:///"), "{uri}");
+    assert!(uri.contains("seed%20%23%3F.sqlite"), "{uri}");
+    assert!(uri.ends_with("?mode=ro"), "{uri}");
+}
+
+#[cfg(unix)]
+#[test]
+fn sqlite_read_only_uri_preserves_a_unix_backslash_as_path_data() {
+    assert_eq!(
+        sqlite_read_only_uri(Path::new(r"/tmp/seed\name.sqlite")).unwrap(),
+        "file:///tmp/seed%5Cname.sqlite?mode=ro"
+    );
 }
 
 #[tokio::test]
