@@ -468,6 +468,9 @@ impl SyntaxAdapter {
                 Ok(result) => {
                     let _ = join_handle.join();
                     self.limiter.release();
+                    if cancelled.is_some_and(|c| c.load(Ordering::Acquire)) {
+                        return Err(SyntaxAdapterError::Cancelled);
+                    }
                     return result;
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {

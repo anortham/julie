@@ -324,7 +324,6 @@ async fn source_preflight_deadline_cancels_and_joins_parser() {
         )
     });
 
-    // Worker thread starts and acquires admission permit
     started_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("worker thread must start and acquire permit");
@@ -452,16 +451,10 @@ async fn source_preflight_cancellation_cancels_and_restores_permits() {
         .expect("worker thread must start and acquire permit");
     assert_eq!(adapter.available_permits(), 0);
 
-    // Cancel while worker is inside
     cancelled.store(true, Ordering::Release);
 
-    // Wait for await_worker polling interval (20ms) to observe cancellation
-    std::thread::sleep(Duration::from_millis(30));
-
-    // Release worker entry barrier
     let _ = unblock_tx.send(());
 
-    // Assert CANCELLED
     let caller_result = caller_handle.join().expect("caller thread must join");
     assert!(
         matches!(caller_result, Err(SyntaxAdapterError::Cancelled)),
@@ -469,13 +462,10 @@ async fn source_preflight_cancellation_cancels_and_restores_permits() {
         caller_result
     );
 
-    // Await worker completion and drain cancelled workers
     adapter.drain_cancelled_workers();
 
-    // Assert its admission count returns to full permits (no leak!)
     assert_eq!(adapter.available_permits(), 1);
 
-    // Verify source bytes did not change
     assert_eq!(original_source, "pub fn request_probe() {}\n");
 }
 
