@@ -110,6 +110,12 @@ impl RuntimeFactory {
         self.semantic_runtime.read().unwrap().clone()
     }
 
+    pub async fn loaded_runtime_count(&self) -> usize {
+        let runtime_count = self.runtimes.read().await.len();
+        let has_unbound_runtime = self.unbound_runtime.read().await.is_some();
+        runtime_count + usize::from(has_unbound_runtime)
+    }
+
     pub fn set_semantic_runtime(
         &self,
         runtime: Arc<dyn crate::request_engine::semantic::SemanticRuntime>,

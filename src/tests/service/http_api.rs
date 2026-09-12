@@ -131,6 +131,7 @@ async fn status_with_header_or_query_token_reports_version_and_uptime() {
     let body: serde_json::Value = by_header.json().await.unwrap();
     assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
     assert!(body["uptime_seconds"].is_number());
+    assert_eq!(body["loaded_runtime_count"], 0);
     assert!(body["requests"].is_array());
     assert_eq!(body["embedding_child"]["state"], "absent");
     let by_query = running

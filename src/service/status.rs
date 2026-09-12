@@ -44,6 +44,7 @@ pub struct StatusDocument {
     pub uptime_seconds: u64,
     pub in_flight: usize,
     pub rss_bytes: Option<u64>,
+    pub loaded_runtime_count: usize,
     pub embedding_child: EmbeddingChildStatus,
     pub checkouts: Vec<CheckoutStatus>,
     pub requests: Vec<RequestRecord>,
@@ -94,6 +95,7 @@ impl StatusLog {
     pub fn document(
         &self,
         checkouts: Vec<CheckoutStatus>,
+        loaded_runtime_count: usize,
         embedding_child: EmbeddingChildStatus,
     ) -> StatusDocument {
         let inner = self.guard();
@@ -103,6 +105,7 @@ impl StatusLog {
             uptime_seconds: self.started.elapsed().as_secs(),
             in_flight: inner.in_flight,
             rss_bytes: rss_bytes(),
+            loaded_runtime_count,
             embedding_child,
             checkouts,
             requests: inner.requests.iter().cloned().collect(),
