@@ -130,9 +130,13 @@ async fn cold_workspace_initialization_does_not_block_warm_workspace() {
             .await
     });
 
-    while probe.attempts() == 0 {
-        tokio::task::yield_now().await;
-    }
+    tokio::time::timeout(std::time::Duration::from_millis(100), async {
+        while probe.attempts() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("initialization never reached the barrier");
     tokio::time::timeout(std::time::Duration::from_millis(100), probe.entered())
         .await
         .expect("initialization barrier notification was lost");
