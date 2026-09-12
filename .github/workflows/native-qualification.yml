@@ -1,0 +1,60 @@
+name: Native qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to qualify
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  windows-executable-lock:
+    name: Windows executable-lock qualification
+    runs-on: windows-latest
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build candidate archive
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          cargo build --release --target x86_64-pc-windows-msvc --bin julie-server
+          ARCHIVE=$(bash .github/scripts/pack-release.sh x86_64-pc-windows-msvc "$VERSION" target/x86_64-pc-windows-msvc/release . | tail -n 1)
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Verify archive and executable lock
+        shell: pwsh
+        run: |
+          python .github/scripts/verify-release-archive.py $env:ARCHIVE --sha256 "${env:ARCHIVE}.sha256" --version $env:VERSION --sidecar-version 0.1.0 --windows
+          .github/scripts/test-windows-executable-lock.ps1 -Archive $env:ARCHIVE -CandidateSha $env:CANDIDATE_SHA
+
+      - name: Upload qualification archive and log
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-qualification-windows-${{ github.run_id }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+            ${{ runner.temp }}/julie-native-qualification/qualification.json
+          retention-days: 7

@@ -217,6 +217,30 @@ fn release_workflow_qualifies_archives_and_awaits_the_pinned_plugin_workflow() {
     }
 }
 
+#[test]
+fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
+    let workflow = read_repo_file(".github/workflows/native-qualification.yml");
+    let probe = read_repo_file(".github/scripts/test-windows-executable-lock.ps1");
+    let report = read_repo_file("docs/findings/revival-install-qualification.md");
+
+    assert!(workflow.contains("workflow_dispatch:"));
+    assert!(workflow.contains("runs-on: windows-latest"));
+    assert!(workflow.contains("test-windows-executable-lock.ps1"));
+    assert!(workflow.contains("actions/upload-artifact@v4"));
+    assert!(workflow.contains("$ARCHIVE.sha256"));
+    assert!(workflow.contains("--sha256 \"${env:ARCHIVE}.sha256\""));
+    assert!(!workflow.contains("gh release create"));
+    assert!(!workflow.contains("gh release upload"));
+    assert!(probe.contains("try {"));
+    assert!(probe.contains("finally {"));
+    assert!(probe.contains("service stop"));
+    assert!(probe.contains("service discovery file remains"));
+    assert!(probe.contains("candidate_sha"));
+    assert!(probe.contains("archive_sha256"));
+    assert!(report.contains("Candidate SHA"));
+    assert!(report.contains("Archive SHA-256"));
+}
+
 #[cfg(unix)]
 #[test]
 fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
@@ -237,7 +261,7 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
         let root = tmp.path().join(name);
         fs::create_dir_all(&root).unwrap();
         let server = root.join("julie-server");
-        fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) exit 0 ;; *) echo '{\"result\":{\"instructions\":\"open workspace\"}}' ;; esac\n").unwrap();
+        fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) exit 0 ;; *) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"instructions\":\"open workspace\"}}' ;; esac\n").unwrap();
         fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
         let sidecar = root.join("julie-semantic-sidecar");
         fs::write(&sidecar, "#!/bin/sh\necho 'julie-semantic-sidecar 0.1.0'\n").unwrap();
@@ -268,6 +292,17 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
             "wrong-version" => {
                 let old_checksum = sha256(&server);
                 fs::write(&server, "#!/bin/sh\necho 'julie-server 8.0.1'\n").unwrap();
+                let manifest =
+                    fs::read_to_string(root.join("sidecar-package-manifest.json")).unwrap();
+                fs::write(
+                    root.join("sidecar-package-manifest.json"),
+                    manifest.replace(&old_checksum, &sha256(&server)),
+                )
+                .unwrap();
+            }
+            "false-instructions" => {
+                let old_checksum = sha256(&server);
+                fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) exit 0 ;; *) echo '{\"message\":\"instructions workspace\"}' ;; esac\n").unwrap();
                 let manifest =
                     fs::read_to_string(root.join("sidecar-package-manifest.json")).unwrap();
                 fs::write(
@@ -324,6 +359,7 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
         ("valid", "valid"),
         ("missing", "missing-sidecar"),
         ("version", "wrong-version"),
+        ("false-instructions", "false-instructions"),
         ("malformed", "malformed-manifest"),
         ("checksum", "wrong-checksum"),
     ] {

@@ -66,6 +66,20 @@ def run(command: list[str], env: dict[str, str], input_text: str | None = None):
                           stderr=subprocess.PIPE, check=False, timeout=30)
 
 
+def initialize_instructions(output: str) -> str | None:
+    for line in output.splitlines():
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            fail("packaged stdio server returned malformed initialize JSON")
+        if message.get("id") == 1:
+            result = message.get("result")
+            if isinstance(result, dict) and isinstance(result.get("instructions"), str):
+                return result["instructions"]
+            return None
+    return None
+
+
 def verify_manifest(root: Path, entries: set[str]) -> None:
     try:
         manifest = json.loads((root / "sidecar-package-manifest.json").read_text())
@@ -135,7 +149,8 @@ def main() -> None:
         initialize = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "release-qualification", "version": "1"}}}) + "\n"
         try:
             result = run([str(server_path)], env, initialize)
-            if result.returncode or "instructions" not in result.stdout or "workspace" not in result.stdout:
+            instructions = initialize_instructions(result.stdout)
+            if result.returncode or not instructions or "workspace" not in instructions.lower():
                 fail("packaged stdio server did not return workspace instructions")
         finally:
             stop = run([str(server_path), "service", "stop"], env)

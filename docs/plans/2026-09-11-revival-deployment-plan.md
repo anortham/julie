@@ -103,11 +103,11 @@ After downstream success, inspect the public plugin commit's version manifests, 
 
 **Acceptance:**
 
-- [ ] Intentionally missing sidecar, mismatched version, malformed manifest and partial platform set each fail qualification tests.
+- [x] Intentionally missing sidecar, mismatched version, malformed manifest and partial platform set each fail qualification tests.
 - [ ] All native jobs execute their actual packaged server and prove instruction delivery.
 - [ ] The parent awaits the exact reusable workflow job, propagates its failure and exposes its run evidence.
 - [ ] Archives and generated plugin source contain no maintainer override symlinks; all four flat archive layouts remain valid.
-- [ ] Release notes identify verified platforms, semantic startup, upgrade steps and any remaining honest limitations.
+- [x] Release notes identify verified platforms, semantic startup, upgrade steps and any remaining honest limitations.
 
 ## 4E. Run the installation and agent-use matrix
 
@@ -155,4 +155,7 @@ Owner-approved publication order is: publish the reviewed v8 plugin launcher/wor
 | Offline missing model preserves actionable semantic status and retains Auto retry state | `cargo nextest run --lib offline_missing_model_degrades_with_actionable_status` | worker-red-green | `ebe16b9a` | PASS: 1 passed | 2026-09-12T23:12Z | Controlled offline prepare failure reports model, cache, root cause, and recovery. |
 | Warm offline cache starts the compatible sidecar without preparation | `cargo nextest run --lib offline_warm_cache_reaches_semantic_ready` | worker-red-green | `ebe16b9a` | PASS: 1 passed | 2026-09-12T23:12Z | Controlled warm cache reaches semantic readiness without network I/O. |
 | Real sidecar cold/warm offline behavior | Isolated sidecar 0.1.0 probe with blocked proxies | live | `ebe16b9a` | PASS: cold exit 1; warm ready CPU/384d | 2026-09-12T23:12Z | Scratch cache only; warm checksum `bf40c42a...`; no rebuild, network, or live cache. Existing `native_semantics_becomes_ready_without_client_restart` and Plan 1 persisted-coverage tests cover restart/backfill. |
+| Release archive qualifier rejects missing sidecar, exact version mismatch, malformed/wrong-checksum manifests, and partial/wrong-checksum public assets | `cargo nextest run -p xtask --test toolchain_contract_tests release_qualification_rejects_invalid_archives_and_partial_public_assets` | worker-red-green | `67242b1f` | PASS: 1 passed | 2026-09-12T23:41Z | Offline synthetic archives exercise every negative branch; GitHub-hosted native execution remains pending. |
+| Pinned reusable-workflow release contract and release-note sections | `cargo nextest run -p xtask --test toolchain_contract_tests release_workflow_qualifies_archives_and_awaits_the_pinned_plugin_workflow` | worker-red-green | `67242b1f` / `7d3996a7` | PASS: 1 passed | 2026-09-12T23:41Z | Confirms the immutable plugin SHA, Node prerequisite, explicit plugin test glob, and required notes headings/platform names. |
+| Plugin reusable-workflow manifest contract | `node --test hooks/plugin-manifests.test.cjs` | worker-red-green | `7d3996a7` | PASS: 2 passed | 2026-09-12T23:41Z | Covers `workflow_call`, source pin, Node setup, exact archive names, and generated-snapshot guards. |
 | Windows locked-executable extraction | Nonpublishing `windows-latest` qualification job in Plan 4E | full | `a8a64b33` / `cdc0690` | PENDING | — | Deferred by the approved plan and owner instruction. |
