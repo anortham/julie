@@ -50,3 +50,5 @@ The concurrent rerun's wrapper again waited on build telemetry after the test pr
 ## Final retrieval gate, first attempt
 
 At `80d0da04c0116ea383ddb2d02d20949181dd2690`, the binary built in37.4seconds and the development tier ran613tests:612passed,1failed. Log: `/home/murphy/.local/share/win-test/logs/20260912T162441Z-revival-retrieval-1759484.log`. The sensitive-root request fixture expected `SENSITIVE_ROOT` but received `WORKSPACE_REQUIRED`; its root-path assumption is under correction. No full Windows pass is claimed. After Cargo and all test processes exited, the wrapper was released by stopping only its identity-checked build telemetry process.
+
+At `1a4d804f310887ffee2088083b5089f80225ef9c`, both root-guard tests passed on NTFS. The development tier ran649tests:648passed,1failed. The service architecture budget test did not match its allowlisted path on Windows; the portable-path correction is in progress. Log: `/home/murphy/.local/share/win-test/logs/20260912T163025Z-revival-retrieval-1764942.log`.

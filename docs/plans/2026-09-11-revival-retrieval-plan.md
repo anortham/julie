@@ -1,6 +1,6 @@
 # Plan 2: Precise and complete retrieval contracts
 
-**Status:** All four implementation slices completed on 2026-09-12; final Windows and live integration verification in progress. Worktree `.worktrees/revival-retrieval`, branch `fix/revival-retrieval`, baseline `22391e26`. Local commits authorized; merge/push/release remain separate actions.
+**Status:** All four implementation slices completed on 2026-09-12; Linux and live integration verified; final Windows gate in progress. Worktree `.worktrees/revival-retrieval`, branch `fix/revival-retrieval`, baseline `22391e26`. Local commits authorized; merge/push/release remain separate actions.
 **Goal:** Preserve exact evidence and make scoped search, paging, and body retrieval reliable for agents.
 **Depends on:** Reference work can start independently; integrate after Plan 1 freshness and semantics fixes.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md), including Sol ownership, TDD, one Cargo command at a time, no tool renaming, and no durable continuations.
@@ -36,11 +36,11 @@ Refresh exact renderer/module ownership through Julie before editing; do not exp
 
 **Acceptance:**
 
-- [ ] Two distinct same-line references remain distinct in structured/full results; compact output may group them only if the site count and recoverable positions remain explicit.
-- [ ] Exact and inferred references are distinguishable; reference counts count sites, not merely lines.
-- [ ] Reference-kind filters and workspace routing retain all evidence fields.
-- [ ] Call paths show the site supporting each hop; unmatched web endpoints are not hidden by unrelated matched calls.
-- [ ] Canonical language inventory has an evidence ledger for reference-site applicability and precision; missing extractor evidence is tracked upstream, never faked in Julie.
+- [x] Two distinct same-line references remain distinct in structured/full results; compact output may group them only if the site count and recoverable positions remain explicit.
+- [x] Exact and inferred references are distinguishable; reference counts count sites, not merely lines.
+- [x] Reference-kind filters and workspace routing retain all evidence fields.
+- [x] Call paths show the site supporting each hop; unmatched web endpoints are not hidden by unrelated matched calls.
+- [x] Canonical language inventory has an evidence ledger for reference-site applicability and precision; missing extractor evidence is tracked upstream, never faked in Julie.
 
 ## 2B. Make scoped content retrieval useful
 
@@ -57,11 +57,11 @@ Refresh exact renderer/module ownership through Julie before editing; do not exp
 
 **Acceptance:**
 
-- [ ] The live repro's equivalent finds the actual document in the first page without changing the directory name to a special value.
-- [ ] Equivalent content in Markdown, configuration data and source comments is governed by metadata, not favored language lists.
-- [ ] Explicit lexical remains lexical; explicit semantic/hybrid remain documented symbol searches.
-- [ ] Existing natural-language code retrieval passes dogfood and the paired case set; any measured ranking loss is investigated.
-- [ ] Backend choice, fallback and content evidence are understandable in both compact and structured responses.
+- [x] The live repro's equivalent finds the actual document in the first page without changing the directory name to a special value.
+- [x] Equivalent content in Markdown, configuration data and source comments is governed by metadata, not favored language lists.
+- [x] Explicit lexical remains lexical; explicit semantic/hybrid remain documented symbol searches.
+- [x] Existing natural-language code retrieval passes dogfood and the paired case set; any measured ranking loss is investigated.
+- [x] Backend choice, fallback and content evidence are understandable in both compact and structured responses.
 
 ## 2C. Make every next-page request self-contained
 
@@ -81,10 +81,10 @@ Run each with `cargo nextest run -p julie --lib <exact_name>`. Include spaces, q
 
 **Acceptance:**
 
-- [ ] Every emitted next call succeeds independently with no session-default workspace.
-- [ ] Concatenated pages match one larger query on unchanged data, without duplicates or missing rows caused by changed arguments.
-- [ ] Empty/final pages do not advertise an invalid next page.
-- [ ] No durable state or retained cross-request snapshot is added; offset paging under concurrent edits is documented as best effort.
+- [x] Every emitted next call succeeds independently with no session-default workspace.
+- [x] Concatenated pages match one larger query on unchanged data, without duplicates or missing rows caused by changed arguments.
+- [x] Empty/final pages do not advertise an invalid next page.
+- [x] No durable state or retained cross-request snapshot is added; offset paging under concurrent edits is documented as best effort.
 
 ## 2D. Bound body output and identify completeness
 
@@ -98,10 +98,10 @@ Proposed exact tests: `full_symbol_body_is_bounded_and_reports_remaining_lines`,
 
 **Acceptance:**
 
-- [ ] Large bodies are bounded, and every omitted line is retrievable with stateless follow-up calls.
-- [ ] Whole-span completeness is explicit; a truncated body cannot be mistaken for a complete constant/value.
-- [ ] Pages reassemble exactly on unchanged source; stale source is refused without writing anything.
-- [ ] Compact/full and CLI/MCP behavior agree, with no persisted cursor or expiry state.
+- [x] Large bodies are bounded, and every omitted line is retrievable with stateless follow-up calls.
+- [x] Whole-span completeness is explicit; a truncated body cannot be mistaken for a complete constant/value.
+- [x] Pages reassemble exactly on unchanged source; stale source is refused without writing anything.
+- [x] Compact/full and CLI/MCP behavior agree, with no persisted cursor or expiry state.
 
 ## Verification and handoff
 
@@ -130,4 +130,4 @@ Paging must preserve automatic backend policy: serializing an inferred semantic 
 - Bodies: task2D supplies exact canonical byte slices, source identity, bounded line windows and explicit whole-span completeness. Inferred line spans never claim completeness. A final nonzero-offset page reports end reached separately from complete.
 - Cross-platform repairs and exact NTFS checks: [Windows findings](../findings/2026-09-12-windows-baseline.md).
 
-The final Linux full gate at `80d0da04c0116ea383ddb2d02d20949181dd2690` passed 2,280 workspace tests, 13 ignored CLI tests and 69 dogfood tests. Formatting and workspace/all-target clippy passed at the same SHA; clippy emits existing warnings. Windows full and live integration are still pending.
+The final Linux full gate at `80d0da04c0116ea383ddb2d02d20949181dd2690` passed 2,280 workspace tests, 13 ignored CLI tests and 69 dogfood tests. Formatting and workspace/all-target clippy passed at the same SHA; clippy emits existing warnings. The isolated live retrieval probe passed all seven checks; [live evidence and indexing boundary](../findings/2026-09-12-revival-live-retrieval.md). Windows full remains pending.

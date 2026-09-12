@@ -49,7 +49,7 @@ fn service_modules_contain_no_coordination_words() {
         "continuation",
         "handoff",
     ];
-    let allowlist = [("src/service/status.rs", "lock")];
+    let allowlist = [(std::path::Path::new("src/service/status.rs"), "lock")];
     let singleton_lock_lines = [
         "pub(crate) fn acquire_service_lock",
         "join(\"service.lock\")",
@@ -68,11 +68,8 @@ fn service_modules_contain_no_coordination_words() {
     let mut hits = Vec::new();
     let mut allowed_hits = 0;
     for path in files {
-        let fname = path
-            .strip_prefix(root)
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let relative_path = path.strip_prefix(root).unwrap();
+        let fname = relative_path.to_string_lossy();
         for (n, line) in std::fs::read_to_string(&path).unwrap().lines().enumerate() {
             let lower = line.to_lowercase();
             for word in banned {
@@ -80,11 +77,11 @@ fn service_modules_contain_no_coordination_words() {
                     .split(|c: char| !c.is_alphanumeric())
                     .any(|t| t == word)
                 {
-                    if allowlist.contains(&(fname.as_str(), word)) && allowed_hits == 0 {
+                    if allowlist.contains(&(relative_path, word)) && allowed_hits == 0 {
                         allowed_hits += 1;
                         continue;
                     }
-                    if fname == "src/service/mod.rs"
+                    if relative_path == std::path::Path::new("src/service/mod.rs")
                         && word == "lock"
                         && singleton_lock_lines
                             .iter()
