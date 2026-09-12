@@ -94,7 +94,9 @@ pub async fn execute_search_unified(
         &normalized_file_pattern,
         params.exclude_tests,
     );
-    let backend_fallback = if params.backend.value != SearchBackend::Lexical {
+    let semantics_off =
+        params.semantic_mode == Some(julie_core::embeddings_contract::SemanticMode::Off);
+    let backend_fallback = if params.backend.value != SearchBackend::Lexical && !semantics_off {
         // Only an explicit semantic/hybrid request may pay the provider
         // lazy-init wait; an auto-selected semantic run must not block a plain
         // query on a degraded or starting provider.
@@ -143,7 +145,7 @@ pub async fn execute_search_unified(
 
         params.backend.explicit
     } else {
-        false
+        params.backend.value != SearchBackend::Lexical
     };
 
     // First pass: run the unified search with the caller's file_pattern.
@@ -292,6 +294,7 @@ fn should_try_semantic_zero_hit_fallback(
 ) -> bool {
     params.backend.value == SearchBackend::Lexical
         && !params.backend.explicit
+        && params.semantic_mode != Some(julie_core::embeddings_contract::SemanticMode::Off)
         && normalized_file_pattern.is_none()
         && !params.query.trim().is_empty()
         && !query::looks_like_file_or_path_query(params.query)

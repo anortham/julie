@@ -16,8 +16,8 @@ Reject separate repair workers, persisted retry journals, per-request provider r
 | Task | Owned implementation files | Owned tests | Parallel batch / serialization |
 |---|---|---|---|
 | 1A watcher | `crates/julie-runtime/src/watcher/runtime.rs`, `runtime/processing.rs`, `events.rs`, `mod.rs`; proposed shared `crates/julie-runtime/src/workspace/reconcile.rs`, registration in its workspace module; `src/tools/workspace/indexing/incremental.rs` | Proposed `crates/julie-runtime/src/tests/watcher_freshness.rs`; registration in `crates/julie-runtime/src/tests/mod.rs` | A; independent editing from 1B, Cargo serialized |
-| 1B semantics | `src/request_engine/dispatch.rs`, `src/handler.rs`, semantic-mode consumers in the nine scoped tools only if an existing request parameter is dropped | `src/tests/semantic_request_contract.rs` | A; independent editing from 1A, Cargo serialized |
-| 1C coverage | `src/request_engine/semantic_store.rs`, `semantic.rs`, `dispatch.rs`, `src/startup_repair_plan.rs`, `src/tools/workspace/indexing/embeddings.rs`, `crates/julie-pipeline/src/embeddings/metadata.rs`, `pipeline/mod.rs`; `src/handler/mcp_adapter.rs` only for proven dropped readiness fields | `src/tests/semantic_request_contract.rs`, `src/tests/tools/workspace/mod_tests/part6.rs`, `src/tests/request_transport_parity.rs`, `crates/julie-pipeline/src/tests/embedding_metadata.rs` | B; after 1B, shared semantics contract/tests |
+| 1B semantics | `src/request_engine/dispatch.rs`, `src/handler.rs`, semantic-mode consumers in the nine scoped tools only if an existing request parameter is dropped | Proposed `src/tests/semantic_isolation.rs`; registration in `src/tests/mod.rs` | A; independent editing from 1A, Cargo serialized |
+| 1C coverage | `src/request_engine/semantic_store.rs`, `semantic.rs`, `dispatch.rs`, `src/startup_repair_plan.rs`, `src/tools/workspace/indexing/embeddings.rs`, `crates/julie-pipeline/src/embeddings/metadata.rs`, `pipeline/mod.rs`; `src/handler/mcp_adapter.rs` only for proven dropped readiness fields | Proposed `src/tests/semantic_coverage.rs`; registration in `src/tests/mod.rs`; `src/tests/tools/workspace/mod_tests/part6.rs` only where enabled/current, `src/tests/request_transport_parity.rs`, `crates/julie-pipeline/src/tests/embedding_metadata.rs` | B; after 1B, shared semantics contract/tests |
 
 The fact schema/reader are evidence inputs, not owners of eligibility policy. `prepare_batch_for_embedding` and `select_budgeted_variables` in the pipeline define eligibility. Factor their common selection once and use it for pipeline, readiness and startup scheduling; do not duplicate it in SQL.
 
@@ -51,7 +51,7 @@ The fact schema/reader are evidence inputs, not owners of eligibility policy. `p
 
 ## 1B. Keep semantic policy per request
 
-**Inputs:** `ToolRequest.semantics`, decoded tool parameters, existing embedding request budget, `SemanticRuntime`, and the cached handler. Reuse `SemanticFixture` and `MockReadyProvider` in `semantic_request_contract.rs`.
+**Inputs:** `ToolRequest.semantics`, decoded tool parameters, existing embedding request budget, `SemanticRuntime`, and the cached handler. The old `semantic_request_contract.rs` is disabled with `#[cfg(any())]` and uses obsolete storage fixtures. Build the focused regression in enabled `src/tests/semantic_isolation.rs` using the current CheckoutStore and mock provider; reuse only valid fixture ideas.
 
 **Produces:** A stable shared provider with request-local Off/Auto/Required behavior on every semantic-capable path.
 
@@ -63,12 +63,12 @@ The fact schema/reader are evidence inputs, not owners of eligibility policy. `p
 
 **Acceptance:**
 
-- [ ] Off never initializes, waits for, or invokes the provider for that request.
-- [ ] Off does not disable the provider or stop background work owned by another request/workspace.
-- [ ] Required succeeds when its compatible capability is ready and reports the established structured error when it is not.
-- [ ] Auto remains nonblocking during provider startup and labels fallback/degradation.
-- [ ] The concurrent result is independent of request ordering; MCP and JSON API use the same policy.
-- [ ] No ambient mutable request-mode flag remains on the shared execution path.
+- [x] Off never initializes, waits for, or invokes the provider for that request.
+- [x] Off does not disable the provider or stop background work owned by another request/workspace.
+- [x] Required succeeds when its compatible capability is ready and reports the established structured error when it is not.
+- [x] Auto remains nonblocking during provider startup and labels fallback/degradation.
+- [x] The concurrent result is independent of request ordering; MCP and JSON API use the same policy.
+- [x] No ambient mutable request-mode flag remains on the shared execution path.
 
 ## 1C. Resume partial embeddings and report actual coverage
 
@@ -94,6 +94,10 @@ The fact schema/reader are evidence inputs, not owners of eligibility policy. `p
 - [ ] Tests cover empty workspace, no eligible symbols, stale vectors, partial vectors, complete coverage, edits, and deleted symbols.
 - [ ] Required semantics and health agree across MCP and JSON API; terminal exit-code behavior remains consistent.
 
+## Execution adjustment
+
+Source inspection during implementation found the prescribed semantic test module disabled. Tasks 1B/1C use new enabled `semantic_isolation.rs` and `semantic_coverage.rs` modules and serialize registration in `src/tests/mod.rs`. Do not enable the entire obsolete module. An exact filter selecting zero tests is invalid evidence and must be corrected before RED/GREEN is recorded.
+
 ## Verification and handoff
 
 Lead runs dev once per coherent batch and dogfood for index/search changes, then the full branch gate on the final commit. Use one isolated live two-client probe after unit gates: rapid edit freshness, concurrent Off/Required, service restart with partial coverage. Real provider/model behavior belongs to Plan 4C; fake-provider tests here prove policy without downloads.
@@ -104,3 +108,7 @@ Record source deltas, the root causes proven by RED, and the minimal architectur
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+
+### Task 1B worker evidence
+
+Both enabled exact regressions selected one test, failed for the intended defect, then passed: `concurrent_off_request_cannot_disable_required_request_provider` and `off_semantics_with_explicit_backends_never_waits_for_provider`. `cargo check -p julie` passed at 2026-09-12T02:06:56Z. Tests ran on the task-1B working diff over `9c9a68f5`; this is not reusable clean-HEAD integration evidence. Lead inline source review accepted stable provider ownership and per-tool request-mode propagation. Final integration gates remain pending.

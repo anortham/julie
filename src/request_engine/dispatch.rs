@@ -20,6 +20,16 @@ pub struct RequestEngine {
     pub runtimes: Arc<RuntimeFactory>,
     pub semantic_runtime: Arc<dyn SemanticRuntime>,
     pub service_url: RwLock<Option<String>>,
+    #[cfg(test)]
+    pub(crate) dispatch_barrier: RwLock<Option<DispatchBarrier>>,
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct DispatchBarrier {
+    pub mode: SemanticMode,
+    pub reached: Arc<tokio::sync::Barrier>,
+    pub release: Arc<tokio::sync::Barrier>,
 }
 
 impl RequestEngine {
@@ -42,6 +52,8 @@ impl RequestEngine {
             runtimes,
             semantic_runtime,
             service_url: RwLock::new(None),
+            #[cfg(test)]
+            dispatch_barrier: RwLock::new(None),
         }
     }
 
@@ -61,6 +73,20 @@ impl RequestEngine {
 
     pub fn semantic_runtime(&self) -> &Arc<dyn SemanticRuntime> {
         &self.semantic_runtime
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_dispatch_barrier(
+        &self,
+        mode: SemanticMode,
+        reached: Arc<tokio::sync::Barrier>,
+        release: Arc<tokio::sync::Barrier>,
+    ) {
+        *self.dispatch_barrier.write().unwrap() = Some(DispatchBarrier {
+            mode,
+            reached,
+            release,
+        });
     }
 
     pub async fn execute(
@@ -144,27 +170,16 @@ impl RequestEngine {
             _ => SemanticReadiness::Disabled,
         };
 
-        if let SemanticReadiness::Ready { .. } = semantic_readiness {
-            if let Some(provider) = self.semantic_runtime.provider() {
-                runtime
-                    .handler()
-                    .set_injected_embedding_provider(Some(provider));
+        #[cfg(test)]
+        if let Some(barrier) = { self.dispatch_barrier.read().unwrap().clone() } {
+            if barrier.mode == request.semantics {
+                tokio::time::timeout(std::time::Duration::from_secs(5), barrier.reached.wait())
+                    .await
+                    .expect("dispatch barrier was not reached");
+                tokio::time::timeout(std::time::Duration::from_secs(5), barrier.release.wait())
+                    .await
+                    .expect("dispatch barrier was not released");
             }
-            runtime
-                .handler()
-                .semantics_disabled
-                .store(false, Ordering::Release);
-        } else if request.semantics == SemanticMode::Off {
-            runtime.handler().set_injected_embedding_provider(None);
-            runtime
-                .handler()
-                .semantics_disabled
-                .store(true, Ordering::Release);
-        } else {
-            runtime
-                .handler()
-                .semantics_disabled
-                .store(false, Ordering::Release);
         }
 
         // Step 6: Dispatch tool execution

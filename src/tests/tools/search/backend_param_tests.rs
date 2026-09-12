@@ -724,3 +724,38 @@ async fn auto_nl_query_never_waits_for_embedding_provider_init() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn off_semantics_with_explicit_backends_never_waits_for_provider() -> Result<()> {
+    for backend in [SearchBackend::Semantic, SearchBackend::Hybrid] {
+        let temp_dir = TempDir::new()?;
+        let workspace_path = temp_dir.path();
+        fs::create_dir_all(workspace_path.join("src"))?;
+        fs::write(
+            workspace_path.join("src/lib.rs"),
+            "pub fn off_backend_marker() {}\n",
+        )?;
+        let handler = index_workspace(workspace_path).await?;
+
+        let run = FastSearchTool {
+            query: "off_backend_marker".to_string(),
+            backend: Some(backend),
+            semantics: Some(julie_core::embeddings_contract::SemanticMode::Off),
+            ..Default::default()
+        }
+        .execute_with_trace(&handler)
+        .await?;
+
+        let execution = run.execution.expect("fast_search should return execution");
+        assert!(
+            execution
+                .hits
+                .iter()
+                .any(|hit| hit.name == "off_backend_marker")
+        );
+        assert!(execution.trace.backend_fallback);
+        assert_eq!(handler.ensure_embedding_provider_call_count(), 0);
+    }
+
+    Ok(())
+}

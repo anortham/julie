@@ -175,7 +175,6 @@ pub struct JulieServerHandler {
     /// priority over the per-workspace provider.
     injected_embedding_provider:
         Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>,
-    /// When true, semantics are explicitly disabled for the current request context.
     pub(crate) semantics_disabled: Arc<std::sync::atomic::AtomicBool>,
     /// Shared semantic runtime managing embedding providers and readiness across checkouts.
     pub(crate) semantic_runtime:
@@ -706,13 +705,6 @@ impl JulieServerHandler {
     pub(crate) async fn embedding_provider(
         &self,
     ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
-        if self
-            .semantics_disabled
-            .load(std::sync::atomic::Ordering::Acquire)
-        {
-            return None;
-        }
-        // In-process mode: injected provider takes priority.
         if let Ok(guard) = self.injected_embedding_provider.read() {
             if let Some(ref p) = *guard {
                 return Some(Arc::clone(p));

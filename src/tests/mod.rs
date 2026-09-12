@@ -300,6 +300,7 @@ mod request_transport_parity;
 pub mod semantic_m1_challenges;
 #[cfg(any())]
 pub mod semantic_request_contract;
+pub mod semantic_isolation;
 pub mod service;
 
 // ============================================================================
