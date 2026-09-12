@@ -270,8 +270,8 @@ impl FastSearchTool {
             }
         }
 
-        let mixed_content = scoped_auto_content
-            && execution.hits.iter().any(|hit| hit.as_symbol().is_none());
+        let mixed_content =
+            scoped_auto_content && execution.hits.iter().any(|hit| hit.as_symbol().is_none());
         let offset = self.offset as usize;
         let page_limit = self.effective_limit() as usize;
         sort_hits_by_score_desc(&mut execution.hits);
@@ -297,17 +297,16 @@ impl FastSearchTool {
         }
         execution.trace.refresh_hits(&execution.hits);
         let kept = execution.hits.len();
-        let effective_backend =
-            if matches!(
-                execution.trace.strategy_id.as_str(),
-                "fast_search_semantic" | "fast_search_semantic_fallback"
-            ) {
-                "semantic"
-            } else if execution.trace.strategy_id == "fast_search_hybrid" {
-                "hybrid"
-            } else {
-                "lexical"
-            };
+        let effective_backend = if matches!(
+            execution.trace.strategy_id.as_str(),
+            "fast_search_semantic" | "fast_search_semantic_fallback"
+        ) {
+            "semantic"
+        } else if execution.trace.strategy_id == "fast_search_hybrid" {
+            "hybrid"
+        } else {
+            "lexical"
+        };
 
         let mut output = if format == "compact" {
             let backend = if mixed_content {

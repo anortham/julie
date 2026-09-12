@@ -374,11 +374,7 @@ pub fn find_references(
                 a.span
                     .as_ref()
                     .map(|span| (span.start_byte, span.end_byte))
-                    .cmp(
-                        &b.span
-                            .as_ref()
-                            .map(|span| (span.start_byte, span.end_byte)),
-                    )
+                    .cmp(&b.span.as_ref().map(|span| (span.start_byte, span.end_byte)))
             })
             .then_with(|| a.id.cmp(&b.id))
     });

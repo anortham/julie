@@ -2,6 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use julie::registry::database::DaemonDatabase;
+use julie::workspace::JulieWorkspace;
+use julie::workspace::registry::generate_workspace_id;
 use serde_json::json;
 use tempfile::TempDir;
 use xtask_eval::cli::{Ablation, CliCommand, SearchMatrixCommand, parse_cli_command};
@@ -124,6 +126,103 @@ profile_tags = ["smoke"]
             .contains("repo root not found")
     );
     assert!(out_path.exists(), "baseline report should be written");
+}
+
+#[test]
+fn search_matrix_contract_tests_baseline_accepts_current_checkout_store() {
+    let temp = TempDir::new().expect("tempdir");
+    let julie_home = temp.path().join("julie-home");
+    let repo_root = temp.path().join("roots").join("current-store");
+    let cases_path = temp.path().join("cases.toml");
+    let corpus_path = temp.path().join("corpus.toml");
+    let out_path = temp.path().join("baseline.json");
+
+    fs::create_dir_all(repo_root.join(".git")).expect("workspace marker");
+    fs::write(
+        repo_root.join("probe.rs"),
+        "pub fn current_store_probe() {}\n",
+    )
+    .expect("source fixture");
+    let repo_root = repo_root.canonicalize().expect("canonical repo root");
+    let workspace_id = generate_workspace_id(&repo_root.to_string_lossy()).expect("workspace id");
+    let index_root = julie_home.join("indexes").join(&workspace_id);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let workspace = runtime
+        .block_on(JulieWorkspace::initialize_with_index_root(
+            repo_root.clone(),
+            index_root.clone(),
+        ))
+        .expect("current checkout store");
+    drop(workspace);
+    assert!(index_root.join("facts.sqlite").exists());
+    assert!(!index_root.join("db").join("symbols.db").exists());
+
+    let db = DaemonDatabase::open(&julie_home.join("registry.db")).expect("registry");
+    db.upsert_workspace(&workspace_id, &repo_root.to_string_lossy(), "ready")
+        .expect("registered workspace");
+    fs::write(
+        &cases_path,
+        r#"
+[[cases]]
+case_id = "current_store_case"
+family = "exact_identifier"
+query = "current_store_probe"
+search_target = "definitions"
+language = "rust"
+profile_tags = ["smoke"]
+expected_mode = "expect_hits"
+"#,
+    )
+    .expect("write cases");
+    let roots = toml_roots(&[repo_root
+        .parent()
+        .expect("roots directory")
+        .to_string_lossy()
+        .into_owned()]);
+    fs::write(
+        &corpus_path,
+        format!(
+            r#"{roots}
+[profiles.smoke]
+repos = ["current-store"]
+
+[[repos]]
+name = "current-store"
+language = "rust"
+profile_tags = ["smoke"]
+"#,
+        ),
+    )
+    .expect("write corpus");
+
+    let report = run_search_matrix_baseline_with_home(
+        &julie_home,
+        &cases_path,
+        &corpus_path,
+        "smoke",
+        &out_path,
+        &Ablation::None,
+    )
+    .expect("baseline should open the current checkout store");
+
+    assert!(
+        report.skipped_repos.is_empty(),
+        "{:?}",
+        report.skipped_repos
+    );
+    assert_eq!(report.executions.len(), 1);
+    assert_eq!(report.executions[0].case_id, "current_store_case");
+    assert!(
+        report.executions[0]
+            .zero_hit_reason
+            .as_deref()
+            .is_none_or(|reason| !reason.starts_with("search_error:")),
+        "{:?}",
+        report.executions[0].zero_hit_reason
+    );
 }
 
 #[test]
@@ -263,7 +362,10 @@ fn search_matrix_contract_tests_revival_content_cases_use_product_route_and_back
             .count(),
         3
     );
-    assert_eq!(revival.iter().filter(|case| case.backend.is_none()).count(), 3);
+    assert_eq!(
+        revival.iter().filter(|case| case.backend.is_none()).count(),
+        3
+    );
 }
 
 #[test]

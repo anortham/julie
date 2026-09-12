@@ -165,10 +165,7 @@ async fn invalidate_checkout_store_releases_only_matching_workspace_handles() {
     .await
     .unwrap();
     handler
-        .initialize_workspace_with_force(
-            Some(primary.path().to_string_lossy().to_string()),
-            false,
-        )
+        .initialize_workspace_with_force(Some(primary.path().to_string_lossy().to_string()), false)
         .await
         .unwrap();
 
@@ -195,10 +192,7 @@ async fn invalidate_checkout_store_releases_only_matching_workspace_handles() {
     let rebound = tempfile::tempdir().unwrap();
     let rebound_id = generate_workspace_id(&rebound.path().to_string_lossy()).unwrap();
     handler.set_current_primary_binding(rebound_id, rebound.path().to_path_buf());
-    let captured_index_dir = handler
-        .workspace_index_dir_for(&primary_id)
-        .await
-        .unwrap();
+    let captured_index_dir = handler.workspace_index_dir_for(&primary_id).await.unwrap();
 
     handler.invalidate_checkout_store(&primary_id).await;
     assert_eq!(handler.loaded_workspace_id(), None);

@@ -87,14 +87,16 @@ fn equally_confident_handlers_in_different_symbols_are_ambiguous() {
 
 #[test]
 fn web_route_resolution_retains_bound_client_without_target_path() {
-    let (_, store) = store_with(vec![file("client.ts")
-        .symbol("dynamic", "dynamic", SymbolKind::Function)
-        .fact(
-            "http.client_request.v1",
-            Some("dynamic"),
-            0.9,
-            HashMap::from([("verb".to_string(), json!("GET"))]),
-        )]);
+    let (_, store) = store_with(vec![
+        file("client.ts")
+            .symbol("dynamic", "dynamic", SymbolKind::Function)
+            .fact(
+                "http.client_request.v1",
+                Some("dynamic"),
+                0.9,
+                HashMap::from([("verb".to_string(), json!("GET"))]),
+            ),
+    ]);
     let graph = graph_of(&store);
     let facts = store
         .reader()

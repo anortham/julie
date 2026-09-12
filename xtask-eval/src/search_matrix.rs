@@ -3,10 +3,10 @@ use julie::handler::JulieServerHandler;
 use julie::paths::RegistryPaths;
 use julie::registry::database::{DaemonDatabase, WorkspaceRow};
 use julie::tools::navigation::resolution::WorkspaceTarget;
-use julie::tools::search::{FastSearchTool, SearchBackend};
 use julie::tools::search::execution::{
     SearchExecutionParams, SearchExecutionWorkspace, execute_search,
 };
+use julie::tools::search::{FastSearchTool, SearchBackend};
 use julie::workspace::JulieWorkspace;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -173,10 +173,10 @@ async fn run_baseline_async(
         }
 
         let index_root = daemon_paths.workspace_index_dir(&workspace.workspace_id);
-        if !index_root.join("db").join("symbols.db").exists() {
+        if !index_root.join("facts.sqlite").exists() {
             skipped_repos.push(SearchMatrixSkippedRepo {
                 repo_name: repo_name.clone(),
-                reason: "workspace symbols.db is missing".to_string(),
+                reason: "workspace facts.sqlite is missing".to_string(),
             });
             continue;
         }

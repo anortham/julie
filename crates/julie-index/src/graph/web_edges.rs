@@ -200,9 +200,10 @@ pub(super) fn resolve_web_route_facts(
             .unwrap_or(&[]);
         let resolved = match best_handler(client, verb.as_deref(), &target_path, bucket) {
             Some((to, confidence))
-                if confidence >= HTTP_MATCH_CONFIDENCE_THRESHOLD && to != from => {
-                    (Some(to), Some(confidence))
-                }
+                if confidence >= HTTP_MATCH_CONFIDENCE_THRESHOLD && to != from =>
+            {
+                (Some(to), Some(confidence))
+            }
             _ => (None, None),
         };
         routes.push(WebRouteResolution {

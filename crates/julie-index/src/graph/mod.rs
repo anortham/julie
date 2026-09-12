@@ -207,7 +207,10 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn resolved_web_routes(&self, facts: &[julie_facts::rows::StructuralFactRow]) -> Vec<WebRouteResolution> {
+    pub fn resolved_web_routes(
+        &self,
+        facts: &[julie_facts::rows::StructuralFactRow],
+    ) -> Vec<WebRouteResolution> {
         web_edges::resolve_web_route_facts(&self.table, facts)
     }
     pub fn symbol(&self, id: SymbolId) -> &SymbolRow {

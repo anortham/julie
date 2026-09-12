@@ -811,7 +811,10 @@ async fn auto_scoped_search_returns_matching_document_with_semantic_candidates()
     let (_temp_dir, handler) = scoped_content_workspace().await?;
 
     for (query, expected_path) in [
-        ("workspace routing keeps each checkout", "materials/routing.md"),
+        (
+            "workspace routing keeps each checkout",
+            "materials/routing.md",
+        ),
         (
             "workspace routing keeps configuration isolated",
             "materials/routing.json",
@@ -943,7 +946,10 @@ async fn scoped_auto_content_paging_keeps_all_line_matches() -> Result<()> {
         );
     }
 
-    assert!(files.contains(&"materials/routing.md".to_string()), "{files:?}");
+    assert!(
+        files.contains(&"materials/routing.md".to_string()),
+        "{files:?}"
+    );
     assert!(
         files.contains(&"materials/routing-copy.md".to_string()),
         "{files:?}"

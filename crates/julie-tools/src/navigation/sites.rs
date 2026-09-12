@@ -111,10 +111,9 @@ pub fn reference_sites(graph: &Graph, from: SymbolId, to: SymbolId) -> Vec<Site>
                             relationship_span.start_byte <= identifier_span.start_byte
                                 && relationship_span.end_byte >= identifier_span.end_byte
                         }))
-            })
-                || (span.is_none()
-                    && site.line == relationship.line_number
-                    && site.kind == relationship.kind)
+            }) || (span.is_none()
+                && site.line == relationship.line_number
+                && site.kind == relationship.kind)
         }) {
             site.kind = relationship.kind.clone();
             site.confidence = site.confidence.max(relationship.confidence);
@@ -144,11 +143,7 @@ pub fn reference_sites(graph: &Graph, from: SymbolId, to: SymbolId) -> Vec<Site>
                 a.span
                     .as_ref()
                     .map(|span| (span.start_byte, span.end_byte))
-                    .cmp(
-                        &b.span
-                            .as_ref()
-                            .map(|span| (span.start_byte, span.end_byte)),
-                    )
+                    .cmp(&b.span.as_ref().map(|span| (span.start_byte, span.end_byte)))
             })
             .then_with(|| a.id.cmp(&b.id))
     });

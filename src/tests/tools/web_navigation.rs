@@ -117,7 +117,10 @@ async fn web_call_path_reports_unmatched_call_beside_a_matched_call() -> Result<
     .await?;
     let text = call_tool_result_text(&result);
 
-    assert!(text.contains("found=true"), "expected a matched route: {text}");
+    assert!(
+        text.contains("found=true"),
+        "expected a matched route: {text}"
+    );
     assert!(
         text.contains("GET /api/unknown"),
         "expected the unmatched call to remain visible: {text}"
