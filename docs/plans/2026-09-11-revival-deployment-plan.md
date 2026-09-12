@@ -82,12 +82,12 @@ The archive contains native binaries/libraries, not model weights. Document actu
 
 **Acceptance:**
 
-- [ ] Cold model work does not delay a lexical request behind download or provider initialization.
-- [ ] Offline empty cache gives a precise semantic limitation while ordinary navigation works.
-- [ ] Offline warm cache needs no network and reaches complete compatible coverage.
-- [ ] Repeated requests do not spawn multiple child processes or independent model preparations.
-- [ ] MCP error shape and terminal Required exit code are consistent; HTTP status is not confused with CLI exit code 4.
-- [ ] Real-sidecar cold/warm offline probes supplement mocks before qualification.
+- [x] Cold model work does not delay a lexical request behind download or provider initialization.
+- [x] Offline empty cache gives a precise semantic limitation while ordinary navigation works.
+- [x] Offline warm cache needs no network and reaches complete compatible coverage.
+- [x] Repeated requests do not spawn multiple child processes or independent model preparations.
+- [x] MCP error shape and terminal Required exit code are consistent; HTTP status is not confused with CLI exit code 4.
+- [x] Real-sidecar cold/warm offline probes supplement mocks before qualification.
 
 ## 4D. Make release verification executable
 
@@ -151,4 +151,8 @@ Owner-approved publication order is: publish the reviewed v8 plugin launcher/wor
 | Dev-restart reports the shared-service restart procedure | `cargo nextest run -p xtask --lib dev_restart_reports_shared_service_restart` | worker-red-green | `a8a64b33` | PASS: 1 passed | 2026-09-12T22:47Z | Worker ran the identical pre-commit tree. |
 | Explicit restart replaces a mismatched service with the current executable and reaps the old process | `cargo nextest run -p julie --lib restart_stops_mismatched_service_and_starts_current_binary` | worker-red-green | `a8a64b33` | PASS: 1 passed | 2026-09-12T22:52Z | Worker ran the identical pre-commit tree after a plan-required debug fixture build. |
 | Version mismatch reports both versions, the quoted current-binary restart command, and old-client recovery | `cargo nextest run -p julie --lib version_mismatch_exits_3_with_the_exact_message` | worker-red-green | `a8a64b33` | PASS: 1 passed | 2026-09-12T22:52Z | Worker ran the identical pre-commit tree. |
+| Cold preparation returns a real lexical result without waiting and shares one prepare attempt | `cargo nextest run --lib cold_model_prepare_does_not_block_lexical_search` | worker-red-green | `ebe16b9a` | PASS: 1 passed | 2026-09-12T23:12Z | Controlled mock sidecar; Auto, Off, and provider-none paths have no extra preparation. |
+| Offline missing model preserves actionable semantic status and retains Auto retry state | `cargo nextest run --lib offline_missing_model_degrades_with_actionable_status` | worker-red-green | `ebe16b9a` | PASS: 1 passed | 2026-09-12T23:12Z | Controlled offline prepare failure reports model, cache, root cause, and recovery. |
+| Warm offline cache starts the compatible sidecar without preparation | `cargo nextest run --lib offline_warm_cache_reaches_semantic_ready` | worker-red-green | `ebe16b9a` | PASS: 1 passed | 2026-09-12T23:12Z | Controlled warm cache reaches semantic readiness without network I/O. |
+| Real sidecar cold/warm offline behavior | Isolated sidecar 0.1.0 probe with blocked proxies | live | `ebe16b9a` | PASS: cold exit 1; warm ready CPU/384d | 2026-09-12T23:12Z | Scratch cache only; warm checksum `bf40c42a...`; no rebuild, network, or live cache. Existing `native_semantics_becomes_ready_without_client_restart` and Plan 1 persisted-coverage tests cover restart/backfill. |
 | Windows locked-executable extraction | Nonpublishing `windows-latest` qualification job in Plan 4E | full | `a8a64b33` / `cdc0690` | PENDING | — | Deferred by the approved plan and owner instruction. |
