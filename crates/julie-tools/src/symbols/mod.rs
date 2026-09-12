@@ -104,7 +104,7 @@ pub struct GetSymbolsTool {
     /// Reading mode: "structure" (names/signatures only, no code), "minimal" (default, code bodies for top-level symbols), "full" (code for all including nested). WARNING: "full" without target extracts the entire file
     #[serde(default = "default_mode")]
     pub mode: Option<String>,
-    /// Workspace filter: "primary" (default) or workspace ID
+    /// Required workspace ID or absolute workspace path for MCP calls
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }

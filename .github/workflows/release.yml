@@ -19,8 +19,31 @@ jobs:
   # side by side. The script .github/scripts/pack-release.sh downloads the
   # pinned sidecar release, checks its sha256, and packs both binaries.
   # ==========================================================================
+  validate-release:
+    name: Validate release inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Match tag, package, and release notes
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          CARGO_VERSION=$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          [ "$TAG_VERSION" = "$CARGO_VERSION" ] || {
+            echo "tag version $TAG_VERSION does not match Cargo.toml $CARGO_VERSION" >&2
+            exit 1
+          }
+          NOTES_PATH="docs/release-notes/v${TAG_VERSION}.md"
+          [ -f "$NOTES_PATH" ] || {
+            echo "release notes missing: $NOTES_PATH" >&2
+            exit 1
+          }
+
   build:
     name: Build ${{ matrix.target }}
+    needs: [validate-release]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

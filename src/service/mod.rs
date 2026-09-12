@@ -159,7 +159,24 @@ async fn cleanup_sweep(paths: &RegistryPaths) -> anyhow::Result<CleanupSweepSumm
     .await
 }
 
+pub(crate) fn acquire_service_lock(paths: &RegistryPaths) -> anyhow::Result<std::fs::File> {
+    std::fs::create_dir_all(paths.julie_home())?;
+    let path = paths.julie_home().join("service.lock");
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(&path)?;
+    file.try_lock()
+        .with_context(|| format!("could not acquire service lock {}", path.display()))?;
+    Ok(file)
+}
+
 pub async fn run_service(config: ServiceConfig) -> anyhow::Result<()> {
+    let _service_lock = acquire_service_lock(&config.registry_paths)?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .context("bind 127.0.0.1:0")?;

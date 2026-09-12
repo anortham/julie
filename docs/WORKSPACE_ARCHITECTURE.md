@@ -15,13 +15,14 @@ and bearer token in `~/.julie/service.json`.
 The no-args `julie-server` serves as a lightweight stdio shim, forwarding
 newline-delimited JSON-RPC messages between stdin/stdout and the service over
 HTTP localhost. If no service is running, the shim auto-spawns a detached service
-process. MCP clients that support Streamable HTTP (Claude Code, Codex, Cursor)
-can register directly against `http://127.0.0.1:<port>/mcp` with the bearer
-token, bypassing process spawning completely.
+process. The shim does not select a workspace. Direct Streamable HTTP callers
+use the current bearer token from `service.json` and follow the same explicit
+workspace-targeting rules as stdio callers.
 
 ```text
 $JULIE_HOME/                     # Default: ~/.julie
 +-- service.json                 # Discovery file: port, pid, token, version
++-- service.lock                 # OS-held singleton lock; file may remain after exit
 +-- registry.db                  # Workspaces, cleanup events, snapshots, tool calls
 +-- indexes/
     +-- julie_316c0b08/
@@ -40,8 +41,8 @@ $JULIE_HOME/                     # Default: ~/.julie
 
 There is a single long-running service per machine (or user account), with a
 lightweight stdio shim for clients that speak stdio MCP. All MCP sessions share
-the service's memory, caches, and runtime pipelines. `service.json`, `registry.db`,
-and `indexes/<id>/{facts.sqlite,tantivy}` are the only durable files under `$JULIE_HOME`.
+the service's memory, caches, and runtime pipelines. `service.json`, `service.lock`, `registry.db`, and
+`indexes/<id>/{facts.sqlite,tantivy}` are the only durable files under `$JULIE_HOME`.
 
 `JULIE_HOME` overrides the shared home directory directly. The path is used
 as-is; `.julie` is not appended. All Julie processes must see the same value,
@@ -82,16 +83,20 @@ Cross-workspace work goes through one front door:
 `open` covers the retired `register` operation. `list` prunes stale rows;
 `status` covers the retired `stats`.
 
-Omitted `workspace` parameters mean the current workspace only. Opened
-workspaces do not expand the default search scope.
+Every search, navigation, and editing call must pass `workspace` as an
+absolute path or registered workspace ID. Other `manage_workspace` operations
+use `workspace_id`; global `list` and `status` need neither selector. Opened
+workspaces do not create an implicit default.
 
 ## Workspace Binding
 
-A handler is bound once by `RuntimeFactory` per `(root, index_root)`. The root
-comes from the startup hint: an explicit CLI path, `JULIE_WORKSPACE`, or the
-process `cwd`. There is no primary-workspace swap, no session attachment, no
-deferred auto-index, and no MCP `roots/list` negotiation. Julie does not switch
-workspaces in the middle of an in-flight tool call.
+For each request, `BindingResolver` resolves the explicit workspace selector,
+and `RuntimeFactory` reuses one handler per `(root, index_root)`. The stdio
+shim's working directory, environment, and process lifetime do not bind the
+shared service. There is no session attachment, deferred auto-index, or MCP
+`roots/list` negotiation. Named CLI commands resolve their explicit path or
+working directory locally and send that target through the same service.
+Commands with `--standalone` use project-local storage instead.
 
 ## Workspace Isolation
 

@@ -312,7 +312,7 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
    - The machine service serves Streamable HTTP at `/mcp`, JSON API at `/api/<tool>`, and dashboard at `/`.
    - The no-args `julie-server` runs the stdio shim, forwarding JSON-RPC to the service over localhost.
    - One machine service process (`julie-server service`) owns every workspace index. Its handler for a checkout is the only writer for that checkout: it runs the watcher, startup catch-up, and Tantivy writes. There is no leader election, no per-workspace lock file, and no read-only session. `RuntimeFactory` binds one handler per `(root, index_root)`.
-   - Durable files per checkout: `$JULIE_HOME/indexes/<id>/facts.sqlite` (plus `-wal`/`-shm`) and `$JULIE_HOME/indexes/<id>/tantivy/`. Per machine: `$JULIE_HOME/registry.db` and the runtime file `service.json`. Nothing else (no `embedding-host.*` files).
+   - Durable files per checkout: `$JULIE_HOME/indexes/<id>/facts.sqlite` (plus `-wal`/`-shm`) and `$JULIE_HOME/indexes/<id>/tantivy/`. Per machine: `$JULIE_HOME/registry.db`, runtime discovery `service.json`, and the OS-held singleton `service.lock`. Nothing else (no `embedding-host.*` files).
    - `facts.sqlite` is never migrated. A schema or `SEMANTIC_INDEX_ENGINE_VERSION` mismatch deletes `indexes/<id>/` and reindexes. `registry.db` keeps its own small migrations.
    - `manage_workspace open` on a checkout whose `git rev-parse --git-common-dir` matches a registered workspace seeds from that sibling: it copies blobs and fact rows by hash, extracts missing blobs, rebuilds `tantivy/`, and runs the incremental scan.
    - `registry.db` tracks known workspaces, cleanup events, codehealth snapshots, and tool calls.

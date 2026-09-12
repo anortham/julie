@@ -182,7 +182,7 @@ pub struct EditFileTool {
     /// Replacement text
     pub new_text: String,
 
-    /// Workspace filter: "primary" (default) or workspace ID
+    /// Required workspace ID or absolute workspace path for MCP calls
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 

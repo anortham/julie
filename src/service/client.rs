@@ -60,15 +60,27 @@ impl ServiceClient {
     }
 
     pub async fn post_mcp(&self, body: &[u8], method: &str) -> reqwest::Result<reqwest::Response> {
-        self.http
+        let message = serde_json::from_slice::<serde_json::Value>(body).ok();
+        let mut request = self
+            .http
             .post(format!("{}/mcp", self.base))
             .bearer_auth(&self.token)
             .header("Accept", "application/json, text/event-stream")
             .header("Content-Type", "application/json")
-            .header("Mcp-Method", method)
-            .body(body.to_vec())
-            .send()
-            .await
+            .header("Mcp-Method", method);
+        if let Some(version) = message.as_ref().and_then(|value| {
+            value["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"].as_str()
+        }) {
+            request = request.header("MCP-Protocol-Version", version);
+        }
+        if method == "tools/call"
+            && let Some(name) = message
+                .as_ref()
+                .and_then(|value| value["params"]["name"].as_str())
+        {
+            request = request.header("Mcp-Name", name);
+        }
+        request.body(body.to_vec()).send().await
     }
 
     pub async fn post_shutdown(&self) -> reqwest::Result<reqwest::Response> {

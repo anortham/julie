@@ -68,7 +68,7 @@ fn provider_respawns_the_child_after_it_exits() {
 fn child_request_respects_the_deadline() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("sleepy.sh");
-    std::fs::write(&path, "#!/bin/sh\nsleep 30\n").unwrap();
+    std::fs::write(&path, "#!/bin/sh\nexec sleep 30\n").unwrap();
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut child = SidecarChild::spawn(&path, "fake").unwrap();

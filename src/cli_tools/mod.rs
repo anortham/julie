@@ -166,7 +166,7 @@ pub async fn run_cli_tool(
     let tool_request = crate::request_engine::ToolRequest {
         name: tool_name.to_string(),
         arguments,
-        workspace: cli_workspace,
+        workspace: cli_workspace.map(|_| workspace_root.clone()),
         semantics: crate::cli::Cli::try_parse()
             .ok()
             .and_then(|c| c.tool_flags.semantics)

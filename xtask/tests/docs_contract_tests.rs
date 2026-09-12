@@ -206,6 +206,9 @@ fn docs_contract_tests_instructions_carry_the_full_guidance() {
         instructions.len()
     );
     assert!(instructions.contains("## Workflows"));
+    assert!(instructions.contains("Search, navigation, and editing calls require"));
+    assert!(instructions.contains("absolute path or registered ID"));
+    assert!(!instructions.contains("Omit `workspace`"));
     for name in [
         "fast_search",
         "get_symbols",

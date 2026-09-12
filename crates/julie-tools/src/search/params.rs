@@ -43,7 +43,7 @@ pub struct FastSearchTool {
     /// Search backend: omitted backend runs semantic symbol search for natural-language queries when embeddings are ready, else lexical mixed file+symbol hits (with labeled semantic fallback candidates on identifier-like zero-hit queries); explicit "lexical" stays pure lexical; "semantic" uses KNN symbol search; "hybrid" uses BM25+KNN symbol search. Semantic and hybrid are symbol-only; use lexical for file/path queries.
     #[serde(default)]
     pub backend: Option<SearchBackend>,
-    /// Workspace filter: "primary" (default) or a workspace ID
+    /// Required workspace ID or absolute workspace path for MCP calls
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Return format: "compact" (default, one line per hit grouped by file) or "full" (code context and rich summaries)

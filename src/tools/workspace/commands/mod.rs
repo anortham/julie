@@ -2,6 +2,7 @@ use crate::mcp_compat::CallToolResult;
 use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use tracing::info;
 
 use crate::handler::JulieServerHandler;
@@ -225,7 +226,7 @@ pub struct ManageWorkspaceTool {
     pub operation: String,
 
     // Optional parameters used by various operations
-    /// Path to workspace (used by: index, open, rebuild, status)
+    /// Absolute path to workspace (used by: index, open, rebuild, status)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 
@@ -270,6 +271,14 @@ impl ManageWorkspaceTool {
         skip_embeddings: bool,
     ) -> Result<CallToolResult> {
         info!("🏗️ Managing workspace with operation: {}", self.operation);
+        if handler.daemon_db.is_some()
+            && self
+                .path
+                .as_deref()
+                .is_some_and(|path| !Path::new(path).is_absolute())
+        {
+            anyhow::bail!("'path' must be absolute when using the machine service");
+        }
         let request = ManageWorkspaceRequest::try_from(self)?;
         self.dispatch_request(handler, request, skip_embeddings)
             .await

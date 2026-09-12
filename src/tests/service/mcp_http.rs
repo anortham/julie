@@ -2,16 +2,24 @@ use super::http_api::Running;
 use serde_json::{Value, json};
 
 async fn rpc(running: &Running, body: Value) -> (u16, Value) {
-    let res = running
+    let method = body["method"].as_str().unwrap_or("");
+    let mut request = running
         .client()
         .post(format!("{}/mcp", running.base))
         .bearer_auth(&running.token)
         .header("Accept", "application/json, text/event-stream")
-        .header("Mcp-Method", body["method"].as_str().unwrap_or(""))
-        .json(&body)
-        .send()
-        .await
-        .unwrap();
+        .header("Mcp-Method", method);
+    if let Some(version) =
+        body["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"].as_str()
+    {
+        request = request.header("MCP-Protocol-Version", version);
+    }
+    if method == "tools/call"
+        && let Some(name) = body["params"]["name"].as_str()
+    {
+        request = request.header("Mcp-Name", name);
+    }
+    let res = request.json(&body).send().await.unwrap();
     let status = res.status().as_u16();
     let text = res.text().await.unwrap();
     let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({"raw": text}));
@@ -47,6 +55,7 @@ async fn server_discover_lists_2026_07_28_without_a_session_header() {
         .post(format!("{}/mcp", running.base))
         .bearer_auth(&running.token)
         .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "2026-07-28")
         .header("Mcp-Method", "server/discover")
         .json(
             &json!({"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta": meta()}}),
@@ -54,12 +63,100 @@ async fn server_discover_lists_2026_07_28_without_a_session_header() {
         .send()
         .await
         .unwrap();
+    assert_eq!(res.status(), 200);
     assert!(res.headers().get("Mcp-Session-Id").is_none());
     let body: Value = res.json().await.unwrap();
+    assert_eq!(body["result"]["resultType"], "complete");
+    assert!(body["result"]["ttlMs"].is_u64());
+    assert!(body["result"]["cacheScope"].is_string());
+    assert!(body["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"].is_string());
     let versions = body["result"]["supportedVersions"]
         .as_array()
         .expect("supportedVersions");
     assert!(versions.iter().any(|v| v == "2026-07-28"));
+}
+
+#[tokio::test]
+async fn missing_protocol_version_header_is_rejected() {
+    let running = Running::start(None).await;
+    let res = running
+        .client()
+        .post(format!("{}/mcp", running.base))
+        .bearer_auth(&running.token)
+        .header("Accept", "application/json, text/event-stream")
+        .header("Mcp-Method", "server/discover")
+        .json(
+            &json!({"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta": meta()}}),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"]["code"], -32020);
+}
+
+#[tokio::test]
+async fn disallowed_origin_is_rejected() {
+    let running = Running::start(None).await;
+    let res = running
+        .client()
+        .post(format!("{}/mcp", running.base))
+        .bearer_auth(&running.token)
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "server/discover")
+        .header("Origin", "https://attacker.example")
+        .json(
+            &json!({"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta": meta()}}),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+#[tokio::test]
+async fn mismatched_method_header_is_rejected() {
+    let running = Running::start(None).await;
+    let res = running
+        .client()
+        .post(format!("{}/mcp", running.base))
+        .bearer_auth(&running.token)
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "tools/list")
+        .json(
+            &json!({"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta": meta()}}),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"]["code"], -32020);
+}
+
+#[tokio::test]
+async fn missing_tool_name_header_is_rejected() {
+    let running = Running::start(None).await;
+    let res = running
+        .client()
+        .post(format!("{}/mcp", running.base))
+        .bearer_auth(&running.token)
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "tools/call")
+        .json(&json!({
+            "jsonrpc":"2.0","id":1,"method":"tools/call",
+            "params":{"name":"manage_workspace","arguments":{"operation":"list"},"_meta": meta()}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"]["code"], -32020);
 }
 
 #[tokio::test]
@@ -90,6 +187,9 @@ async fn tools_list_over_http_matches_the_adapter_catalog() {
         body["result"]["tools"], again["result"]["tools"],
         "tool order must be deterministic"
     );
+    assert_eq!(body["result"]["resultType"], "complete");
+    assert_eq!(body["result"]["ttlMs"], 0);
+    assert_eq!(body["result"]["cacheScope"], "private");
 }
 
 #[tokio::test]

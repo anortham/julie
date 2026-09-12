@@ -61,6 +61,7 @@ pub struct PatternsTool {
     pub group_by: PatternsGroupBy,
     #[serde(default = "default_limit")]
     pub limit: u32,
+    /// Required workspace ID or absolute workspace path for MCP calls.
     #[serde(default)]
     pub workspace: Option<String>,
     #[serde(default)]

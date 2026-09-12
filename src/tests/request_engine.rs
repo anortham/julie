@@ -150,6 +150,17 @@ async fn missing_workspace_rejects_and_creates_no_directories() {
     assert!(!temp_home.path().join(".julie").exists());
 }
 
+#[test]
+fn service_binding_rejects_relative_paths_that_exist_in_the_service_cwd() {
+    let temp_home = tempfile::tempdir().unwrap();
+    let registry_paths = RegistryPaths::with_home(temp_home.path().to_path_buf());
+    let resolver = BindingResolver::new(None, false, registry_paths);
+
+    let result = resolver.resolve(None, Some(PathBuf::from(".")), false);
+
+    assert_eq!(result.unwrap_err().code, "WORKSPACE_REQUIRED");
+}
+
 #[tokio::test]
 async fn conflicting_workspace_rejects_before_acquisition() {
     let fixture = RequestFixture::indexed().await;
@@ -198,6 +209,65 @@ fn catalog_lists_exactly_the_ten_tools() {
             "{old} still has a schema"
         );
     }
+}
+
+#[test]
+fn mcp_catalog_requires_a_non_null_workspace_for_scoped_tools() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = RegistryPaths::with_home(home.path().to_path_buf());
+    let resolver = BindingResolver::new(None, false, paths.clone());
+    let engine = Arc::new(RequestEngine::new(
+        resolver,
+        Arc::new(RuntimeFactory::new(paths)),
+    ));
+    let adapter = crate::handler::mcp_adapter::McpAdapter::new(engine, None);
+    let list = serde_json::to_value(adapter.list_tools()).unwrap();
+    let scoped = [
+        "blast_radius",
+        "call_path",
+        "deep_dive",
+        "edit_file",
+        "fast_refs",
+        "fast_search",
+        "get_context",
+        "get_symbols",
+        "patterns",
+    ];
+
+    for name in scoped {
+        let listed = list["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap();
+        assert!(
+            listed["inputSchema"]["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|field| field == "workspace")
+        );
+        assert_eq!(
+            listed["inputSchema"]["properties"]["workspace"]["type"],
+            "string"
+        );
+
+        let fetched = serde_json::to_value(adapter.get_tool(name).unwrap()).unwrap();
+        assert_eq!(listed["inputSchema"], fetched["inputSchema"]);
+    }
+
+    let manage = list["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "manage_workspace")
+        .unwrap();
+    assert!(
+        !manage["inputSchema"]["required"]
+            .as_array()
+            .is_some_and(|required| required.iter().any(|field| field == "workspace"))
+    );
 }
 
 #[tokio::test]

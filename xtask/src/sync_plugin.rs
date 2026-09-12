@@ -8,9 +8,20 @@ use anyhow::{Context, Result, bail};
 const INSTRUCTIONS_FILE: &str = "JULIE_AGENT_INSTRUCTIONS.md";
 
 pub fn default_plugin_root(workspace_root: &Path) -> PathBuf {
-    workspace_root
+    let repository_root = std::process::Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .current_dir(workspace_root)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|path| PathBuf::from(path.trim()))
+        .and_then(|git_dir| git_dir.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| workspace_root.to_path_buf());
+
+    repository_root
         .parent()
-        .map(|p| p.join("julie-plugin"))
+        .map(|parent| parent.join("julie-plugin"))
         .unwrap_or_else(|| PathBuf::from("../julie-plugin"))
 }
 
@@ -541,5 +552,58 @@ mod tests {
             plugin_root,
             PathBuf::from("/Users/test/source/julie-plugin")
         );
+    }
+
+    #[test]
+    fn sync_plugin_tests_default_plugin_root_uses_repository_sibling_from_linked_worktree() {
+        let tmp = TempDir::new().unwrap();
+        let source = tmp.path().join("source");
+        let repository = source.join("julie");
+        let worktree = tmp.path().join("custom-checkouts").join("deployment-story");
+        fs::create_dir_all(&repository).unwrap();
+
+        for args in [
+            vec!["init"],
+            vec!["config", "user.email", "test@example.com"],
+            vec!["config", "user.name", "Test"],
+        ] {
+            assert!(
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&repository)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        write(&repository.join("README.md"), "Julie");
+        assert!(
+            std::process::Command::new("git")
+                .args(["add", "README.md"])
+                .current_dir(&repository)
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(
+            std::process::Command::new("git")
+                .args(["commit", "-m", "initial"])
+                .current_dir(&repository)
+                .status()
+                .unwrap()
+                .success()
+        );
+        fs::create_dir_all(worktree.parent().unwrap()).unwrap();
+        assert!(
+            std::process::Command::new("git")
+                .args(["worktree", "add", "-b", "deployment-story"])
+                .arg(&worktree)
+                .current_dir(&repository)
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        assert_eq!(default_plugin_root(&worktree), source.join("julie-plugin"));
     }
 }

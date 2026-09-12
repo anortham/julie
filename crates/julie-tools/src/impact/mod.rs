@@ -80,7 +80,7 @@ pub struct BlastRadiusTool {
     /// Output format. Accepted values: `compact` and `readable`.
     #[serde(default)]
     pub format: Option<String>,
-    /// Workspace target. Use `primary` or a workspace id opened through `manage_workspace`.
+    /// Required workspace target: a workspace ID or absolute workspace path for MCP calls.
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Traversal mode. `default` (omitted) walks the stored relationship +

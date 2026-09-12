@@ -88,8 +88,8 @@ Every install path runs the same launcher and the same machine service. The [`ju
 | Harness | Install |
 |---------|---------|
 | **Claude Code** | `/plugin marketplace add anortham/julie-plugin` then `/plugin install julie@julie-plugin` |
-| **Codex** | `codex plugin marketplace add anortham/julie-plugin` then `codex plugin add julie@julie-plugin` for the skills and hooks; add the `mcp_servers.julie` block to `~/.codex/config.toml` |
-| **Antigravity** | `agy plugin install https://github.com/anortham/julie-plugin` for the skills; add the `mcpServers.julie` block to `~/.gemini/config/mcp_config.json` |
+| **Codex** | `codex plugin marketplace add anortham/julie-plugin` then `codex plugin add julie@julie-plugin` |
+| **Antigravity** | `agy plugin install https://github.com/anortham/julie-plugin` |
 | **OpenCode** | Clone the plugin repo, run `node bin/install-opencode.cjs`, paste the printed `opencode.json` block |
 | **Hermes** | Clone the plugin repo, add the `mcp_servers.julie` block to `~/.hermes/config.yaml` |
 | **Cursor** | Clone the plugin repo, add the `mcpServers.julie` block to `~/.cursor/mcp.json` |
@@ -110,15 +110,7 @@ codex plugin marketplace add anortham/julie-plugin
 codex plugin add julie@julie-plugin
 ```
 
-The plugin adds the skills and the session hooks. Run `codex`, open `/hooks`, and trust the two Julie hooks. Then register the server in `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.julie]
-command = "node"
-args = ["/absolute/path/to/julie-plugin/hooks/run.cjs"]
-```
-
-Use a clone of the plugin repo, or the plugin root that `codex plugin list` prints. Codex starts a plugin's MCP servers inside the plugin directory. It sends no MCP roots. A server declared by the plugin would index the plugin, not your project. A server in `config.toml` starts in the project directory.
+The plugin adds the server, skills, and session hooks. Run `codex`, open `/hooks`, and trust the two Julie hooks. The launch directory does not select a workspace. Pass an absolute project path or registered workspace ID as `workspace` on every search, navigation, and editing call.
 
 ### Antigravity
 
@@ -126,20 +118,7 @@ Use a clone of the plugin repo, or the plugin root that `codex plugin list` prin
 agy plugin install https://github.com/anortham/julie-plugin
 ```
 
-The plugin adds the skills. Then register the server in `~/.gemini/config/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "julie": {
-      "command": "node",
-      "args": ["/absolute/path/to/julie-plugin/hooks/run.cjs"]
-    }
-  }
-}
-```
-
-Antigravity starts a plugin's MCP servers inside the plugin directory. It sends no MCP roots. A server in `mcp_config.json` starts in the project directory.
+The plugin adds the server and skills. The launch directory does not select a workspace. Pass an absolute project path or registered workspace ID as `workspace` on every search, navigation, and editing call.
 
 ### OpenCode
 
@@ -212,10 +191,7 @@ Use this path for any other MCP client, or when you do not want the plugin.
     "julie": {
       "type": "stdio",
       "command": "/absolute/path/to/julie-server",
-      "args": [],
-      "env": {
-        "JULIE_WORKSPACE": "/absolute/path/to/your/project"
-      }
+      "args": []
     }
   }
 }
@@ -237,14 +213,14 @@ cd julie
 cargo build --release
 ```
 
-**Workspace resolution:** the shim binds every tool call to `JULIE_WORKSPACE` when you set it, else to the directory the client started it in. Every harness above starts a server from its own config in the project directory. Set `JULIE_WORKSPACE` when a client starts Julie somewhere else. A call can also name a checkout with its `workspace` argument.
+**Workspace targeting:** the shim only forwards MCP traffic; its working directory and `JULIE_WORKSPACE` do not select a checkout. Every search, navigation, and editing call must pass `workspace` as an absolute project path or registered workspace ID. Call `manage_workspace(operation="open", path="/absolute/project")` once to register a checkout and use the returned ID. Other `manage_workspace` operations use `workspace_id`; global `list` and `status` need neither selector.
 
 <a id="available-env-options"></a>
 **Available env options:**
 
 | Variable | Values | Default | Notes |
 |----------|--------|---------|-------|
-| `JULIE_WORKSPACE` | Absolute path to project root | The directory the client started Julie in | Overrides workspace detection. Set this when a client starts Julie from the wrong directory. |
+| `JULIE_WORKSPACE` | Absolute project path | CLI working directory | CLI startup hint only; the MCP shim ignores it. |
 | `JULIE_EMBEDDING_PROVIDER` | `auto`, `native`, `none` | `auto` | Selects embedding backend. `auto` resolves to `native` when the `julie-semantic-sidecar` binary is found, else no embeddings. |
 | `JULIE_NATIVE_SIDECAR_PROGRAM` | Path to `julie-semantic-sidecar` | next to `julie-server`, then `PATH` | Explicit native sidecar binary. |
 | `JULIE_NATIVE_SIDECAR_MODEL` | Native sidecar model id | sidecar default | Native sidecar model. |
@@ -252,7 +228,7 @@ cargo build --release
 
 **First Use / Verify:**
 
-Julie indexes your workspace automatically on first connection or first primary tool call. Ask your agent to run `manage_workspace(operation="health")` if you want to confirm which workspace is bound. First indexing may take a few seconds on small projects and longer on large repos; later sessions reuse the cached index and file watcher updates.
+Julie indexes a checkout when you open it by absolute path. Run `manage_workspace(operation="open", path="/absolute/project")`, then pass the returned ID as `workspace` on search, navigation, and editing calls, or as `workspace_id` on other `manage_workspace` operations. First indexing may take a few seconds on small projects and longer on large repos; later sessions reuse the cached index and file watcher updates.
 
 ## Tools (10)
 

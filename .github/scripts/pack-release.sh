@@ -55,7 +55,11 @@ mkdir -p "$STAGE" "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 
 gh release download "v${SIDECAR_VERSION}" --repo "$SIDECAR_REPO" --pattern "$ASSET" --dir "$WORK"
-ACTUAL=$(sha256sum "$WORK/$ASSET" | cut -d' ' -f1)
+if command -v sha256sum >/dev/null; then
+  ACTUAL=$(sha256sum "$WORK/$ASSET" | cut -d' ' -f1)
+else
+  ACTUAL=$(shasum -a 256 "$WORK/$ASSET" | cut -d' ' -f1)
+fi
 if [ "$ACTUAL" != "$SHA256" ]; then
   echo "pack-release.sh: sha256 mismatch for $ASSET" >&2
   echo "  expected: $SHA256" >&2
@@ -67,12 +71,7 @@ case "$ASSET" in
   *.zip) unzip -q "$WORK/$ASSET" -d "$STAGE" ;;
   *) tar xzf "$WORK/$ASSET" -C "$STAGE" ;;
 esac
-# The sidecar README describes the standalone sidecar install, which does not
-# apply inside a julie archive. LICENSE is renamed so it cannot be mistaken for
-# julie's own license.
-rm "$STAGE/README.md"
-mv "$STAGE/LICENSE" "$STAGE/LICENSE-julie-semantic-sidecar"
-
+mv "$STAGE/package-manifest.json" "$STAGE/sidecar-package-manifest.json"
 if [ "$TARGET" = "x86_64-pc-windows-msvc" ]; then
   cp "$RELEASE_DIR/julie-server.exe" "$STAGE/"
   ARCHIVE="$OUT_DIR/julie-v${VERSION}-${TARGET}.zip"

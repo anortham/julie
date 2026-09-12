@@ -122,3 +122,18 @@ fn version_mismatch_error_formats_and_maps_to_exit_code_3() {
     );
     assert_eq!(crate::service::client::exit_code(&err), 3);
 }
+
+#[test]
+fn service_lock_allows_only_one_owner_and_releases_on_drop() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = RegistryPaths::with_home(home.path().to_path_buf());
+
+    let first = crate::service::acquire_service_lock(&paths).unwrap();
+    let second = crate::service::acquire_service_lock(&paths);
+
+    let message = second.err().unwrap().to_string();
+    assert!(message.contains("could not acquire service lock"));
+
+    drop(first);
+    assert!(crate::service::acquire_service_lock(&paths).is_ok());
+}

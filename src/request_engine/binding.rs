@@ -213,8 +213,8 @@ impl BindingResolver {
     /// engine binds the process workspace instead of rejecting the request.
     fn is_unknown_selector(&self, selector: &Path) -> bool {
         !selector.is_absolute()
-            && !selector.exists()
             && self.registry_row(&selector.to_string_lossy()).is_none()
+            && (!self.standalone || !selector.exists())
     }
 
     fn resolve_target_path(

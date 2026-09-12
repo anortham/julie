@@ -43,7 +43,7 @@ pub struct CallPathTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
     )]
     pub max_hops: u32,
-    /// Workspace target. Use `primary` or a workspace id opened through `manage_workspace`.
+    /// Required workspace ID or absolute workspace path for MCP calls.
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Optional source file hint used to disambiguate the `from` symbol.

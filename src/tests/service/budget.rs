@@ -50,6 +50,13 @@ fn service_modules_contain_no_coordination_words() {
         "handoff",
     ];
     let allowlist = [("src/service/status.rs", "lock")];
+    let singleton_lock_lines = [
+        "pub(crate) fn acquire_service_lock",
+        "join(\"service.lock\")",
+        "file.try_lock()",
+        "could not acquire service lock",
+        "let _service_lock = acquire_service_lock",
+    ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(root.join("src/service"))
         .unwrap()
@@ -75,6 +82,14 @@ fn service_modules_contain_no_coordination_words() {
                 {
                     if allowlist.contains(&(fname.as_str(), word)) && allowed_hits == 0 {
                         allowed_hits += 1;
+                        continue;
+                    }
+                    if fname == "src/service/mod.rs"
+                        && word == "lock"
+                        && singleton_lock_lines
+                            .iter()
+                            .any(|allowed| line.contains(allowed))
+                    {
                         continue;
                     }
                     hits.push(format!("{fname}:{}: {word}", n + 1));

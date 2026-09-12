@@ -21,7 +21,6 @@ async fn shim_forwards_requests_and_drops_notifications() {
     forward(
         &running.paths,
         &|| Ok(()),
-        &running.paths.julie_home(),
         client,
         tokio::io::BufReader::new(input.as_bytes()),
         &mut output,
@@ -60,7 +59,6 @@ async fn shim_result_equals_direct_http_result_for_the_same_call() {
     forward(
         &running.paths,
         &|| Ok(()),
-        &running.paths.julie_home(),
         client,
         tokio::io::BufReader::new(format!("{call}\n").as_bytes()),
         &mut output,
@@ -70,6 +68,114 @@ async fn shim_result_equals_direct_http_result_for_the_same_call() {
     let via_shim: Value =
         serde_json::from_str(String::from_utf8(output).unwrap().lines().next().unwrap()).unwrap();
     assert_eq!(direct["result"]["tools"], via_shim["result"]["tools"]);
+}
+
+#[tokio::test]
+async fn shim_forwards_a_legacy_initialize_sequence_without_modern_metadata() {
+    let running = Running::start(None).await;
+    let client = connect_or_start(&running.paths, || Ok(())).await.unwrap();
+    let input = format!(
+        "{}\n{}\n{}\n",
+        json!({
+            "jsonrpc":"2.0",
+            "id":1,
+            "method":"initialize",
+            "params":{
+                "protocolVersion":"2025-11-25",
+                "capabilities":{},
+                "clientInfo":{"name":"legacy-test","version":"1"}
+            }
+        }),
+        json!({"jsonrpc":"2.0","method":"notifications/initialized","params":{}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}),
+    );
+    let mut output = Vec::new();
+    forward(
+        &running.paths,
+        &|| Ok(()),
+        client,
+        tokio::io::BufReader::new(input.as_bytes()),
+        &mut output,
+    )
+    .await
+    .unwrap();
+
+    let replies: Vec<Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(replies.len(), 2);
+    assert_eq!(replies[0]["result"]["protocolVersion"], "2025-11-25");
+    assert!(replies[1]["result"]["tools"].is_array());
+}
+
+#[tokio::test]
+async fn shim_does_not_infer_a_workspace_for_tool_calls() {
+    let running = Running::start(None).await;
+    let client = connect_or_start(&running.paths, || Ok(())).await.unwrap();
+    let call = json!({
+        "jsonrpc":"2.0",
+        "id":8,
+        "method":"tools/call",
+        "params":{
+            "name":"fast_search",
+            "arguments":{"query":"probe","semantics":"off"},
+            "_meta":meta()
+        }
+    });
+    let mut output = Vec::new();
+    forward(
+        &running.paths,
+        &|| Ok(()),
+        client,
+        tokio::io::BufReader::new(format!("{call}\n").as_bytes()),
+        &mut output,
+    )
+    .await
+    .unwrap();
+
+    let reply: Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(reply["error"]["data"]["code"], "WORKSPACE_REQUIRED");
+    assert!(
+        std::fs::read_dir(running.paths.julie_home().join("indexes"))
+            .map(|entries| entries.count() == 0)
+            .unwrap_or(true)
+    );
+}
+
+#[tokio::test]
+async fn shim_rejects_relative_manage_workspace_paths() {
+    let running = Running::start(None).await;
+    let client = connect_or_start(&running.paths, || Ok(())).await.unwrap();
+    let call = json!({
+        "jsonrpc":"2.0",
+        "id":10,
+        "method":"tools/call",
+        "params":{
+            "name":"manage_workspace",
+            "arguments":{"operation":"open","path":"."},
+            "_meta":meta()
+        }
+    });
+    let mut output = Vec::new();
+    forward(
+        &running.paths,
+        &|| Ok(()),
+        client,
+        tokio::io::BufReader::new(format!("{call}\n").as_bytes()),
+        &mut output,
+    )
+    .await
+    .unwrap();
+
+    let reply: Value = serde_json::from_slice(&output).unwrap();
+    assert!(reply["error"].is_object());
+    assert!(
+        std::fs::read_dir(running.paths.julie_home().join("indexes"))
+            .map(|entries| entries.count() == 0)
+            .unwrap_or(true)
+    );
 }
 
 #[tokio::test]
@@ -104,7 +210,6 @@ async fn shim_reconnects_when_the_service_goes_away_mid_session() {
     forward(
         &paths,
         &spawn,
-        &paths.julie_home(),
         first,
         tokio::io::BufReader::new(format!("{call}\n").as_bytes()),
         &mut output,
@@ -115,45 +220,6 @@ async fn shim_reconnects_when_the_service_goes_away_mid_session() {
         serde_json::from_str(String::from_utf8(output).unwrap().lines().next().unwrap()).unwrap();
     assert_eq!(reply["id"], 9);
     assert!(reply["result"]["tools"].is_array(), "got {reply}");
-}
-
-#[test]
-fn shim_binds_tool_calls_to_its_working_directory_unless_a_workspace_is_named() {
-    use crate::service::shim::bind_default_workspace;
-    let root = std::path::Path::new("/repo/checkout");
-    let call = |arguments: Value| json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fast_search","arguments":arguments}});
-
-    let mut omitted = call(json!({"query":"x"}));
-    bind_default_workspace(&mut omitted, root);
-    assert_eq!(
-        omitted["params"]["arguments"]["workspace"],
-        "/repo/checkout"
-    );
-
-    let mut primary = call(json!({"query":"x","workspace":"primary"}));
-    bind_default_workspace(&mut primary, root);
-    assert_eq!(
-        primary["params"]["arguments"]["workspace"],
-        "/repo/checkout"
-    );
-
-    let mut named = call(json!({"query":"x","workspace":"julie_5cb3ea69"}));
-    bind_default_workspace(&mut named, root);
-    assert_eq!(named["params"]["arguments"]["workspace"], "julie_5cb3ea69");
-
-    let mut list = json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}});
-    let before = list.clone();
-    bind_default_workspace(&mut list, root);
-    assert_eq!(list, before);
-}
-
-#[test]
-fn shim_workspace_root_honors_julie_workspace_env() {
-    let temp = tempfile::tempdir().unwrap();
-    unsafe { std::env::set_var("JULIE_WORKSPACE", temp.path()) };
-    let root = crate::service::shim::shim_workspace_root();
-    unsafe { std::env::remove_var("JULIE_WORKSPACE") };
-    assert_eq!(root, temp.path().canonicalize().unwrap());
 }
 
 #[test]
@@ -188,7 +254,6 @@ async fn shim_answers_with_an_error_and_keeps_serving_when_the_service_cannot_re
     forward(
         &paths,
         &spawn,
-        &paths.julie_home(),
         first,
         tokio::io::BufReader::new(calls.as_bytes()),
         &mut output,

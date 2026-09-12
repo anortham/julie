@@ -21,7 +21,11 @@ pub fn modern_meta() -> Value {
 
 pub fn scrub_dynamic_metrics(text: &str) -> String {
     let re_time = Regex::new(r"\b\d+(\.\d+)?\s*(ms|s|µs)\b").unwrap();
-    re_time.replace_all(text, "<TIME>").to_string()
+    let text = re_time.replace_all(text, "<TIME>");
+    Regex::new(r"(?P<label>last write|last file event): \d{4}-\d{2}-\d{2}T[-0-9:.+Z]+")
+        .unwrap()
+        .replace_all(&text, "$label: <TIME>")
+        .to_string()
 }
 
 pub fn normalize_content(val: Option<&Value>) -> Value {
@@ -53,11 +57,58 @@ pub fn normalize_structured(val: Option<&Value>) -> Value {
             cleaned.remove("duration_ms");
             cleaned.remove("elapsed_ms");
             cleaned.remove("timestamp");
+            if let Some(checkouts) = cleaned.get_mut("checkouts").and_then(Value::as_array_mut) {
+                for checkout in checkouts {
+                    if let Some(checkout) = checkout.as_object_mut() {
+                        for field in [
+                            "last_file_event_at",
+                            "tantivy_age_seconds",
+                            "graph_load_millis",
+                            "vector_scan_millis",
+                            "last_write_at",
+                        ] {
+                            checkout.remove(field);
+                        }
+                    }
+                }
+            }
             Value::Object(cleaned)
         }
         Some(other) => other.clone(),
         None => Value::Null,
     }
+}
+
+#[test]
+fn checkout_normalization_ignores_measurements_but_keeps_semantics() {
+    let first = json!({"checkouts":[{
+        "workspace_id":"julie_a",
+        "watcher":"running",
+        "file_count":4,
+        "last_file_event_at":"2026-09-12T00:00:00Z",
+        "tantivy_age_seconds":1,
+        "graph_load_millis":2,
+        "vector_scan_millis":3,
+        "last_write_at":"2026-09-12T00:00:01Z"
+    }]});
+    let mut second = first.clone();
+    let checkout = second["checkouts"][0].as_object_mut().unwrap();
+    checkout.insert("last_file_event_at".into(), json!("2026-09-12T00:01:00Z"));
+    checkout.insert("tantivy_age_seconds".into(), json!(10));
+    checkout.insert("graph_load_millis".into(), json!(20));
+    checkout.insert("vector_scan_millis".into(), json!(30));
+    checkout.insert("last_write_at".into(), json!("2026-09-12T00:01:01Z"));
+
+    assert_eq!(
+        normalize_structured(Some(&first)),
+        normalize_structured(Some(&second))
+    );
+
+    second["checkouts"][0]["watcher"] = json!("stopped");
+    assert_ne!(
+        normalize_structured(Some(&first)),
+        normalize_structured(Some(&second))
+    );
 }
 
 pub fn assert_tool_parity(tool_name: &str, cli_envelope: &Value, mcp_response: &Value) {
@@ -445,18 +496,44 @@ async fn test_parity_09_manage_workspace() {
     let mut fixture = ProcessFixture::from_env().await;
     let ws = fixture.root().to_string_lossy().to_string();
 
+    let opened = fixture
+        .rpc(json!({
+            "jsonrpc": "2.0", "id": 90, "method": "tools/call", "params": {
+                "name": "manage_workspace",
+                "arguments": { "operation": "open", "path": &ws },
+                "_meta": modern_meta()
+            }
+        }))
+        .await;
+    assert!(
+        opened.get("error").is_none(),
+        "workspace open failed: {opened}"
+    );
+    assert_ne!(
+        opened["result"]["isError"], true,
+        "workspace open failed: {opened}"
+    );
+
     let mcp_res = fixture
         .rpc(json!({
             "jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {
                 "name": "manage_workspace",
-                "arguments": { "operation": "list" },
+                "arguments": { "operation": "status", "path": &ws },
                 "_meta": modern_meta()
             }
         }))
         .await;
 
     let (exit, cli_res) = fixture
-        .cli_json(&["workspace", "list", "--workspace", &ws, "--json"])
+        .cli_json(&[
+            "workspace",
+            "status",
+            "--path",
+            &ws,
+            "--workspace",
+            &ws,
+            "--json",
+        ])
         .await;
     assert_eq!(exit, 0);
 

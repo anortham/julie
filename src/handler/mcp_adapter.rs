@@ -18,7 +18,7 @@ use rmcp::service::RequestContext;
 use serde_json::{Map, Value, json};
 
 use crate::request_engine::RequestEngine;
-use crate::request_engine::catalog::ToolCatalog;
+use crate::request_engine::catalog::{ToolCatalog, ToolInfo};
 use crate::request_engine::types::{
     RequestContext as AppRequestContext, RequestFailure, RequestOrigin, SemanticMode, ToolReply,
     ToolRequest,
@@ -234,16 +234,7 @@ impl McpAdapter {
     }
 
     pub fn list_tools(&self) -> ListToolsResult {
-        let tools = ToolCatalog::list()
-            .into_iter()
-            .map(|info| {
-                let schema_obj = match info.schema {
-                    Value::Object(map) => map,
-                    _ => Map::new(),
-                };
-                Tool::new(info.name, info.description, Arc::new(schema_obj))
-            })
-            .collect();
+        let tools = ToolCatalog::list().into_iter().map(mcp_tool).collect();
         ListToolsResult::with_all_items(tools)
             .with_ttl_ms(0)
             .with_cache_scope(rmcp::model::CacheScope::Private)
@@ -253,18 +244,41 @@ impl McpAdapter {
         ToolCatalog::list()
             .into_iter()
             .find(|info| info.name == name)
-            .map(|info| {
-                let schema_obj = match info.schema {
-                    Value::Object(map) => map,
-                    _ => Map::new(),
-                };
-                Tool::new(info.name, info.description, Arc::new(schema_obj))
-            })
+            .map(mcp_tool)
     }
 
     pub fn get_info(&self) -> ServerInfo {
         get_server_info(self.instructions.clone())
     }
+}
+
+fn mcp_tool(info: ToolInfo) -> Tool {
+    let mut schema = match info.schema {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
+    if info.name != "manage_workspace" {
+        if let Some(workspace) = schema
+            .get_mut("properties")
+            .and_then(Value::as_object_mut)
+            .and_then(|properties| properties.get_mut("workspace"))
+        {
+            let description = workspace.get("description").cloned();
+            *workspace = json!({"type": "string"});
+            if let Some(description) = description {
+                workspace["description"] = description;
+            }
+        }
+        let required = schema
+            .entry("required")
+            .or_insert_with(|| Value::Array(Vec::new()));
+        if let Some(required) = required.as_array_mut()
+            && !required.iter().any(|field| field == "workspace")
+        {
+            required.push(Value::String("workspace".into()));
+        }
+    }
+    Tool::new(info.name, info.description, Arc::new(schema))
 }
 
 fn call_client_from_meta(

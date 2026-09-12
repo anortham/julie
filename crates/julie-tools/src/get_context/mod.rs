@@ -40,7 +40,7 @@ pub struct GetContextTool {
     )]
     pub max_tokens: Option<u32>,
 
-    /// Workspace filter: "primary" (default) or a workspace ID
+    /// Required workspace ID or absolute workspace path for MCP calls
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 

@@ -60,7 +60,7 @@ pub struct FastRefsTool {
         deserialize_with = "julie_core::serde_lenient::deserialize_u32_lenient"
     )]
     pub offset: u32,
-    /// Workspace filter: "primary" (default) or a workspace ID
+    /// Required workspace ID or absolute workspace path for MCP calls
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Narrow by reference kind: "call", "variable_ref", "type_usage", "member_access", "import". Omit to see all reference types

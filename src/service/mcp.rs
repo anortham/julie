@@ -12,7 +12,8 @@ pub fn mcp_service(
     let config = StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
         .with_json_response(true)
-        .with_allowed_hosts(["127.0.0.1", "localhost"]);
+        .with_allowed_hosts(["127.0.0.1", "localhost"])
+        .with_allowed_origins(["http://127.0.0.1", "http://localhost"]);
     StreamableHttpService::new(
         move || {
             Ok(McpAdapter::new(Arc::clone(&engine), None)
