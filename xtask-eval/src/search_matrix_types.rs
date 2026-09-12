@@ -79,6 +79,14 @@ pub struct SearchMatrixBaselineExecution {
     pub hint_kind: Option<String>,
     pub latency_ms: u128,
     pub top_hits: Vec<SearchMatrixTopHit>,
+    #[serde(default)]
+    pub requested_backend: Option<String>,
+    #[serde(default)]
+    pub effective_backend: Option<String>,
+    #[serde(default)]
+    pub strategy_id: Option<String>,
+    #[serde(default)]
+    pub content_enriched: bool,
     /// Ablation label for this execution. Empty string means no ablation (baseline).
     /// Serde default keeps existing reports parseable when this field is absent.
     #[serde(default)]

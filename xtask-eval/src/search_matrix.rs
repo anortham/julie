@@ -1,4 +1,5 @@
 use anyhow::Result;
+use julie::embeddings::acquire_in_process_embedding_provider;
 use julie::handler::JulieServerHandler;
 use julie::paths::RegistryPaths;
 use julie::registry::database::{DaemonDatabase, WorkspaceRow};
@@ -126,6 +127,7 @@ async fn run_baseline_async(
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_paths.registry_db())?);
     let _env_guard = ablation.apply_env();
     let ablation_label = ablation.label().to_string();
+    let embedding_provider = acquire_in_process_embedding_provider().await;
 
     let mut executions = Vec::new();
     let mut skipped_repos = Vec::new();
@@ -192,6 +194,7 @@ async fn run_baseline_async(
             None,
         )
         .await?;
+        handler.set_injected_embedding_provider(embedding_provider.clone());
 
         for case in repo_cases {
             let execution =
@@ -258,7 +261,16 @@ async fn execute_baseline_case(
     let latency_ms = started.elapsed().as_millis();
 
     match result {
-        Ok(result) => SearchMatrixBaselineExecution {
+        Ok(result) => {
+            let strategy_id = result.trace.strategy_id.clone();
+            let effective_backend = match strategy_id.as_str() {
+                "fast_search_semantic" | "fast_search_semantic_fallback" => "semantic",
+                "fast_search_hybrid" => "hybrid",
+                _ => "lexical",
+            };
+            let content_enriched = effective_backend == "semantic"
+                && result.hits.iter().any(|hit| hit.as_symbol().is_none());
+            SearchMatrixBaselineExecution {
             repo_name: repo_name.to_string(),
             workspace_id: workspace.workspace_id.clone(),
             case_id: case.case_id.clone(),
@@ -287,8 +299,13 @@ async fn execute_baseline_case(
                     score: hit.score,
                 })
                 .collect(),
+            requested_backend: case.backend.map(|backend| backend.as_str().to_string()),
+            effective_backend: Some(effective_backend.to_string()),
+            strategy_id: Some(strategy_id),
+            content_enriched,
             ablation_label: ablation_label.to_string(),
-        },
+            }
+        }
         Err(error) => SearchMatrixBaselineExecution {
             repo_name: repo_name.to_string(),
             workspace_id: workspace.workspace_id.clone(),
@@ -303,6 +320,10 @@ async fn execute_baseline_case(
             hint_kind: None,
             latency_ms,
             top_hits: Vec::new(),
+            requested_backend: case.backend.map(|backend| backend.as_str().to_string()),
+            effective_backend: None,
+            strategy_id: None,
+            content_enriched: false,
             ablation_label: ablation_label.to_string(),
         },
     }
@@ -319,14 +340,14 @@ fn eligible_cases_for_repo<'a>(
         .iter()
         .filter(|case| case.profile_tags.iter().any(|tag| tag == profile))
         .filter(|case| {
-            case.language
-                .as_ref()
-                .is_none_or(|language| language == &repo.language)
-        })
-        .filter(|case| {
-            case.repo_selector
-                .as_ref()
-                .is_none_or(|selectors| selectors.iter().any(|selector| selector == &repo.name))
+            case.repo_selector.as_ref().map_or_else(
+                || {
+                    case.language
+                        .as_ref()
+                        .is_none_or(|language| language == &repo.language)
+                },
+                |selectors| selectors.iter().any(|selector| selector == &repo.name),
+            )
         })
         .collect()
 }

@@ -171,8 +171,9 @@ case_id = "current_store_case"
 family = "exact_identifier"
 query = "current_store_probe"
 search_target = "definitions"
-language = "rust"
+language = "toml"
 profile_tags = ["smoke"]
+repo_selector = ["current-store"]
 expected_mode = "expect_hits"
 "#,
     )
@@ -215,6 +216,10 @@ profile_tags = ["smoke"]
     );
     assert_eq!(report.executions.len(), 1);
     assert_eq!(report.executions[0].case_id, "current_store_case");
+    assert_eq!(report.executions[0].requested_backend, None);
+    assert_eq!(report.executions[0].effective_backend.as_deref(), Some("lexical"));
+    assert_eq!(report.executions[0].strategy_id.as_deref(), Some("search_unified"));
+    assert!(!report.executions[0].content_enriched);
     assert!(
         report.executions[0]
             .zero_hit_reason
