@@ -48,6 +48,8 @@ Inspected Julie `0432158c173c30ae2f76d92773380c744ddc6542`, `main`, on 2026-09-0
 
 ## Fixed lifecycle design
 
+> Superseded for runtime ownership by `RequestEngine` and `RuntimeFactory` in Plan 3. The proposed `WorkspaceRuntimeManager`, `RuntimeLease`, phase machine, and OS-lock ownership model below were never adopted; source-edit journaling and recovery remain active.
+
 New interfaces below are proposed, not existing names.
 
 ```rust

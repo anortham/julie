@@ -1,5 +1,7 @@
 # Machine Service Phase 2: One Writer, Disposable Indexes Implementation Plan
 
+> Superseded runtime-lifecycle references: Plan 3 uses `RequestEngine` and `RuntimeFactory`; the proposed `workspace_runtime` manager, lease, phase, scheduler, and shutdown architecture has been removed. Source-edit journaling and recovery remain active.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use razorback:subagent-driven-development whenever delegation is available and permitted, including for one task; serialize dependent tasks. Use razorback:executing-plans only when delegation is unavailable or the user/session explicitly selected single-agent execution.
 
 **Goal:** The service is the only writer per checkout, so every cross-process coordination path is deleted, derived indexes are deleted and rebuilt instead of migrated, a new worktree seeds its index from a sibling checkout, and `manage_workspace` gains `rebuild` and `status`. The phase ends net negative in lines with the section 5.4 deletion list empty except the two items this plan defers with a reason.
