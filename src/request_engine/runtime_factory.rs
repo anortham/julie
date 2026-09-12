@@ -6,6 +6,13 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::warn;
 
+#[cfg(test)]
+use std::sync::Mutex;
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(test)]
+use tokio::sync::Notify;
+
 use crate::handler::JulieServerHandler;
 use crate::paths::RegistryPaths;
 use crate::registry::database::DaemonDatabase;
@@ -24,6 +31,47 @@ pub struct RuntimeKey {
 pub struct RequestRuntime {
     handler: Arc<JulieServerHandler>,
     binding: Option<WorkspaceBinding>,
+}
+
+struct RuntimeSlot {
+    runtime: RwLock<Option<Arc<RequestRuntime>>>,
+}
+
+impl RuntimeSlot {
+    fn empty() -> Self {
+        Self {
+            runtime: RwLock::new(None),
+        }
+    }
+
+    fn loaded(runtime: Arc<RequestRuntime>) -> Self {
+        Self {
+            runtime: RwLock::new(Some(runtime)),
+        }
+    }
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct BoundInitializationProbe {
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+    attempts: Arc<AtomicUsize>,
+}
+
+#[cfg(test)]
+impl BoundInitializationProbe {
+    pub(crate) async fn entered(&self) {
+        self.entered.notified().await;
+    }
+
+    pub(crate) fn release(&self) {
+        self.release.notify_one();
+    }
+
+    pub(crate) fn attempts(&self) -> usize {
+        self.attempts.load(Ordering::SeqCst)
+    }
 }
 
 impl RequestRuntime {
@@ -47,11 +95,13 @@ impl RequestRuntime {
 #[derive(Clone)]
 pub struct RuntimeFactory {
     registry_paths: RegistryPaths,
-    runtimes: Arc<RwLock<HashMap<RuntimeKey, Arc<RequestRuntime>>>>,
+    runtimes: Arc<RwLock<HashMap<RuntimeKey, Arc<RuntimeSlot>>>>,
     unbound_runtime: Arc<RwLock<Option<Arc<RequestRuntime>>>>,
     template_handler: Option<Arc<JulieServerHandler>>,
     semantic_runtime:
         Arc<std::sync::RwLock<Arc<dyn crate::request_engine::semantic::SemanticRuntime>>>,
+    #[cfg(test)]
+    bound_initialization_probe: Arc<Mutex<Option<BoundInitializationProbe>>>,
 }
 
 impl RuntimeFactory {
@@ -67,6 +117,8 @@ impl RuntimeFactory {
             unbound_runtime: Arc::new(RwLock::new(None)),
             template_handler: None,
             semantic_runtime: Arc::new(std::sync::RwLock::new(semantic_runtime)),
+            #[cfg(test)]
+            bound_initialization_probe: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -87,7 +139,7 @@ impl RuntimeFactory {
         });
         let runtime = Arc::new(RequestRuntime::new(Arc::clone(&handler), binding));
         let mut map = HashMap::new();
-        map.insert(key, Arc::clone(&runtime));
+        map.insert(key, Arc::new(RuntimeSlot::loaded(Arc::clone(&runtime))));
         let semantic_runtime = handler.semantic_runtime();
         Self {
             registry_paths,
@@ -95,6 +147,8 @@ impl RuntimeFactory {
             unbound_runtime: Arc::new(RwLock::new(None)),
             template_handler: Some(Arc::clone(&handler)),
             semantic_runtime: Arc::new(std::sync::RwLock::new(semantic_runtime)),
+            #[cfg(test)]
+            bound_initialization_probe: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -111,16 +165,40 @@ impl RuntimeFactory {
     }
 
     pub async fn loaded_runtime_count(&self) -> usize {
-        let runtime_count = self.runtimes.read().await.len();
+        let slots = self
+            .runtimes
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut runtime_count = 0;
+        for slot in slots {
+            if slot.runtime.read().await.is_some() {
+                runtime_count += 1;
+            }
+        }
         let has_unbound_runtime = self.unbound_runtime.read().await.is_some();
         runtime_count + usize::from(has_unbound_runtime)
     }
 
     pub async fn loaded_watcher_count(&self) -> usize {
-        let runtimes = self.runtimes.read().await.values().cloned().collect::<Vec<_>>();
+        let slots = self
+            .runtimes
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
         let mut count = 0;
-        for runtime in runtimes {
-            if runtime.handler().loaded_workspace_file_watcher_running().await {
+        for slot in slots {
+            let runtime = slot.runtime.read().await.clone();
+            if let Some(runtime) = runtime
+                && runtime
+                    .handler()
+                    .loaded_workspace_file_watcher_running()
+                    .await
+            {
                 count += 1;
             }
         }
@@ -139,6 +217,17 @@ impl RuntimeFactory {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn pause_bound_initialization(&self) -> BoundInitializationProbe {
+        let probe = BoundInitializationProbe {
+            entered: Arc::new(Notify::new()),
+            release: Arc::new(Notify::new()),
+            attempts: Arc::new(AtomicUsize::new(0)),
+        };
+        *self.bound_initialization_probe.lock().unwrap() = Some(probe.clone());
+        probe
+    }
+
     pub async fn acquire(
         &self,
         binding: Option<&WorkspaceBinding>,
@@ -153,24 +242,34 @@ impl RuntimeFactory {
                     index_root: b.index_root.clone(),
                 };
 
-                // Fast-path read lock
-                let runtime = {
+                let slot = {
                     let map = self.runtimes.read().await;
                     map.get(&key).cloned()
                 };
 
-                let runtime = match runtime {
-                    Some(r) => r,
+                let slot = match slot {
+                    Some(slot) => slot,
                     None => {
                         let mut map = self.runtimes.write().await;
-                        if let Some(r) = map.get(&key) {
-                            Arc::clone(r)
+                        if let Some(slot) = map.get(&key) {
+                            Arc::clone(slot)
                         } else {
-                            let runtime = self.create_bound_runtime(b, context).await?;
-                            map.insert(key, Arc::clone(&runtime));
-                            runtime
+                            let slot = Arc::new(RuntimeSlot::empty());
+                            map.insert(key, Arc::clone(&slot));
+                            slot
                         }
                     }
+                };
+
+                let runtime = {
+                    let mut runtime = slot.runtime.write().await;
+                    if runtime.is_none() {
+                        context.check_cancelled()?;
+                        self.wait_for_bound_initialization(context).await?;
+                        let created = self.create_bound_runtime(b, context).await?;
+                        *runtime = Some(created);
+                    }
+                    runtime.as_ref().cloned().expect("runtime initialized")
                 };
 
                 if runtime.handler().workspace.read().await.is_none() {
@@ -204,6 +303,32 @@ impl RuntimeFactory {
                 Ok(runtime)
             }
         }
+    }
+
+    #[cfg(test)]
+    async fn wait_for_bound_initialization(
+        &self,
+        context: &RequestContext,
+    ) -> Result<(), RequestFailure> {
+        let probe = self.bound_initialization_probe.lock().unwrap().clone();
+        if let Some(probe) = probe {
+            probe.attempts.fetch_add(1, Ordering::SeqCst);
+            probe.entered.notify_waiters();
+            tokio::select! {
+                _ = probe.release.notified() => Ok(()),
+                _ = context.cancellation.cancelled() => context.check_cancelled(),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    #[cfg(not(test))]
+    async fn wait_for_bound_initialization(
+        &self,
+        _context: &RequestContext,
+    ) -> Result<(), RequestFailure> {
+        Ok(())
     }
 
     async fn create_bound_runtime(

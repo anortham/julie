@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 pub struct RequestFixture {
     pub engine: RequestEngine,
+    pub runtimes: Arc<RuntimeFactory>,
     pub root: PathBuf,
     pub database_path: PathBuf,
     pub temp_home: Arc<tempfile::TempDir>,
@@ -48,15 +49,26 @@ impl RequestFixture {
             .await
             .unwrap();
 
-        let engine = RequestEngine::new(binding_resolver, runtime_factory);
+        let engine = RequestEngine::new(binding_resolver, Arc::clone(&runtime_factory));
 
         Self {
             engine,
+            runtimes: runtime_factory,
             root,
             database_path,
             temp_home: Arc::new(temp_home),
             temp_repo: Arc::new(temp_repo),
         }
+    }
+
+    fn cold_binding(&self, name: &str) -> crate::request_engine::WorkspaceBinding {
+        let root = make_isolated_workspace_root(self.temp_repo.path(), name);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/lib.rs"), "pub fn cold_probe() {}\n").unwrap();
+        BindingResolver::new(Some(root), false, self.runtimes.registry_paths().clone())
+            .resolve(None, None, false)
+            .unwrap()
+            .unwrap()
     }
 
     pub async fn execute(
@@ -99,6 +111,130 @@ impl RequestFixture {
         );
         self.engine.execute(request, context).await
     }
+}
+
+#[tokio::test]
+async fn cold_workspace_initialization_does_not_block_warm_workspace() {
+    let fixture = RequestFixture::indexed().await;
+    let cold_binding = fixture.cold_binding("cold_workspace");
+    let probe = fixture.runtimes.pause_bound_initialization();
+    let cold_factory = Arc::clone(&fixture.runtimes);
+    let cold_context = RequestContext::new(
+        RequestOrigin::Cli,
+        Some(std::time::Duration::from_secs(10)),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    let cold = tokio::spawn(async move {
+        cold_factory
+            .acquire(Some(&cold_binding), &cold_context)
+            .await
+    });
+
+    probe.entered().await;
+    let warm = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        fixture.execute(
+            "fast_search",
+            serde_json::json!({ "query": "request_probe" }),
+        ),
+    )
+    .await
+    .expect("warm workspace remained blocked by cold initialization");
+    assert!(warm.is_ok());
+
+    probe.release();
+    assert!(cold.await.unwrap().is_ok());
+}
+
+#[tokio::test]
+async fn same_workspace_cold_requests_share_one_initialization() {
+    let fixture = RequestFixture::indexed().await;
+    let cold_binding = fixture.cold_binding("shared_cold_workspace");
+    let probe = fixture.runtimes.pause_bound_initialization();
+    let first_factory = Arc::clone(&fixture.runtimes);
+    let first_binding = cold_binding.clone();
+    let first = tokio::spawn(async move {
+        first_factory
+            .acquire(
+                Some(&first_binding),
+                &RequestContext::new(
+                    RequestOrigin::Cli,
+                    Some(std::time::Duration::from_secs(10)),
+                    tokio_util::sync::CancellationToken::new(),
+                ),
+            )
+            .await
+    });
+
+    probe.entered().await;
+    let second_factory = Arc::clone(&fixture.runtimes);
+    let second = tokio::spawn(async move {
+        second_factory
+            .acquire(
+                Some(&cold_binding),
+                &RequestContext::new(
+                    RequestOrigin::Cli,
+                    Some(std::time::Duration::from_secs(10)),
+                    tokio_util::sync::CancellationToken::new(),
+                ),
+            )
+            .await
+    });
+
+    probe.release();
+    assert!(first.await.unwrap().is_ok());
+    assert!(second.await.unwrap().is_ok());
+    assert_eq!(probe.attempts(), 1);
+    assert_eq!(fixture.runtimes.loaded_runtime_count().await, 2);
+    assert_eq!(fixture.runtimes.loaded_watcher_count().await, 2);
+}
+
+#[tokio::test]
+async fn cancelled_or_failed_initialization_does_not_poison_runtime_slot() {
+    let fixture = RequestFixture::indexed().await;
+    let cold_binding = fixture.cold_binding("retryable_cold_workspace");
+    let probe = fixture.runtimes.pause_bound_initialization();
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let cancelled_factory = Arc::clone(&fixture.runtimes);
+    let cancelled_binding = cold_binding.clone();
+    let cancelled_token = cancellation.clone();
+    let cancelled = tokio::spawn(async move {
+        cancelled_factory
+            .acquire(
+                Some(&cancelled_binding),
+                &RequestContext::new(
+                    RequestOrigin::Cli,
+                    Some(std::time::Duration::from_secs(10)),
+                    cancelled_token,
+                ),
+            )
+            .await
+    });
+
+    probe.entered().await;
+    cancellation.cancel();
+    let failure = match cancelled.await.unwrap() {
+        Ok(_) => panic!("cancelled initialization unexpectedly succeeded"),
+        Err(failure) => failure,
+    };
+    assert_eq!(failure.code, "CANCELLED");
+
+    probe.release();
+    let retry = fixture
+        .runtimes
+        .acquire(
+            Some(&cold_binding),
+            &RequestContext::new(
+                RequestOrigin::Cli,
+                Some(std::time::Duration::from_secs(10)),
+                tokio_util::sync::CancellationToken::new(),
+            ),
+        )
+        .await;
+    assert!(retry.is_ok());
+    assert_eq!(probe.attempts(), 2);
+    assert_eq!(fixture.runtimes.loaded_runtime_count().await, 2);
+    assert_eq!(fixture.runtimes.loaded_watcher_count().await, 2);
 }
 
 #[tokio::test]

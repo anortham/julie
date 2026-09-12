@@ -1,6 +1,6 @@
 # Plan 3: One bounded production runtime lifecycle
 
-**Status:** 3A baseline completed with three isolated release replays; 3B not started. Windows validation is deferred to final post-merge validation.
+**Status:** 3A baseline and 3B independent cold initialization are complete. Windows validation is deferred to final post-merge validation.
 **Goal:** Opening a cold checkout does not block warm checkouts, and idle runtime resources are reclaimed safely.
 **Depends on:** Plan 1 recovery and request-local semantics before lifecycle integration.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). Apply `razorback:diagnosing-performance`: baseline before optimization, same workload afterward.
@@ -55,10 +55,10 @@ Install/retrieve the lightweight per-key slot under the map guard, then release 
 
 **Acceptance:**
 
-- [ ] Same-key concurrent opens perform exactly one successful initialization and own one watcher.
-- [ ] A cold key does not prevent another warm key from returning useful results.
-- [ ] Failed/cancelled initialization can be retried without replacing the whole service.
-- [ ] No broad map lock is held across index I/O, startup reconciliation, or model preparation.
+- [x] Same-key concurrent opens perform exactly one successful initialization and own one watcher.
+- [x] A cold key does not prevent another warm key from returning useful results.
+- [x] Failed/cancelled initialization can be retried without replacing the whole service.
+- [x] No broad map lock is held across index I/O, startup reconciliation, or model preparation.
 
 ## 3C. Reclaim idle resources without duplicate writers
 
@@ -118,3 +118,7 @@ Lead runs the common dev/full gates and one isolated multi-checkout lifecycle pr
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
 | Isolated warm/cold runtime baseline has bounded release evidence | `JULIE_HOME=<mktemp> target/release/julie-server service --semantics off` with the recorded authenticated 20-open replay | live | `86a4101f` binary; `b499ee33` documented source | 3/3 complete; 60 alternating opens, 15 concurrent searches, and 12 status reads all HTTP 200; maximum after-open RSS 778272768 bytes / 48 FDs | 2026-09-12 | no |
+| Cold initialization releases the global runtime map before bound startup | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | `7925798d` | RED: warm query timed out while cold initialization held the map lock | 2026-09-12T19:32:00Z | no |
+| Cold initialization releases the global runtime map before bound startup | `cargo nextest run -p julie --lib cold_workspace_initialization_does_not_block_warm_workspace` | worker-red-green | working tree | GREEN: passed | 2026-09-12T19:33:00Z | no |
+| Same-key cold callers publish one runtime and watcher | `cargo nextest run -p julie --lib same_workspace_cold_requests_share_one_initialization` | worker-red-green | working tree | Characterization/non-regression: baseline behavior already serialized one initialization; passed | 2026-09-12T19:33:00Z | no |
+| Cancelled initialization leaves an empty retryable slot | `cargo nextest run -p julie --lib cancelled_or_failed_initialization_does_not_poison_runtime_slot` | worker-red-green | working tree | Characterization/non-regression: baseline behavior already retried after failure; passed | 2026-09-12T19:33:00Z | no |
