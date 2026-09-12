@@ -383,8 +383,8 @@ impl DefaultSemanticRuntime {
         &self,
         deadline: Instant,
         cancellation: &CancellationToken,
+        wait_for_provider: bool,
     ) -> Result<Option<Arc<dyn EmbeddingProvider>>, RequestFailure> {
-        // 1. Fast path: check cached provider and probe health
         {
             let cache = self.provider_cache.read().await;
             let st = self.state.read().await;
@@ -407,13 +407,7 @@ impl DefaultSemanticRuntime {
                 drop(cache);
                 drop(st);
                 self.invalidate_provider("HEALTH_PROBE_FAILED").await;
-            } else if matches!(
-                &*st,
-                RuntimeProviderState::Degraded {
-                    retryable: false,
-                    ..
-                }
-            ) {
+            } else if matches!(&*st, RuntimeProviderState::Degraded { .. }) && !wait_for_provider {
                 return Ok(None);
             }
         }
@@ -423,7 +417,6 @@ impl DefaultSemanticRuntime {
             return Ok(cache.clone());
         }
 
-        // 2. Single-flight shared initialization task
         let mut rx = {
             let mut init_guard = self.in_flight_init.lock().await;
             // Re-check after acquiring init lock
@@ -436,13 +429,7 @@ impl DefaultSemanticRuntime {
                 if let (Some(p), RuntimeProviderState::Ready) = (cache.as_ref(), &*st) {
                     return Ok(Some(Arc::clone(p)));
                 }
-                if matches!(
-                    &*st,
-                    RuntimeProviderState::Degraded {
-                        retryable: false,
-                        ..
-                    }
-                ) {
+                if matches!(&*st, RuntimeProviderState::Degraded { .. }) && !wait_for_provider {
                     return Ok(None);
                 }
             }
@@ -463,22 +450,31 @@ impl DefaultSemanticRuntime {
                 let in_flight_clone = Arc::clone(&self.in_flight_init);
 
                 tokio::spawn(async move {
-                    let provider = crate::embeddings::acquire_in_process_embedding_provider().await;
+                    let provider =
+                        crate::embeddings::acquire_in_process_embedding_provider_with_prepare()
+                            .await;
                     {
                         let mut cache = cache_clone.write().await;
                         let mut st = state_clone.write().await;
-                        if let Some(ref p) = provider {
+                        if let Ok(ref p) = provider {
                             *cache = Some(Arc::clone(p));
                             *st = RuntimeProviderState::Ready;
                         } else {
                             *cache = None;
                             *st = RuntimeProviderState::Degraded {
-                                reason: "PROVIDER_UNAVAILABLE".to_string(),
-                                retryable: true,
+                                reason: provider
+                                    .as_ref()
+                                    .err()
+                                    .map(|error| error.message.clone())
+                                    .unwrap_or_default(),
+                                retryable: provider
+                                    .as_ref()
+                                    .err()
+                                    .is_some_and(|error| error.retryable),
                             };
                         }
                     }
-                    let _ = tx.send(provider);
+                    let _ = tx.send(provider.ok());
                     *in_flight_clone.lock().await = None;
                 });
 
@@ -486,7 +482,10 @@ impl DefaultSemanticRuntime {
             }
         };
 
-        // 3. Await result bounded by caller deadline and cancellation
+        if !wait_for_provider {
+            return Ok(None);
+        }
+
         tokio::select! {
             biased;
             _ = cancellation.cancelled() => {
@@ -526,28 +525,62 @@ impl SemanticRuntime for DefaultSemanticRuntime {
             ));
         }
 
-        // Rule 1 & 2: Off mode or Requirement None performs zero work
         if mode == SemanticMode::Off || requirement.is_none() {
             return Ok(SemanticReadiness::Disabled);
         }
 
-        // Rule 3: Provider readiness check
-        let provider = match self.get_or_acquire_provider(deadline, cancellation).await? {
+        let provider = match self
+            .get_or_acquire_provider(deadline, cancellation, mode == SemanticMode::Required)
+            .await?
+        {
             Some(p) => p,
             None => {
                 let st = self.state.read().await;
+                if matches!(&*st, RuntimeProviderState::Disabled) {
+                    return Ok(SemanticReadiness::Disabled);
+                }
                 let retryable = match &*st {
                     RuntimeProviderState::Degraded { retryable, .. } => *retryable,
                     RuntimeProviderState::Starting => true,
                     _ => false,
                 };
+                let reason = match &*st {
+                    RuntimeProviderState::Degraded { reason, .. } => reason.clone(),
+                    RuntimeProviderState::Starting => "MODEL_PREPARING".to_string(),
+                    _ => "PROVIDER_UNAVAILABLE".to_string(),
+                };
+                let launch = julie_pipeline::embeddings::native::NativeLaunchConfig::try_new(
+                    std::env::var_os("JULIE_NATIVE_SIDECAR_PROGRAM")
+                        .as_deref()
+                        .map(std::path::Path::new),
+                    std::env::var("JULIE_NATIVE_SIDECAR_MODEL").ok().as_deref(),
+                    std::env::var_os("JULIE_EMBEDDING_CACHE_DIR")
+                        .as_deref()
+                        .map(std::path::Path::new),
+                )
+                .ok();
+                let model_id = launch
+                    .as_ref()
+                    .map(|config| config.model_id.clone())
+                    .unwrap_or_else(|| "bge-small-en-v1.5-f32".to_string());
+                let cache_path = launch
+                    .as_ref()
+                    .map(|config| config.cache_root.display().to_string())
+                    .unwrap_or_default();
+                let details = serde_json::json!({
+                    "coverage": "missing",
+                    "reason": reason,
+                    "model_id": model_id,
+                    "cache_path": cache_path,
+                    "recovery": format!("julie-semantic-sidecar prepare --model {model_id}")
+                });
                 return match mode {
                     SemanticMode::Required => Err(RequestFailure::semantics_not_ready(
                         "No embedding provider configured or available",
-                        serde_json::json!({ "coverage": "missing", "reason": "provider_unavailable" }),
+                        details,
                     )),
                     SemanticMode::Auto => Ok(SemanticReadiness::Degraded {
-                        reason: "PROVIDER_UNAVAILABLE".to_string(),
+                        reason,
                         retryable,
                         eligible_symbols: None,
                         embedded_symbols: None,
@@ -557,7 +590,6 @@ impl SemanticRuntime for DefaultSemanticRuntime {
             }
         };
 
-        // If only Query is required, provider readiness is sufficient
         if requirement == SemanticRequirement::Query {
             let dev_info = provider.device_info();
             let encoder_identity = provider.encoder_identity().ok();
@@ -572,7 +604,6 @@ impl SemanticRuntime for DefaultSemanticRuntime {
             });
         }
 
-        // Rule 4: Symbols or QueryAndSymbols requires vectors the provider can query
         let snapshot = snapshot.ok_or_else(|| {
             RequestFailure::internal(format!(
                 "Workspace snapshot unavailable for semantic coverage: {}",

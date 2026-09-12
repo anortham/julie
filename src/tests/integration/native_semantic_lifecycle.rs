@@ -157,6 +157,26 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
 fn main() {
+    if env::args().any(|arg| arg == "prepare") {
+        let cache_dir = env::var("JULIE_EMBEDDING_CACHE_DIR").unwrap();
+        if env::var("REQUIRE_BARRIER").is_ok() && !Path::new(&cache_dir).join("barrier").exists() {
+            eprintln!("model_not_prepared");
+            std::process::exit(7);
+        }
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let count_path = Path::new(&cache_dir).join("prepare-count");
+        let count = std::fs::read_to_string(&count_path).ok().and_then(|count| count.parse::<usize>().ok()).unwrap_or(0);
+        std::fs::write(count_path, (count + 1).to_string()).unwrap();
+        if let Ok(error) = env::var("PREPARE_FAIL") {
+            eprintln!("{error}");
+            std::process::exit(7);
+        }
+        if let Ok(delay) = env::var("PREPARE_DELAY_MS") {
+            std::thread::sleep(std::time::Duration::from_millis(delay.parse().unwrap()));
+        }
+        std::fs::write(Path::new(&cache_dir).join("prepared"), "ready").unwrap();
+        return;
+    }
     if env::var("REQUIRE_BARRIER").is_ok() {
         if let Ok(cache_dir) = env::var("JULIE_EMBEDDING_CACHE_DIR") {
             let barrier = Path::new(&cache_dir).join("barrier");
@@ -165,6 +185,7 @@ fn main() {
             }
         }
     }
+    let prepared = env::var("JULIE_EMBEDDING_CACHE_DIR").ok().is_none_or(|cache_dir| Path::new(&cache_dir).join("prepared").exists());
     let stdin = std::io::stdin();
     let mut reader = BufReader::new(stdin.lock());
     let mut stdout = std::io::stdout();
@@ -183,7 +204,9 @@ fn main() {
             } else { "req-1" }
         } else { "req-1" };
 
-        let reply = if line.contains("\"health\"") {
+        let reply = if line.contains("\"health\"") && !prepared {
+            format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"ready\":false,\"degraded_reason\":\"model_not_prepared\"}},\"error\":null}}\n")
+        } else if line.contains("\"health\"") {
             format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"ready\":true,\"dims\":384,\"device\":\"cpu\",\"runtime\":\"llama.cpp\",\"model_id\":\"bge-small-en-v1.5-f32\",\"model_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"pooling\":\"cls\",\"normalization\":\"l2\",\"instruction_policy_version\":1,\"llama_cpp_build\":\"b3560\"}},\"error\":null}}\n")
         } else if line.contains("\"embed_query\"") {
             let mut s = format!("{{\"schema\":\"julie.embedding.sidecar\",\"version\":1,\"request_id\":\"{req_id}\",\"result\":{{\"dims\":384,\"vector\":[");
@@ -214,6 +237,7 @@ fn main() {
         line.clear();
     }
 }
+
 "#;
     std::fs::write(&src_path, src).unwrap();
     let status = std::process::Command::new("rustc")
@@ -222,6 +246,264 @@ fn main() {
         .unwrap();
     assert!(status.success(), "failed to compile mock sidecar");
     bin_path
+}
+
+fn semantic_binding(root: &std::path::Path) -> WorkspaceBinding {
+    WorkspaceBinding {
+        workspace_id: "semantic-cold-test".to_string(),
+        root: root.to_path_buf(),
+        index_root: root.join("index"),
+    }
+}
+
+async fn semantic_readiness(
+    runtime: &DefaultSemanticRuntime,
+    root: &std::path::Path,
+    mode: SemanticMode,
+    deadline: Duration,
+) -> Result<SemanticReadiness, crate::request_engine::types::RequestFailure> {
+    runtime
+        .ensure_ready(
+            &semantic_binding(root),
+            None,
+            &julie_index::search::language_config::LanguageConfigs::load_embedded(),
+            SemanticRequirement::Query,
+            mode,
+            tokio::time::Instant::now() + deadline,
+            &CancellationToken::new(),
+        )
+        .await
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn cold_model_prepare_does_not_block_lexical_search() {
+    let temp = tempfile::tempdir().unwrap();
+    let cache = temp.path().join("cache");
+    let mut env = EnvVarGuard::new();
+    env.set("JULIE_EMBEDDING_PROVIDER", "native");
+    env.set(
+        "JULIE_NATIVE_SIDECAR_PROGRAM",
+        compile_mock_sidecar(temp.path()),
+    );
+    env.set("JULIE_EMBEDDING_CACHE_DIR", &cache);
+    env.set("PREPARE_DELAY_MS", "500");
+    let root = make_isolated_workspace_root(temp.path(), "cold_lexical_workspace");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(root.join("src/lib.rs"), "pub fn cold_lexical_probe() {}\n").unwrap();
+    let registry_paths = RegistryPaths::with_home(temp.path().join("home"));
+    let runtime = Arc::new(DefaultSemanticRuntime::from_registry_paths(
+        registry_paths.clone(),
+    ));
+    let engine = RequestEngine::with_semantic_runtime(
+        BindingResolver::new(Some(root.clone()), false, registry_paths.clone()),
+        Arc::new(RuntimeFactory::new(registry_paths)),
+        runtime.clone(),
+    );
+    engine
+        .execute(
+            ToolRequest::new(
+                "manage_workspace",
+                json!({ "operation": "index", "path": root })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            )
+            .with_semantics(SemanticMode::Off),
+            RequestContext::new(
+                RequestOrigin::Cli,
+                Some(Duration::from_secs(10)),
+                CancellationToken::new(),
+            ),
+        )
+        .await
+        .unwrap();
+    let started = std::time::Instant::now();
+    let reply = engine
+        .execute(
+            ToolRequest::new(
+                "fast_search",
+                json!({ "query": "cold_lexical_probe" })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            )
+            .with_semantics(SemanticMode::Auto),
+            RequestContext::new(
+                RequestOrigin::Cli,
+                Some(Duration::from_secs(2)),
+                CancellationToken::new(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert!(!reply.is_error());
+    assert!(reply.result.to_string().contains("cold_lexical_probe"));
+    assert!(
+        matches!(semantic_readiness(&runtime, temp.path(), SemanticMode::Auto, Duration::from_secs(2)).await.unwrap(), SemanticReadiness::Degraded { reason, .. } if reason == "MODEL_PREPARING")
+    );
+    assert!(started.elapsed() < Duration::from_millis(250));
+    assert!(
+        matches!(semantic_readiness(&runtime, temp.path(), SemanticMode::Auto, Duration::from_secs(2)).await.unwrap(), SemanticReadiness::Degraded { reason, .. } if reason == "MODEL_PREPARING")
+    );
+    assert!(
+        semantic_readiness(
+            &runtime,
+            temp.path(),
+            SemanticMode::Required,
+            Duration::from_secs(2)
+        )
+        .await
+        .unwrap()
+        .is_ready()
+    );
+    assert_eq!(
+        std::fs::read_to_string(cache.join("prepare-count")).unwrap(),
+        "1"
+    );
+
+    let off_cache = temp.path().join("off-cache");
+    env.set("JULIE_EMBEDDING_CACHE_DIR", &off_cache);
+    let off_runtime = DefaultSemanticRuntime::from_registry_paths(RegistryPaths::with_home(
+        temp.path().join("off-home"),
+    ));
+    assert!(matches!(
+        semantic_readiness(
+            &off_runtime,
+            temp.path(),
+            SemanticMode::Off,
+            Duration::from_secs(1)
+        )
+        .await
+        .unwrap(),
+        SemanticReadiness::Disabled
+    ));
+    assert!(!off_cache.join("prepare-count").exists());
+
+    let none_cache = temp.path().join("none-cache");
+    env.set("JULIE_EMBEDDING_PROVIDER", "none");
+    env.set("JULIE_EMBEDDING_CACHE_DIR", &none_cache);
+    let none_runtime = DefaultSemanticRuntime::from_registry_paths(RegistryPaths::with_home(
+        temp.path().join("none-home"),
+    ));
+    assert!(matches!(
+        semantic_readiness(
+            &none_runtime,
+            temp.path(),
+            SemanticMode::Auto,
+            Duration::from_secs(1)
+        )
+        .await
+        .unwrap(),
+        SemanticReadiness::Disabled
+    ));
+    assert!(!none_cache.join("prepare-count").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn offline_missing_model_degrades_with_actionable_status() {
+    let temp = tempfile::tempdir().unwrap();
+    let cache = temp.path().join("cache");
+    let mut env = EnvVarGuard::new();
+    env.set("JULIE_EMBEDDING_PROVIDER", "native");
+    env.set(
+        "JULIE_NATIVE_SIDECAR_PROGRAM",
+        compile_mock_sidecar(temp.path()),
+    );
+    env.set("JULIE_EMBEDDING_CACHE_DIR", &cache);
+    env.set("PREPARE_FAIL", "offline cache unavailable");
+    let runtime = DefaultSemanticRuntime::from_registry_paths(RegistryPaths::with_home(
+        temp.path().join("home"),
+    ));
+    assert!(matches!(
+        semantic_readiness(
+            &runtime,
+            temp.path(),
+            SemanticMode::Auto,
+            Duration::from_secs(1)
+        )
+        .await
+        .unwrap(),
+        SemanticReadiness::Degraded { .. }
+    ));
+    let error = semantic_readiness(
+        &runtime,
+        temp.path(),
+        SemanticMode::Required,
+        Duration::from_secs(2),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.code, "SEMANTICS_NOT_READY");
+    assert_eq!(error.details["model_id"], "bge-small-en-v1.5-f32");
+    assert_eq!(error.details["cache_path"], cache.display().to_string());
+    assert!(
+        error.details["reason"]
+            .as_str()
+            .unwrap()
+            .contains("offline cache unavailable")
+    );
+    assert_eq!(
+        error.details["recovery"],
+        "julie-semantic-sidecar prepare --model bge-small-en-v1.5-f32"
+    );
+    assert!(matches!(
+        runtime.runtime_state().await,
+        RuntimeProviderState::Degraded {
+            retryable: true,
+            ..
+        }
+    ));
+    assert!(matches!(
+        semantic_readiness(
+            &runtime,
+            temp.path(),
+            SemanticMode::Auto,
+            Duration::from_secs(1)
+        )
+        .await
+        .unwrap(),
+        SemanticReadiness::Degraded { .. }
+    ));
+    assert_eq!(
+        std::fs::read_to_string(cache.join("prepare-count")).unwrap(),
+        "1"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn offline_warm_cache_reaches_semantic_ready() {
+    let temp = tempfile::tempdir().unwrap();
+    let cache = temp.path().join("cache");
+    std::fs::create_dir_all(&cache).unwrap();
+    std::fs::write(cache.join("prepared"), "ready").unwrap();
+    let mut env = EnvVarGuard::new();
+    env.set("JULIE_EMBEDDING_PROVIDER", "native");
+    env.set(
+        "JULIE_NATIVE_SIDECAR_PROGRAM",
+        compile_mock_sidecar(temp.path()),
+    );
+    env.set("JULIE_EMBEDDING_CACHE_DIR", &cache);
+    env.set("PREPARE_FAIL", "offline must not prepare");
+    let runtime = DefaultSemanticRuntime::from_registry_paths(RegistryPaths::with_home(
+        temp.path().join("home"),
+    ));
+    assert!(
+        semantic_readiness(
+            &runtime,
+            temp.path(),
+            SemanticMode::Required,
+            Duration::from_secs(2)
+        )
+        .await
+        .unwrap()
+        .is_ready()
+    );
 }
 
 // ============================================================================

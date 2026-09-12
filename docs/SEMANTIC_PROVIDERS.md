@@ -28,17 +28,16 @@ Julie has one embedding provider runtime behind the `EmbeddingProvider` trait:
                     |   (Rust / llama.cpp GGUF) |
                     +---------------------------+
                                   |
-                          UDS / Named Pipe
+                          stdin / stdout (NDJSON)
                                   |
                                   v
                     +---------------------------+
                     |  julie-semantic-sidecar   |
-                    |  (In-process llama.cpp)   |
+                    |       (one service child) |
                     +---------------------------+
 ```
 
-The native broker client in `crates/julie-pipeline/src/embeddings/native/` stays in place until
-phase 4 of the machine-service design moves semantics to a sidecar child of the service.
+The machine service owns one native sidecar child. Requests share that child through the semantic runtime; it speaks the versioned NDJSON protocol over stdio.
 
 ### Provider Facts
 
@@ -50,8 +49,8 @@ phase 4 of the machine-service design moves semantics to a sidecar child of the 
 | **Model Weights** | Local GGUF format (`~/.cache/julie-semantic`) |
 | **Memory Footprint** | ~150 MiB (BGE) / ~1,200 MiB (Qwen) |
 | **Startup / Warming** | < 350 ms (instant GGUF mmap load) |
-| **Transport** | Unix Domain Socket / Windows Named Pipe |
-| **Broker Sharing** | Multi-session shared broker with lock leases |
+| **Transport** | Stdio NDJSON |
+| **Sharing** | One service-owned child |
 | **Quantization** | Native GGUF FP32 (BGE) / FP16 (Qwen) |
 | **Hardware Acceleration** | Metal (Apple), Vulkan, CUDA, CPU |
 
@@ -68,7 +67,7 @@ Selection and discovery are managed through environment variables evaluated duri
 | `JULIE_EMBEDDING_PROVIDER` | `auto`, `native`, `none` (`off` and `disabled` are aliases of `none`) | `auto` | Primary backend selector. `auto` uses the native sidecar when its binary is found, else `none`. `native` requires the sidecar. Tests get `none` from `.cargo/config.toml`. |
 | `JULIE_NATIVE_SIDECAR_PROGRAM` | Absolute or relative filesystem path | Auto-discovered | Explicit path override to the `julie-semantic-sidecar` binary. |
 | `JULIE_NATIVE_SIDECAR_MODEL` | `bge-small-en-v1.5-f32`, `qwen3-0.6b-f16` | `bge-small-en-v1.5-f32` | Manifest model ID for the native provider. |
-| `JULIE_EMBEDDING_CACHE_DIR` | Absolute filesystem directory | `~/.cache/julie-semantic` | Shared root for GGUF model files, locks, and Unix domain sockets. |
+| `JULIE_EMBEDDING_CACHE_DIR` | Absolute filesystem directory | `~/.cache/julie-semantic` | Shared root for GGUF model files. |
 | `JULIE_SIDECAR_FORCE_BACKEND` | `cpu`, `metal`, `vulkan`, `cuda` | Auto-benchmarked | Bypasses sidecar hardware benchmarking. `cpu` skips device discovery and runs strictly on CPU. |
 | `JULIE_EMBEDDING_STRICT_ACCEL` | `1`, `true`, `on` | Unset (`false`) | When enabled, disables semantic embeddings if hardware acceleration is unavailable or degraded. |
 
@@ -76,7 +75,7 @@ Selection and discovery are managed through environment variables evaluated duri
 
 The initialization pipeline processes embedding configuration in two stages:
 1. `parse_provider_preference`:
-   - `none`, `off`, `disabled`: Explicitly handled by the server init harness (`init.rs`, `server_in_process.rs`) before factory dispatch. Completely disables embeddings without spawning background hosts, touching sockets, or loading model files.
+   - `none`, `off`, `disabled`: Completely disables embeddings without spawning a child or preparing model files.
    - `auto`: Resolves to `NativeEmbeddingProvider` when the sidecar binary is found, else `none`.
    - `native`: Resolves to `NativeEmbeddingProvider`.
    - `sidecar` and `ort` fail with "has been removed"; any other string fails with an explicit error.
@@ -143,16 +142,17 @@ When `JULIE_EMBEDDING_PROVIDER=native` is selected, `NativeEmbeddingProvider` re
 ### Executable SHA-256 Fingerprinting
 
 Upon locating the binary, Julie reads the binary file and computes its SHA-256 digest:
-- The hash ensures that separate binary versions (e.g. debug vs. release or differing compiler builds) never share local Unix sockets or attempt incompatible IPC framing.
-- The first 16 hex characters of the digest form the discriminator for socket and lock paths.
+- The hash identifies the executable reported by service status and qualification records.
+- A changed executable hash is evidence that a service restart is required before clients use the new binary.
 - The full 64-character hash is recorded on `NativeLaunchConfig.executable_sha256`, validated in qualification records (`NativeQualificationRecord.executable_sha256`), and verified against live running binaries. Workspace qualification explicitly reconciles the qualification record against the live running binary and provider (reported executable SHA-256, encoder identity, backend, and device). `EncoderIdentity.runtime_build` separately records the engine build identifier (e.g. `llama.cpp-b3560`).
 
 ---
 
 ## 4. Model Inventory & Explicit Model Preparation
 
-Julie strictly adheres to the principle of **explicit model acquisition**:
-> **Rule**: Neither lexical searches, workspace startup, nor tool executions may download model files as a side-effect. Model preparation is an intentional, explicit preflight command.
+Julie archives contain the native sidecar binary and its libraries, never model weights. With native semantics enabled, Julie starts one shared background `prepare` when the default model is absent; lexical requests continue without waiting. `--semantics off` and `JULIE_EMBEDDING_PROVIDER=none` never prepare a model.
+
+The plugin launcher requires Node.js 22.5 or newer for `process.getBuiltinModule`; a native archive or direct binary invocation does not require Node.
 
 ### Pinned Model Manifest
 
@@ -163,7 +163,7 @@ The sidecar embeds a cryptographically pinned model manifest (`src/manifest.rs`)
 | **Upstream Architecture** | BAAI BGE Small English v1.5 | Qwen3 Embedding 0.6B |
 | **GGUF File** | `bge-small-en-v1.5-f32.gguf` | `Qwen3-Embedding-0.6B-f16.gguf` |
 | **Expected SHA-256** | `bf40c42ad7d89382e9ba7376d5c4b73f6b556cb541fab37aaa1da9c320149b65` | `421a27e58d165478cc7acb984a688c2aa41404968b0203e7cd743ece44c54340` |
-| **File Size** | 133,609,568 bytes (~134 MB) | 1,197,629,632 bytes (~1.2 GB) |
+| **File Size** | 133,609,568 bytes (~133.6 MB) | 1,197,629,632 bytes (~1.2 GB) |
 | **Native Dimensions** | 384 | 1024 |
 | **Served Dimensions** | **384** | **512** (via Matryoshka Representation Learning) |
 | **MRL Support** | Single lane `[384]` | Matryoshka lanes `[256, 512, 1024]` |
@@ -189,6 +189,8 @@ julie-semantic-sidecar prepare --model bge-small-en-v1.5-f32
 # Explicitly prepare the Qwen3 comparison model:
 julie-semantic-sidecar prepare --model qwen3-0.6b-f16
 ```
+
+The effective cache root is `JULIE_EMBEDDING_CACHE_DIR` when set; otherwise it is `~/.cache/julie-semantic` on macOS/Linux and `%LOCALAPPDATA%/julie-semantic` on Windows. The default file is `bge-small-en-v1.5-f32.gguf` beneath that root. When offline preparation fails, the recovery command is `julie-semantic-sidecar prepare --model bge-small-en-v1.5-f32` after network access is restored.
 
 ### Preparation Safety & Integrity
 
@@ -219,7 +221,7 @@ julie-server fast-search "authentication handler" --semantics off       # Pure l
 
 ### Mode Comparison Matrix
 
-| Mode | Provider Requirement | Missing / Degraded Broker | Missing / Incompatible Vectors | Tool Execution Result | Exit Code |
+| Mode | Provider Requirement | Missing / Degraded Sidecar | Missing / Incompatible Vectors | Tool Execution Result | Exit Code |
 |---|---|---|---|---|---|
 | **`Off`** | `None` (`semantic_mode_needs_provider` = `false`) | Completely ignored | Completely ignored | Pure lexical & relational search | `0` |
 | **`Auto`** | `Optional` (`semantic_mode_needs_provider` = `true`) | Degrades to lexical | Degrades to lexical | Lexical search with truthful degradation warning | `0` |
@@ -234,7 +236,7 @@ julie-server fast-search "authentication handler" --semantics off       # Pure l
 
 #### 2. `Auto` Mode: Truthful Resilience
 - Attempts full hybrid retrieval (BM25 lexical score + KNN cosine vector similarity).
-- If the broker is starting, preparing, unreachable, or SQLite vectors are stale or building, the request does not fail.
+- If the sidecar is starting, preparing, unreachable, or SQLite vectors are stale or building, the request does not fail.
 - Instead, it falls back to Tantivy lexical search while truthfully reporting the degradation in the response envelope:
   ```json
   {
@@ -381,74 +383,25 @@ ON embedding_generations(status);
 
 ---
 
-## 7. Broker Architecture, Concurrency, and Failure Recovery
+## 7. Service Child, Concurrency, and Failure Recovery
 
-### Shared Broker IPC Architecture
+### Shared Sidecar Child
 
-Rather than spawning an isolated llama.cpp runtime for every MCP client, Julie employs a shared background broker (`julie-semantic-sidecar broker`):
+Julie owns one `julie-semantic-sidecar serve` child for the machine service. It is not a socket service and does not expose a broker endpoint. The runtime serializes child protocol access, verifies the encoder identity at startup, and restarts a failed child on the next bounded request.
 
-```text
-+----------------------+     +----------------------+     +----------------------+
-|  Julie MCP Session 1 |     |  Julie MCP Session 2 |     |    Julie CLI Tool    |
-+----------------------+     +----------------------+     +----------------------+
-           \                            |                            /
-            \                           |                           /
-             v                          v                          v
-       +------------------------------------------------------------------+
-       |   Unix Domain Socket: ~/.cache/julie-semantic/b-<model>-<hash>.sock|
-       |   Windows Pipe: \\.\pipe\julie-semantic-broker-<model>-<hash>    |
-       +------------------------------------------------------------------+
-                                        |
-                                        v
-                       +----------------------------------+
-                       |      julie-semantic-sidecar      |
-                       |              broker              |
-                       |  (service.lock + accel.lock)     |
-                       +----------------------------------+
-```
+### Readiness and Recovery
 
-### Endpoint & Lock Derivation
+`DefaultSemanticRuntime` keeps a single in-flight initialization/prepare task. Empty caches begin preparation in the background; Auto reports degradation while lexical work proceeds, and Required waits only for its request deadline. A failed offline preparation retains its error plus the model, cache path, and manual recovery command.
 
-Broker paths are derived deterministically in `crates/julie-pipeline/src/embeddings/native/launch.rs`:
-- **Discriminator**: `hex(SHA256(cache_root + ":" + executable_sha256 + ":" + model_id))[..16]` (using normalized lowercase path on Windows to prevent pipe collision across distinct caches).
-- **Unix Domain Socket**: `<cache_dir>/b-<model_id>-<discriminator>.sock` (restricted to permissions `0700` for the directory and `0600` for the socket). Path length is validated to ensure it never exceeds the 104-byte Unix `sockaddr_un` limit.
-- **Windows Named Pipe**: `\\.\pipe\julie-semantic-broker-<model_id>-<discriminator>`.
-- **Service Lock**: `<cache_dir>/b-<model_id>-<discriminator>.lock` (coordinating single-broker ownership).
-- **Accelerator Lock**: `<cache_dir>/accelerator.lock` (coordinating physical GPU hardware leases).
+### Dynamic Recovery
 
-### Acquisition Race Coordination
-
-When multiple Julie sessions start simultaneously:
-1. Each session probes the IPC socket.
-2. If no broker answers, each attempts to spawn `julie-semantic-sidecar broker ...`.
-3. Inside the sidecar broker, `ServiceLease::try_acquire(&config.service_lock)` attempts non-blocking acquisition of the service lock file.
-4. **Winning Process**: Acquires the lock, starts the `OwnerWatchdog`, binds the socket, initializes the model, and begins accepting connections.
-5. **Losing Processes**: Fail to acquire `service_lock` and exit immediately with status code `0`.
-6. **Client Recovery**: Julie sessions detect that their spawned child exited `0` (indicating another broker won the race), and immediately connect to the winner's newly established endpoint.
-
-### Dynamic Same-Process Recovery
-
-Unlike earlier versions that required restarting Claude Code or the MCP client if the sidecar was unavailable at boot:
 - `DefaultSemanticRuntime` tracks provider states dynamically: `Disabled`, `Starting`, `Ready`, and `Degraded { reason, retryable }`.
 - When a request arrives while degraded, if `retryable == true`, Julie attempts single-flight re-acquisition.
-- Once the broker finishes loading or becomes reachable, the runtime transitions to `Ready` without dropping client connections.
+- Once the model is prepared and the child passes its health handshake, the runtime transitions to `Ready` without client restart.
 
-### Bounded RPC & Connection Dropping
+### Bounded Child Requests
 
-All IPC calls are governed by `EmbeddingRequestBudget`:
-1. **Per-Call Deadlines & Clamping**: Client requests enforce deadline bounds. On Unix platforms, requests calculate the overall deadline at entry, dynamically clamp stream receive timeouts (`SO_RCVTIMEO`) to `min(per_read_timeout, deadline - now)` before each buffer fill, and verify the deadline after consuming chunks so trickling bytes cannot exceed the budget. On Windows platforms, named pipes operate as synchronous blocking I/O where timeouts are enforced at request entry, connection setup, and round-trip completion boundaries.
-2. **Connection Drop on Error**: On any timeout, truncated payload, or socket error, Julie drops the connection (`conn = None`) to prevent delayed or out-of-order broker responses from corrupting subsequent queries on the same stream.
-3. **Automatic Single Retry with Broker Relaunch**: If a connection drops due to broker termination, Julie resets the connection handle and invokes `launch_and_attach`. If the broker is absent, Julie spawns a fresh broker process, waits for socket availability, and performs a strict health handshake. Crucially, the replacement broker's `EncoderIdentity` must match the existing provider (`&identity == expected`); any parameter or weight discrepancy is rejected with `REPLACEMENT_BROKER_INCOMPATIBLE`.
-
-### Broker Lifetime & `OwnerWatchdog`
-
-The sidecar broker process runs an internal `OwnerWatchdog` (`src/broker/watchdog.rs`):
-- The broker monitors its inherited `stdin`.
-- When the parent process that launched it exits (closing standard input), `OwnerWatchdog` triggers:
-  1. Unlinks the Unix domain socket from disk.
-  2. Releases the service lock and accelerator lock.
-  3. Gracefully terminates the broker process.
-- If other sessions are connected, they cleanly detect broker exit on their next call, transparently relaunch the broker via `launch_and_attach`, verify replacement identity, and retry the request within budget.
+Every child request is constrained by `EmbeddingRequestBudget`. A timeout, malformed reply, or child exit discards the child; a later request may construct a replacement only when its deadline permits. Replacement identity must match the prior provider before vectors are used.
 
 ---
 
@@ -538,8 +491,6 @@ Vector Coverage: 8420 / 8420 symbols (100%)
 | `SEMANTICS_NOT_READY` (`coverage: incompatible`) | Model switch occurred; stored vectors belong to a different model | Rescan workspace to rebuild vectors for the newly selected model. |
 | `SEMANTICS_NOT_READY` (`coverage: building`) | Embedding generation is actively computing vectors in background | Wait for indexing to complete or run with `--semantics auto` for lexical fallback. |
 | `Vulkan / GPU initialization failed` | Incompatible GPU driver or shader compilation issue | Set `export JULIE_SIDECAR_FORCE_BACKEND=cpu` to force CPU execution. |
-| `Unix domain socket path exceeds 104-byte limit` | Cache path is too long for Unix socket addresses | Set `export JULIE_EMBEDDING_CACHE_DIR=/tmp/julie-cache` to shorten socket paths. |
-| `Broker lock acquisition failure` | Live broker or process is actively holding the advisory lock | **Do NOT delete `.lock` files** (kernel auto-releases advisory locks on process exit; deleting a locked file creates a new inode and defeats mutual exclusion). Identify the holding PID with `lsof <lock>` or `fuser <lock>` and terminate it with `kill -TERM <pid>`. |
 
 ### Common Operational Workflows
 
@@ -574,25 +525,3 @@ julie-server fast-search "symbol indexing" --semantics required
 ```
 
 ---
-
-### Advisory Lock Operational Safety Rules
-
-> ⚠️ **CRITICAL: NEVER MANUALLY DELETE `.lock` FILES WHILE PROCESSES ARE RUNNING**
->
-> Julie coordinates broker instances and GPU accelerator access using OS advisory locks (`flock` on Unix, `LockFileEx` on Windows):
->
-> 1. **Automatic Kernel Cleanup**: Advisory locks are bound to open process file descriptions in kernel space. When a process terminates, crashes, or is killed (`SIGKILL`), the OS kernel unconditionally closes file descriptors and releases held locks immediately. A dead process *cannot* leave a held advisory lock.
-> 2. **Unlinking Inodes Breaks Mutual Exclusion**: Deleting a `.lock` file while a live process holds it merely unlinks the name from the directory; the running process retains the lock on the original inode. When a new broker starts, it creates a new file (a new inode) with the same name and acquires a second lock. Both brokers then execute concurrently, causing IPC collisions, conflicting model writes, and GPU driver corruption.
-> 3. **Safe Remediation Protocol**:
->    - **Identify the process holding the lock**:
->      ```bash
->      lsof ~/.cache/julie-semantic/*.lock
->      # or:
->      fuser ~/.cache/julie-semantic/*.lock
->      ```
->    - **Terminate the hung process**: If the broker is confirmed stuck or deadlocked, terminate it explicitly:
->      ```bash
->      kill -TERM <pid>   # graceful exit
->      kill -9 <pid>      # immediate kernel abort; kernel frees lock instantly
->      ```
->    - **Relaunch**: Once the PID has exited, launch the next command. The newly launched sidecar opens the existing lock file and acquires the lock cleanly. No file deletion is required or permitted.
