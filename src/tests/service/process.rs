@@ -144,9 +144,9 @@ fn version_mismatch_exits_3_with_the_exact_message() {
     assert_eq!(
         String::from_utf8_lossy(&out.stderr).trim(),
         format!(
-              "julie: service version 0.0.0-other does not match client version {}; run: \"{}\" service restart; then restart old harness clients",
-              env!("CARGO_PKG_VERSION"),
-              bin().display()
+            "julie: service version 0.0.0-other does not match client version {}; run: \"{}\" service restart; then restart old harness clients",
+            env!("CARGO_PKG_VERSION"),
+            bin().display()
         )
     );
     let _ = svc.kill();
@@ -175,7 +175,11 @@ fn restart_stops_mismatched_service_and_starts_current_binary() {
         .args(["service", "restart"])
         .output()
         .unwrap();
-    assert!(restarted.status.success(), "{}", String::from_utf8_lossy(&restarted.stderr));
+    assert!(
+        restarted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restarted.stderr)
+    );
     let record: serde_json::Value =
         serde_json::from_slice(&std::fs::read(service_json(&home)).unwrap()).unwrap();
     assert_eq!(record["version"], env!("CARGO_PKG_VERSION"));

@@ -708,10 +708,9 @@ fn mcp_catalog_requires_a_non_null_workspace_for_scoped_tools() {
 #[tokio::test]
 async fn manage_workspace_health_accepts_workspace_id_and_rejects_unbound_call_with_guidance() {
     let fixture = RequestFixture::indexed().await;
-    let workspace_id = julie_core::workspace::registry::generate_workspace_id(
-        &fixture.root.to_string_lossy(),
-    )
-    .unwrap();
+    let workspace_id =
+        julie_core::workspace::registry::generate_workspace_id(&fixture.root.to_string_lossy())
+            .unwrap();
 
     fixture
         .execute(
@@ -729,9 +728,11 @@ async fn manage_workspace_health_accepts_workspace_id_and_rejects_unbound_call_w
         )
         .await
         .unwrap_err();
-    assert!(error.message.contains(
-        "manage_workspace(operation=\"open\", path=\"/absolute/project\")"
-    ));
+    assert!(
+        error
+            .message
+            .contains("manage_workspace(operation=\"open\", path=\"/absolute/project\")")
+    );
 }
 
 #[tokio::test]
