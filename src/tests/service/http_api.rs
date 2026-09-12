@@ -178,6 +178,76 @@ async fn api_unknown_tool_returns_request_failure_as_400() {
 }
 
 #[tokio::test]
+async fn api_semantics_mode_reaches_request_readiness_and_required_failure() {
+    let running = Running::start(None).await;
+    let root_dir = tempfile::tempdir().unwrap();
+    let root = root_dir.path().join("semantic-api");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::create_dir(root.join(".git")).unwrap();
+    std::fs::write(root.join("src/lib.rs"), "pub fn api_probe() {}\n").unwrap();
+    let indexed = running
+        .api(
+            "manage_workspace",
+            serde_json::json!({ "operation": "index", "path": root }),
+        )
+        .await;
+    assert_eq!(indexed.status(), reqwest::StatusCode::OK);
+
+    let required = running
+        .api(
+            "get_context",
+            serde_json::json!({
+                "query": "api probe",
+                "workspace": root,
+                "semantics": "required"
+            }),
+        )
+        .await;
+    assert_eq!(required.status(), reqwest::StatusCode::BAD_REQUEST);
+    let failure: serde_json::Value = required.json().await.unwrap();
+    assert_eq!(failure["code"], "SEMANTICS_NOT_READY");
+
+    let off = running
+        .api(
+            "fast_search",
+            serde_json::json!({
+                "query": "api_probe",
+                "backend": "lexical",
+                "workspace": root,
+                "semantics": "off"
+            }),
+        )
+        .await;
+    assert_eq!(off.status(), reqwest::StatusCode::OK);
+    let reply: serde_json::Value = off.json().await.unwrap();
+    assert_eq!(reply["readiness"]["mode"], "off");
+    assert_eq!(reply["readiness"]["status"], "disabled");
+
+    let invalid = running
+        .api(
+            "fast_search",
+            serde_json::json!({
+                "query": "api_probe",
+                "workspace": root,
+                "semantics": "sometimes"
+            }),
+        )
+        .await;
+    assert_eq!(invalid.status(), reqwest::StatusCode::BAD_REQUEST);
+    let failure: serde_json::Value = invalid.json().await.unwrap();
+    assert_eq!(failure["code"], "INVALID_ARGUMENTS");
+
+    let mut nullable = serde_json::json!({ "semantics": null })
+        .as_object()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        crate::request_engine::types::take_semantic_mode(&mut nullable).unwrap(),
+        crate::request_engine::SemanticMode::Auto
+    );
+}
+
+#[tokio::test]
 async fn status_lists_the_last_requests_newest_first() {
     let running = Running::start(None).await;
     for _ in 0..3 {

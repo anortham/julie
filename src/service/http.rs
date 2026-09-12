@@ -147,17 +147,22 @@ async fn checkouts(state: &AppState) -> Vec<CheckoutStatus> {
 async fn api_call(
     State(state): State<AppState>,
     Path(tool): Path<String>,
-    Json(arguments): Json<Map<String, Value>>,
+    Json(mut arguments): Json<Map<String, Value>>,
 ) -> Response {
     let started = Instant::now();
     state.status.begin();
-    let request = ToolRequest::new(tool.clone(), arguments);
     let context = RequestContext::new(
         RequestOrigin::Mcp,
         Some(state.request_timeout),
         tokio_util::sync::CancellationToken::new(),
     );
-    let result = state.engine.execute(request, context).await;
+    let result = match crate::request_engine::types::take_semantic_mode(&mut arguments) {
+        Ok(semantics) => {
+            let request = ToolRequest::new(tool.clone(), arguments).with_semantics(semantics);
+            state.engine.execute(request, context).await
+        }
+        Err(failure) => Err(failure),
+    };
     let latency_ms = started.elapsed().as_millis();
     match result {
         Ok(reply) => {

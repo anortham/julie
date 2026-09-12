@@ -149,6 +149,17 @@ pub struct ToolRequest {
     pub semantics: SemanticMode,
 }
 
+pub(crate) fn take_semantic_mode(
+    arguments: &mut Map<String, Value>,
+) -> Result<SemanticMode, RequestFailure> {
+    match arguments.remove("semantics") {
+        None | Some(Value::Null) => Ok(SemanticMode::Auto),
+        Some(value) => serde_json::from_value(value).map_err(|_| {
+            RequestFailure::invalid_arguments("semantics must be auto, off, or required")
+        }),
+    }
+}
+
 impl ToolRequest {
     pub fn new(name: impl Into<String>, arguments: Map<String, Value>) -> Self {
         Self {

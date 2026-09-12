@@ -173,10 +173,8 @@ pub fn adapt_request_with_cancellation(
         })
         .or(default_workspace);
 
-    let semantics = arguments
-        .remove("semantics")
-        .and_then(|v| serde_json::from_value::<SemanticMode>(v).ok())
-        .unwrap_or(SemanticMode::Auto);
+    let semantics =
+        crate::request_engine::types::take_semantic_mode(&mut arguments).map_err(to_mcp_error)?;
 
     let exempt = crate::handler::is_write_exempt(&tool_name, Some(&arguments));
     let timeout = if exempt {
