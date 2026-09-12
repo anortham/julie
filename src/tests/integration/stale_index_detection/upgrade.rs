@@ -21,6 +21,7 @@ async fn out_of_date_schema_version_recreates_index_directory_and_reindexes() ->
     index_workspace(&handler, workspace_path).await?;
     let workspace_id = handler.require_primary_workspace_identity()?;
     let index_dir = handler.workspace_index_dir_for(&workspace_id).await?;
+    handler.invalidate_checkout_store(&workspace_id).await;
     drop(handler);
 
     let facts_path = index_dir.join("facts.sqlite");

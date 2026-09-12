@@ -372,7 +372,7 @@ mod tests {
         let watcher_stop = Arc::new(Notify::new());
         let watcher_stop_for_task = Arc::clone(&watcher_stop);
         let ws_root_for_task = ws_root.clone();
-        let watcher_task = tokio::spawn(async move {
+        let mut watcher_task = tokio::spawn(async move {
             let alpha_path = ws_root_for_task.join("src").join("alpha.rs");
             let mut tick: u32 = 0;
             loop {
@@ -565,10 +565,15 @@ mod tests {
         })
         .await;
 
-        // Stop the watcher driver so the test exits cleanly even if a tool
-        // call failed — we still want a clean drop.
-        watcher_stop.notify_waiters();
-        let _ = watcher_task.await;
+        watcher_stop.notify_one();
+        if timeout(Duration::from_secs(5), &mut watcher_task)
+            .await
+            .is_err()
+        {
+            watcher_task.abort();
+            let _ = watcher_task.await;
+            panic!("watcher driver must stop within 5s after notification");
+        }
 
         let completed = drive_result.expect(
             "7 concurrent MCP requests must complete within 30s — if this \
