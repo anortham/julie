@@ -107,9 +107,12 @@ async fn status(State(state): State<AppState>) -> Json<Value> {
     let embedding_child = state.engine.semantic_runtime().child_status();
     let loaded_runtime_count = state.engine.runtimes.loaded_runtime_count().await;
     let loaded_watcher_count = state.engine.runtimes.loaded_watcher_count().await;
-    let document = state
-        .status
-        .document(checkouts(&state).await, loaded_runtime_count, loaded_watcher_count, embedding_child);
+    let document = state.status.document(
+        checkouts(&state).await,
+        loaded_runtime_count,
+        loaded_watcher_count,
+        embedding_child,
+    );
     let mut body = serde_json::to_value(document).unwrap_or_else(|_| Value::Object(Map::new()));
     let log = ProjectLog::current_path(
         &state.engine.runtimes.registry_paths().logs_dir(),
