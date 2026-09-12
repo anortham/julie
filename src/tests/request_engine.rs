@@ -298,7 +298,7 @@ async fn runtime_reacquire_waits_for_teardown_without_duplicate_writer() {
     let other = fixture.cold_binding("retire_reacquire_other");
     fixture
         .runtimes
-        .set_retirement_policy(1, Duration::from_secs(60));
+        .set_retirement_policy(3, Duration::from_secs(60));
     drop(acquire_runtime(&fixture.runtimes, &target).await);
     drop(acquire_runtime(&fixture.runtimes, &other).await);
     let now = Instant::now();
