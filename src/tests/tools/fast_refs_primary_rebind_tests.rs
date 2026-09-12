@@ -149,7 +149,14 @@ async fn test_fast_refs_primary_identifier_fallback_dedupes_within_batch() -> Re
         second_line_count, 0,
         "the next distinct site should remain on the next page: {result_text}"
     );
-    assert!(result_text.contains("offset=2"));
+    let next = result_text
+        .lines()
+        .find_map(|line| line.strip_prefix("next: fast_refs "))
+        .unwrap_or_else(|| panic!("missing fast_refs next request: {result_text}"));
+    let next: FastRefsTool = serde_json::from_str(next)?;
+    assert_eq!(next.offset, 2);
+    assert_eq!(next.symbol, "FastRefsTool::call_tool");
+    assert_eq!(next.limit, 2);
 
     Ok(())
 }
