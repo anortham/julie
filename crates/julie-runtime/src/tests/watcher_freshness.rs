@@ -99,9 +99,10 @@ async fn watcher_overflow_rescan_reconciles_dropped_path() {
     std::fs::write(&dropped, "fn recovered_after_overflow() {}\n").unwrap();
     enqueue(&fixture.indexer, dropped).await;
     for ordinal in 1..crate::watcher::queue::MAX_QUEUE_SIZE {
-        enqueue(
+        enqueue_change(
             &fixture.indexer,
             fixture.root.path().join(format!("missing-{ordinal}.rs")),
+            FileChangeType::Deleted,
         )
         .await;
     }
