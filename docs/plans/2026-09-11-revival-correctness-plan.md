@@ -1,6 +1,6 @@
 # Plan 1: Index freshness and request isolation
 
-**Status:** Implementation authorized by the owner on 2026-09-11. Active worktree `.worktrees/revival-correctness`, branch `fix/revival-correctness`. Local commits authorized; push/tag/release not authorized.
+**Status:** Implemented and verified locally on 2026-09-12. Worktree `.worktrees/revival-correctness`, branch `fix/revival-correctness`. Push/tag/release not authorized. See [execution report](../../.memories/autonomous-run-2026-09-12-revival-correctness.md).
 **Goal:** Acknowledged source changes become searchable, semantic requests cannot affect one another, and interrupted embedding work resumes with truthful readiness.
 **Depends on:** No other implementation plan.
 **Execution:** The [roadmap execution and verification contract](2026-09-11-revival-roadmap.md) applies in full. Sol implements; Astra reviews and runs integration gates.
@@ -122,3 +122,17 @@ Nine exact regressions passed across julie-runtime and julie-core: rapid saves, 
 Pipeline and root regressions pass for partial compatible coverage, ineligible/shared-blob keys, empty/edit/delete transitions, preserving vectors on restart, late-provider scheduling, existing-job preservation, and MCP readiness metadata. Health uses the same semantic coverage check while preserving lexical readiness. No-change index/refresh catch-up also uses eligible coverage. Lead review required one canonical representative per durable key, source eligibility when identical content appears under a test path, atomic task-map insertion, and retaining container enrichment inputs.
 
 The initial pipeline shared-blob test followed RED/GREEN. Several readiness edits preceded their negative checks; their original raw-count/nonzero behavior was explicitly restored and tested before GREEN. Added invariant checks are not claimed as original test-first repairs. Final `cargo check -p julie --tests` passed on the working diff over `80a2a39e`; no worker result substitutes for the pending clean-commit full and live gates.
+
+### Final integration evidence
+
+The live probe exposed one additional in-scope defect: JSON API requests left semantic policy at Auto. HTTP and MCP now share validated mode parsing; null/missing preserve Auto, invalid values fail explicitly, and request accounting remains balanced. Native recovery fixtures now publish their SQLite writes, and overflow fillers use confirmed deletion events so they do not create unrelated read failures.
+
+Commands below used `CARGO_TARGET_DIR=/home/murphy/source/julie/target` and `JULIE_TEST_BIN=/home/murphy/source/julie/target/debug/julie-server`. Legacy CLI tests also require the worktree-local `target/debug/julie-server` link to that shared binary.
+
+| Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
+|---|---|---|---|---|---|---|
+| All workspace, CLI and search-quality contracts | `cargo xtask test full` | full | `9faf6fb4a8a3b180b6a17304586d86e8c789b089` | PASS: 2245 + 13 + 69 tests | 2026-09-12 12:47 | No |
+| Formatting and lint gate | `cargo fmt --check`; `cargo clippy --workspace --all-targets` | full | `9faf6fb4a8a3b180b6a17304586d86e8c789b089` | PASS; clippy emits warnings | 2026-09-12 12:47 | No |
+| Native restart, transport modes, freshness and isolation | `python3 src/tests/helpers/revival_live_probe.py --binary /home/murphy/source/julie/target/debug/julie-server` | live | `9faf6fb4a8a3b180b6a17304586d86e8c789b089` | PASS; 50/51 → 51/51, all retained vectors unchanged | 2026-09-12 12:46 | No |
+
+[Live result](../findings/2026-09-12-revival-correctness-live.json). The report commit is checked again at its exact HEAD before handoff; the rows above remain evidence for their named source commit. The fake provider verifies native process/protocol/lifecycle behavior, not model quality or other-platform installation. Plans 2–5 remain outside this implementation.

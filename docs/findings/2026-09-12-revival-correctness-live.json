@@ -1,0 +1,33 @@
+{
+  "binary": "/home/murphy/source/julie/target/debug/julie-server",
+  "cleanup": {
+    "service_exited": true,
+    "temporary_home_removed": true
+  },
+  "complete_vectors": 51,
+  "fake_encoder_only": true,
+  "overlap": {
+    "off": {
+      "mode": "off",
+      "status": "disabled"
+    },
+    "required": {
+      "coverage": "full",
+      "mode": "required",
+      "status": "ready"
+    }
+  },
+  "partial_vectors": 50,
+  "preserved_vector": true,
+  "rapid_write_latest": "fresh_v2",
+  "service_version": "8.0.0",
+  "source_commit": "9faf6fb4a8a3b180b6a17304586d86e8c789b089",
+  "stdio_mcp": {
+    "readiness": {
+      "mode": "off",
+      "status": "disabled"
+    },
+    "server_version": "8.0.0"
+  },
+  "workspace_isolation": true
+}
