@@ -1,6 +1,6 @@
 # Plan 2: Precise and complete retrieval contracts
 
-**Status:** Approved for implementation on 2026-09-12. Worktree `.worktrees/revival-retrieval`, branch `fix/revival-retrieval`, baseline `22391e26`. Local commits authorized; merge/push/release remain separate actions.
+**Status:** All four implementation slices completed on 2026-09-12; final Windows and live integration verification in progress. Worktree `.worktrees/revival-retrieval`, branch `fix/revival-retrieval`, baseline `22391e26`. Local commits authorized; merge/push/release remain separate actions.
 **Goal:** Preserve exact evidence and make scoped search, paging, and body retrieval reliable for agents.
 **Depends on:** Reference work can start independently; integrate after Plan 1 freshness and semantics fixes.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md), including Sol ownership, TDD, one Cargo command at a time, no tool renaming, and no durable continuations.
@@ -90,7 +90,7 @@ Run each with `cargo nextest run -p julie --lib <exact_name>`. Include spaces, q
 
 **Inputs:** Existing canonical source spans and body extraction; both `get_symbols` and `deep_dive` remain public tools.
 
-**Proposed contract:** Add the same optional zero-based `body_offset` and `body_limit` in source lines to both tools, plus optional `source_hash` supplied by a previous page. Defaults preserve current compact budgets while bounding full bodies. Structured output includes source hash, total source-line count, returned range, and whether the complete canonical declaration/body span was returned. Compact output marks truncation and emits a self-contained next call. These fields are proposed additions, not current APIs.
+**Implemented contract:** The same optional zero-based `body_offset` and `body_limit` in source lines are available on both tools, plus optional `source_hash` supplied by a previous page. Defaults preserve current compact budgets while bounding full bodies. Structured output includes source hash, total source-line count, returned range, and whether the complete canonical declaration/body span was returned. Compact output marks truncation and emits a self-contained next call. These fields are implemented in both public tools and named CLI wrappers.
 
 Use existing source hashing. Reject a supplied hash mismatch with an actionable “source changed; restart at offset 0” response; do not stitch content from different files/versions. Preserve CRLF and UTF-8; line windows must not slice invalid bytes. A complete value declaration means the entire canonical declaration span was returned, including a multiline initializer, not merely its name/signature.
 
@@ -111,11 +111,23 @@ Run lead dev and dogfood after the coherent retrieval batch, and the roadmap's f
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| Retrieval integration | `cargo xtask test full` | full | `80d0da04c0116ea383ddb2d02d20949181dd2690` | PASS: 2280 workspace + 13 CLI + 69 dogfood; `.razorback/sdd/revival-retrieval/host-final-full-guidance.log` | 2026-09-12T16:24Z | No |
+| Formatting and lint | `cargo fmt --check`; `cargo clippy --workspace --all-targets` | full | `80d0da04c0116ea383ddb2d02d20949181dd2690` | PASS, warnings retained; `host-final-clippy.log` in execution directory | 2026-09-12T16:24Z | No |
 
 ## Approved execution setup
 
 Tasks 2A and 2B may edit in parallel because navigation/reference evidence and search/content execution own separate files. Cargo commands remain serialized by the lead. Task2C follows both and owns their shared final pagination/rendering behavior; Task2D follows2C.
 
-The Linux baseline is the exact previously verified Plan1 HEAD `22391e26882e54b9e4f5bb0995a69369793e067c`: formatting, clippy, full2245+13+69 tests and isolated live probe passed. The updated win-test CLI synced that SHA to native NTFS at `C:\work\revival-retrieval`. Windows has Rust1.97 MSVC but requires nextest installation before its first baseline. All guest control uses win-test; no direct SSH/virsh or shared-mount test execution. Capture the CLI-emitted log path and exact SHA. Windows baseline and final `cargo xtask test full` are lead-owned gates; failures require diagnosis, not reduced assertions.
+The Linux baseline is the exact previously verified Plan1 HEAD `22391e26882e54b9e4f5bb0995a69369793e067c`: formatting, clippy, full2245+13+69 tests and isolated live probe passed. The updated win-test CLI synced that SHA to native NTFS at `C:\work\revival-retrieval`. Windows has Rust1.97 MSVC and nextest0.9.144; baseline failures and repairs are recorded in the Windows findings. All guest control uses win-test; no direct SSH/virsh or shared-mount test execution. Capture the CLI-emitted log path and exact SHA. Windows baseline and final `cargo xtask test full` are lead-owned gates; failures require diagnosis, not reduced assertions.
 
 Paging must preserve automatic backend policy: serializing an inferred semantic backend as an explicit semantic override would discard the scoped lexical-content arm on later pages. Keep the original null/omitted auto selection in normalized replay arguments while exposing effective backend evidence separately.
+
+## Implementation evidence
+
+- Reference precision and web-call evidence: task2A, with the [pinned language inventory](../findings/2026-09-12-reference-site-language-ledger.md). Missing upstream evidence remains explicit.
+- Scoped content: task2B and the [native paired nine-case measurement](../findings/2026-09-12-revival-content-measurement.md). This measures the accepted content cases, not full Miller replacement.
+- Paging: task2C serializes complete normalized JSON requests, including resolved impact seeds and automatic backend policy.
+- Bodies: task2D supplies exact canonical byte slices, source identity, bounded line windows and explicit whole-span completeness. Inferred line spans never claim completeness. A final nonzero-offset page reports end reached separately from complete.
+- Cross-platform repairs and exact NTFS checks: [Windows findings](../findings/2026-09-12-windows-baseline.md).
+
+The final Linux full gate at `80d0da04c0116ea383ddb2d02d20949181dd2690` passed 2,280 workspace tests, 13 ignored CLI tests and 69 dogfood tests. Formatting and workspace/all-target clippy passed at the same SHA; clippy emits existing warnings. Windows full and live integration are still pending.

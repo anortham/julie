@@ -640,10 +640,16 @@ async fn sensitive_roots_rejected_before_creating_directories() {
     let resolver_shared = BindingResolver::new(None, false, registry_paths.clone());
     let resolver_standalone = BindingResolver::new(None, true, registry_paths.clone());
 
-    let sensitive_roots = [
-        std::path::PathBuf::from("/"),
-        std::path::PathBuf::from("/home"),
+    let mut sensitive_roots = vec![
+        std::env::current_dir()
+            .expect("current directory")
+            .ancestors()
+            .last()
+            .expect("filesystem root")
+            .to_path_buf(),
     ];
+    #[cfg(unix)]
+    sensitive_roots.push(std::path::PathBuf::from("/home"));
 
     for root in &sensitive_roots {
         if !root.exists() {
@@ -682,13 +688,19 @@ async fn engine_rejects_sensitive_root_on_tool_execution() {
     let runtime_factory = Arc::new(RuntimeFactory::new(registry_paths));
     let engine = RequestEngine::new(binding_resolver, runtime_factory);
 
+    let filesystem_root = std::env::current_dir()
+        .expect("current directory")
+        .ancestors()
+        .last()
+        .expect("filesystem root")
+        .to_path_buf();
     let request = ToolRequest {
         name: "fast_search".to_string(),
         arguments: serde_json::json!({ "query": "probe" })
             .as_object()
             .unwrap()
             .clone(),
-        workspace: Some(PathBuf::from("/")),
+        workspace: Some(filesystem_root.clone()),
         semantics: SemanticMode::Off,
     };
     let context = RequestContext::new(
@@ -697,9 +709,9 @@ async fn engine_rejects_sensitive_root_on_tool_execution() {
         tokio_util::sync::CancellationToken::new(),
     );
     let result = engine.execute(request, context).await;
-    let err = result.expect_err("Tool execution with root '/' must be rejected as sensitive root");
+    let err = result.expect_err("Tool execution with filesystem root must be rejected");
     assert_eq!(err.code, "SENSITIVE_ROOT");
-    assert!(!std::path::Path::new("/.julie").exists());
+    assert!(!filesystem_root.join(".julie").exists());
 }
 
 #[tokio::test]

@@ -46,3 +46,7 @@ At clean `cae075a32a23c612940a2e0ac55823afcb33396a`, exact NTFS reruns passed:
 - `out_of_date_schema_version_recreates_index_directory_and_reindexes`:1passed in1.749seconds. Log: `/home/murphy/.local/share/win-test/logs/20260912T154644Z-revival-retrieval-1672974.log`.
 
 The concurrent rerun's wrapper again waited on build telemetry after the test process had exited. Process inventory confirmed no Cargo/test process remained before stopping only its identity-checked VCTIP process. The original runner then returned exit0 and its authoritative log. A final Windows full gate is still required after body retrieval lands.
+
+## Final retrieval gate, first attempt
+
+At `80d0da04c0116ea383ddb2d02d20949181dd2690`, the binary built in37.4seconds and the development tier ran613tests:612passed,1failed. Log: `/home/murphy/.local/share/win-test/logs/20260912T162441Z-revival-retrieval-1759484.log`. The sensitive-root request fixture expected `SENSITIVE_ROOT` but received `WORKSPACE_REQUIRED`; its root-path assumption is under correction. No full Windows pass is claimed. After Cargo and all test processes exited, the wrapper was released by stopping only its identity-checked build telemetry process.
