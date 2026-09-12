@@ -116,6 +116,17 @@ impl RuntimeFactory {
         runtime_count + usize::from(has_unbound_runtime)
     }
 
+    pub async fn loaded_watcher_count(&self) -> usize {
+        let runtimes = self.runtimes.read().await.values().cloned().collect::<Vec<_>>();
+        let mut count = 0;
+        for runtime in runtimes {
+            if runtime.handler().loaded_workspace_file_watcher_running_for_test().await {
+                count += 1;
+            }
+        }
+        count
+    }
+
     pub fn set_semantic_runtime(
         &self,
         runtime: Arc<dyn crate::request_engine::semantic::SemanticRuntime>,

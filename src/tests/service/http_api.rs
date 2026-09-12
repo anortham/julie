@@ -307,6 +307,7 @@ async fn status_carries_every_checkout() {
         .unwrap();
     let checkouts = body["checkouts"].as_array().unwrap();
     assert_eq!(body["loaded_runtime_count"], 1);
+    assert_eq!(body["loaded_watcher_count"], 1);
     let expected_id =
         crate::workspace::registry::generate_workspace_id(&root.to_string_lossy()).unwrap();
     let checkout = checkouts
