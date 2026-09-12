@@ -892,11 +892,15 @@ async fn content_route_preserves_all_requested_filters() -> Result<()> {
             .iter()
             .any(|hit| hit.file == "materials/routing.rs" && hit.as_symbol().is_none())
     );
-    assert!(execution.hits.iter().all(|hit| {
-        hit.file.starts_with("materials/")
-            && hit.language == "rust"
-            && !hit.file.contains("routing_test.rs")
-    }));
+    assert!(
+        execution.hits.iter().all(|hit| {
+            hit.file.starts_with("materials/")
+                && hit.language == "rust"
+                && !hit.file.contains("routing_test.rs")
+        }),
+        "{:?}",
+        execution.hits
+    );
 
     Ok(())
 }

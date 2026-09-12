@@ -304,17 +304,9 @@ pub fn is_test_path(path: &str) -> bool {
 
     // Check file-name patterns for languages that co-locate tests with source
     let file_name = path.rsplit('/').next().unwrap_or(path);
+    let file_stem = file_name.rsplit_once('.').map_or(file_name, |(stem, _)| stem);
 
-    // Go: auth_test.go
-    if file_name.ends_with("_test.go") {
-        return true;
-    }
-
-    // C/C++: jq_test.c, parser_test.cpp
-    if file_name.ends_with("_test.c")
-        || file_name.ends_with("_test.cc")
-        || file_name.ends_with("_test.cpp")
-    {
+    if file_stem.ends_with("_test") {
         return true;
     }
 
