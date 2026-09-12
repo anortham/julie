@@ -9,10 +9,10 @@
 ## Tools
 
 - `fast_search`: text, symbol, path, or concept search. `file_pattern` and `language` scope it; `regions` filters `source_regions`; `backend` selects lexical, semantic, or hybrid.
-- `get_symbols`: file structure without reading it. `target` plus `mode="minimal"` extracts one symbol.
+- `get_symbols`: file structure. `target` plus `mode="minimal"` extracts one symbol.
 - `deep_dive`: one symbol: definition, callers, callees, children, types, `complexity_metrics`.
-- `fast_refs`: every reference to a symbol; `reference_kind` filters.
-- `call_path`: one shortest call path between two symbols.
+- `fast_refs`: references to a symbol; `reference_kind` filters.
+- `call_path`: shortest call path between two symbols.
 - `get_context`: token-budgeted task orientation from symbols, files, or a failing test.
 - `blast_radius`: impact of changed files or symbols plus likely tests. No arguments reads the git diff.
 - `patterns`: query persisted `structural_facts` (routes, config keys, SQL). No arguments lists pattern ids.
@@ -29,6 +29,6 @@
 
 Use Julie instead of grep, find, or Read. Run `get_symbols` before whole-file reads.
 
-Search, navigation, and edits require `workspace`: an absolute path or registered ID. Register with `manage_workspace(operation="open", path="/absolute/project")`; other manage calls use `workspace_id`. Global `list` and `status` need none.
+Search, navigation, and editing calls require `workspace`: an absolute path or registered ID. Register with `manage_workspace(operation="open", path="/absolute/project")`; other manage calls use `workspace_id`. Global `list` and `status` need none.
 
-More rows end with `next: <tool> <JSON>`; replay that JSON. Paging is best effort across source edits.
+More rows end with `next: <tool> <JSON>`; replay that JSON. `offset` paging is best effort across source edits.
