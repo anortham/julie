@@ -7,6 +7,8 @@
 | Field | Value |
 |---|---|
 | Frozen candidate code/full-gate SHA | `055645e02ebf261355c7db6659a9fe1b5159a791` |
+| Archive binary source SHA | `055645e02ebf261355c7db6659a9fe1b5159a791` |
+| Package wrapper and verifier source SHA | `a90720f010283270123c9679729fbf8f4fd5004f` |
 | Qualification ref pushed for hosted retry | `8c84e683` |
 | Latest local fixes | `ce574773` (probe sends top-level `--semantics required` and rejects fallback); `3115c6c8` (generic CLI JSON preserves RequestEngine readiness) |
 | Archive server binary SHA-256 | `2620d7c7f0f5f39e31a4318c78ca5efa7442a56642c99c502d232daef99d2da8` |
