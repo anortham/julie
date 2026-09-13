@@ -43,7 +43,7 @@ fn release_packaging_uses_shasum_fallback_and_preserves_manifest_files() {
     fs::write(sidecar.join("julie-semantic-sidecar"), "sidecar").unwrap();
     fs::write(
         sidecar.join("package-manifest.json"),
-        r#"{"files":[{"path":"README.md"},{"path":"LICENSE"}]}"#,
+        r#"{"schema_version":2,"rust_target":"x86_64-unknown-linux-gnu","files":[{"path":"README.md"},{"path":"LICENSE"}]}"#,
     )
     .unwrap();
     fs::write(release.join("julie-server"), "server").unwrap();
@@ -139,6 +139,13 @@ fn release_packaging_uses_shasum_fallback_and_preserves_manifest_files() {
         .unwrap();
     assert!(manifest.status.success());
     let manifest: serde_json::Value = serde_json::from_slice(&manifest.stdout).unwrap();
+    assert_eq!(manifest["schema_version"], 2);
+    assert_eq!(manifest["rust_target"], "x86_64-unknown-linux-gnu");
+    assert_eq!(
+        manifest["source"]["schema_version"],
+        manifest["schema_version"]
+    );
+    assert_eq!(manifest["source"]["rust_target"], manifest["rust_target"]);
     assert!(manifest["source"]["files"].is_array());
     assert!(
         !entries
@@ -290,7 +297,7 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
             .unwrap();
         }
         let manifest = format!(
-            r#"{{"source":{{"files":[{{"path":"README.md"}}]}},"files":[{}]}}"#,
+            r#"{{"schema_version":2,"rust_target":"x86_64-unknown-linux-gnu","source":{{"schema_version":2,"rust_target":"x86_64-unknown-linux-gnu","files":[{{"path":"README.md"}}]}},"files":[{}]}}"#,
             files.trim_end_matches(',')
         );
         fs::write(root.join("package-manifest.json"), manifest).unwrap();
@@ -337,6 +344,18 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
                 r#"{"source":{"files":[]},"files":[{"path":"README.md","sha256":"wrong"}]}"#,
             )
             .unwrap(),
+            "invalid-launcher-fields" => {
+                let manifest = fs::read_to_string(root.join("package-manifest.json")).unwrap();
+                fs::write(
+                    root.join("package-manifest.json"),
+                    manifest.replacen(
+                        r#"{"schema_version":2,"rust_target":"x86_64-unknown-linux-gnu","source"#,
+                        r#"{"schema_version":1,"rust_target":"","source"#,
+                        1,
+                    ),
+                )
+                .unwrap();
+            }
             _ => {}
         }
         let archive = tmp.path().join(format!("{name}.tar.gz"));
@@ -382,6 +401,7 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
         ("cleanup-never", "cleanup-never"),
         ("malformed", "malformed-manifest"),
         ("checksum", "wrong-checksum"),
+        ("invalid-launcher-fields", "invalid-launcher-fields"),
     ] {
         let (expected, result) = package(name, variant);
         assert_eq!(

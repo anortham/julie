@@ -80,15 +80,17 @@ find -P "$STAGE" -type l -print -quit | grep -q . && {
   echo "pack-release.sh: sidecar package contains a symlink" >&2
   exit 1
 }
-python3 - "$STAGE" <<'PY'
+python3 - "$STAGE" "$TARGET" <<'PY'
 import hashlib
 import json
 import sys
 from pathlib import Path
 
-stage = Path(sys.argv[1])
+stage, target = Path(sys.argv[1]), sys.argv[2]
 manifest_path = stage / "package-manifest.json"
 source_manifest = json.loads(manifest_path.read_text())
+if source_manifest.get("schema_version") != 2 or source_manifest.get("rust_target") != target:
+    raise SystemExit("sidecar package manifest does not match the requested target")
 files = []
 for path in sorted(stage.iterdir()):
     if not path.is_file():
@@ -96,7 +98,12 @@ for path in sorted(stage.iterdir()):
     if path.name == manifest_path.name:
         continue
     files.append({"path": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
-manifest_path.write_text(json.dumps({"source": source_manifest, "files": files}, indent=2) + "\n")
+manifest_path.write_text(json.dumps({
+    "schema_version": source_manifest["schema_version"],
+    "rust_target": source_manifest["rust_target"],
+    "source": source_manifest,
+    "files": files,
+}, indent=2) + "\n")
 PY
 if [ "$TARGET" = "x86_64-pc-windows-msvc" ]; then
   ARCHIVE="$OUT_DIR/julie-v${VERSION}-${TARGET}.zip"

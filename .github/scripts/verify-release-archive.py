@@ -98,6 +98,11 @@ def verify_manifest(root: Path, entries: set[str]) -> None:
     source, files = manifest.get("source"), manifest.get("files")
     if not isinstance(source, dict) or not isinstance(source.get("files"), list):
         fail("sidecar manifest has no source files list")
+    if manifest.get("schema_version") != 2 or source.get("schema_version") != 2:
+        fail("package manifest has an invalid schema version")
+    rust_target = manifest.get("rust_target")
+    if not isinstance(rust_target, str) or not rust_target or source.get("rust_target") != rust_target:
+        fail("package manifest has an invalid rust target")
     if not isinstance(files, list) or not files:
         fail("sidecar manifest has no files list")
     expected = entries - {"package-manifest.json"}
