@@ -9,6 +9,7 @@ import stat
 import subprocess
 import tarfile
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -78,6 +79,15 @@ def initialize_instructions(output: str) -> str | None:
                 return result["instructions"]
             return None
     return None
+
+
+def wait_for_service_record_removal(path: Path, timeout_seconds: float = 1.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while path.exists():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            fail(f"packaged stdio probe left service record after {timeout_seconds:.1f}s")
+        time.sleep(min(0.02, remaining))
 
 
 def verify_manifest(root: Path, entries: set[str]) -> None:
@@ -154,8 +164,9 @@ def main() -> None:
                 fail("packaged stdio server did not return workspace instructions")
         finally:
             stop = run([str(server_path), "service", "stop"], env)
-        if stop.returncode or (root / "home" / "service.json").exists():
-            fail("packaged stdio probe left a service behind")
+        if stop.returncode:
+            fail(f"packaged service stop exited {stop.returncode}")
+        wait_for_service_record_removal(root / "home" / "service.json")
 
 
 if __name__ == "__main__":

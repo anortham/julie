@@ -261,7 +261,7 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
         let root = tmp.path().join(name);
         fs::create_dir_all(&root).unwrap();
         let server = root.join("julie-server");
-        fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) exit 0 ;; *) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"instructions\":\"open workspace\"}}' ;; esac\n").unwrap();
+        fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) rm -f \"$JULIE_HOME/service.json\" ;; *) mkdir -p \"$JULIE_HOME\"; : > \"$JULIE_HOME/service.json\"; echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"instructions\":\"open workspace\"}}' ;; esac\n").unwrap();
         fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
         let sidecar = root.join("julie-semantic-sidecar");
         fs::write(&sidecar, "#!/bin/sh\necho 'julie-semantic-sidecar 0.1.0'\n").unwrap();
@@ -311,6 +311,22 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
                 )
                 .unwrap();
             }
+            "async-cleanup" | "cleanup-never" => {
+                let old_checksum = sha256(&server);
+                let stop = if variant == "async-cleanup" {
+                    "(sleep 0.05; rm -f \"$JULIE_HOME/service.json\") >/dev/null 2>&1 < /dev/null &"
+                } else {
+                    ":"
+                };
+                fs::write(&server, format!("#!/bin/sh\ncase \"${{1:-}}\" in --version) echo 'julie-server 8.0.0' ;; service) {stop} ;; *) mkdir -p \"$JULIE_HOME\"; : > \"$JULIE_HOME/service.json\"; echo '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"instructions\":\"open workspace\"}}}}' ;; esac\n")).unwrap();
+                let manifest =
+                    fs::read_to_string(root.join("sidecar-package-manifest.json")).unwrap();
+                fs::write(
+                    root.join("sidecar-package-manifest.json"),
+                    manifest.replace(&old_checksum, &sha256(&server)),
+                )
+                .unwrap();
+            }
             "malformed-manifest" => {
                 fs::write(root.join("sidecar-package-manifest.json"), "{").unwrap()
             }
@@ -352,7 +368,7 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
             .arg(&checksum)
             .output()
             .unwrap();
-        (variant == "valid", result)
+        (matches!(variant, "valid" | "async-cleanup"), result)
     };
 
     for (name, variant) in [
@@ -360,6 +376,8 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
         ("missing", "missing-sidecar"),
         ("version", "wrong-version"),
         ("false-instructions", "false-instructions"),
+        ("async-cleanup", "async-cleanup"),
+        ("cleanup-never", "cleanup-never"),
         ("malformed", "malformed-manifest"),
         ("checksum", "wrong-checksum"),
     ] {
