@@ -172,6 +172,7 @@ mod tests {
             workspace_root: PathBuf::from("/tmp/test"),
             result,
             is_error: false,
+            readiness: RequestReadiness::ready(crate::request_engine::SemanticMode::Auto),
         }
     }
 
@@ -340,6 +341,7 @@ mod tests {
             workspace_root: PathBuf::from("/tmp/test"),
             result: error_result("tool failed: invalid query"),
             is_error: true,
+            readiness: RequestReadiness::ready(crate::request_engine::SemanticMode::Auto),
         };
         let formatted = format_output(&output, OutputFormat::Text, "fast_search");
         assert_eq!(formatted, "tool failed: invalid query");
@@ -352,6 +354,7 @@ mod tests {
             workspace_root: PathBuf::from("/tmp/test"),
             result: error_result("bad input"),
             is_error: true,
+            readiness: RequestReadiness::ready(crate::request_engine::SemanticMode::Auto),
         };
         let formatted = format_output(&output, OutputFormat::Json, "fast_search");
         let parsed: Value = serde_json::from_str(&formatted).unwrap();

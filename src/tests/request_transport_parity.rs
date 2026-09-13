@@ -102,6 +102,31 @@ fn mcp_transport_preserves_request_readiness() {
 }
 
 #[test]
+fn cli_json_reply_preserves_required_full_readiness() {
+    let reply = crate::cli_tools::CliToolOutput {
+        mode: crate::cli_tools::CliExecutionMode::Standalone,
+        workspace_root: std::path::PathBuf::from("/tmp/workspace"),
+        result: json!({ "content": [] }),
+        is_error: false,
+        readiness: crate::request_engine::RequestReadiness {
+            mode: crate::request_engine::SemanticMode::Required,
+            status: "ready".to_string(),
+            coverage: Some("full".to_string()),
+            facts_revision: None,
+            lexical_revision: None,
+        },
+    }
+    .into_tool_reply("fast_search");
+
+    let envelope: Value = serde_json::from_str(&crate::cli_tools::output::format_success_envelope(
+        None, &reply,
+    ))
+    .unwrap();
+    assert_eq!(envelope["reply"]["readiness"]["mode"], "required");
+    assert_eq!(envelope["reply"]["readiness"]["coverage"], "full");
+}
+
+#[test]
 fn checkout_normalization_ignores_measurements_but_keeps_semantics() {
     let first = json!({"checkouts":[{
         "workspace_id":"julie_a",

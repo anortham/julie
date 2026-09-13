@@ -34,7 +34,7 @@ use serde_json::Value;
 use crate::cli::resolve_workspace_root;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
-use crate::request_engine::RequestFailure;
+use crate::request_engine::{RequestFailure, RequestReadiness, ToolReply};
 
 // ---------------------------------------------------------------------------
 // Execution mode tracking
@@ -79,6 +79,14 @@ pub struct CliToolOutput {
     pub result: Value,
     /// Whether the tool indicated an error (isError field in CallToolResult).
     pub is_error: bool,
+    /// Readiness evidence returned by the request engine.
+    pub readiness: RequestReadiness,
+}
+
+impl CliToolOutput {
+    pub fn into_tool_reply(self, tool_name: impl Into<String>) -> ToolReply {
+        ToolReply::from_result(tool_name, None, self.result, self.readiness)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +200,7 @@ pub async fn run_cli_tool(
         workspace_root,
         result: reply.result,
         is_error,
+        readiness: reply.readiness,
     })
 }
 

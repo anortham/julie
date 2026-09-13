@@ -11,9 +11,7 @@ use julie::cli_tools::output::{
 };
 use julie::cli_tools::run_cli_tool;
 use julie::cli_tools::subcommands::ToolsSubcommand;
-use julie::request_engine::{
-    BindingResolver, RequestEngine, RequestFailure, RequestReadiness, RuntimeFactory, ToolReply,
-};
+use julie::request_engine::{BindingResolver, RequestEngine, RequestFailure, RuntimeFactory};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -269,13 +267,8 @@ async fn run_tool_command(
     match run_cli_tool(command, cli_workspace, flags.standalone).await {
         Ok(output) => {
             if flags.json {
-                let reply = ToolReply::from_result(
-                    command.tool_name(),
-                    None,
-                    output.result,
-                    RequestReadiness::ready(julie::request_engine::SemanticMode::Auto),
-                );
                 let exit_code = if output.is_error { 3 } else { 0 };
+                let reply = output.into_tool_reply(command.tool_name());
                 write_stdout_safe(&format_success_envelope(None, &reply));
                 std::process::exit(exit_code);
             } else {
