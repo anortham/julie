@@ -3,44 +3,42 @@ id: machine-service-one-rust-service-per-machine-repla
 title: Julie revival Plans 4 and 5
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-12T21:52:19.517Z
+updated: 2026-09-13T14:10:43.109Z
 tags:
-  - machine-service
-  - architecture
-  - complexity-rule
+  - revival
+  - plan-4
+  - plan-5
+  - qualification
+  - blocked
 ---
 
 # Julie revival Plans 4 and 5
 
 ## Goal
 
-Complete Plan 4 deployment and guidance qualification, then Plan 5 replacement qualification. Plan 4 must leave a locally reviewable release candidate with consistent agent instructions, immutable versioned installation, truthful cold/offline semantics, executable archive checks and a fresh-install evidence matrix.
+Complete Plan 4 external qualification, then run Plan 5C and produce the Plan 5D decision ledger.
 
 ## Completed
 
-Plans 1 through 3 are merged on local `main`. Plan 3 added the single runtime lifecycle owner, bounded idle retirement, cooperative writer shutdown and durable reopen behavior.
+Plans 1-3 are merged on local `main`. Historical Plan 4 candidate `055645e02ebf261355c7db6659a9fe1b5159a791` passed `cargo xtask test full` 5/5 in 43.9 seconds. Its Linux archive SHA-256 is `9d9095713c3572407722ad105ada7a85fd193619751271d10eb8f23a0fe89bba`; Codex, OpenCode, and Antigravity/AGY real-client workflows pass with isolated removal checks.
 
-## Current work
+Plan 5A and 5B remain complete on `fix/revival-qualification`; the corrected runner was full-gated at `2297f57015e699b05811803d8c71b5736ffc66b4`.
 
-Plan 4 is active on Julie branch `fix/revival-deployment` and plugin branch `fix/revival-deployment-plugin`. Work follows `docs/plans/2026-09-11-revival-deployment-plan.md` in serial order from 4A through 4E.
+## Native qualification state
 
-## Constraints
+Owner-authorized final hosted run `34760490971` tested pushed qualification SHA `8c84e683977b3538e22aebd7f7cf94b2c807edad`. All three targets built and archive-verified. macOS arm64 and Intel then returned auto-mode lexical fallback during cached/offline semantics. Windows stopped earlier when model preparation received Hugging Face HTTP 429. Lifecycle, Windows lock, and artifact upload steps were skipped.
 
-- Keep the stdio shim, one machine service and native semantic sidecar.
-- Use immutable versioned install directories and explicit service restart on version mismatch.
-- Preserve exact workspace routing and the pinned extractor inventory.
-- Use current official harness documentation before changing harness guidance.
-- Do not write live user profiles, installed plugin caches or the maintainer JULIE_HOME.
-- Do not push, force-push, tag, release or publish without separate owner approval.
-- Local commits inside the approved plan are authorized.
-- Windows qualification failures unrelated to the active diff remain separate follow-up work.
+Local commits `ce574773` and `3115c6c8` correct the probe request/fallback contract and preserve real RequestEngine readiness in generic CLI JSON. Exact self-test, exact Rust regression, and `cargo check --bin julie-server` pass. Evidence commit `79a948f8` records the terminal run.
 
-## Success
+Because product code changed after `055645e`, that SHA is historical rather than the final candidate. A new frozen-tree full gate and another explicitly authorized native run are required. No further hosted run is currently authorized.
 
-The local release candidate has passing Julie and plugin gates, verified native archives, isolated fresh-profile evidence, documented unresolved native/client gaps, and no publication side effects.
+## Remaining blockers and authority
 
-## References
+- Final Claude Code evidence needs refreshed disposable OAuth; Cursor needs a disposable API key; Hermes needs interactive OAuth. Do not copy rotating live OAuth credentials again.
+- No genuine prior compatible versioned v8 archive exists. The owner must provide one or explicitly waive that initial-v8 upgrade row.
+- Do not tag, release, publish, force-push, install into live profiles, or modify real user repositories.
+- Publication-only public snapshot and reusable-workflow checks remain pending separate publication authority.
 
-- docs/plans/2026-09-11-revival-roadmap.md
-- docs/plans/2026-09-11-revival-deployment-plan.md
-- docs/plans/2026-09-11-revival-qualification-plan.md
+## Plan 5 gate
+
+Plan 5C remains blocked until Plans 1-4 have an integrated qualified release candidate and the owner disposes of the remaining client and upgrade gates. Do not fabricate 5C or 5D results.
