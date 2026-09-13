@@ -251,8 +251,9 @@ fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
     assert!(probe.contains("service discovery file remains"));
     assert!(probe.contains("candidate_sha"));
     assert!(probe.contains("archive_sha256"));
-    assert!(report.contains("Candidate SHA"));
-    assert!(report.contains("Archive SHA-256"));
+    assert!(report.contains("Archive binary source SHA"));
+    assert!(report.contains("Package wrapper and verifier source SHA"));
+    assert!(report.contains("Linux archive SHA-256"));
 }
 
 #[cfg(unix)]
