@@ -63,18 +63,19 @@ def extract(archive: Path, destination: Path) -> None:
 
 
 def run(command: list[str], env: dict[str, str], input_text: str | None = None,
-        timeout_seconds: float = 30) -> subprocess.CompletedProcess[str]:
+        timeout_seconds: float = 30, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     with tempfile.TemporaryFile(mode="w+") as stdout, tempfile.TemporaryFile(mode="w+") as stderr:
         try:
             if input_text is None:
                 process = subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
-                                           text=True)
+                                           text=True, cwd=cwd)
                 process.wait(timeout=timeout_seconds)
             else:
                 with tempfile.TemporaryFile(mode="w+") as stdin:
                     stdin.write(input_text)
                     stdin.seek(0)
-                    process = subprocess.Popen(command, env=env, stdin=stdin, stdout=stdout, stderr=stderr, text=True)
+                    process = subprocess.Popen(command, env=env, stdin=stdin, stdout=stdout, stderr=stderr, text=True,
+                                               cwd=cwd)
                     process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             process.kill()
@@ -106,6 +107,62 @@ def wait_for_service_record_removal(path: Path, timeout_seconds: float = 1.0) ->
         if remaining <= 0:
             fail(f"packaged stdio probe left service record after {timeout_seconds:.1f}s")
         time.sleep(min(0.02, remaining))
+
+
+def service_pid(env: dict[str, str]) -> int:
+    try:
+        pid = json.loads((Path(env["JULIE_HOME"]) / "service.json").read_text()).get("pid")
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"packaged service record is unreadable: {error}")
+    if not isinstance(pid, int) or pid < 1:
+        fail("packaged service record has an invalid PID")
+    return pid
+
+
+def initialize_server(server_path: Path, env: dict[str, str], initialize: str, cwd: Path) -> int:
+    result = run([str(server_path)], env, initialize, cwd=cwd)
+    instructions = initialize_instructions(result.stdout)
+    if result.returncode or not instructions or "workspace" not in instructions.lower():
+        fail("packaged stdio server did not return workspace instructions")
+    return service_pid(env)
+
+
+def wait_for_process_exit(pid: int, timeout_seconds: float = 5) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        listed = run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], os.environ, timeout_seconds=5)
+        if listed.returncode or f'"{pid}"' not in listed.stdout:
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            fail(f"service PID remains running: {pid}")
+        time.sleep(min(0.1, remaining))
+
+
+def verify_windows_lifecycle(root: Path, server_path: Path, env: dict[str, str], initialize: str) -> None:
+    first, second = root / "first", root / "second"
+    first.mkdir()
+    second.mkdir()
+    try:
+        old_pid = initialize_server(server_path, env, initialize, first)
+        if initialize_server(server_path, env, initialize, second) != old_pid:
+            fail("second initialize did not reuse the service PID")
+        status = run([str(server_path), "service", "status"], env)
+        if status.returncode:
+            fail(f"packaged service status exited {status.returncode}")
+        restart = run([str(server_path), "service", "restart"], env)
+        if restart.returncode:
+            fail(f"packaged service restart exited {restart.returncode}")
+        restart_pid = service_pid(env)
+        if restart_pid == old_pid:
+            fail("service restart retained the old PID")
+        wait_for_process_exit(old_pid)
+    finally:
+        stop = run([str(server_path), "service", "stop"], env)
+    if stop.returncode:
+        fail(f"packaged service stop exited {stop.returncode}")
+    wait_for_process_exit(restart_pid)
+    wait_for_service_record_removal(Path(env["JULIE_HOME"]) / "service.json", timeout_seconds=5)
 
 
 def verify_manifest(root: Path, entries: set[str]) -> None:
@@ -180,11 +237,11 @@ def main() -> None:
         if sidecar_version.returncode or sidecar_version.stdout.strip() != f"julie-semantic-sidecar {args.sidecar_version}":
             fail("packaged sidecar identity does not match the pinned release")
         initialize = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "release-qualification", "version": "1"}}}) + "\n"
+        if args.windows:
+            verify_windows_lifecycle(root, server_path, env, initialize)
+            return
         try:
-            result = run([str(server_path)], env, initialize)
-            instructions = initialize_instructions(result.stdout)
-            if result.returncode or not instructions or "workspace" not in instructions.lower():
-                fail("packaged stdio server did not return workspace instructions")
+            initialize_server(server_path, env, initialize, root)
         finally:
             stop = run([str(server_path), "service", "stop"], env)
         if stop.returncode:

@@ -130,49 +130,6 @@ jobs:
           test ! -e "$JULIE_HOME/service.json"
           ! pgrep -f "$SERVER" >/dev/null
 
-      - name: Exercise packaged server (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $root = Join-Path $env:RUNNER_TEMP 'julie-native-qualification-runtime'
-          $profile = Join-Path $root 'fresh-profile'
-          Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force $profile, (Join-Path $root 'archive') | Out-Null
-          Expand-Archive -LiteralPath $env:ARCHIVE -DestinationPath (Join-Path $root 'archive')
-          $server = Join-Path $root 'archive/julie-server.exe'
-          $env:HOME = $profile
-          $env:USERPROFILE = $profile
-          $env:JULIE_HOME = Join-Path $profile '.julie'
-          $env:JULIE_SESSION_HOOKS = '0'
-          & $server --version
-          & $server tools list --json
-          $initialize = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"native-qualification","version":"1"}}}'
-          function Initialize-PackagedServer($cwd) {
-            Push-Location $cwd
-            try {
-              $response = (($initialize | & $server) -join "`n") | ConvertFrom-Json
-              if ($LASTEXITCODE -ne 0) { throw "packaged initialize failed: $LASTEXITCODE" }
-              if ([string]::IsNullOrWhiteSpace($response.result.instructions) -or !$response.result.instructions.ToLowerInvariant().Contains('workspace')) { throw 'initialize response lacks workspace-routing instructions' }
-              return (Get-Content -Raw (Join-Path $env:JULIE_HOME 'service.json') | ConvertFrom-Json).pid
-            }
-            finally { Pop-Location }
-          }
-          $first = Join-Path $root 'first'
-          $second = Join-Path $root 'second'
-          New-Item -ItemType Directory -Force $first, $second | Out-Null
-          $service_pid = Initialize-PackagedServer $first
-          $second_pid = Initialize-PackagedServer $second
-          if ($service_pid -ne $second_pid) { throw 'second initialize did not reuse the service PID' }
-          $old_pid = $service_pid
-          & $server service status
-          & $server service restart
-          $restart_pid = (Get-Content -Raw (Join-Path $env:JULIE_HOME 'service.json') | ConvertFrom-Json).pid
-          if ($old_pid -eq $restart_pid) { throw 'service restart retained the old PID' }
-          if (Get-Process -Id $old_pid -ErrorAction SilentlyContinue) { throw 'old service PID remains after restart' }
-          & $server service stop
-          if (Test-Path -LiteralPath (Join-Path $env:JULIE_HOME 'service.json')) { throw 'service discovery file remains after stop' }
-          if (Get-Process julie-server -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $server }) { throw 'packaged service remains after stop' }
-
       - name: Verify Windows executable lock
         if: matrix.os == 'windows-latest'
         shell: pwsh

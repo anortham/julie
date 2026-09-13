@@ -267,6 +267,7 @@ fn release_workflow_qualifies_archives_and_awaits_the_pinned_plugin_workflow() {
 fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
     let workflow = read_repo_file(".github/workflows/native-qualification.yml");
     let probe = read_repo_file(".github/scripts/test-windows-executable-lock.ps1");
+    let verifier = read_repo_file(".github/scripts/verify-release-archive.py");
     let report = read_repo_file("docs/findings/revival-install-qualification.md");
 
     assert!(workflow.contains("workflow_dispatch:"));
@@ -282,18 +283,19 @@ fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
     assert!(workflow.contains("actions/upload-artifact@v4"));
     assert!(workflow.contains("$ARCHIVE.sha256"));
     assert!(workflow.contains("--sha256 \"$ARCHIVE.sha256\""));
-    assert!(workflow.contains("service restart"));
-    assert!(workflow.contains("service stop"));
-    assert!(workflow.contains("method\":\"initialize"));
-    assert!(workflow.contains("instructions"));
-    assert!(workflow.contains("json.loads(result.stdout)"));
-    assert!(workflow.contains("          import json"));
-    assert!(workflow.contains("initialize response lacks workspace-routing instructions"));
-    assert!(workflow.contains("service_pid"));
-    assert!(workflow.contains("restart_pid"));
-    assert!(workflow.contains("old_pid"));
-    assert!(workflow.contains("second initialize did not reuse the service PID"));
-    assert!(workflow.contains("service restart retained the old PID"));
+    assert!(workflow.contains("--windows"));
+    assert!(!workflow.contains("Exercise packaged server (Windows)"));
+    assert!(verifier.contains("def verify_windows_lifecycle"));
+    assert!(verifier.contains("service restart"));
+    assert!(verifier.contains("service stop"));
+    assert!(verifier.contains("second initialize did not reuse the service PID"));
+    assert!(verifier.contains("service restart retained the old PID"));
+    assert!(verifier.contains("wait_for_process_exit"));
+    assert_eq!(
+        verifier.matches("wait_for_process_exit(").count(),
+        3,
+        "the Windows lifecycle must wait for both the old and restarted service PIDs"
+    );
     assert!(!workflow.contains("gh release create"));
     assert!(!workflow.contains("gh release upload"));
     assert!(probe.contains("try {"));
