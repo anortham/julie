@@ -50,7 +50,14 @@ def required_search_succeeded(response: object, symbol: str) -> bool:
     if not isinstance(response, dict) or response.get("ok") is not True:
         return False
     readiness = response.get("readiness")
-    if not isinstance(readiness, dict):
+    reply = response.get("reply")
+    if not isinstance(readiness, dict) or not isinstance(reply, dict):
+        return False
+    structured = reply.get("structuredContent")
+    if not isinstance(structured, dict) or structured.get("backend") != "semantic":
+        return False
+    trace = structured.get("trace")
+    if not isinstance(trace, dict) or trace.get("backend_fallback") is not False:
         return False
     rendered = json.dumps(response).lower()
     return (readiness.get("mode") == "required" and readiness.get("status") == "ready"
@@ -59,6 +66,11 @@ def required_search_succeeded(response: object, symbol: str) -> bool:
 
 def search_params(workspace: Path) -> dict[str, str]:
     return {"query": "semantic_probe", "backend": "semantic", "semantics": "required", "workspace": str(workspace)}
+
+
+def search_command(server: Path, workspace: Path) -> list[str]:
+    return [str(server), "--semantics", "required", "tool", "fast_search", "--workspace", str(workspace),
+            "--params", json.dumps(search_params(workspace)), "--json"]
 
 
 def extract(archive: Path, root: Path) -> None:
@@ -137,10 +149,7 @@ def qualify(archive: Path) -> None:
             last_result: subprocess.CompletedProcess[str] | None = None
             last_response: object | None = None
             while time.monotonic() < deadline:
-                result = run([
-                    str(server), "tool", "fast_search", "--workspace", str(workspace),
-                    "--params", json.dumps(search_params(workspace)), "--json",
-                ], offline, workspace, timeout=45)
+                result = run(search_command(server, workspace), offline, workspace, timeout=45)
                 last_result = result
                 last_response = json_output(result.stdout)
                 if not result.returncode and last_response and required_search_succeeded(last_response, "semantic_probe"):
@@ -165,11 +174,18 @@ def self_test() -> None:
         result = run([sys.executable, str(fake)], os.environ.copy())
         if result.returncode or done_record(result.stdout)["sha256"] != MODEL_SHA256:
             fail("fake prepare response was not accepted")
-    response = {"ok": True, "readiness": {"mode": "required", "status": "ready", "coverage": "full"}, "hits": [{"name": "semantic_probe"}]}
+    response = {
+        "ok": True,
+        "readiness": {"mode": "required", "status": "ready", "coverage": "full"},
+        "reply": {"structuredContent": {"backend": "semantic", "trace": {"backend_fallback": False}, "hits": [{"name": "semantic_probe"}]}},
+    }
     if not required_search_succeeded(response, "semantic_probe") or required_search_succeeded(response, "other_symbol"):
         fail("semantic response contract check failed")
     if search_params(Path("workspace")).get("semantics") != "required":
         fail("required semantic search params must set semantics=required")
+    command = search_command(Path("julie-server"), Path("workspace"))
+    if command[:4] != ["julie-server", "--semantics", "required", "tool"]:
+        fail("required semantic search command must set top-level semantics before tool")
 
 
 def main() -> None:
