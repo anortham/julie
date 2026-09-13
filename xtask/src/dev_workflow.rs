@@ -3,14 +3,13 @@
 //! These are for the Julie maintainer's local dev loop. Regular users install
 //! the plugin and never run these. They assume:
 //!
-//! - You build the dev binary at `target/release/julie-server`.
+//! - You build the paired dev binaries at `target/release/julie-server` and
+//!   `target/release/julie-semantic-sidecar`.
 //! - You want every installed Julie plugin variant on this machine to point at
 //!   those binaries so a single `cargo build --release --bins` rebuilds for
 //!   every harness.
-//! - You want `dev-restart` to tell you how to load a freshly built binary.
-//!   Post Phase 3c.3 there is no shared daemon: each MCP session runs its own
-//!   in-process `julie-server`, so loading a new binary means restarting the
-//!   MCP client / starting a new session (the command is advisory only).
+//! - You want `dev-restart` to restart the shared service after a rebuild and
+//!   then restart old harness clients.
 //!
 //! Discovery is conservative: only the Claude Code plugin cache contains
 //! bundled binaries that benefit from symlinks. Codex CLI and OpenCode register
@@ -141,14 +140,7 @@ pub fn run_dev_link(
     Ok(report)
 }
 
-/// Advisory `dev-restart` (post Phase 3c.3 in-process cutover).
-///
-/// There is no longer a shared daemon process to soft-restart or SIGTERM. Each
-/// MCP client spawns its own in-process `julie-server`, leader-locked per
-/// workspace. To load a freshly built binary, the maintainer restarts the MCP
-/// client (or starts a new session); the first new session re-acquires the
-/// per-workspace leader lock and becomes the writer. This command performs no
-/// process control — it only prints that guidance.
+/// Prints the explicit shared-service restart and old-client recovery procedure.
 pub fn run_dev_restart(out: &mut impl Write) -> Result<()> {
     writeln!(
         out,
@@ -185,8 +177,8 @@ fn split_binary_names() -> &'static [&'static str] {
     }
 }
 
-/// Walk `<cache_root>/<version>/bin/<arch>` and collect installed plugin binary
-/// directories that need to mirror the local split binaries.
+/// Walk `<cache_root>/<version>/bin/<arch>` and collect installed plugin
+/// directories that need to mirror the paired local binaries.
 fn discover_plugin_bin_dirs(cache_root: &Path, report: &mut DevLinkReport) -> Result<Vec<PathBuf>> {
     let mut results = Vec::new();
 
@@ -356,7 +348,11 @@ mod tests {
         let mut out = Vec::new();
         let report = run_dev_link(&workspace, false, &cache, &mut out).expect("dev-link succeeds");
 
-        assert_eq!(report.linked.len(), 1, "the server binary is linked");
+        assert_eq!(
+            report.linked.len(),
+            split_binary_names().len(),
+            "both paired binaries are linked"
+        );
         assert_eq!(report.already_linked.len(), 0);
         assert_eq!(report.skipped.len(), 0);
 
@@ -434,8 +430,8 @@ mod tests {
 
         assert_eq!(
             report.linked.len(),
-            1,
-            "only the architecture dir is linked"
+            split_binary_names().len(),
+            "only the architecture directory receives paired links"
         );
         for binary in split_binary_names() {
             assert!(
@@ -451,32 +447,38 @@ mod tests {
         let workspace = tmp.path().join("workspace");
         let cache = tmp.path().join("cache").join("julie-plugin").join("julie");
 
-        // Workspace with a release binary stand-in
         let target = make_fake_release_bins(&workspace).unwrap();
-        let target_bin = target.join(binary_name());
 
         let cache_bin = make_fake_cache(&cache, "7.8.1", "aarch64-apple-darwin").unwrap();
+        let cache_bin_dir = cache_bin.parent().unwrap();
 
         let mut out = Vec::new();
         let report = run_dev_link(&workspace, false, &cache, &mut out).expect("dev-link succeeds");
 
-        assert_eq!(report.linked.len(), 1, "the server binary is linked");
-        let server_action = report
-            .linked
-            .iter()
-            .find(|action| action.path == cache_bin)
-            .expect("server binary link reported");
-        assert_eq!(server_action.previous_kind, PreviousKind::RealBinary);
+        assert_eq!(
+            report.linked.len(),
+            split_binary_names().len(),
+            "both paired binaries are linked"
+        );
         assert_eq!(report.already_linked.len(), 0);
         assert_eq!(report.skipped.len(), 0);
 
-        let meta = fs::symlink_metadata(&cache_bin).unwrap();
-        assert!(
-            meta.file_type().is_symlink(),
-            "cache entry is now a symlink"
-        );
-        let link_target = fs::read_link(&cache_bin).unwrap();
-        assert_eq!(link_target, target_bin, "symlink points at dev binary");
+        for binary in split_binary_names() {
+            let cache_path = cache_bin_dir.join(binary);
+            let action = report
+                .linked
+                .iter()
+                .find(|action| action.path == cache_path)
+                .expect("paired binary link reported");
+            assert_eq!(action.previous_kind, PreviousKind::RealBinary);
+            assert!(
+                fs::symlink_metadata(&cache_path)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink()
+            );
+            assert_eq!(fs::read_link(&cache_path).unwrap(), target.join(binary));
+        }
     }
 
     #[test]
@@ -497,8 +499,8 @@ mod tests {
         assert_eq!(report.linked.len(), 0, "second run links nothing");
         assert_eq!(
             report.already_linked.len(),
-            1,
-            "second run sees the existing symlink"
+            split_binary_names().len(),
+            "second run sees the existing paired symlinks"
         );
     }
 
@@ -514,14 +516,13 @@ mod tests {
         let report = run_dev_link(&workspace, true, &cache, &mut out)
             .expect("dry-run succeeds even without release binary");
 
-        assert_eq!(report.linked.len(), 1);
+        assert_eq!(report.linked.len(), split_binary_names().len());
         assert!(report.dry_run);
 
-        let meta = fs::symlink_metadata(&cache_bin).unwrap();
-        assert!(
-            meta.file_type().is_file() && !meta.file_type().is_symlink(),
-            "cache binary still a real file after dry-run"
-        );
+        for binary in split_binary_names() {
+            let meta = fs::symlink_metadata(cache_bin.parent().unwrap().join(binary)).unwrap();
+            assert!(meta.file_type().is_file() && !meta.file_type().is_symlink());
+        }
     }
 
     #[test]
