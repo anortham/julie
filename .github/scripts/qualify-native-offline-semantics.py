@@ -10,6 +10,8 @@ import sys
 import tarfile
 import tempfile
 import time
+import urllib.error
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -37,23 +39,14 @@ def done_record(output: str) -> dict[str, object]:
     fail("prepare did not emit a done record for the pinned model")
 
 
-def json_output(output: str) -> object | None:
-    for line in reversed(output.splitlines()):
-        try:
-            return json.loads(line)
-        except json.JSONDecodeError:
-            continue
-    return None
-
-
 def required_search_succeeded(response: object, symbol: str) -> bool:
-    if not isinstance(response, dict) or response.get("ok") is not True:
+    if not isinstance(response, dict):
         return False
     readiness = response.get("readiness")
-    reply = response.get("reply")
-    if not isinstance(readiness, dict) or not isinstance(reply, dict):
+    result = response.get("result")
+    if not isinstance(readiness, dict) or not isinstance(result, dict):
         return False
-    structured = reply.get("structuredContent")
+    structured = result.get("structuredContent")
     if not isinstance(structured, dict) or structured.get("backend") != "semantic":
         return False
     trace = structured.get("trace")
@@ -68,9 +61,48 @@ def search_params(workspace: Path) -> dict[str, str]:
     return {"query": "semantic_probe", "backend": "semantic", "semantics": "required", "workspace": str(workspace)}
 
 
-def search_command(server: Path, workspace: Path) -> list[str]:
-    return [str(server), "--semantics", "required", "tool", "fast_search", "--workspace", str(workspace),
-            "--params", json.dumps(search_params(workspace)), "--json"]
+def service_command(server: Path) -> list[str]:
+    return [str(server), "service"]
+
+
+def api_request(record: dict[str, object], params: dict[str, str]) -> urllib.request.Request:
+    return urllib.request.Request(
+        f"http://127.0.0.1:{record['port']}/api/fast_search",
+        data=json.dumps(params).encode(),
+        headers={"Authorization": f"Bearer {record['token']}", "Content-Type": "application/json"},
+    )
+
+
+def start_service(server: Path, env: dict[str, str], root: Path) -> tuple[subprocess.Popen[bytes], object, dict[str, object]]:
+    log = (root / "service.log").open("wb")
+    process = subprocess.Popen(service_command(server), env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+    record_path = Path(env["JULIE_HOME"]) / "service.json"
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            log.close()
+            fail(f"packaged service exited {process.returncode} before discovery")
+        try:
+            record = json.loads(record_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            time.sleep(0.1)
+            continue
+        if isinstance(record, dict) and isinstance(record.get("port"), int) and isinstance(record.get("token"), str):
+            return process, log, record
+        time.sleep(0.1)
+    process.terminate()
+    process.wait(timeout=10)
+    log.close()
+    fail("packaged service did not write a valid discovery record")
+
+
+def api_search(record: dict[str, object], params: dict[str, str]) -> tuple[int, object]:
+    request = api_request(record, params)
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read())
 
 
 def extract(archive: Path, root: Path) -> None:
@@ -144,25 +176,37 @@ def qualify(archive: Path) -> None:
         prepare(sidecar, env, cache)
         workspace = scratch_workspace(root)
         offline = offline_https_env(env)
+        process = None
+        log = None
         try:
+            process, log, record = start_service(server, offline, root)
             deadline = time.monotonic() + 120
-            last_result: subprocess.CompletedProcess[str] | None = None
+            last_status: int | None = None
             last_response: object | None = None
+            last_error: str | None = None
             while time.monotonic() < deadline:
-                result = run(search_command(server, workspace), offline, workspace, timeout=45)
-                last_result = result
-                last_response = json_output(result.stdout)
-                if not result.returncode and last_response and required_search_succeeded(last_response, "semantic_probe"):
+                try:
+                    last_status, last_response = api_search(record, search_params(workspace))
+                except (OSError, json.JSONDecodeError, urllib.error.URLError) as error:
+                    last_error = str(error)
+                if last_status == 200 and last_response and required_search_succeeded(last_response, "semantic_probe"):
                     return
                 time.sleep(1)
-            if last_result is None:
-                fail("required semantic search did not run")
+            if last_status is None:
+                fail(f"required semantic search did not run; last_error={last_error!r}")
             fail("required semantic search never reached ready/full coverage with semantic_probe hit; "
-                 f"last_exit={last_result.returncode}; last_stdout={last_result.stdout[-4000:]!r}; "
-                 f"last_stderr={last_result.stderr[-4000:]!r}; last_readiness="
-                 f"{last_response.get('readiness') if isinstance(last_response, dict) else None!r}")
+                 f"last_http_status={last_status}; last_error={last_error!r}; last_response={last_response!r}; "
+                 f"last_readiness={last_response.get('readiness') if isinstance(last_response, dict) else None!r}")
         finally:
             stopped = run([str(server), "service", "stop"], offline, timeout=30)
+            if process and process.poll() is None:
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    process.wait(timeout=10)
+            if log:
+                log.close()
             if stopped.returncode:
                 fail(f"owned packaged service stop exited {stopped.returncode}: {stopped.stderr.strip()}")
 
@@ -175,17 +219,17 @@ def self_test() -> None:
         if result.returncode or done_record(result.stdout)["sha256"] != MODEL_SHA256:
             fail("fake prepare response was not accepted")
     response = {
-        "ok": True,
         "readiness": {"mode": "required", "status": "ready", "coverage": "full"},
-        "reply": {"structuredContent": {"backend": "semantic", "trace": {"backend_fallback": False}, "hits": [{"name": "semantic_probe"}]}},
+        "result": {"structuredContent": {"backend": "semantic", "trace": {"backend_fallback": False}, "hits": [{"name": "semantic_probe"}]}},
     }
     if not required_search_succeeded(response, "semantic_probe") or required_search_succeeded(response, "other_symbol"):
         fail("semantic response contract check failed")
     if search_params(Path("workspace")).get("semantics") != "required":
         fail("required semantic search params must set semantics=required")
-    command = search_command(Path("julie-server"), Path("workspace"))
-    if command[:4] != ["julie-server", "--semantics", "required", "tool"]:
-        fail("required semantic search command must set top-level semantics before tool")
+    record = {"port": 8123, "token": "test-token"}
+    request = api_request(record, search_params(Path("workspace")))
+    if service_command(Path("julie-server")) != ["julie-server", "service"] or request.full_url != "http://127.0.0.1:8123/api/fast_search" or request.get_header("Authorization") != "Bearer test-token":
+        fail("required semantic search must use the owned service JSON API with bearer auth")
 
 
 def main() -> None:
