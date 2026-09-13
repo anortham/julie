@@ -3,7 +3,7 @@ id: machine-service-one-rust-service-per-machine-repla
 title: Julie revival Plans 4 and 5
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-13T16:33:24.282Z
+updated: 2026-09-13T20:21:09.736Z
 tags:
   - revival
   - plan-4
@@ -16,30 +16,28 @@ tags:
 
 ## Goal
 
-Complete Plan 4 external qualification, then run Plan 5C and produce the Plan 5D decision ledger.
+Finish Plan 4 local release-candidate qualification, then run Plan 5C and produce the Plan 5D decision ledger.
 
 ## Completed
 
-Plans 1-3 are merged on local `main`. Historical Plan 4 Linux archive source `055645e02ebf261355c7db6659a9fe1b5159a791` passed `cargo xtask test full` 5/5 in 43.9 seconds. Its archive SHA-256 is `9d9095713c3572407722ad105ada7a85fd193619751271d10eb8f23a0fe89bba`; Codex, OpenCode, and Antigravity/AGY real-client workflows pass with isolated removal checks.
+Plans 1-3 are merged on local `main`. The current Plan 4 lineage passed `cargo xtask test full` 5/5 in 27.7 seconds at exact SHA `1ff96903eed69d136e7a89a6dc44f2223fbc7be3`; later commits change qualification scripts, workflow contracts, and evidence. Another broad run requires an owner decision.
 
-The current Plan 4 source lineage passed `cargo xtask test full` 5/5 in 27.7 seconds at exact SHA `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` after one in-scope docs-contract correction and its single allowed retry. Later commits change qualification scripts, workflow contracts, and evidence only; a third broad run requires an owner decision.
+Linux package, fresh-profile service, cached/offline semantics, and Codex/OpenCode/AGY client workflows pass. Local Windows build, package verification, cached/offline semantics, NTFS executable-lock, and service lifecycle pass for archive SHA-256 `5510d7c1cdff9418260def83a4b071196bdaa2ed7a029cc3e89d02f7bf3f4bfe`. Windows full remains reserved for final post-merge validation.
 
-Local Windows qualification now passes on the disposable `win-test` VM. Commit `163804df` keeps the packaged service alive while offline semantics finish; `a9f9c66c` waits for service discovery removal; `67a37cb3` moves Windows lifecycle verification into the shared archive verifier. The Windows archive `julie-v8.0.0-x86_64-pc-windows-msvc.zip` has SHA-256 `5510d7c1cdff9418260def83a4b071196bdaa2ed7a029cc3e89d02f7bf3f4bfe`. Build, archive verification/lifecycle, cached/offline native semantics, and NTFS executable-lock qualification all pass locally. No GitHub Actions run was requested after the owner directed local VM qualification.
+Plan 5A and 5B are complete on `fix/revival-qualification`.
 
-Plan 5A and 5B remain complete on `fix/revival-qualification`; the corrected runner was full-gated at `2297f57015e699b05811803d8c71b5736ffc66b4`.
+## Remaining local release-candidate blockers
 
-## Remaining qualification
+- macOS arm64 and Intel package qualification. A real Mac, Tailscale peer `Rocinante` at `100.89.204.7`, is online. SSH requires owner verification of its ED25519 host-key fingerprint `SHA256:X6EuBvc7l+6sWC21dKAXBxe4gRd2qPBnQRtm1xmIj30`; do not bypass host checking.
+- Claude Code needs refreshed disposable OAuth, Hermes needs interactive OAuth in a disposable profile, and Cursor needs a disposable API key. New real-agent runs also require explicit external-model spend authority.
+- No compatible prior versioned-v8 archive exists. The owner must authorize creation/preservation of a real v8 prerelease artifact, permit a v7-to-v8 migration qualification, or waive/change that row.
 
-- macOS arm64 and Intel native package qualification remain open because no local Mac runner is available and hosted reruns are no longer the chosen path.
-- Final Claude Code evidence needs refreshed disposable OAuth; Cursor needs a disposable API key; Hermes needs interactive OAuth. Do not copy rotating live OAuth credentials again.
-- No genuine prior compatible versioned v8 archive exists. The owner must provide one or explicitly waive that initial-v8 upgrade row.
-- Publication-only public snapshot and reusable-workflow checks remain pending separate publication authority.
-- Windows full is intentionally reserved for final post-merge validation.
+Publication-only public assets, awaited reusable-workflow evidence, and public plugin snapshot checks do not block the local release candidate. They remain pending separate push/tag/release/publication authority.
 
-## Authority
+## Constraints
 
-Do not trigger more GitHub Actions, push, tag, release, publish, force-push, install into live profiles, spend on external models, or modify real user repositories.
+Do not trigger GitHub Actions, push, tag, release, publish, force-push, install into live profiles, copy rotating live OAuth state, spend on external models, or modify real user repositories without explicit authorization.
 
 ## Plan 5 gate
 
-Plan 5C remains blocked until Plans 1-4 have an integrated native-qualified release candidate and the remaining macOS, client-authorization, and upgrade gates are disposed. Do not fabricate 5C or 5D results.
+Plan 5C remains blocked until the macOS, client-authorization, and upgrade rows are disposed. Do not fabricate 5C or 5D results.
