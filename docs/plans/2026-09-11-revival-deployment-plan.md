@@ -1,6 +1,6 @@
 # Plan 4: Installable releases and reliable agent guidance
 
-**Status:** Proposed. No implementation or publication has started.
+**Status:** Local implementation, Linux qualification, and final repository gates are complete at `35a909eb`; external qualification remains pending for compatible upgrade, macOS/Windows, real-agent clients, CI dispatch, and publication. No publication has started or is authorized.
 **Goal:** A normal user can install, get correct tool instructions, use lexical and semantic features, and upgrade with a predictable recovery path.
 **Depends on:** Guidance/launcher tasks can start before Plans 1–3; native qualification uses their integrated release candidate.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). This plan spans Julie and `~/source/julie-plugin`; inspect and preserve both worktrees. Publication is a separate final approval boundary.
@@ -123,11 +123,11 @@ Official [Codex MCP guidance](https://learn.chatgpt.com/docs/extend/mcp?surface=
 
 **Acceptance:**
 
-- [ ] All advertised native archives have fresh install and upgrade evidence, including the real Windows lock case.
-- [ ] Every advertised client route has recorded instruction delivery and an actual successful agent workflow.
-- [ ] A second session shares the service/index without selecting a workspace from plugin launch cwd.
-- [ ] Configuration removal/uninstall leaves the client usable and documents shared-service/cache ownership.
-- [ ] A local release-candidate report lists exact SHA, versions, archive checksums, commands and unresolved gates.
+- [ ] All advertised native archives have fresh install and upgrade evidence, including the real Windows lock case. External qualification pending.
+- [ ] Every advertised client route has recorded instruction delivery and an actual successful agent workflow. External qualification pending.
+- [x] Linux fresh-profile second session shares the service without selecting a workspace from plugin launch cwd.
+- [ ] Configuration removal/uninstall leaves the client usable and documents shared-service/cache ownership. External qualification pending.
+- [x] A local release-candidate report lists exact SHA, versions, archive checksums, commands and unresolved gates.
 
 ## Publication order and authority
 
@@ -164,6 +164,7 @@ Owner-approved publication order is: publish the reviewed v8 plugin launcher/wor
 | Linux x64 fresh-profile shim, restart, and cached sidecar | Packaged initialize twice from distinct cwd; `service restart`; blocked-proxy cached-model prepare, daemon index, health poll, and required semantic search | live | `c487f43a` | PASS: shim reuse/restart/cleanup and full required semantic coverage | 2026-09-13T01:25Z | One-symbol scratch workspace reached one vector and a semantic hit. Block only HTTPS for this probe: HTTP/ALL proxying intercepts the shim's localhost service client. All scratch paths were deleted. |
 | Linux x64 plugin fresh install | Disposable copy of plugin `7d3996a7` with only the current a907-wrapped c487 archive; `node hooks/run.cjs` initialize plus `manage_workspace status` | live | binary `c487f43a`; wrapper `a90720f0`; plugin `7d3996a7` | PASS: versioned extraction, initialization, management call, and packaged cleanup | 2026-09-13T01:35Z | No maintainer symlinks, cache, or profile were used. Real v7.18.0 archive SHA `0c7b3688...` has prior embedding-host layout; no compatible prior versioned v8 archive exists for upgrade proof. |
 | Pre-qualification Plan 4 branch gate | `cargo xtask test full` | full | `c487f43a` | PASS: 5/5 phases; 2,303 workspace, 13 ignored CLI, fixture prepared, 69 dogfood | 2026-09-13T01:16Z | Subsequent verifier and manifest changes require a final frozen-tree gate. |
+| Final frozen-tree Plan 4 repository gates | `cargo fmt --check`; `cargo clippy --workspace --all-targets`; `cargo xtask test full` | full | `35a909eb` | PASS: formatting, clippy, and full 5/5; 2,303 workspace, 13 ignored CLI, fixture ready, 69 dogfood | 2026-09-13T01:42Z | Final local repository gate. Plan 4E native/client acceptance rows remain independently pending. |
 | Full Plan 4 branch gate | `cargo xtask test full` | full | `cbf0c743` | FAIL after 1,126 passes: `test_manage_workspace_health_cold_start_returns_index_first_guidance` and `test_manage_workspace_health_reports_initialized_when_not_degraded` omit Plan 4A-required workspace routing | 2026-09-12T23:56Z | Current-diff Plan 4A scope. This was the single permitted broad-gate retry; a third full run requires explicit owner decision. |
 | Owner-authorized third Plan 4 branch gate | `cargo xtask test full` | full | `bd598299` | FAIL after 1,128 passes: `test_manage_workspace_health_reports_not_initialized_when_runtime_status_missing` and `test_manage_workspace_health_reports_unavailable_when_provider_missing` omit Plan 4A-required workspace routing | 2026-09-13T00:00Z | Current-diff Plan 4A scope. Read-only inventory found four further unbound health callers: part2 `test_manage_workspace_health_surfaces_embedding_runtime_status`, part2 `test_manage_workspace_health_reports_control_data_and_runtime_planes`, part3 `test_manage_workspace_health_uses_rebound_session_primary`, and `semantic_request_contract::adversarial_request_engine_dispatch_integration`. A fourth full run requires explicit owner approval. |
 | Owner-authorized fourth Plan 4 branch gate | `cargo xtask test full` | full | `891e43b6` | FAIL after 2,259 passes: `dev_link_dry_run_does_not_modify_filesystem`, `dev_link_creates_split_binary_symlinks_for_existing_cache_dir`, `dev_link_ignores_archives_directory`, `dev_link_is_idempotent`, and `dev_link_replaces_real_binary_with_symlink` retain server-only expected counts after paired server/sidecar linking | 2026-09-13T00:00Z | Read-only diagnosis verified production `run_dev_link` already loops over both binaries. Complete follow-up is limited to the five stale test assertions/loops; a fifth full run requires explicit owner approval. |

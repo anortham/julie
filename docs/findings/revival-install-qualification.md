@@ -1,11 +1,12 @@
 # Revival install qualification
 
-**Status:** Linux x64 local package evidence is incomplete; all native acceptance rows and all client rows remain pending.
+**Status:** Local Linux package, fresh install, semantics, and repository gates pass; compatible upgrade, macOS/Windows, and real-agent client evidence remain pending.
 
 ## Candidate record
 
 | Field | Value |
 |---|---|
+| Final validated branch SHA | `35a909eb53268912df9047ca347f1bcee0917868` |
 | Archive binary source SHA | `c487f43ace9e971a3cabfb9be604b85efe85000b` (locally committed candidate) |
 | Package wrapper and verifier source SHA | `a90720f010283270123c9679729fbf8f4fd5004f` |
 | Package version | `8.0.0` |
@@ -77,8 +78,8 @@ For an installed archive, run the server with a newly created `JULIE_HOME` and n
 
 ## Open gates
 
-- Linux plugin fresh install now passes, but no real compatible prior versioned v8 archive is available for upgrade qualification. The available v7.18.0 package has the prior embedding-host layout.
-- macOS arm64, macOS Intel, and Windows x64 native rows remain unrun, including the real Windows executable-lock result.
-- No real client installation or agent workflow has been run; every client row remains incomplete.
-- Plugin public snapshot and final archive checksums cannot be recorded until the release candidate artifacts exist.
-- The nonpublishing workflow dispatch requires the workflow to be available on the default branch and consumes GitHub Actions runner capacity. Do not dispatch it without explicit push/spend authorization.
+- **PENDING — Linux compatible upgrade:** no real compatible prior versioned v8 archive is available; the available v7.18.0 package has the prior embedding-host layout.
+- **PENDING — macOS arm64, macOS Intel, and Windows x64:** native archive qualification remains unrun, including the real Windows executable-lock result.
+- **PENDING — real-agent client routes:** Claude Code, Codex, Antigravity, OpenCode, Hermes, and Cursor have no recorded real-agent workflow or client adoption evidence.
+- **PENDING — nonpublishing runner dispatch:** the `windows-latest` workflow requires the workflow on the default branch and explicit authorization to consume GitHub Actions runner capacity.
+- **PENDING — plugin public snapshot and publication:** public release assets, downstream plugin publication, and its checked-out public snapshot cannot be verified before authorized publication.
