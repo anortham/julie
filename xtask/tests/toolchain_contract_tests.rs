@@ -238,11 +238,21 @@ fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
     let report = read_repo_file("docs/findings/revival-install-qualification.md");
 
     assert!(workflow.contains("workflow_dispatch:"));
-    assert!(workflow.contains("runs-on: windows-latest"));
+    assert!(workflow.contains("push:"));
+    assert!(workflow.contains("'qualification/**'"));
+    assert!(workflow.contains("aarch64-apple-darwin"));
+    assert!(workflow.contains("x86_64-apple-darwin"));
+    assert!(workflow.contains("x86_64-pc-windows-msvc"));
+    assert!(workflow.contains("macos-latest"));
+    assert!(workflow.contains("macos-15-intel"));
+    assert!(workflow.contains("os: windows-latest"));
     assert!(workflow.contains("test-windows-executable-lock.ps1"));
     assert!(workflow.contains("actions/upload-artifact@v4"));
     assert!(workflow.contains("$ARCHIVE.sha256"));
-    assert!(workflow.contains("--sha256 \"${env:ARCHIVE}.sha256\""));
+    assert!(workflow.contains("--sha256 \"$ARCHIVE.sha256\""));
+    assert!(workflow.contains("service restart"));
+    assert!(workflow.contains("service stop"));
+    assert!(workflow.contains("method\":\"initialize"));
     assert!(!workflow.contains("gh release create"));
     assert!(!workflow.contains("gh release upload"));
     assert!(probe.contains("try {"));

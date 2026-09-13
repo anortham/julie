@@ -1,6 +1,9 @@
 name: Native qualification
 
 on:
+  push:
+    branches:
+      - 'qualification/**'
   workflow_dispatch:
     inputs:
       ref:
@@ -12,19 +15,36 @@ permissions:
   contents: read
 
 jobs:
-  windows-executable-lock:
-    name: Windows executable-lock qualification
-    runs-on: windows-latest
+  native-archive:
+    name: Native ${{ matrix.target }} qualification
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.97.0
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
+
+      - name: Install lld (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          brew install lld
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
 
       - name: Build candidate archive
         shell: bash
@@ -32,8 +52,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' Cargo.toml)
-          cargo build --release --target x86_64-pc-windows-msvc --bin julie-server
-          ARCHIVE=$(bash .github/scripts/pack-release.sh x86_64-pc-windows-msvc "$VERSION" target/x86_64-pc-windows-msvc/release . | tail -n 1)
+          cargo build --release --target "${{ matrix.target }}" --bin julie-server
+          if [[ "${{ matrix.os }}" == macos-* ]]; then
+            codesign --force --sign - "target/${{ matrix.target }}/release/julie-server"
+          fi
+          ARCHIVE=$(bash .github/scripts/pack-release.sh "${{ matrix.target }}" "$VERSION" "target/${{ matrix.target }}/release" . | tail -n 1)
           if command -v sha256sum >/dev/null; then
             sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
           else
@@ -43,16 +66,77 @@ jobs:
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
           echo "CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Verify archive and executable lock
+      - name: Verify archive
+        shell: bash
+        run: |
+          WINDOWS=()
+          if [ "${{ matrix.os }}" = windows-latest ]; then WINDOWS+=(--windows); fi
+          python3 .github/scripts/verify-release-archive.py "$ARCHIVE" --sha256 "$ARCHIVE.sha256" --version "$VERSION" --sidecar-version 0.1.0 "${WINDOWS[@]}"
+
+      - name: Exercise packaged server (macOS)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          ROOT="$RUNNER_TEMP/julie-native-qualification"
+          PROFILE="$ROOT/fresh-profile"
+          rm -rf "$ROOT"
+          mkdir -p "$PROFILE" "$ROOT/archive"
+          tar -xzf "$ARCHIVE" -C "$ROOT/archive"
+          SERVER="$ROOT/archive/julie-server"
+          export HOME="$PROFILE" JULIE_HOME="$PROFILE/.julie"
+          "$SERVER" --version
+          "$SERVER" tools list --json
+          for cwd in "$ROOT/first" "$ROOT/second"; do
+            mkdir -p "$cwd"
+            SERVER="$SERVER" CWD="$cwd" python3 - <<'PY'
+import os
+import subprocess
+
+request = b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"native-qualification","version":"1"}}}\n'
+result = subprocess.run([os.environ["SERVER"]], cwd=os.environ["CWD"], input=request, timeout=30)
+if result.returncode:
+    raise SystemExit(result.returncode)
+PY
+          done
+          "$SERVER" service status
+          "$SERVER" service restart
+          "$SERVER" service stop
+          test ! -e "$JULIE_HOME/service.json"
+          ! pgrep -f "$SERVER" >/dev/null
+
+      - name: Exercise packaged server (Windows)
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          python .github/scripts/verify-release-archive.py $env:ARCHIVE --sha256 "${env:ARCHIVE}.sha256" --version $env:VERSION --sidecar-version 0.1.0 --windows
-          .github/scripts/test-windows-executable-lock.ps1 -Archive $env:ARCHIVE -CandidateSha $env:CANDIDATE_SHA
+          $root = Join-Path $env:RUNNER_TEMP 'julie-native-qualification-runtime'
+          $profile = Join-Path $root 'fresh-profile'
+          Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $profile, (Join-Path $root 'archive') | Out-Null
+          Expand-Archive -LiteralPath $env:ARCHIVE -DestinationPath (Join-Path $root 'archive')
+          $server = Join-Path $root 'archive/julie-server.exe'
+          $env:HOME = $profile
+          $env:USERPROFILE = $profile
+          $env:JULIE_HOME = Join-Path $profile '.julie'
+          & $server --version
+          & $server tools list --json
+          $initialize = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"native-qualification","version":"1"}}}'
+          $initialize | & $server
+          $initialize | & $server
+          & $server service status
+          & $server service restart
+          & $server service stop
+          if (Test-Path -LiteralPath (Join-Path $env:JULIE_HOME 'service.json')) { throw 'service discovery file remains after stop' }
+          if (Get-Process julie-server -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $server }) { throw 'packaged service remains after stop' }
+
+      - name: Verify Windows executable lock
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: .github/scripts/test-windows-executable-lock.ps1 -Archive $env:ARCHIVE -CandidateSha $env:CANDIDATE_SHA
 
       - name: Upload qualification archive and log
         uses: actions/upload-artifact@v4
         with:
-          name: native-qualification-windows-${{ github.run_id }}
+          name: native-qualification-${{ matrix.target }}-${{ github.run_id }}
           path: |
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
