@@ -1,6 +1,6 @@
 use crate::tests::helpers::mcp::call_tool_result_text as extract_text_from_result;
-use crate::tests::helpers::snapshot::snapshot_context;
-use crate::tools::search::FastSearchTool;
+use crate::tests::helpers::snapshot::{snapshot_context, snapshot_context_from_files};
+use crate::tools::search::{FastSearchTool, SearchBackend};
 use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
@@ -209,6 +209,31 @@ User { name: "test" }
             || response_text.contains("Found")
             || response_text.contains("symbol"),
         "Should show basic search result info"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn fast_search_does_not_continue_after_collapsing_file_hits() -> Result<()> {
+    let (_tree, handler) = snapshot_context_from_files(&[(
+        "Cargo.toml",
+        "[package]\nname = \"qualification-fixture\"\nversion = \"0.1.0\"\n",
+    )])?;
+    let search_tool = FastSearchTool {
+        query: "fixture".to_string(),
+        limit: 2,
+        backend: Some(SearchBackend::Lexical),
+        workspace: Some("primary".to_string()),
+        ..Default::default()
+    };
+
+    let result = search_tool.call_tool(&handler).await?;
+    let response_text = extract_text_from_result(&result);
+
+    assert!(
+        !response_text.contains("next: fast_search"),
+        "collapsed results must not advertise an empty page: {response_text}"
     );
 
     Ok(())

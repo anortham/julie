@@ -290,8 +290,8 @@ impl FastSearchTool {
         }
         execution.hits =
             formatting::collapse_covered_file_hits(std::mem::take(&mut execution.hits));
-        let more = execution.hits.len() > offset + page_limit
-            || execution.total_results > offset + page_limit;
+        execution.total_results = execution.hits.len();
+        let more = execution.hits.len() > offset + page_limit;
         if offset > 0 || execution.hits.len() > page_limit {
             execution.hits = execution
                 .hits
