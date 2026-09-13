@@ -25,6 +25,38 @@ fn toolchain_contract_pins_release_build_inputs() {
 
 #[cfg(unix)]
 #[test]
+fn release_workflows_extract_the_package_version_with_portable_awk() {
+    use std::process::Command;
+
+    let manifest = read_repo_file("Cargo.toml");
+    let expected = manifest
+        .lines()
+        .find_map(|line| line.strip_prefix("version = "))
+        .and_then(|line| line.split('"').nth(1))
+        .unwrap();
+    let version = Command::new("awk")
+        .args([
+            "-F",
+            "\"",
+            "/^version = / { print $2; exit }",
+            repo_file("Cargo.toml").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(version.status.success());
+    assert_eq!(String::from_utf8(version.stdout).unwrap().trim(), expected);
+
+    for workflow in [
+        read_repo_file(".github/workflows/release.yml"),
+        read_repo_file(".github/workflows/native-qualification.yml"),
+    ] {
+        assert!(workflow.contains("awk -F '\"' '/^version = / { print $2; exit }' Cargo.toml"));
+        assert!(!workflow.contains("sed -n '0,/^version = /"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn release_packaging_uses_shasum_fallback_and_preserves_manifest_files() {
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::process::Command;

@@ -51,7 +51,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION=$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          VERSION=$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)
           cargo build --release --target "${{ matrix.target }}" --bin julie-server
           if [[ "${{ matrix.os }}" == macos-* ]]; then
             codesign --force --sign - "target/${{ matrix.target }}/release/julie-server"

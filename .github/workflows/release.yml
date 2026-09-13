@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          CARGO_VERSION=$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          CARGO_VERSION=$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)
           [ "$TAG_VERSION" = "$CARGO_VERSION" ] || {
             echo "tag version $TAG_VERSION does not match Cargo.toml $CARGO_VERSION" >&2
             exit 1
