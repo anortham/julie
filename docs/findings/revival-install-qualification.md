@@ -1,6 +1,6 @@
 # Revival install qualification
 
-**Status:** Linux and local Windows package qualification, fresh install, semantics, repository gate, and real-agent evidence for Codex, OpenCode, and AGY pass. Current source candidate `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` passed the frozen-tree full gate (5/5, 27.7s) before later qualification-only scripts/tests. macOS qualification, client authorization, and compatible upgrade remain local release-candidate blockers. Publication checks are separately publication-only pending; Plan 5C remains blocked.
+**Status:** Linux and local Windows package qualification, fresh install, compatible upgrade, semantics, repository gate, and real-agent evidence for Codex, OpenCode, and AGY pass. Current source candidate `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` passed the frozen-tree full gate (5/5, 27.7s) before later qualification-only scripts/tests. macOS qualification and client authorization remain local release-candidate blockers. Publication checks are separately publication-only pending; Plan 5C remains blocked.
 
 ## Candidate record
 
@@ -18,13 +18,14 @@
 | Package version | `8.0.0` |
 | Plugin source revision | `7d3996a7bb6130747c631446caacb800a1c34622` |
 | Linux archive SHA-256 | `9d9095713c3572407722ad105ada7a85fd193619751271d10eb8f23a0fe89bba` |
+| Linux upgrade prior archive SHA-256 | `a65ce05e23c823c1fd48fbb2e4b112347bda86140c71e474504f8ba399235374` (public v7.18.1 Linux x64) |
 | Qualification workflow | `.github/workflows/native-qualification.yml` at the source SHA ultimately selected for the release candidate |
 
 ## Native archive matrix
 
 | Target | Expected archive | SHA-256 | Required command | Status |
 |---|---|---|---|---|
-| Linux x64 | `julie-v8.0.0-x86_64-unknown-linux-gnu.tar.gz` | `9d9095713c3572407722ad105ada7a85fd193619751271d10eb8f23a0fe89bba` | Fresh profile: extract, `julie-server --version`, stdio initialize, second session, `service restart`, offline cached semantic check | PARTIAL: package/verifier/lifecycle/full cached semantics, plugin fresh install, and Codex/OpenCode/AGY real-agent workflows pass; compatible upgrade remains pending |
+| Linux x64 | `julie-v8.0.0-x86_64-unknown-linux-gnu.tar.gz` | `9d9095713c3572407722ad105ada7a85fd193619751271d10eb8f23a0fe89bba` | Fresh profile: extract, `julie-server --version`, stdio initialize, second session, `service restart`, offline cached semantic check, immutable v7.18.1-to-v8 upgrade | PASS locally: package/verifier/lifecycle/full cached semantics, plugin fresh install, compatible upgrade, and Codex/OpenCode/AGY real-agent workflows pass |
 | macOS arm64 | `julie-v8.0.0-aarch64-apple-darwin.tar.gz` | Not retained: upload skipped after later failure | Fresh profile: extract, `julie-server --version`, stdio initialize, second session, `service restart`, offline cached semantic check | BLOCKED: host key verified, but strict plain SSH and exact Tailscale ProxyCommand authentication both return `Permission denied`; no SSH identity/access is available. Historical [run 34760490971](https://github.com/anortham/julie/actions/runs/34760490971) built and archive-verified before the then-auto semantic probe fell back lexical. |
 | macOS Intel | `julie-v8.0.0-x86_64-apple-darwin.tar.gz` | Not retained: upload skipped after later failure | Fresh profile: extract, `julie-server --version`, stdio initialize, second session, `service restart`, offline cached semantic check | BLOCKED: host key verified, but strict plain SSH and exact Tailscale ProxyCommand authentication both return `Permission denied`; no SSH identity/access is available. Historical [run 34760490971](https://github.com/anortham/julie/actions/runs/34760490971) built and archive-verified before the then-auto semantic probe fell back lexical. |
 | Windows x64 | `julie-v8.0.0-x86_64-pc-windows-msvc.zip` | `5510d7c1cdff9418260def83a4b071196bdaa2ed7a029cc3e89d02f7bf3f4bfe` | Local win-test: release build, archive identity/manifest/instructions verification, persistent-service cached offline semantics, NTFS lock, lifecycle verifier, and real v7.18.1 upgrade | PASS locally: guest source `012e6460083b312dc2c5efcc82cc00a2b68bdd58`; public v7 ZIP SHA-256 `8bb85e37efec0813a1b959e46725dcf957dbb20ff0f3e774d53ef9bbc217350e`. v7 stayed open and byte-identical while v8 installed immutably under `versions/julie-v8.0.0-x86_64-pc-windows-msvc`; v8 started one service. v7 has no `service` subcommand. Removal left Node usable, no Julie/embedding-host process, and no scratch tree. |
@@ -56,7 +57,9 @@ A clean copy of plugin source `7d3996a7bb6130747c631446caacb800a1c34622` receive
 
 The a907 wrapper provides the launcher-required top-level `schema_version: 2` and `rust_target`. The isolated service record named v8 PID `3179484`; packaged `service stop` returned `0`, removed that record, and stopped the PID. The copied plugin and profile were then deleted. This is a real fresh install and launcher result, not client adoption evidence.
 
-A real prior Linux archive is available in the plugin source: `julie-v7.18.0-x86_64-unknown-linux-gnu.tar.gz`, SHA-256 `0c7b3688372fb3519583aa474591b9e15c1614386504159db376482cbf1fcc3f`. Its archive root contains `julie-server` and `julie-embedding-host`, the prior runtime layout. No prior versioned v8 archive is available. The v7 package is not compatible with the v8 sidecar/package-manifest contract, so it was not used to fabricate an upgrade result.
+## Linux x64 real v7.18.1-to-v8 upgrade — 2026-09-13
+
+The public Linux x64 v7.18.1 archive, SHA-256 `a65ce05e23c823c1fd48fbb2e4b112347bda86140c71e474504f8ba399235374`, was installed and kept running as PID `3068287`. Its bytes remained unchanged while the retained v8 archive, SHA-256 `9d9095713c3572407722ad105ada7a85fd193619751271d10eb8f23a0fe89bba`, extracted into its separate immutable version directory. v8 PID `3069271` initialized, reported `8.0.0`, and stopped successfully. Removing the isolated configuration left Node usable; scratch roots were removed, no unique Julie process remained, and the retained evidence passed its secret scan. Evidence: `/home/murphy/.local/state/julie-plan4-linux-upgrade-evidence.n8IJwU/`.
 
 ## Agent-use matrix
 
@@ -86,7 +89,6 @@ For an installed archive, run the server with a newly created `JULIE_HOME` and n
 
 ## Open gates
 
-- **PENDING — Linux compatible upgrade:** no real compatible prior versioned v8 archive is available; the available v7.18.0 package has the prior embedding-host layout.
 - **PENDING — remaining real-agent client routes:** Claude Code, Hermes, and Cursor disposable profiles are unauthenticated and environment tokens are absent. Cursor produced a device-login URL but no browser was connected. Codex, OpenCode, and AGY pass on isolated Linux.
 - **BLOCKED — native qualification:** Windows fresh install, lifecycle, and real v7.18.1-to-v8 migration pass locally. The macOS host key is verified, but strict plain SSH and exact Tailscale ProxyCommand authentication both return `Permission denied`; no SSH identity/access is available. [Run 34760490971](https://github.com/anortham/julie/actions/runs/34760490971), at pushed ref `8c84e683`, remains historical macOS evidence only.
 - **BLOCKED — Plan 5C gate:** the integrated Plans 1–4 release candidate remains unqualified, so paired retrieval and agent-task experiments must not start.

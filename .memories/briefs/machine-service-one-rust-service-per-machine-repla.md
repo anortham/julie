@@ -3,7 +3,7 @@ id: machine-service-one-rust-service-per-machine-repla
 title: Julie revival Plans 4 and 5
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-13T21:48:27.142Z
+updated: 2026-09-13T21:57:00.878Z
 tags:
   - revival
   - plan-4
@@ -22,7 +22,7 @@ Finish Plan 4 local release-candidate qualification, complete Plan 5C/5D, and re
 
 Plans 1-3 are merged on local `main`. The current Plan 4 lineage passed `cargo xtask test full` 5/5 in 27.7 seconds at exact SHA `1ff96903eed69d136e7a89a6dc44f2223fbc7be3`; later commits change qualification scripts, workflow contracts, and evidence. Another broad run requires an owner decision.
 
-Linux package, fresh-profile service, cached/offline semantics, and Codex/OpenCode/AGY client workflows pass. Local Windows build, package verification, cached/offline semantics, NTFS executable-lock, service lifecycle, and real `v7.18.1 → v8` migration pass. The v7 ZIP SHA-256 is `8bb85e37efec0813a1b959e46725dcf957dbb20ff0f3e774d53ef9bbc217350e`; the v8 ZIP SHA-256 is `5510d7c1cdff9418260def83a4b071196bdaa2ed7a029cc3e89d02f7bf3f4bfe`. Windows full remains reserved for final post-merge validation.
+Linux and Windows package, fresh-profile service, cached/offline semantics, executable/lifecycle checks, and real `v7.18.1 → v8` migrations pass. Linux v7/v8 archive SHAs are `a65ce05e23c823c1fd48fbb2e4b112347bda86140c71e474504f8ba399235374` and `9d9095713c3572407722ad105ada7a85fd193619751271d10eb8f23a0fe89bba`. Windows v7/v8 archive SHAs are `8bb85e37efec0813a1b959e46725dcf957dbb20ff0f3e774d53ef9bbc217350e` and `5510d7c1cdff9418260def83a4b071196bdaa2ed7a029cc3e89d02f7bf3f4bfe`. Codex, OpenCode, and AGY client workflows pass. Windows full remains reserved for final post-merge validation.
 
 Plan 5A and 5B are complete on `fix/revival-qualification`.
 
@@ -32,9 +32,8 @@ On 2026-09-13 the owner approved Rocinante host-key trust, paid remaining-client
 
 ## Remaining local release-candidate blockers
 
-- macOS arm64 and Intel package qualification. Rocinante's ED25519 host key is verified, but strict plain SSH and the exact Tailscale ProxyCommand both fail authentication because no SSH identity/access is available.
-- Claude Code, Hermes, and Cursor disposable profiles are unauthenticated. Device-login sessions are open for owner completion; never copy rotating live OAuth state.
-- Linux and macOS upgrade evidence remain. Windows upgrade passes.
+- macOS arm64 and Intel package/install/upgrade qualification. Rocinante's ED25519 host key is verified, but SSH authentication needs the owner to add the generated one-use qualification key.
+- Claude Code, Hermes, and Cursor disposable device-login sessions need owner completion. Never copy rotating live OAuth state.
 
 Publication-only public assets, awaited reusable-workflow evidence, and public plugin snapshot checks remain pending until exact-state release authorization is reconfirmed.
 
@@ -44,4 +43,4 @@ Do not trigger qualification-only GitHub Actions. Do not push, tag, release, pub
 
 ## Plan 5 gate
 
-Plan 5C starts only after the macOS, client, and remaining upgrade rows pass. Preserve all raw outcomes and do not fabricate results.
+Plan 5C starts only after the macOS and remaining client rows pass. Preserve all raw outcomes and do not fabricate results.
