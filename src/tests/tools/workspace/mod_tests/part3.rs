@@ -82,14 +82,14 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
             .unwrap();
     }
 
-    handler.set_current_primary_binding(rebound_primary_id, rebound_primary_path);
+    handler.set_current_primary_binding(rebound_primary_id.clone(), rebound_primary_path);
 
     let tool = ManageWorkspaceTool {
         operation: "health".to_string(),
         path: None,
         force: None,
         name: None,
-        workspace_id: None,
+        workspace_id: Some(rebound_primary_id),
         detailed: Some(false),
     };
 

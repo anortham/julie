@@ -324,7 +324,7 @@ async fn test_manage_workspace_health_reports_control_data_and_runtime_planes() 
         path: None,
         force: None,
         name: None,
-        workspace_id: None,
+        workspace_id: Some(workspace_id),
         detailed: Some(false),
     }
     .call_tool(&handler)
@@ -385,12 +385,17 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
         });
     }
 
+    let workspace_id = crate::workspace::registry::generate_workspace_id(
+        &temp_dir.path().to_string_lossy(),
+    )
+    .unwrap();
+
     let tool = ManageWorkspaceTool {
         operation: "health".to_string(),
         path: None,
         force: None,
         name: None,
-        workspace_id: None,
+        workspace_id: Some(workspace_id),
         detailed: Some(false),
     };
 
@@ -460,12 +465,17 @@ async fn test_manage_workspace_health_reports_unavailable_when_provider_missing(
         });
     }
 
+    let workspace_id = crate::workspace::registry::generate_workspace_id(
+        &temp_dir.path().to_string_lossy(),
+    )
+    .unwrap();
+
     let tool = ManageWorkspaceTool {
         operation: "health".to_string(),
         path: None,
         force: None,
         name: None,
-        workspace_id: None,
+        workspace_id: Some(workspace_id),
         detailed: Some(false),
     };
 
@@ -517,12 +527,17 @@ async fn test_manage_workspace_health_reports_not_initialized_when_runtime_statu
         ws.embedding_runtime_status = None;
     }
 
+    let workspace_id = crate::workspace::registry::generate_workspace_id(
+        &temp_dir.path().to_string_lossy(),
+    )
+    .unwrap();
+
     let tool = ManageWorkspaceTool {
         operation: "health".to_string(),
         path: None,
         force: None,
         name: None,
-        workspace_id: None,
+        workspace_id: Some(workspace_id),
         detailed: Some(false),
     };
 
