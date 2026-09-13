@@ -62,9 +62,27 @@ def extract(archive: Path, destination: Path) -> None:
             package.extractall(destination)
 
 
-def run(command: list[str], env: dict[str, str], input_text: str | None = None):
-    return subprocess.run(command, env=env, input=input_text, text=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, check=False, timeout=30)
+def run(command: list[str], env: dict[str, str], input_text: str | None = None,
+        timeout_seconds: float = 30) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryFile(mode="w+") as stdout, tempfile.TemporaryFile(mode="w+") as stderr:
+        try:
+            if input_text is None:
+                process = subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
+                                           text=True)
+                process.wait(timeout=timeout_seconds)
+            else:
+                with tempfile.TemporaryFile(mode="w+") as stdin:
+                    stdin.write(input_text)
+                    stdin.seek(0)
+                    process = subprocess.Popen(command, env=env, stdin=stdin, stdout=stdout, stderr=stderr, text=True)
+                    process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            raise
+        stdout.seek(0)
+        stderr.seek(0)
+        return subprocess.CompletedProcess(command, process.returncode, stdout.read(), stderr.read())
 
 
 def initialize_instructions(output: str) -> str | None:
