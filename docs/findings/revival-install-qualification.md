@@ -1,12 +1,13 @@
 # Revival install qualification
 
-**Status:** Linux package, fresh install, semantics, repository gate, and real-agent evidence for Codex, OpenCode, and AGY pass. The frozen `055645e` candidate is historical, not the final code candidate, because `ce574773` and `3115c6c8` fix native qualification defects. A new frozen-tree full gate and authorized native run are required; native qualification and Plan 5C remain blocked.
+**Status:** Linux package, fresh install, semantics, repository gate, and real-agent evidence for Codex, OpenCode, and AGY pass. Current source candidate `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` passed the frozen-tree full gate (5/5, 27.7s) after one in-scope docs-contract correction and its single retry. The historical Linux archive was not rebuilt; native qualification still needs explicit authorization, and Plan 5C remains blocked.
 
 ## Candidate record
 
 | Field | Value |
 |---|---|
 | Frozen candidate code/full-gate SHA | `055645e02ebf261355c7db6659a9fe1b5159a791` |
+| Current source candidate/full-gate SHA | `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` |
 | Archive binary source SHA | `055645e02ebf261355c7db6659a9fe1b5159a791` |
 | Package wrapper and verifier source SHA | `a90720f010283270123c9679729fbf8f4fd5004f` |
 | Qualification ref pushed for hosted retry | `8c84e683` |
@@ -86,6 +87,6 @@ For an installed archive, run the server with a newly created `JULIE_HOME` and n
 
 - **PENDING — Linux compatible upgrade:** no real compatible prior versioned v8 archive is available; the available v7.18.0 package has the prior embedding-host layout.
 - **PENDING — remaining real-agent client routes:** final Claude Code evidence needs refreshed isolated OAuth; Hermes needs interactive OAuth; Cursor needs a disposable API key. Codex, OpenCode, and AGY pass on isolated Linux.
-- **BLOCKED — native qualification:** [run 34760490971](https://github.com/anortham/julie/actions/runs/34760490971), at pushed ref `8c84e683`, built and archive-verified macOS arm64, macOS Intel, and Windows x64. macOS search returned `mode=auto`, `backend=lexical`, and `backend_fallback=true`; Windows online model preparation failed immediately with Hugging Face HTTP 429 before search. Lifecycle, Windows lock, and upload steps were skipped. `ce574773` makes the probe send top-level `--semantics required` and reject fallback; `3115c6c8` preserves RequestEngine readiness in generic CLI JSON. A new frozen-tree full gate and authorized native run are required; no further run is authorized.
+- **BLOCKED — native qualification:** [run 34760490971](https://github.com/anortham/julie/actions/runs/34760490971), at pushed ref `8c84e683`, built and archive-verified macOS arm64, macOS Intel, and Windows x64. macOS search returned `mode=auto`, `backend=lexical`, and `backend_fallback=true`; Windows online model preparation failed immediately with Hugging Face HTTP 429 before search. Lifecycle, Windows lock, and upload steps were skipped. `ce574773` makes the probe send top-level `--semantics required` and reject fallback; `3115c6c8` preserves RequestEngine readiness in generic CLI JSON. The new source candidate full gate passed at `1ff96903`; an explicitly authorized native run is still required, and no further run is authorized.
 - **BLOCKED — Plan 5C gate:** the integrated Plans 1–4 release candidate remains unqualified, so paired retrieval and agent-task experiments must not start.
 - **PENDING — plugin public snapshot and publication:** public release assets, downstream plugin publication, and its checked-out public snapshot cannot be verified before authorized publication.
