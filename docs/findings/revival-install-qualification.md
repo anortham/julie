@@ -1,6 +1,6 @@
 # Revival install qualification
 
-**Status:** Linux and local Windows package qualification, fresh install, compatible upgrade, semantics, repository gate, and real-agent evidence for Codex, OpenCode, and AGY pass. Current source candidate `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` passed the frozen-tree full gate (5/5, 27.7s) before later qualification-only scripts/tests. macOS qualification and client authorization remain local release-candidate blockers. Publication checks are separately publication-only pending; Plan 5C remains blocked.
+**Status:** Linux and local Windows package qualification, fresh install, compatible upgrade, semantics, repository gate, and real-agent evidence for Codex, OpenCode, and AGY pass. Current source candidate `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` passed the frozen-tree full gate (5/5, 27.7s) before later qualification-only scripts/tests. macOS qualification is the only local release-candidate blocker. By owner decision (2026-09-13), Claude Code, Hermes, and Cursor adoption/removal qualification remains pending post-release and does not block v8 or Plan 5C. Publication checks are separately publication-only pending; Plan 5C remains blocked by macOS.
 
 ## Candidate record
 
@@ -65,12 +65,12 @@ The public Linux x64 v7.18.1 archive, SHA-256 `a65ce05e23c823c1fd48fbb2e4b112347
 
 | Route | Required evidence | Status |
 |---|---|---|
-| Claude Code plugin on each supported native target where available | Fresh profile install; initialization, tools/schema, hook or subagent guidance, real orientation/inspect/page/workspace workflow | PENDING: disposable profile is unauthenticated and environment tokens are absent; no interactive login occurred |
+| Claude Code plugin on each supported native target where available | Fresh profile install; initialization, tools/schema, hook or subagent guidance, real orientation/inspect/page/workspace workflow | POST-RELEASE PENDING by owner decision (2026-09-13): disposable profile is unauthenticated and environment tokens are absent; no interactive login occurred |
 | Codex plugin on each supported native target where available | Fresh profile install; initialization, tools/schema, real orientation/inspect/page/workspace workflow | PASS on isolated Linux profile: final agent completed search page one, symbol inspection, and genuine page two; removal check passed |
 | Antigravity | One real supported host; documented install and successful agent workflow | PASS on isolated Linux profile (AGY 1.2.2): final agent opened the workspace, semantic-search page one, inspected `WidgetAlpha::greeting`, and requested pages two and three with preserved selector/filter |
 | OpenCode | One real supported host; documented install and successful agent workflow | PASS on isolated Linux profile (OpenCode 1.18.25): final agent opened the workspace, completed page one/page two with preserved selector/filter, and inspected the second path |
-| Hermes | One real supported host; documented install and successful agent workflow | PENDING: disposable profile is unauthenticated and environment tokens are absent; no interactive OAuth occurred |
-| Cursor | One real supported host; documented install and successful agent workflow | PENDING: disposable profile is unauthenticated and environment tokens are absent. A device-login URL was obtained, but no browser was connected, so no auth occurred |
+| Hermes | One real supported host; documented install and successful agent workflow | POST-RELEASE PENDING by owner decision (2026-09-13): disposable profile is unauthenticated and environment tokens are absent; no interactive OAuth occurred |
+| Cursor | One real supported host; documented install and successful agent workflow | POST-RELEASE PENDING by owner decision (2026-09-13): disposable profile is unauthenticated and environment tokens are absent. A device-login URL was obtained, but no browser was connected, so no auth occurred |
 
 The Codex, OpenCode, and AGY removal checks removed only disposable profile configuration, then verified the client remained usable without Julie. The qualification roots, copied credentials, plugin/archive, cache, fixture, indexes, logs, and service state were deleted after every run. Sanitized retained evidence has clean secret scans; no live profile or shared cache was touched.
 
@@ -89,9 +89,9 @@ For an installed archive, run the server with a newly created `JULIE_HOME` and n
 
 ## Open gates
 
-- **PENDING — remaining real-agent client routes:** Claude Code, Hermes, and Cursor disposable profiles are unauthenticated and environment tokens are absent. Cursor produced a device-login URL but no browser was connected. Codex, OpenCode, and AGY pass on isolated Linux.
+- **POST-RELEASE PENDING — remaining real-agent client routes:** By owner decision (2026-09-13), Claude Code, Hermes, and Cursor adoption/removal checks do not block v8 or Plan 5C. Their disposable profiles are unauthenticated and environment tokens are absent; Cursor produced a device-login URL but no browser was connected. Codex, OpenCode, and AGY pass on isolated Linux.
 - **BLOCKED — native qualification:** Windows fresh install, lifecycle, and real v7.18.1-to-v8 migration pass locally. The macOS host key is verified, but strict plain SSH and exact Tailscale ProxyCommand authentication both return `Permission denied`; no SSH identity/access is available. [Run 34760490971](https://github.com/anortham/julie/actions/runs/34760490971), at pushed ref `8c84e683`, remains historical macOS evidence only.
-- **BLOCKED — Plan 5C gate:** the integrated Plans 1–4 release candidate remains unqualified, so paired retrieval and agent-task experiments must not start.
+- **BLOCKED — Plan 5C gate:** macOS fresh-install and upgrade qualification is incomplete, so the integrated Plans 1–4 release candidate remains unqualified and paired retrieval and agent-task experiments must not start.
 - **PENDING — publication only:** public release assets, downstream plugin publication, awaited reusable-workflow evidence, and the checked-out public plugin snapshot cannot be verified before authorized publication. These do not block local release-candidate qualification.
 
 Local win-test evidence: focused Rust test `/home/murphy/.local/share/win-test/logs/20260913T154842Z-revival-deployment-3836626.log`; release build `/home/murphy/.local/share/win-test/logs/20260913T155624Z-revival-deployment-3840637.log`; package `/home/murphy/.local/share/win-test/logs/20260913T160508Z-revival-deployment-3844864.log`; offline semantics `/home/murphy/.local/share/win-test/logs/20260913T161420Z-revival-deployment-3852262.log`; executable lock `/home/murphy/.local/share/win-test/logs/20260913T161722Z-revival-deployment-3854455.log`; final file-backed verifier/lifecycle `/home/murphy/.local/share/win-test/logs/20260913T162854Z-revival-deployment-3861460.log`; no-process check `/home/murphy/.local/share/win-test/logs/20260913T162955Z-revival-deployment-3862001.log`. Windows full remains reserved for final post-merge validation.

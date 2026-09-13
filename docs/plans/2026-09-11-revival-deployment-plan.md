@@ -1,6 +1,6 @@
 # Plan 4: Installable releases and reliable agent guidance
 
-**Status:** Historical full-gate evidence at `055645e02ebf261355c7db6659a9fe1b5159a791` remains the provenance for the unrebuild historical Linux archive. The current broad full gate was `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` (5/5, 27.7s), before later qualification-only scripts/tests; a third full run exceeds the branch retry budget and needs owner decision. Local Windows qualification and real Linux/Windows v7.18.1-to-v8 upgrades pass. Full Windows remains reserved for final post-merge validation. macOS, client authorization, and publication remain incomplete; Plan 5C stays blocked. No GitHub Actions run or push followed the user's directive.
+**Status:** Historical full-gate evidence at `055645e02ebf261355c7db6659a9fe1b5159a791` remains the provenance for the unrebuild historical Linux archive. The current broad full gate was `1ff96903eed69d136e7a89a6dc44f2223fbc7be3` (5/5, 27.7s), before later qualification-only scripts/tests; a third full run exceeds the branch retry budget and needs owner decision. Local Windows qualification and real Linux/Windows v7.18.1-to-v8 upgrades pass. Full Windows remains reserved for final post-merge validation. macOS remains the only local release-candidate blocker; Claude Code, Hermes, and Cursor qualification is owner-approved post-release work (2026-09-13). Publication remains separately pending; Plan 5C stays blocked by macOS. No GitHub Actions run or push followed the user's directive.
 **Goal:** A normal user can install, get correct tool instructions, use lexical and semantic features, and upgrade with a predictable recovery path.
 **Depends on:** Guidance/launcher tasks can start before Plans 1–3; native qualification uses their integrated release candidate.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). This plan spans Julie and `~/source/julie-plugin`; inspect and preserve both worktrees. Publication is a separate final approval boundary.
@@ -124,9 +124,9 @@ Official [Codex MCP guidance](https://learn.chatgpt.com/docs/extend/mcp?surface=
 **Acceptance:**
 
 - [ ] All advertised native archives have fresh install and upgrade evidence. Linux and Windows v7.18.1-to-v8 pass locally; macOS fresh install and upgrade evidence remain pending because no SSH identity/access is available.
-- [ ] Every advertised client route has recorded instruction delivery and an actual successful agent workflow. Codex, OpenCode, and AGY pass on isolated Linux; Claude Code, Hermes, and Cursor remain pending: their disposable profiles are unauthenticated and environment tokens are absent. Cursor produced a device-login URL, but no browser was connected to authenticate it.
+- [x] v8 release scope has recorded instruction delivery and an actual successful agent workflow for Codex, OpenCode, and AGY. By owner decision (2026-09-13), Claude Code, Hermes, and Cursor remain explicitly pending post-release qualification: their disposable profiles are unauthenticated and environment tokens are absent; Cursor produced a device-login URL but no browser authenticated it.
 - [x] Linux fresh-profile second session shares the service without selecting a workspace from plugin launch cwd.
-- [ ] Configuration removal/uninstall leaves every advertised client usable and documents shared-service/cache ownership. Codex, OpenCode, and AGY pass disposable removal checks with clean secret scans; remaining routes are incomplete.
+- [x] v8 release scope documents shared-service/cache ownership and leaves Codex, OpenCode, and AGY usable after disposable removal checks with clean secret scans. By owner decision (2026-09-13), Claude Code, Hermes, and Cursor removal checks remain explicit post-release qualification.
 - [x] A local release-candidate report lists exact SHA, versions, archive checksums, commands and unresolved gates.
 
 ## Publication order and authority

@@ -3,7 +3,7 @@ id: machine-service-one-rust-service-per-machine-repla
 title: Julie revival Plans 4 and 5
 status: active
 created: 2026-09-09T21:12:03.049Z
-updated: 2026-09-13T21:57:00.878Z
+updated: 2026-09-13T23:32:07.039Z
 tags:
   - revival
   - plan-4
@@ -28,19 +28,22 @@ Plan 5A and 5B are complete on `fix/revival-qualification`.
 
 ## Owner authorization
 
-On 2026-09-13 the owner approved Rocinante host-key trust, paid remaining-client qualification, the realistic `v7.18.1 → v8` upgrade path, and the intent to release v8. Use disposable profiles and scratch repositories only. Because release approval applies to a verified exact state, report the final clean Julie/plugin SHAs before the first push, tag, release, or publication action.
+On 2026-09-13 the owner approved Rocinante host-key trust, the realistic `v7.18.1 → v8` upgrade path, and the intent to release v8. The owner later moved Claude Code, Hermes, and Cursor agent-adoption rows to post-release qualification; they no longer block v8. Use disposable profiles and scratch repositories only. Because release approval applies to a verified exact state, report the final clean Julie/plugin SHAs before the first push, tag, release, or publication action.
 
-## Remaining local release-candidate blockers
+## Remaining local release-candidate blocker
 
-- macOS arm64 and Intel package/install/upgrade qualification. Rocinante's ED25519 host key is verified, but SSH authentication needs the owner to add the generated one-use qualification key.
-- Claude Code, Hermes, and Cursor disposable device-login sessions need owner completion. Never copy rotating live OAuth state.
+Run macOS arm64 and Intel package/install/upgrade qualification. Rocinante's ED25519 host key is verified, but SSH authentication still rejects the generated one-use qualification key.
+
+## Post-release qualification
+
+Claude Code, Hermes, and Cursor real-agent adoption/removal rows remain pending. Do not copy rotating live OAuth state. They are not release gates by owner decision.
 
 Publication-only public assets, awaited reusable-workflow evidence, and public plugin snapshot checks remain pending until exact-state release authorization is reconfirmed.
 
 ## Constraints
 
-Do not trigger qualification-only GitHub Actions. Do not push, tag, release, publish, force-push, install into live profiles, copy rotating live OAuth state, or modify real user repositories before the final exact-state report. External model use is authorized only for the remaining Plan 4 client qualification and Plan 5C frozen tasks; keep retained evidence secret-free.
+Do not trigger qualification-only GitHub Actions. Do not push, tag, release, publish, force-push, install into live profiles, copy rotating live OAuth state, or modify real user repositories before the final exact-state report. External model use is authorized for Plan 5C frozen tasks; keep retained evidence secret-free.
 
 ## Plan 5 gate
 
-Plan 5C starts only after the macOS and remaining client rows pass. Preserve all raw outcomes and do not fabricate results.
+Plan 5C starts after macOS qualification or an explicit owner disposition of that platform gate. Preserve all raw outcomes and do not fabricate results.
