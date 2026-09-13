@@ -73,6 +73,10 @@ jobs:
           if [ "${{ matrix.os }}" = windows-latest ]; then WINDOWS+=(--windows); fi
           python3 .github/scripts/verify-release-archive.py "$ARCHIVE" --sha256 "$ARCHIVE.sha256" --version "$VERSION" --sidecar-version 0.1.0 "${WINDOWS[@]}"
 
+      - name: Qualify cached offline native semantics
+        shell: bash
+        run: python3 .github/scripts/qualify-native-offline-semantics.py "$ARCHIVE"
+
       - name: Exercise packaged server (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash
