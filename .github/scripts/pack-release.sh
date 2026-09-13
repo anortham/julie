@@ -71,7 +71,6 @@ case "$ASSET" in
   *.zip) unzip -q "$WORK/$ASSET" -d "$STAGE" ;;
   *) tar xzf "$WORK/$ASSET" -C "$STAGE" ;;
 esac
-mv "$STAGE/package-manifest.json" "$STAGE/sidecar-package-manifest.json"
 if [ "$TARGET" = "x86_64-pc-windows-msvc" ]; then
   cp "$RELEASE_DIR/julie-server.exe" "$STAGE/"
 else
@@ -88,7 +87,7 @@ import sys
 from pathlib import Path
 
 stage = Path(sys.argv[1])
-manifest_path = stage / "sidecar-package-manifest.json"
+manifest_path = stage / "package-manifest.json"
 source_manifest = json.loads(manifest_path.read_text())
 files = []
 for path in sorted(stage.iterdir()):

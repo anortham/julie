@@ -126,7 +126,7 @@ fn release_packaging_uses_shasum_fallback_and_preserves_manifest_files() {
         "README.md",
         "julie-semantic-sidecar",
         "julie-server",
-        "sidecar-package-manifest.json",
+        "package-manifest.json",
     ] {
         assert!(entries.lines().any(|entry| entry == expected), "{expected}");
     }
@@ -134,11 +134,17 @@ fn release_packaging_uses_shasum_fallback_and_preserves_manifest_files() {
     let manifest = Command::new("tar")
         .args(["-xOf"])
         .arg(&archive)
-        .arg("sidecar-package-manifest.json")
+        .arg("package-manifest.json")
         .output()
         .unwrap();
     assert!(manifest.status.success());
     let manifest: serde_json::Value = serde_json::from_slice(&manifest.stdout).unwrap();
+    assert!(manifest["source"]["files"].is_array());
+    assert!(
+        !entries
+            .lines()
+            .any(|entry| entry == "sidecar-package-manifest.json")
+    );
     let mut covered = std::collections::BTreeSet::new();
     for file in manifest["files"].as_array().unwrap() {
         let path = file["path"].as_str().unwrap();
@@ -167,7 +173,7 @@ fn release_packaging_uses_shasum_fallback_and_preserves_manifest_files() {
         covered.len(),
         entries
             .lines()
-            .filter(|entry| *entry != "sidecar-package-manifest.json")
+            .filter(|entry| *entry != "package-manifest.json")
             .count()
     );
 }
@@ -197,7 +203,8 @@ fn release_workflow_qualifies_archives_and_awaits_the_pinned_plugin_workflow() {
     assert!(workflow.contains("uses: actions/setup-node@v4"));
     assert!(workflow.contains("node-version: 22.5.0"));
     assert!(workflow.contains("node --test hooks/*.test.cjs"));
-    assert!(verifier.contains("sidecar-package-manifest.json"));
+    assert!(verifier.contains("package-manifest.json"));
+    assert!(!verifier.contains("sidecar-package-manifest.json"));
     assert!(verifier.contains("julie-semantic-sidecar"));
     assert!(verifier.contains("instructions"));
     for section in [
@@ -286,16 +293,15 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
             r#"{{"source":{{"files":[{{"path":"README.md"}}]}},"files":[{}]}}"#,
             files.trim_end_matches(',')
         );
-        fs::write(root.join("sidecar-package-manifest.json"), manifest).unwrap();
+        fs::write(root.join("package-manifest.json"), manifest).unwrap();
         match variant {
             "missing-sidecar" => fs::remove_file(&sidecar).unwrap(),
             "wrong-version" => {
                 let old_checksum = sha256(&server);
                 fs::write(&server, "#!/bin/sh\necho 'julie-server 8.0.1'\n").unwrap();
-                let manifest =
-                    fs::read_to_string(root.join("sidecar-package-manifest.json")).unwrap();
+                let manifest = fs::read_to_string(root.join("package-manifest.json")).unwrap();
                 fs::write(
-                    root.join("sidecar-package-manifest.json"),
+                    root.join("package-manifest.json"),
                     manifest.replace(&old_checksum, &sha256(&server)),
                 )
                 .unwrap();
@@ -303,10 +309,9 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
             "false-instructions" => {
                 let old_checksum = sha256(&server);
                 fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) exit 0 ;; *) echo '{\"message\":\"instructions workspace\"}' ;; esac\n").unwrap();
-                let manifest =
-                    fs::read_to_string(root.join("sidecar-package-manifest.json")).unwrap();
+                let manifest = fs::read_to_string(root.join("package-manifest.json")).unwrap();
                 fs::write(
-                    root.join("sidecar-package-manifest.json"),
+                    root.join("package-manifest.json"),
                     manifest.replace(&old_checksum, &sha256(&server)),
                 )
                 .unwrap();
@@ -319,19 +324,16 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
                     ":"
                 };
                 fs::write(&server, format!("#!/bin/sh\ncase \"${{1:-}}\" in --version) echo 'julie-server 8.0.0' ;; service) {stop} ;; *) mkdir -p \"$JULIE_HOME\"; : > \"$JULIE_HOME/service.json\"; echo '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"instructions\":\"open workspace\"}}}}' ;; esac\n")).unwrap();
-                let manifest =
-                    fs::read_to_string(root.join("sidecar-package-manifest.json")).unwrap();
+                let manifest = fs::read_to_string(root.join("package-manifest.json")).unwrap();
                 fs::write(
-                    root.join("sidecar-package-manifest.json"),
+                    root.join("package-manifest.json"),
                     manifest.replace(&old_checksum, &sha256(&server)),
                 )
                 .unwrap();
             }
-            "malformed-manifest" => {
-                fs::write(root.join("sidecar-package-manifest.json"), "{").unwrap()
-            }
+            "malformed-manifest" => fs::write(root.join("package-manifest.json"), "{").unwrap(),
             "wrong-checksum" => fs::write(
-                root.join("sidecar-package-manifest.json"),
+                root.join("package-manifest.json"),
                 r#"{"source":{"files":[]},"files":[{"path":"README.md","sha256":"wrong"}]}"#,
             )
             .unwrap(),

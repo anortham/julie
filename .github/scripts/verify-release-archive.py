@@ -92,7 +92,7 @@ def wait_for_service_record_removal(path: Path, timeout_seconds: float = 1.0) ->
 
 def verify_manifest(root: Path, entries: set[str]) -> None:
     try:
-        manifest = json.loads((root / "sidecar-package-manifest.json").read_text())
+        manifest = json.loads((root / "package-manifest.json").read_text())
     except (OSError, json.JSONDecodeError) as error:
         fail(f"malformed sidecar manifest: {error}")
     source, files = manifest.get("source"), manifest.get("files")
@@ -100,7 +100,7 @@ def verify_manifest(root: Path, entries: set[str]) -> None:
         fail("sidecar manifest has no source files list")
     if not isinstance(files, list) or not files:
         fail("sidecar manifest has no files list")
-    expected = entries - {"sidecar-package-manifest.json"}
+    expected = entries - {"package-manifest.json"}
     paths = set()
     for item in files:
         if not isinstance(item, dict) or not isinstance(item.get("path"), str):
@@ -139,7 +139,7 @@ def main() -> None:
     entries = members(args.archive)
     suffix = ".exe" if args.windows else ""
     server, sidecar = f"julie-server{suffix}", f"julie-semantic-sidecar{suffix}"
-    required = {server, sidecar, "sidecar-package-manifest.json", "README.md", "LICENSE"}
+    required = {server, sidecar, "package-manifest.json", "README.md", "LICENSE"}
     missing = required - entries
     if missing:
         fail(f"archive is missing: {', '.join(sorted(missing))}")
