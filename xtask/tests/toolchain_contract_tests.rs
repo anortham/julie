@@ -305,6 +305,13 @@ fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
             < probe.find("& $server service stop").unwrap(),
         "the shim must close its redirected stdin before service stop"
     );
+    assert!(probe.contains("[DateTime]::UtcNow.AddSeconds(5)"));
+    assert!(probe.contains("Start-Sleep -Milliseconds 100"));
+    assert!(
+        probe.find("[DateTime]::UtcNow.AddSeconds(5)").unwrap()
+            < probe.rfind("service discovery file remains").unwrap(),
+        "the discovery-file assertion must follow its bounded removal wait"
+    );
     assert!(probe.contains("candidate_sha"));
     assert!(probe.contains("archive_sha256"));
     assert!(report.contains("Archive binary source SHA"));

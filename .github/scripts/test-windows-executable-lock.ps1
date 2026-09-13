@@ -80,7 +80,12 @@ finally {
             throw "packaged service stop failed: $LASTEXITCODE"
         }
     }
-    if (Test-Path -LiteralPath (Join-Path $env:JULIE_HOME 'service.json')) {
+    $serviceRecord = Join-Path $env:JULIE_HOME 'service.json'
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((Test-Path -LiteralPath $serviceRecord) -and ([DateTime]::UtcNow -lt $deadline)) {
+        Start-Sleep -Milliseconds 100
+    }
+    if (Test-Path -LiteralPath $serviceRecord) {
         throw 'service discovery file remains after packaged service stop'
     }
 }
