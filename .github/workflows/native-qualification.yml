@@ -87,33 +87,33 @@ jobs:
           "$SERVER" --version
           "$SERVER" tools list --json
           for cwd in "$ROOT/first" "$ROOT/second"; do
-            mkdir -p "$cwd"
+          mkdir -p "$cwd"
           SERVER="$SERVER" CWD="$cwd" python3 - <<'PY'
-import json
-import os
-import subprocess
+          import json
+          import os
+          import subprocess
 
-request = b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"native-qualification","version":"1"}}}\n'
-result = subprocess.run(
-    [os.environ["SERVER"]],
-    cwd=os.environ["CWD"],
-    input=request,
-    capture_output=True,
-    timeout=30,
-)
-if result.returncode:
-    raise SystemExit(result.stderr.decode())
-response = json.loads(result.stdout)
-instructions = response["result"]["instructions"]
-if not instructions or "workspace" not in instructions.lower():
-    raise SystemExit("initialize response lacks workspace-routing instructions")
-record = json.load(open(os.path.join(os.environ["JULIE_HOME"], "service.json")))
-pid = str(record["pid"])
-pid_path = os.path.join(os.path.dirname(os.path.dirname(os.environ["JULIE_HOME"])), "service-pid")
-if os.path.exists(pid_path) and open(pid_path).read().strip() != pid:
-    raise SystemExit("second initialize did not reuse the service PID")
-open(pid_path, "w").write(pid)
-PY
+          request = b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"native-qualification","version":"1"}}}\n'
+          result = subprocess.run(
+              [os.environ["SERVER"]],
+              cwd=os.environ["CWD"],
+              input=request,
+              capture_output=True,
+              timeout=30,
+          )
+          if result.returncode:
+              raise SystemExit(result.stderr.decode())
+          response = json.loads(result.stdout)
+          instructions = response["result"]["instructions"]
+          if not instructions or "workspace" not in instructions.lower():
+              raise SystemExit("initialize response lacks workspace-routing instructions")
+          record = json.load(open(os.path.join(os.environ["JULIE_HOME"], "service.json")))
+          pid = str(record["pid"])
+          pid_path = os.path.join(os.path.dirname(os.path.dirname(os.environ["JULIE_HOME"])), "service-pid")
+          if os.path.exists(pid_path) and open(pid_path).read().strip() != pid:
+              raise SystemExit("second initialize did not reuse the service PID")
+          open(pid_path, "w").write(pid)
+          PY
           done
           service_pid=$(cat "$ROOT/service-pid")
           old_pid="$service_pid"

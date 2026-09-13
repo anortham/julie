@@ -255,6 +255,7 @@ fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
     assert!(workflow.contains("method\":\"initialize"));
     assert!(workflow.contains("instructions"));
     assert!(workflow.contains("json.loads(result.stdout)"));
+    assert!(workflow.contains("          import json"));
     assert!(workflow.contains("initialize response lacks workspace-routing instructions"));
     assert!(workflow.contains("service_pid"));
     assert!(workflow.contains("restart_pid"));
