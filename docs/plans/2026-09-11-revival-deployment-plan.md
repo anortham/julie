@@ -1,6 +1,6 @@
 # Plan 4: Installable releases and reliable agent guidance
 
-**Status:** Local implementation, Linux qualification, and final repository gates are complete at `35a909eb`; external qualification remains pending for compatible upgrade, macOS/Windows, real-agent clients, CI dispatch, and publication. No publication has started or is authorized.
+**Status:** The qualified candidate binary is `055645e02ebf261355c7db6659a9fe1b5159a791`; the current remediation head is `13de611f`, after portable-version fix `ee3e86c9`. Linux qualification and Codex/OpenCode/AGY real-agent workflows pass; the final full gate passed 5/5 in 43.9s at the candidate code SHA. Compatible upgrade, macOS/Windows, remaining client routes, and hosted native retry remain incomplete. No publication has started or is authorized.
 **Goal:** A normal user can install, get correct tool instructions, use lexical and semantic features, and upgrade with a predictable recovery path.
 **Depends on:** Guidance/launcher tasks can start before Plans 1–3; native qualification uses their integrated release candidate.
 **Execution:** Follow the [roadmap contract](2026-09-11-revival-roadmap.md). This plan spans Julie and `~/source/julie-plugin`; inspect and preserve both worktrees. Publication is a separate final approval boundary.
@@ -104,7 +104,7 @@ After downstream success, inspect the public plugin commit's version manifests, 
 **Acceptance:**
 
 - [x] Intentionally missing sidecar, mismatched version, malformed manifest and partial platform set each fail qualification tests.
-- [ ] All native jobs execute their actual packaged server and prove instruction delivery.
+- [ ] All native jobs execute their actual packaged server and prove instruction delivery. Hosted run `34756043589` at the candidate SHA was cancelled after evidence collection: both macOS archives built but verification failed because GNU-only `sed -n '0,/'` left `VERSION` empty on BSD `sed`; Windows built a valid v8 archive, then packaged stdio verification hung for 10:49 and runner cleanup killed owned `julie-server` PID 9360. The candidate already nulls service stdio; `ee3e86c9` fixes portable version derivation and `13de611f` changes verifier capture to temporary files with deterministic parent/descendant coverage. Native retry is pending; no Windows lock or semantic evidence ran.
 - [ ] The parent awaits the exact reusable workflow job, propagates its failure and exposes its run evidence.
 - [ ] Archives and generated plugin source contain no maintainer override symlinks; all four flat archive layouts remain valid.
 - [x] Release notes identify verified platforms, semantic startup, upgrade steps and any remaining honest limitations.
@@ -124,9 +124,9 @@ Official [Codex MCP guidance](https://learn.chatgpt.com/docs/extend/mcp?surface=
 **Acceptance:**
 
 - [ ] All advertised native archives have fresh install and upgrade evidence, including the real Windows lock case. External qualification pending.
-- [ ] Every advertised client route has recorded instruction delivery and an actual successful agent workflow. External qualification pending.
+- [ ] Every advertised client route has recorded instruction delivery and an actual successful agent workflow. Codex, OpenCode, and AGY pass on isolated Linux; final Claude Code is blocked by expired isolated OAuth despite a pre-fix pass, Hermes by interactive OAuth, and Cursor by a missing disposable API key.
 - [x] Linux fresh-profile second session shares the service without selecting a workspace from plugin launch cwd.
-- [ ] Configuration removal/uninstall leaves the client usable and documents shared-service/cache ownership. External qualification pending.
+- [ ] Configuration removal/uninstall leaves every advertised client usable and documents shared-service/cache ownership. Codex, OpenCode, and AGY pass disposable removal checks with clean secret scans; remaining routes are incomplete.
 - [x] A local release-candidate report lists exact SHA, versions, archive checksums, commands and unresolved gates.
 
 ## Publication order and authority
@@ -139,6 +139,7 @@ Owner-approved publication order is: publish the reviewed v8 plugin launcher/wor
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| Final frozen candidate repository gate | `cargo xtask test full` | full | `055645e02ebf261355c7db6659a9fe1b5159a791` | PASS: 5/5 phases in 43.9s | 2026-09-13 | Frozen code candidate; the final paging correction is included before client qualification. |
 | Health requires a checkout selector and gives the exact open recovery call | `cargo nextest run -p julie --lib manage_workspace_health_accepts_workspace_id_and_rejects_unbound_call_with_guidance` | worker-red-green | `9bc5339f` | PASS: 1 passed | 2026-09-12T22:00Z | Worker ran the identical pre-commit tree. |
 | Nine scoped MCP schemas require a non-null string workspace | `cargo nextest run -p julie --lib mcp_catalog_requires_a_non_null_workspace_for_scoped_tools` | worker-red-green | `9bc5339f` | PASS: 1 passed | 2026-09-12T22:00Z | Worker ran the identical pre-commit tree. |
 | Compiled initialization fits the budget and carries the first-512 routing contract | `cargo nextest run -p xtask --test docs_contract_tests docs_contract_tests_agent_instructions_fit_the_server_instruction_budget` | worker-red-green | `9bc5339f` | PASS: 1 passed | 2026-09-12T22:00Z | Worker ran the identical pre-commit tree. |
