@@ -300,6 +300,11 @@ fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
     assert!(probe.contains("finally {"));
     assert!(probe.contains("service stop"));
     assert!(probe.contains("service discovery file remains"));
+    assert!(
+        probe.find("$process.StandardInput.Close()").unwrap()
+            < probe.find("& $server service stop").unwrap(),
+        "the shim must close its redirected stdin before service stop"
+    );
     assert!(probe.contains("candidate_sha"));
     assert!(probe.contains("archive_sha256"));
     assert!(report.contains("Archive binary source SHA"));

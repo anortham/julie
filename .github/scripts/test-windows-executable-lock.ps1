@@ -64,12 +64,6 @@ try {
     } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'qualification.json')
 }
 finally {
-    if ($null -ne $server) {
-        & $server service stop
-        if ($LASTEXITCODE -ne 0) {
-            throw "packaged service stop failed: $LASTEXITCODE"
-        }
-    }
     if ($null -ne $process) {
         $process.StandardInput.Close()
         if (!$process.WaitForExit(5000)) {
@@ -78,6 +72,12 @@ finally {
         }
         if ($process.ExitCode -ne 0) {
             throw "old shim exited with $($process.ExitCode)"
+        }
+    }
+    if ($null -ne $server) {
+        & $server service stop
+        if ($LASTEXITCODE -ne 0) {
+            throw "packaged service stop failed: $LASTEXITCODE"
         }
     }
     if (Test-Path -LiteralPath (Join-Path $env:JULIE_HOME 'service.json')) {
