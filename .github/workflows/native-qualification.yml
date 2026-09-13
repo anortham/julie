@@ -83,23 +83,45 @@ jobs:
           mkdir -p "$PROFILE" "$ROOT/archive"
           tar -xzf "$ARCHIVE" -C "$ROOT/archive"
           SERVER="$ROOT/archive/julie-server"
-          export HOME="$PROFILE" JULIE_HOME="$PROFILE/.julie"
+          export HOME="$PROFILE" JULIE_HOME="$PROFILE/.julie" JULIE_SESSION_HOOKS=0
           "$SERVER" --version
           "$SERVER" tools list --json
           for cwd in "$ROOT/first" "$ROOT/second"; do
             mkdir -p "$cwd"
-            SERVER="$SERVER" CWD="$cwd" python3 - <<'PY'
+          SERVER="$SERVER" CWD="$cwd" python3 - <<'PY'
+import json
 import os
 import subprocess
 
 request = b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"native-qualification","version":"1"}}}\n'
-result = subprocess.run([os.environ["SERVER"]], cwd=os.environ["CWD"], input=request, timeout=30)
+result = subprocess.run(
+    [os.environ["SERVER"]],
+    cwd=os.environ["CWD"],
+    input=request,
+    capture_output=True,
+    timeout=30,
+)
 if result.returncode:
-    raise SystemExit(result.returncode)
+    raise SystemExit(result.stderr.decode())
+response = json.loads(result.stdout)
+instructions = response["result"]["instructions"]
+if not instructions or "workspace" not in instructions.lower():
+    raise SystemExit("initialize response lacks workspace-routing instructions")
+record = json.load(open(os.path.join(os.environ["JULIE_HOME"], "service.json")))
+pid = str(record["pid"])
+pid_path = os.path.join(os.path.dirname(os.path.dirname(os.environ["JULIE_HOME"])), "service-pid")
+if os.path.exists(pid_path) and open(pid_path).read().strip() != pid:
+    raise SystemExit("second initialize did not reuse the service PID")
+open(pid_path, "w").write(pid)
 PY
           done
+          service_pid=$(cat "$ROOT/service-pid")
+          old_pid="$service_pid"
           "$SERVER" service status
           "$SERVER" service restart
+          restart_pid=$(python3 -c 'import json, os; print(json.load(open(os.path.join(os.environ["JULIE_HOME"], "service.json")))["pid"])')
+          test "$old_pid" != "$restart_pid"
+          ! kill -0 "$old_pid" 2>/dev/null
           "$SERVER" service stop
           test ! -e "$JULIE_HOME/service.json"
           ! pgrep -f "$SERVER" >/dev/null
@@ -117,13 +139,32 @@ PY
           $env:HOME = $profile
           $env:USERPROFILE = $profile
           $env:JULIE_HOME = Join-Path $profile '.julie'
+          $env:JULIE_SESSION_HOOKS = '0'
           & $server --version
           & $server tools list --json
           $initialize = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"native-qualification","version":"1"}}}'
-          $initialize | & $server
-          $initialize | & $server
+          function Initialize-PackagedServer($cwd) {
+            Push-Location $cwd
+            try {
+              $response = (($initialize | & $server) -join "`n") | ConvertFrom-Json
+              if ($LASTEXITCODE -ne 0) { throw "packaged initialize failed: $LASTEXITCODE" }
+              if ([string]::IsNullOrWhiteSpace($response.result.instructions) -or !$response.result.instructions.ToLowerInvariant().Contains('workspace')) { throw 'initialize response lacks workspace-routing instructions' }
+              return (Get-Content -Raw (Join-Path $env:JULIE_HOME 'service.json') | ConvertFrom-Json).pid
+            }
+            finally { Pop-Location }
+          }
+          $first = Join-Path $root 'first'
+          $second = Join-Path $root 'second'
+          New-Item -ItemType Directory -Force $first, $second | Out-Null
+          $service_pid = Initialize-PackagedServer $first
+          $second_pid = Initialize-PackagedServer $second
+          if ($service_pid -ne $second_pid) { throw 'second initialize did not reuse the service PID' }
+          $old_pid = $service_pid
           & $server service status
           & $server service restart
+          $restart_pid = (Get-Content -Raw (Join-Path $env:JULIE_HOME 'service.json') | ConvertFrom-Json).pid
+          if ($old_pid -eq $restart_pid) { throw 'service restart retained the old PID' }
+          if (Get-Process -Id $old_pid -ErrorAction SilentlyContinue) { throw 'old service PID remains after restart' }
           & $server service stop
           if (Test-Path -LiteralPath (Join-Path $env:JULIE_HOME 'service.json')) { throw 'service discovery file remains after stop' }
           if (Get-Process julie-server -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $server }) { throw 'packaged service remains after stop' }

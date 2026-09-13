@@ -253,6 +253,14 @@ fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
     assert!(workflow.contains("service restart"));
     assert!(workflow.contains("service stop"));
     assert!(workflow.contains("method\":\"initialize"));
+    assert!(workflow.contains("instructions"));
+    assert!(workflow.contains("json.loads(result.stdout)"));
+    assert!(workflow.contains("initialize response lacks workspace-routing instructions"));
+    assert!(workflow.contains("service_pid"));
+    assert!(workflow.contains("restart_pid"));
+    assert!(workflow.contains("old_pid"));
+    assert!(workflow.contains("second initialize did not reuse the service PID"));
+    assert!(workflow.contains("service restart retained the old PID"));
     assert!(!workflow.contains("gh release create"));
     assert!(!workflow.contains("gh release upload"));
     assert!(probe.contains("try {"));
