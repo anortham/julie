@@ -37,13 +37,13 @@ def done_record(output: str) -> dict[str, object]:
     fail("prepare did not emit a done record for the pinned model")
 
 
-def json_output(output: str) -> object:
+def json_output(output: str) -> object | None:
     for line in reversed(output.splitlines()):
         try:
             return json.loads(line)
         except json.JSONDecodeError:
             continue
-    fail("required semantic search did not emit JSON")
+    return None
 
 
 def required_search_succeeded(response: object, symbol: str) -> bool:
@@ -55,6 +55,10 @@ def required_search_succeeded(response: object, symbol: str) -> bool:
     rendered = json.dumps(response).lower()
     return (readiness.get("mode") == "required" and readiness.get("status") == "ready"
             and readiness.get("coverage") == "full" and symbol.lower() in rendered)
+
+
+def search_params(workspace: Path) -> dict[str, str]:
+    return {"query": "semantic_probe", "backend": "semantic", "semantics": "required", "workspace": str(workspace)}
 
 
 def extract(archive: Path, root: Path) -> None:
@@ -130,15 +134,24 @@ def qualify(archive: Path) -> None:
         offline = offline_https_env(env)
         try:
             deadline = time.monotonic() + 120
+            last_result: subprocess.CompletedProcess[str] | None = None
+            last_response: object | None = None
             while time.monotonic() < deadline:
                 result = run([
-                    str(server), "tool", "fast_search", "--workspace", str(workspace), "--semantics", "required",
-                    "--params", json.dumps({"query": "semantic_probe", "backend": "semantic", "workspace": str(workspace)}), "--json",
+                    str(server), "tool", "fast_search", "--workspace", str(workspace),
+                    "--params", json.dumps(search_params(workspace)), "--json",
                 ], offline, workspace, timeout=45)
-                if not result.returncode and required_search_succeeded(json_output(result.stdout), "semantic_probe"):
+                last_result = result
+                last_response = json_output(result.stdout)
+                if not result.returncode and last_response and required_search_succeeded(last_response, "semantic_probe"):
                     return
                 time.sleep(1)
-            fail("required semantic search never reached ready/full/compatible coverage with semantic_probe hit")
+            if last_result is None:
+                fail("required semantic search did not run")
+            fail("required semantic search never reached ready/full coverage with semantic_probe hit; "
+                 f"last_exit={last_result.returncode}; last_stdout={last_result.stdout[-4000:]!r}; "
+                 f"last_stderr={last_result.stderr[-4000:]!r}; last_readiness="
+                 f"{last_response.get('readiness') if isinstance(last_response, dict) else None!r}")
         finally:
             stopped = run([str(server), "service", "stop"], offline, timeout=30)
             if stopped.returncode:
@@ -155,6 +168,8 @@ def self_test() -> None:
     response = {"ok": True, "readiness": {"mode": "required", "status": "ready", "coverage": "full"}, "hits": [{"name": "semantic_probe"}]}
     if not required_search_succeeded(response, "semantic_probe") or required_search_succeeded(response, "other_symbol"):
         fail("semantic response contract check failed")
+    if search_params(Path("workspace")).get("semantics") != "required":
+        fail("required semantic search params must set semantics=required")
 
 
 def main() -> None:
