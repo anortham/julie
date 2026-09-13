@@ -569,13 +569,17 @@ async fn test_manage_workspace_health_reports_initialized_when_not_degraded() {
             degraded_reason: None,
         });
     }
+    let workspace_id = crate::workspace::registry::generate_workspace_id(
+        &temp_dir.path().to_string_lossy(),
+    )
+    .unwrap();
 
     let tool = ManageWorkspaceTool {
         operation: "health".to_string(),
         path: None,
         force: None,
         name: None,
-        workspace_id: None,
+        workspace_id: Some(workspace_id),
         detailed: Some(false),
     };
 

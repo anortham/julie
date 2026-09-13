@@ -272,14 +272,19 @@ async fn test_manage_workspace_health_loaded_primary_without_tantivy_is_sqlite_o
 
 #[tokio::test]
 async fn test_manage_workspace_health_cold_start_returns_index_first_guidance() {
-    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_string_lossy().to_string();
+    let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_path).unwrap();
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf())
+        .await
+        .unwrap();
 
     let result = ManageWorkspaceTool {
         operation: "health".to_string(),
         path: None,
         force: None,
         name: None,
-        workspace_id: None,
+        workspace_id: Some(workspace_id),
         detailed: Some(false),
     }
     .call_tool(&handler)
