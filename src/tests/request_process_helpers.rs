@@ -203,8 +203,19 @@ impl ProcessFixture {
         Self::new(binary).await
     }
 
+    /// Create a fixture resolving the compiled binary without starting MCP.
+    pub fn from_env_without_mcp() -> Self {
+        Self::new_unstarted(resolve_julie_binary())
+    }
+
     /// Create a fixture with an explicit binary path.
     pub async fn new(binary_path: PathBuf) -> Self {
+        let mut fixture = Self::new_unstarted(binary_path);
+        fixture.spawn_mcp_server().await;
+        fixture
+    }
+
+    fn new_unstarted(binary_path: PathBuf) -> Self {
         let tmp_base = std::env::var_os("TMPDIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| {
@@ -218,7 +229,7 @@ impl ProcessFixture {
 
         let temp_home = tempfile::tempdir_in(&tmp_base).expect("create temp home dir");
 
-        let mut fixture = Self {
+        let fixture = Self {
             binary_path,
             workspace_root,
             temp_repo: Arc::new(temp_repo),
@@ -231,8 +242,6 @@ impl ProcessFixture {
             unsolicited_messages: Vec::new(),
             next_request_id: AtomicU64::new(1),
         };
-
-        fixture.spawn_mcp_server().await;
         fixture
     }
 
@@ -266,7 +275,7 @@ impl ProcessFixture {
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("--workspace").arg(&self.workspace_root);
         cmd.env("JULIE_HOME", self.temp_home.path());
-        cmd.env("JULIE_SERVICE_IDLE_SECS", "2");
+        cmd.env("JULIE_SERVICE_IDLE_SECS", "0");
         cmd.env("TMPDIR", self.temp_home.path());
         cmd.current_dir(&self.workspace_root);
         cmd.stdin(std::process::Stdio::piped());
@@ -479,7 +488,7 @@ impl ProcessFixture {
         let mut cmd = Command::new(&self.binary_path);
         cmd.args(args);
         cmd.env("JULIE_HOME", self.temp_home.path());
-        cmd.env("JULIE_SERVICE_IDLE_SECS", "2");
+        cmd.env("JULIE_SERVICE_IDLE_SECS", "0");
         cmd.env("TMPDIR", self.temp_home.path());
         cmd.current_dir(&self.workspace_root);
         cmd.stdout(std::process::Stdio::piped());
@@ -578,6 +587,12 @@ impl Drop for ProcessFixture {
         if let Some(mut child) = self.child.take() {
             let _ = child.start_kill();
         }
+        let _ = Command::new(&self.binary_path)
+            .env("JULIE_HOME", self.temp_home.path())
+            .args(["service", "stop"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
         if let Some(task) = self.stderr_task.take() {
             task.abort();
         }

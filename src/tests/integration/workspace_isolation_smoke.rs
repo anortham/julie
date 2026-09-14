@@ -6,6 +6,7 @@
 #[cfg(test)]
 mod workspace_isolation_smoke_tests {
     use crate::handler::JulieServerHandler;
+    use crate::tests::helpers::workspace::mark_workspace_root;
     use crate::tools::search::FastSearchTool;
     use crate::tools::workspace::ManageWorkspaceTool;
     use anyhow::Result;
@@ -15,6 +16,36 @@ mod workspace_isolation_smoke_tests {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/test-workspaces")
             .join(name)
+    }
+
+    fn copy_fixture_workspace(
+        name: &str,
+        temp_dir: &std::path::Path,
+    ) -> Result<std::path::PathBuf> {
+        let source = get_fixture_path(name);
+        let destination = temp_dir.join(name);
+        copy_fixture_directory(&source, &destination)?;
+        Ok(destination)
+    }
+
+    fn copy_fixture_directory(
+        source: &std::path::Path,
+        destination: &std::path::Path,
+    ) -> std::io::Result<()> {
+        std::fs::create_dir_all(destination)?;
+        for entry in std::fs::read_dir(source)? {
+            let entry = entry?;
+            if entry.file_name() == ".julie" {
+                continue;
+            }
+            let target = destination.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                copy_fixture_directory(&entry.path(), &target)?;
+            } else {
+                std::fs::copy(entry.path(), target)?;
+            }
+        }
+        Ok(())
     }
 
     async fn mark_index_ready(handler: &JulieServerHandler) {
@@ -45,10 +76,12 @@ mod workspace_isolation_smoke_tests {
     /// This is the most critical isolation test - searching primary workspace
     /// should NEVER return results from reference workspace and vice versa.
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::file_serial(shared_test_workspace_fixtures)] // Shared fixture roots need a cross-process lane.
     async fn test_search_never_crosses_workspaces() -> Result<()> {
-        let primary_path = get_fixture_path("tiny-primary");
-        let reference_path = get_fixture_path("tiny-reference");
+        let temp_dir = tempfile::tempdir()?;
+        let primary_path = copy_fixture_workspace("tiny-primary", temp_dir.path())?;
+        mark_workspace_root(&primary_path);
+        let reference_path = copy_fixture_workspace("tiny-reference", temp_dir.path())?;
+        mark_workspace_root(&reference_path);
 
         let handler = JulieServerHandler::new_for_test().await?;
         handler
@@ -185,10 +218,12 @@ mod workspace_isolation_smoke_tests {
     /// Tests that "primary" resolves to primary workspace and specific IDs
     /// resolve to their respective reference workspaces.
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::file_serial(shared_test_workspace_fixtures)] // Shared fixture roots need a cross-process lane.
     async fn test_workspace_id_resolution() -> Result<()> {
-        let primary_path = get_fixture_path("tiny-primary");
-        let reference_path = get_fixture_path("tiny-reference");
+        let temp_dir = tempfile::tempdir()?;
+        let primary_path = copy_fixture_workspace("tiny-primary", temp_dir.path())?;
+        mark_workspace_root(&primary_path);
+        let reference_path = copy_fixture_workspace("tiny-reference", temp_dir.path())?;
+        mark_workspace_root(&reference_path);
 
         let handler = JulieServerHandler::new_for_test().await?;
         handler
@@ -276,9 +311,10 @@ mod workspace_isolation_smoke_tests {
     /// permissively. The search should succeed, but it must not fall back to the primary
     /// workspace when that reference workspace does not exist.
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::file_serial(shared_test_workspace_fixtures)] // Shared fixture roots need a cross-process lane.
     async fn test_invalid_workspace_id_returns_error() -> Result<()> {
-        let primary_path = get_fixture_path("tiny-primary");
+        let temp_dir = tempfile::tempdir()?;
+        let primary_path = copy_fixture_workspace("tiny-primary", temp_dir.path())?;
+        mark_workspace_root(&primary_path);
 
         let handler = JulieServerHandler::new_for_test().await?;
         handler

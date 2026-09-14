@@ -140,13 +140,16 @@ fn version_mismatch_exits_3_with_the_exact_message() {
         .args(["service", "status"])
         .output()
         .unwrap();
+    let expected_binary = bin()
+        .to_string_lossy()
+        .replace('/', std::path::MAIN_SEPARATOR_STR);
     assert_eq!(out.status.code(), Some(3));
     assert_eq!(
         String::from_utf8_lossy(&out.stderr).trim(),
         format!(
             "julie: service version 0.0.0-other does not match client version {}; run: \"{}\" service restart; then restart old harness clients",
             env!("CARGO_PKG_VERSION"),
-            bin().display()
+            expected_binary
         )
     );
     let _ = svc.kill();

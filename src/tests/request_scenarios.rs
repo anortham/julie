@@ -231,11 +231,11 @@ async fn test_scenario_2_refactoring_pipeline() {
     // Step 4: Shut down leader MCP and apply edit in a fresh workspace
     fixture.shutdown().await;
 
-    let mut apply_fixture = ProcessFixture::from_env().await;
+    let mut apply_fixture = ProcessFixture::from_env_without_mcp();
     let apply_ws = apply_fixture.root().to_string_lossy().to_string();
 
-    let (apply_exit, apply_res) = apply_fixture
-        .cli_json(&[
+    let apply_output = apply_fixture
+        .cli(&[
             "edit",
             "src/main.rs",
             "-o",
@@ -251,7 +251,12 @@ async fn test_scenario_2_refactoring_pipeline() {
             "--json",
         ])
         .await;
-    assert_eq!(apply_exit, 0);
+    assert_eq!(
+        apply_output.exit_code, 0,
+        "CLI apply failed: stdout={:?}, stderr={:?}",
+        apply_output.stdout, apply_output.stderr
+    );
+    let apply_res = apply_output.stdout_json();
     assert_eq!(apply_res["ok"], true);
 
     let updated_main = std::fs::read_to_string(apply_fixture.root().join("src/main.rs")).unwrap();

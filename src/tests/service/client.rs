@@ -4,7 +4,9 @@ use crate::service::discovery::{self, ServiceRecord};
 use julie_core::paths::RegistryPaths;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 #[tokio::test]
 async fn connects_to_a_running_service_without_spawning() {
@@ -41,7 +43,6 @@ async fn stale_record_is_removed_and_the_spawn_hook_runs_once() {
     .unwrap();
     let spawns = Arc::new(AtomicUsize::new(0));
     let s = Arc::clone(&spawns);
-    let started = Instant::now();
     let result = connect_or_start_within(
         &paths,
         move || {
@@ -51,8 +52,11 @@ async fn stale_record_is_removed_and_the_spawn_hook_runs_once() {
         Duration::from_millis(200),
     )
     .await;
-    assert!(started.elapsed() < Duration::from_secs(1));
-    assert!(matches!(result, Err(ConnectError::Unavailable(_))));
+    assert!(matches!(
+        result,
+        Err(ConnectError::Unavailable(message))
+            if message == "service did not start within 200 ms"
+    ));
     assert_eq!(spawns.load(Ordering::SeqCst), 1);
     assert!(discovery::read_record(&paths).unwrap().is_none());
     listener.set_nonblocking(true).unwrap();

@@ -58,27 +58,12 @@ impl ManageWorkspaceTool {
         self.find_workspace_root(&workspace_candidate)
     }
 
-    /// Find workspace root by looking for common workspace markers
+    /// Resolves the nearest VCS or project marker without using ancestor editor state.
     pub(crate) fn find_workspace_root(&self, start_path: &Path) -> Result<PathBuf> {
-        // Trust `.julie` at the requested path, but not above it. Temp parents
-        // and daemon cache roots can contain `.julie` without owning the child.
-        // VCS-repository roots (crate::paths::VCS_ROOT_MARKERS) are the authoritative
-        // project boundaries; build/IDE manifests are additional "this looks like a
-        // project root" hints for the explicit-path case. Within a single directory the
-        // first matching marker resolves THAT directory as the root, so the VCS-first
-        // order only affects which marker name is logged, not the resolved path; the
-        // nearest ancestor carrying any marker always wins.
-        let build_ide_markers = [".vscode", "Cargo.toml", "package.json", ".project"];
+        let ancestor_project_markers = ["Cargo.toml", "package.json", ".project"];
+        let requested_path_markers = [".vscode"];
 
-        // 🔥 CRITICAL FIX: Check if start_path itself has a .julie directory FIRST
-        // This prevents walking up and finding a parent workspace when an explicit
-        // workspace path is provided (fixes fixture test isolation bug).
-        //
-        // We use `RegistryPaths::is_any_known_julie_home` here (not just the
-        // configured override): it ALWAYS treats the conventional `~/.julie`
-        // as a known Julie home, even when JULIE_HOME is unset or invalid.
-        // Otherwise an invalid env would silently disable the guard and
-        // the walker could capture `~/.julie` as a workspace.
+        // Global Julie state is not a workspace marker, even when JULIE_HOME is invalid.
         let julie_dir = start_path.join(".julie");
         if julie_dir.exists() && julie_dir.is_dir() {
             if crate::paths::RegistryPaths::is_any_known_julie_home(&julie_dir) {
@@ -102,12 +87,17 @@ impl ManageWorkspaceTool {
 
         let mut current_path = start_path.to_path_buf();
 
-        // Walk up the directory tree looking for workspace markers
         loop {
+            let explicit_markers = if current_path == start_path {
+                requested_path_markers.as_slice()
+            } else {
+                &[]
+            };
             for marker in crate::paths::VCS_ROOT_MARKERS
                 .iter()
                 .copied()
-                .chain(build_ide_markers.iter().copied())
+                .chain(ancestor_project_markers.iter().copied())
+                .chain(explicit_markers.iter().copied())
             {
                 let marker_path = current_path.join(marker);
                 if marker_path.exists() {
@@ -126,7 +116,6 @@ impl ManageWorkspaceTool {
             }
         }
 
-        // No markers found, use the original path as workspace root
         info!(
             "🎯 No workspace markers found, using directory as root: {}",
             start_path.display()

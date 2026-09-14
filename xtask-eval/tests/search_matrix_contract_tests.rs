@@ -88,12 +88,11 @@ expected_mode = "expect_hits"
 "#,
     )
     .expect("write cases");
+    let roots = toml_roots(&[roots_dir.to_string_lossy().into_owned()]);
     fs::write(
         &corpus_path,
         format!(
-            r#"
-roots = ["{}"]
-
+            r#"{roots}
 [profiles.smoke]
 repos = ["missing-repo"]
 
@@ -102,7 +101,6 @@ name = "missing-repo"
 language = "rust"
 profile_tags = ["smoke"]
 "#,
-            roots_dir.display()
         ),
     )
     .expect("write corpus");

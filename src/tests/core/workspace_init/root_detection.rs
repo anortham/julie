@@ -127,6 +127,37 @@ fn test_find_workspace_root_does_not_let_parent_julie_capture_unmarked_explicit_
     );
 }
 
+#[test]
+fn test_find_workspace_root_ignores_ancestor_vscode_for_explicit_dir() {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let parent = TempDir::new().expect("Failed to create parent directory");
+    fs::create_dir_all(parent.path().join(".vscode"))
+        .expect("Failed to create ancestor .vscode directory");
+    let explicit_workspace = parent.path().join("unmarked-workspace");
+    fs::create_dir_all(&explicit_workspace).expect("Failed to create explicit workspace");
+
+    let tool = ManageWorkspaceTool {
+        operation: "test".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool
+        .find_workspace_root(&explicit_workspace)
+        .expect("find_workspace_root should not error");
+
+    assert_eq!(
+        result.canonicalize().unwrap_or_else(|_| result.clone()),
+        explicit_workspace
+            .canonicalize()
+            .unwrap_or_else(|_| explicit_workspace.clone())
+    );
+}
+
 /// Test (Function #2, discovery walk): the upward `.julie` discovery walk in
 /// `JulieWorkspace::find_workspace_root` must stop at ANY VCS repository root
 /// (here `.hg`), not just `.git`, so it cannot climb past a non-git project

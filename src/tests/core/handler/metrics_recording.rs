@@ -237,7 +237,11 @@ async fn test_deep_dive_failure_metrics_records_failed_handler_call() -> Result<
 }
 
 async fn indexed_metrics_handler() -> Result<(JulieServerHandler, TempDir)> {
-    let temp_dir = TempDir::new()?;
+    let temp_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/tmp");
+    std::fs::create_dir_all(&temp_root)?;
+    let temp_dir = tempfile::Builder::new()
+        .prefix("metrics_recording_")
+        .tempdir_in(temp_root)?;
     mark_workspace_root(temp_dir.path());
     std::fs::create_dir_all(temp_dir.path().join("src"))?;
     std::fs::write(

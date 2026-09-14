@@ -1,6 +1,13 @@
 [test-groups.dogfood]
 max-threads = 6
 
+[test-groups.service-process]
+max-threads = 1
+
 [[profile.default.overrides]]
 filter = 'test(/search_quality/) | test(/fixtures::julie_db/) | test(/dogfood/)'
 test-group = 'dogfood'
+
+[[profile.default.overrides]]
+filter = 'test(/tests::service::process/)'
+test-group = 'service-process'

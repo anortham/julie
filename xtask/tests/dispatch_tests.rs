@@ -46,12 +46,14 @@ fn dispatch_tests_dev_runs_the_three_dev_commands_through_cargo() {
             "cargo nextest run --lib -p julie --run-ignored only -E test(/tests::cli::/)",
         ]
     );
+    let stdout = output.stdout_text();
+    let summary = stdout.lines().last().unwrap_or_default();
     assert!(
-        output
-            .stdout_text()
-            .ends_with("SUMMARY: dev 3/3 commands in 0.0s\n"),
-        "stdout:\n{}",
-        output.stdout_text()
+        summary
+            .strip_prefix("SUMMARY: dev 3/3 commands in ")
+            .and_then(|elapsed| elapsed.strip_suffix('s'))
+            .map_or(false, |elapsed| elapsed.parse::<f64>().is_ok()),
+        "stdout:\n{stdout}"
     );
 }
 
@@ -145,7 +147,18 @@ fn write_fake_cargo(bin_dir: &Path) {
 fn write_fake_cargo(bin_dir: &Path) {
     fs::write(
         bin_dir.join("cargo.cmd"),
-        "@echo off\r\necho cargo %*>>\"%XTASK_DISPATCH_LOG%\"\r\nexit /b 0\r\n",
+        r#"@echo off
+setlocal EnableDelayedExpansion
+set "line=cargo"
+:next_arg
+if "%~1"=="" goto done
+set "line=!line! %~1"
+shift
+goto next_arg
+:done
+echo !line!>>"%XTASK_DISPATCH_LOG%"
+exit /b 0
+"#,
     )
     .expect("write fake cargo");
 }

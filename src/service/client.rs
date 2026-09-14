@@ -169,26 +169,77 @@ fn describe_deadline(deadline: Duration) -> String {
 }
 
 pub fn spawn_detached_service() -> std::io::Result<()> {
-    let mut command = std::process::Command::new(std::env::current_exe()?);
-    command
-        .arg("service")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0000_0008 | 0x0000_0200);
+        return spawn_detached_service_without_inherited_handles();
     }
-    reap_in_background(command.spawn()?);
+
+    #[cfg(not(windows))]
+    {
+        let mut command = std::process::Command::new(std::env::current_exe()?);
+        command
+            .arg("service")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        reap_in_background(command.spawn()?);
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn spawn_detached_service_without_inherited_handles() -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        CREATE_NEW_PROCESS_GROUP, CreateProcessW, DETACHED_PROCESS, PROCESS_INFORMATION,
+        STARTUPINFOW,
+    };
+
+    let executable = std::env::current_exe()?;
+    let application: Vec<u16> = executable
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut command_line = Vec::new();
+    command_line.push('"' as u16);
+    command_line.extend(executable.as_os_str().encode_wide());
+    command_line.extend("\" service\0".encode_utf16());
+    let mut startup = STARTUPINFOW::default();
+    startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+    let mut process = PROCESS_INFORMATION::default();
+
+    let spawned = unsafe {
+        CreateProcessW(
+            application.as_ptr(),
+            command_line.as_mut_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            0,
+            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+            std::ptr::null(),
+            std::ptr::null(),
+            &startup,
+            &mut process,
+        )
+    };
+    if spawned == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    unsafe {
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+    }
     Ok(())
 }
 
+#[cfg(not(windows))]
 pub(crate) fn reap_in_background(mut child: std::process::Child) {
     std::thread::spawn(move || {
         let _ = child.wait();

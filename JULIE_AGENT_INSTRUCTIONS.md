@@ -5,7 +5,7 @@ Scoped calls require `workspace` as an absolute path or registered ID. Open the 
 ## Rules
 
 1. `fast_search` before writing new code; use `backend="lexical"` for prose, literals, paths, and exact comparisons.
-2. `deep_dive` before modifying a symbol; use `get_symbols` before reading a whole file.
+2. `deep_dive` before modifying a symbol; use `get_symbols` before reading whole file.
 3. Use Julie evidence first. Fall back to direct inspection only when the result is unavailable, stale, truncated, or insufficient; then narrow the fallback and return to Julie evidence.
 
 ## Tools
