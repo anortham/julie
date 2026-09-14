@@ -240,11 +240,11 @@ jobs:
   update-plugin:
     name: Update plugin from verified release
     needs: [release]
-    uses: anortham/julie-plugin/.github/workflows/update-binaries.yml@7d3996a7bb6130747c631446caacb800a1c34622
+    uses: anortham/julie-plugin/.github/workflows/update-binaries.yml@d427fec9df777b045d4562a4e56e3f14f0a7a260
     with:
       version: ${{ needs.release.outputs.version }}
       tag: v${{ needs.release.outputs.version }}
-      plugin_source_sha: 7d3996a7bb6130747c631446caacb800a1c34622
+      plugin_source_sha: d427fec9df777b045d4562a4e56e3f14f0a7a260
     secrets:
       publication_token: ${{ secrets.PLUGIN_REPO_TOKEN }}
 
@@ -283,7 +283,7 @@ jobs:
           for (const [path, getVersion] of manifests) {
             if (getVersion(JSON.parse(fs.readFileSync(path))) !== version) throw new Error(`version mismatch: ${path}`);
           }
-          for (const path of ['mcp.json', 'mcp_codex.json', 'mcp_config.json', 'hooks/hooks.json', 'JULIE_AGENT_INSTRUCTIONS.md']) {
+          for (const path of ['mcp.json', 'mcp_config.json', 'hooks/hooks.json', 'JULIE_AGENT_INSTRUCTIONS.md']) {
             if (!fs.statSync(path).size) throw new Error(`missing required plugin file: ${path}`);
           }
           NODE

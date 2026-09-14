@@ -242,6 +242,10 @@ fn release_workflow_qualifies_archives_and_awaits_the_pinned_plugin_workflow() {
     assert!(workflow.contains("uses: actions/setup-node@v4"));
     assert!(workflow.contains("node-version: 22.5.0"));
     assert!(workflow.contains("node --test hooks/*.test.cjs"));
+    assert!(workflow.contains(
+        "for (const path of ['mcp.json', 'mcp_config.json', 'hooks/hooks.json', 'JULIE_AGENT_INSTRUCTIONS.md'])"
+    ));
+    assert!(!workflow.contains("mcp_codex.json"));
     assert!(verifier.contains("package-manifest.json"));
     assert!(!verifier.contains("sidecar-package-manifest.json"));
     assert!(verifier.contains("julie-semantic-sidecar"));
