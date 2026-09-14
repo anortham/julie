@@ -341,7 +341,7 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
         let root = tmp.path().join(name);
         fs::create_dir_all(&root).unwrap();
         let server = root.join("julie-server");
-        fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) rm -f \"$JULIE_HOME/service.json\" ;; *) mkdir -p \"$JULIE_HOME\"; : > \"$JULIE_HOME/service.json\"; echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"instructions\":\"open workspace\"}}' ;; esac\n").unwrap();
+        fs::write(&server, "#!/bin/sh\ncase \"${1:-}\" in --version) echo 'julie-server 8.0.0' ;; service) rm -f \"$JULIE_HOME/service.json\" ;; *) mkdir -p \"$JULIE_HOME\"; printf '{\"pid\":1}\\n' > \"$JULIE_HOME/service.json\"; echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"instructions\":\"open workspace\"}}' ;; esac\n").unwrap();
         fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
         let sidecar = root.join("julie-semantic-sidecar");
         fs::write(&sidecar, "#!/bin/sh\necho 'julie-semantic-sidecar 0.1.0'\n").unwrap();
@@ -396,7 +396,7 @@ fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {
                 } else {
                     ":"
                 };
-                fs::write(&server, format!("#!/bin/sh\ncase \"${{1:-}}\" in --version) echo 'julie-server 8.0.0' ;; service) {stop} ;; *) mkdir -p \"$JULIE_HOME\"; : > \"$JULIE_HOME/service.json\"; echo '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"instructions\":\"open workspace\"}}}}' ;; esac\n")).unwrap();
+                fs::write(&server, format!("#!/bin/sh\ncase \"${{1:-}}\" in --version) echo 'julie-server 8.0.0' ;; service) {stop} ;; *) mkdir -p \"$JULIE_HOME\"; printf '{{\"pid\":1}}\\n' > \"$JULIE_HOME/service.json\"; echo '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"instructions\":\"open workspace\"}}}}' ;; esac\n")).unwrap();
                 let manifest = fs::read_to_string(root.join("package-manifest.json")).unwrap();
                 fs::write(
                     root.join("package-manifest.json"),
