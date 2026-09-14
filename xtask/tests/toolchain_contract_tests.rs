@@ -321,6 +321,61 @@ fn native_qualification_workflow_is_nonpublishing_and_exercises_windows_lock() {
     assert!(report.contains("Linux archive SHA-256"));
 }
 
+#[test]
+fn release_asset_verifier_accepts_windows_binary_checksum_marker() {
+    use std::process::Command;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let verifier = repo_file(".github/scripts/verify-release-assets.py");
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    let sha256 = |path: &std::path::Path| {
+        let output = Command::new(python)
+            .args([
+                "-c",
+                "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], 'rb').read()).hexdigest())",
+            ])
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    };
+    let archives = [
+        "julie-v8.0.0-aarch64-apple-darwin.tar.gz",
+        "julie-v8.0.0-x86_64-apple-darwin.tar.gz",
+        "julie-v8.0.0-x86_64-unknown-linux-gnu.tar.gz",
+        "julie-v8.0.0-x86_64-pc-windows-msvc.zip",
+    ];
+
+    for archive in archives {
+        let archive_path = tmp.path().join(archive);
+        fs::write(&archive_path, archive).unwrap();
+        let marker = if archive.ends_with("windows-msvc.zip") {
+            "*"
+        } else {
+            " "
+        };
+        fs::write(
+            tmp.path().join(format!("{archive}.sha256")),
+            format!("{} {marker}{archive}\n", sha256(&archive_path)),
+        )
+        .unwrap();
+    }
+
+    let result = Command::new(python)
+        .arg(verifier)
+        .arg(tmp.path())
+        .arg("8.0.0")
+        .output()
+        .unwrap();
+
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn release_qualification_rejects_invalid_archives_and_partial_public_assets() {

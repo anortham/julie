@@ -19,5 +19,6 @@ if actual != expected:
     raise SystemExit(f"incomplete public asset set: expected {sorted(expected)}, got {sorted(actual)}")
 for archive in archives:
     checksum = (directory / f"{archive}.sha256").read_text().split()
-    if len(checksum) < 2 or checksum[1] != archive or checksum[0] != hashlib.sha256((directory / archive).read_bytes()).hexdigest():
+    checksum_name = checksum[1].removeprefix("*") if len(checksum) >= 2 else ""
+    if checksum_name != archive or checksum[0] != hashlib.sha256((directory / archive).read_bytes()).hexdigest():
         raise SystemExit(f"public archive checksum mismatch: {archive}")
